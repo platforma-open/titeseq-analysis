@@ -19,6 +19,7 @@ import json
 import sys
 from pathlib import Path
 
+import numpy as np
 import polars as pl
 
 from baseline import compute_global_baseline
@@ -48,9 +49,9 @@ from io_layer import (
 )
 from normalization import SIGNAL, normalize
 from output_build import (
-    build_fitted_mean_bin_frame,
+    FITTED_MEAN_BIN_SCHEMA,
+    PER_CLONOTYPE_SCHEMA,
     build_mean_bin_frame,
-    build_per_clonotype_frame,
     flag_kd_out_of_range,
 )
 
@@ -85,26 +86,45 @@ def _fit_all_clonotypes(
     bin_mode: bool,
     max_bin: int | None,
     params: FitParams,
-) -> tuple[list[dict], list[dict]]:
-    """Iterate clonotypes once; return (per_clonotype_rows, fitted_rows).
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Iterate clonotypes once; return (per_clonotype_frame, fitted_mean_bin_frame).
 
     Partitions fit_points once (O(N)) instead of filtering per clonotype inside
     the loop (O(N * C)). Clonotypes failing the pre-fit gates (insufficient_*,
     non_monotonic_signal) skip partition lookup entirely.
+
+    Output frames are built from pre-allocated numpy arrays and fitted-row chunks
+    — avoids the C × 7 Python dict allocations (per-clonotype) + Σk_c × 4 dicts
+    (fitted rows) that list-of-dicts → DataFrame conversion otherwise incurs.
     """
     sorted_points = fit_points.sort([COL_CLONOTYPE, COL_CONC_VAL])
     partitions = sorted_points.partition_by(COL_CLONOTYPE, as_dict=True)
 
-    per_clonotype_rows: list[dict] = []
-    fitted_rows: list[dict] = []
+    clonotypes_sorted = sorted(all_clonotypes)
+    n_clon = len(clonotypes_sorted)
 
-    for clonotype in sorted(all_clonotypes):
+    # Python lists preserve None semantics end-to-end — numpy float arrays collapse
+    # missing values into NaN, which polars treats as distinct from null (R13: null).
+    kd_col: list[float | None] = [None] * n_clon
+    n_col: list[float | None] = [None] * n_clon
+    r2_col: list[float | None] = [None] * n_clon
+    affinity_col: list[str] = [""] * n_clon
+    reason_col: list[str | None] = [None] * n_clon
+
+    fitted_keys: list[np.ndarray] = []
+    fitted_conc_strs: list[np.ndarray] = []
+    fitted_conc_vals: list[np.ndarray] = []
+    fitted_y_hats: list[np.ndarray] = []
+
+    for i, clonotype in enumerate(clonotypes_sorted):
         insufficient_reason = insufficient_map.get(clonotype)
         if insufficient_reason is not None:
-            per_clonotype_rows.append(_failed_row(clonotype, insufficient_reason))
+            affinity_col[i] = "Failed"
+            reason_col[i] = insufficient_reason
             continue
         if hook_map.get(clonotype, False):
-            per_clonotype_rows.append(_failed_row(clonotype, "non_monotonic_signal"))
+            affinity_col[i] = "Failed"
+            reason_col[i] = "non_monotonic_signal"
             continue
 
         sub = partitions[(clonotype,)]
@@ -116,51 +136,71 @@ def _fit_all_clonotypes(
             x, y, w, baseline_fixed=global_baseline, bin_mode=bin_mode, max_bin_label=max_bin
         )
         cls = classify(fit.r2_w, fit.n, fit.converged, params)
-        per_clonotype_rows.append(
-            {
-                COL_CLONOTYPE: clonotype,
-                "kd": fit.kd,
-                "hillCoefficient": fit.n,
-                "r2": fit.r2_w,
-                "affinityClass": cls.affinity_class,
-                "fitFailureReason": cls.failure_reason,
-                "kdOutOfRange": None,
-            }
-        )
+
+        kd_col[i] = fit.kd
+        n_col[i] = fit.n
+        r2_col[i] = fit.r2_w
+        affinity_col[i] = cls.affinity_class
+        reason_col[i] = cls.failure_reason
 
         if fit.converged and fit.y_hat is not None and cls.affinity_class != "Failed":
-            conc_strs = sub[COL_CONC_STR].to_list()
-            for i, cs in enumerate(conc_strs):
-                fitted_rows.append(
-                    {
-                        COL_CLONOTYPE: clonotype,
-                        COL_CONC_STR: cs,
-                        COL_CONC_VAL: float(x[i]),
-                        "fittedMeanBin": float(fit.y_hat[i]),
-                    }
-                )
+            k = x.shape[0]
+            fitted_keys.append(np.full(k, clonotype, dtype=object))
+            fitted_conc_strs.append(sub[COL_CONC_STR].to_numpy())
+            fitted_conc_vals.append(x)
+            fitted_y_hats.append(fit.y_hat)
 
-    return per_clonotype_rows, fitted_rows
+    per_clonotype = pl.DataFrame(
+        {
+            COL_CLONOTYPE: clonotypes_sorted,
+            "kd": kd_col,
+            "hillCoefficient": n_col,
+            "r2": r2_col,
+            "affinityClass": affinity_col,
+            "fitFailureReason": reason_col,
+            "kdOutOfRange": [None] * n_clon,
+        },
+        schema=PER_CLONOTYPE_SCHEMA,
+    )
+
+    if fitted_keys:
+        fitted = pl.DataFrame(
+            {
+                COL_CLONOTYPE: np.concatenate(fitted_keys),
+                COL_CONC_STR: np.concatenate(fitted_conc_strs),
+                COL_CONC_VAL: np.concatenate(fitted_conc_vals),
+                "fittedMeanBin": np.concatenate(fitted_y_hats),
+            },
+            schema=FITTED_MEAN_BIN_SCHEMA,
+        )
+    else:
+        fitted = pl.DataFrame(
+            {k: [] for k in FITTED_MEAN_BIN_SCHEMA}, schema=FITTED_MEAN_BIN_SCHEMA
+        )
+
+    return per_clonotype, fitted
 
 
 def _build_outputs(
-    per_clonotype_rows: list[dict],
-    fitted_rows: list[dict],
+    per_clonotype: pl.DataFrame,
+    fitted: pl.DataFrame,
     signal_frame: pl.DataFrame,
     reads: pl.DataFrame,
 ) -> dict[str, pl.DataFrame]:
-    """Assemble the three output frames and apply R14b kdOutOfRange flag."""
-    per_clonotype = build_per_clonotype_frame(per_clonotype_rows)
-    non_zero = reads.filter(pl.col(COL_CONC_VAL) > 0)
-    if non_zero.height > 0:
-        min_c = float(non_zero[COL_CONC_VAL].min())
-        max_c = float(non_zero[COL_CONC_VAL].max())
-        per_clonotype = flag_kd_out_of_range(per_clonotype, min_c, max_c)
+    """Apply R14b kdOutOfRange flag and assemble the three-frame output dict."""
+    min_max = reads.filter(pl.col(COL_CONC_VAL) > 0).select(
+        pl.col(COL_CONC_VAL).min().alias("min"),
+        pl.col(COL_CONC_VAL).max().alias("max"),
+    ).row(0, named=True)
+    if min_max["min"] is not None:
+        per_clonotype = flag_kd_out_of_range(
+            per_clonotype, float(min_max["min"]), float(min_max["max"])
+        )
 
     return {
         "per_clonotype": per_clonotype,
         "mean_bin": build_mean_bin_frame(signal_frame),
-        "fitted_mean_bin": build_fitted_mean_bin_frame(fitted_rows),
+        "fitted_mean_bin": fitted,
     }
 
 
@@ -199,7 +239,7 @@ def run(
     hook = detect_hook_effect(fit_points, bin_mode=has_bin, params=params)
     hook_map = dict(zip(hook[COL_CLONOTYPE].to_list(), hook["hook_flag"].to_list()))
 
-    per_clonotype_rows, fitted_rows = _fit_all_clonotypes(
+    per_clonotype, fitted = _fit_all_clonotypes(
         fit_points,
         all_clonotypes=all_clonotypes,
         insufficient_map=insufficient_map,
@@ -210,19 +250,7 @@ def run(
         params=params,
     )
 
-    return _build_outputs(per_clonotype_rows, fitted_rows, signal_frame, reads)
-
-
-def _failed_row(clonotype: str, reason: str) -> dict:
-    return {
-        COL_CLONOTYPE: clonotype,
-        "kd": None,
-        "hillCoefficient": None,
-        "r2": None,
-        "affinityClass": "Failed",
-        "fitFailureReason": reason,
-        "kdOutOfRange": None,
-    }
+    return _build_outputs(per_clonotype, fitted, signal_frame, reads)
 
 
 def main(argv: list[str] | None = None) -> int:

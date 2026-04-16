@@ -10,15 +10,16 @@ import polars as pl
 
 from constants import COL_CLONOTYPE, COL_CONC_STR, COL_CONC_VAL
 
-PER_CLONOTYPE_COLS = [
-    COL_CLONOTYPE,
-    "kd",
-    "hillCoefficient",
-    "r2",
-    "affinityClass",
-    "fitFailureReason",
-    "kdOutOfRange",
-]
+PER_CLONOTYPE_SCHEMA: dict[str, pl.DataType] = {
+    COL_CLONOTYPE: pl.Utf8,
+    "kd": pl.Float64,
+    "hillCoefficient": pl.Float64,
+    "r2": pl.Float64,
+    "affinityClass": pl.Utf8,
+    "fitFailureReason": pl.Utf8,
+    "kdOutOfRange": pl.Boolean,
+}
+PER_CLONOTYPE_COLS = list(PER_CLONOTYPE_SCHEMA.keys())
 
 
 def build_per_clonotype_frame(rows: list[dict]) -> pl.DataFrame:
@@ -27,18 +28,9 @@ def build_per_clonotype_frame(rows: list[dict]) -> pl.DataFrame:
     Expected keys per row: clonotypeKey, kd (nullable), hillCoefficient (nullable),
     r2 (nullable), affinityClass, fitFailureReason (nullable), kdOutOfRange (nullable).
     """
-    schema = {
-        COL_CLONOTYPE: pl.Utf8,
-        "kd": pl.Float64,
-        "hillCoefficient": pl.Float64,
-        "r2": pl.Float64,
-        "affinityClass": pl.Utf8,
-        "fitFailureReason": pl.Utf8,
-        "kdOutOfRange": pl.Boolean,
-    }
     if not rows:
-        return pl.DataFrame({k: [] for k in schema}, schema=schema)
-    return pl.DataFrame(rows, schema=schema)
+        return pl.DataFrame({k: [] for k in PER_CLONOTYPE_SCHEMA}, schema=PER_CLONOTYPE_SCHEMA)
+    return pl.DataFrame(rows, schema=PER_CLONOTYPE_SCHEMA)
 
 
 def flag_kd_out_of_range(
@@ -78,18 +70,20 @@ def build_mean_bin_frame(signal_frame: pl.DataFrame) -> pl.DataFrame:
     )
 
 
+FITTED_MEAN_BIN_SCHEMA: dict[str, pl.DataType] = {
+    COL_CLONOTYPE: pl.Utf8,
+    COL_CONC_STR: pl.Utf8,
+    COL_CONC_VAL: pl.Float64,
+    "fittedMeanBin": pl.Float64,
+}
+
+
 def build_fitted_mean_bin_frame(fitted_rows: list[dict]) -> pl.DataFrame:
     """R14: per-(clonotype, concentration) fitted signal at experimental concentrations.
 
     fitted_rows: list of dicts with keys clonotypeKey, concentrationStr, concentration, fittedMeanBin.
     Failed fits contribute no rows (null via absence).
     """
-    schema = {
-        COL_CLONOTYPE: pl.Utf8,
-        COL_CONC_STR: pl.Utf8,
-        COL_CONC_VAL: pl.Float64,
-        "fittedMeanBin": pl.Float64,
-    }
     if not fitted_rows:
-        return pl.DataFrame({k: [] for k in schema}, schema=schema)
-    return pl.DataFrame(fitted_rows, schema=schema)
+        return pl.DataFrame({k: [] for k in FITTED_MEAN_BIN_SCHEMA}, schema=FITTED_MEAN_BIN_SCHEMA)
+    return pl.DataFrame(fitted_rows, schema=FITTED_MEAN_BIN_SCHEMA)
