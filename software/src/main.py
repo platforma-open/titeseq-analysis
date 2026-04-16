@@ -46,13 +46,122 @@ from io_layer import (
     validate_reads_schema,
     validate_sample_metadata_uniqueness,
 )
-from normalization import CLONOTYPE_READS_AT_CONC, SIGNAL, normalize
+from normalization import SIGNAL, normalize
 from output_build import (
     build_fitted_mean_bin_frame,
     build_mean_bin_frame,
     build_per_clonotype_frame,
     flag_kd_out_of_range,
 )
+
+
+def _validate_inputs(
+    reads: pl.DataFrame,
+    *,
+    has_bin: bool,
+    has_antigen: bool,
+    target_antigen: str | None,
+    antigen_column_ref: str | None,
+) -> None:
+    """Run all R1-R5 validators and emit accumulated warnings to stderr."""
+    validate_reads_schema(reads, has_bin=has_bin, has_antigen=has_antigen)
+    warnings: list[str] = []
+    warnings += validate_concentration_column(reads, has_bin=has_bin)
+    if has_bin:
+        validate_bin_column(reads)
+    warnings += validate_antigen_filter(reads, antigen_column_ref, target_antigen)
+    validate_sample_metadata_uniqueness(reads, has_bin=has_bin, has_antigen=has_antigen)
+    for w in warnings:
+        print(f"WARN: {w}", file=sys.stderr)
+
+
+def _fit_all_clonotypes(
+    fit_points: pl.DataFrame,
+    *,
+    all_clonotypes: list[str],
+    insufficient_map: dict[str, str | None],
+    hook_map: dict[str, bool],
+    global_baseline: float | None,
+    bin_mode: bool,
+    max_bin: int | None,
+    params: FitParams,
+) -> tuple[list[dict], list[dict]]:
+    """Iterate clonotypes once; return (per_clonotype_rows, fitted_rows).
+
+    Partitions fit_points once (O(N)) instead of filtering per clonotype inside
+    the loop (O(N * C)). Clonotypes failing the pre-fit gates (insufficient_*,
+    non_monotonic_signal) skip partition lookup entirely.
+    """
+    sorted_points = fit_points.sort([COL_CLONOTYPE, COL_CONC_VAL])
+    partitions = sorted_points.partition_by(COL_CLONOTYPE, as_dict=True)
+
+    per_clonotype_rows: list[dict] = []
+    fitted_rows: list[dict] = []
+
+    for clonotype in sorted(all_clonotypes):
+        insufficient_reason = insufficient_map.get(clonotype)
+        if insufficient_reason is not None:
+            per_clonotype_rows.append(_failed_row(clonotype, insufficient_reason))
+            continue
+        if hook_map.get(clonotype, False):
+            per_clonotype_rows.append(_failed_row(clonotype, "non_monotonic_signal"))
+            continue
+
+        sub = partitions[(clonotype,)]
+        x = sub[COL_CONC_VAL].to_numpy()
+        y = sub[SIGNAL].to_numpy()
+        w = sub[WEIGHT].to_numpy()
+
+        fit = fit_one_clonotype(
+            x, y, w, baseline_fixed=global_baseline, bin_mode=bin_mode, max_bin_label=max_bin
+        )
+        cls = classify(fit.r2_w, fit.n, fit.converged, params)
+        per_clonotype_rows.append(
+            {
+                COL_CLONOTYPE: clonotype,
+                "kd": fit.kd,
+                "hillCoefficient": fit.n,
+                "r2": fit.r2_w,
+                "affinityClass": cls.affinity_class,
+                "fitFailureReason": cls.failure_reason,
+                "kdOutOfRange": None,
+            }
+        )
+
+        if fit.converged and fit.y_hat is not None and cls.affinity_class != "Failed":
+            conc_strs = sub[COL_CONC_STR].to_list()
+            for i, cs in enumerate(conc_strs):
+                fitted_rows.append(
+                    {
+                        COL_CLONOTYPE: clonotype,
+                        COL_CONC_STR: cs,
+                        COL_CONC_VAL: float(x[i]),
+                        "fittedMeanBin": float(fit.y_hat[i]),
+                    }
+                )
+
+    return per_clonotype_rows, fitted_rows
+
+
+def _build_outputs(
+    per_clonotype_rows: list[dict],
+    fitted_rows: list[dict],
+    signal_frame: pl.DataFrame,
+    reads: pl.DataFrame,
+) -> dict[str, pl.DataFrame]:
+    """Assemble the three output frames and apply R14b kdOutOfRange flag."""
+    per_clonotype = build_per_clonotype_frame(per_clonotype_rows)
+    non_zero = reads.filter(pl.col(COL_CONC_VAL) > 0)
+    if non_zero.height > 0:
+        min_c = float(non_zero[COL_CONC_VAL].min())
+        max_c = float(non_zero[COL_CONC_VAL].max())
+        per_clonotype = flag_kd_out_of_range(per_clonotype, min_c, max_c)
+
+    return {
+        "per_clonotype": per_clonotype,
+        "mean_bin": build_mean_bin_frame(signal_frame),
+        "fitted_mean_bin": build_fitted_mean_bin_frame(fitted_rows),
+    }
 
 
 def run(
@@ -67,15 +176,10 @@ def run(
     has_bin = COL_BIN in reads.columns
     has_antigen = COL_ANTIGEN in reads.columns
 
-    validate_reads_schema(reads, has_bin=has_bin, has_antigen=has_antigen)
-    warnings: list[str] = []
-    warnings += validate_concentration_column(reads, has_bin=has_bin)
-    if has_bin:
-        validate_bin_column(reads)
-    warnings += validate_antigen_filter(reads, antigen_column_ref, target_antigen)
-    validate_sample_metadata_uniqueness(reads, has_bin=has_bin, has_antigen=has_antigen)
-    for w in warnings:
-        print(f"WARN: {w}", file=sys.stderr)
+    _validate_inputs(
+        reads, has_bin=has_bin, has_antigen=has_antigen,
+        target_antigen=target_antigen, antigen_column_ref=antigen_column_ref,
+    )
 
     reads = apply_antigen_filter(reads, target_antigen)
     mbl = max_bin_label(reads) if has_bin else None
@@ -95,73 +199,18 @@ def run(
     hook = detect_hook_effect(fit_points, bin_mode=has_bin, params=params)
     hook_map = dict(zip(hook[COL_CLONOTYPE].to_list(), hook["hook_flag"].to_list()))
 
-    per_clonotype_rows: list[dict] = []
-    fitted_rows: list[dict] = []
+    per_clonotype_rows, fitted_rows = _fit_all_clonotypes(
+        fit_points,
+        all_clonotypes=all_clonotypes,
+        insufficient_map=insufficient_map,
+        hook_map=hook_map,
+        global_baseline=global_b,
+        bin_mode=has_bin,
+        max_bin=mbl,
+        params=params,
+    )
 
-    for clonotype in sorted(all_clonotypes):
-        insufficient_reason = insufficient_map.get(clonotype)
-        if insufficient_reason is not None:
-            per_clonotype_rows.append(
-                _failed_row(clonotype, insufficient_reason)
-            )
-            continue
-        if hook_map.get(clonotype, False):
-            per_clonotype_rows.append(_failed_row(clonotype, "non_monotonic_signal"))
-            continue
-
-        sub = fit_points.filter(pl.col(COL_CLONOTYPE) == clonotype).sort(COL_CONC_VAL)
-        x = sub[COL_CONC_VAL].to_numpy()
-        y = sub[SIGNAL].to_numpy()
-        w = sub[WEIGHT].to_numpy()
-
-        fit = fit_one_clonotype(
-            x, y, w, baseline_fixed=global_b, bin_mode=has_bin, max_bin_label=mbl
-        )
-        cls = classify(fit.r2_w, fit.n, fit.converged, params)
-        per_clonotype_rows.append(
-            {
-                COL_CLONOTYPE: clonotype,
-                "kd": fit.kd,
-                "hillCoefficient": fit.n,
-                "r2": fit.r2_w,
-                "affinityClass": cls.affinity_class,
-                "fitFailureReason": cls.failure_reason,
-                "kdOutOfRange": None,
-            }
-        )
-
-        if (
-            fit.converged
-            and fit.y_hat is not None
-            and cls.affinity_class != "Failed"
-        ):
-            conc_strs = sub[COL_CONC_STR].to_list()
-            for i, cs in enumerate(conc_strs):
-                fitted_rows.append(
-                    {
-                        COL_CLONOTYPE: clonotype,
-                        COL_CONC_STR: cs,
-                        COL_CONC_VAL: float(x[i]),
-                        "fittedMeanBin": float(fit.y_hat[i]),
-                    }
-                )
-
-    per_clonotype = build_per_clonotype_frame(per_clonotype_rows)
-    # Flag kdOutOfRange from experimental concentration range (exclude c=0).
-    non_zero = reads.filter(pl.col(COL_CONC_VAL) > 0)
-    if non_zero.height > 0:
-        min_c = float(non_zero[COL_CONC_VAL].min())
-        max_c = float(non_zero[COL_CONC_VAL].max())
-        per_clonotype = flag_kd_out_of_range(per_clonotype, min_c, max_c)
-
-    mean_bin_out = build_mean_bin_frame(signal_frame)
-    fitted_mean_bin_out = build_fitted_mean_bin_frame(fitted_rows)
-
-    return {
-        "per_clonotype": per_clonotype,
-        "mean_bin": mean_bin_out,
-        "fitted_mean_bin": fitted_mean_bin_out,
-    }
+    return _build_outputs(per_clonotype_rows, fitted_rows, signal_frame, reads)
 
 
 def _failed_row(clonotype: str, reason: str) -> dict:
