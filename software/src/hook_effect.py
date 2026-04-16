@@ -26,20 +26,14 @@ def detect_hook_effect(
         .rank(method="ordinal", descending=True)
         .over(COL_CLONOTYPE)
         .alias("rank")
-    )
-    top2 = ranked.filter(pl.col("rank") <= 2)
+    ).filter(pl.col("rank") <= 2)
 
-    pivot_parts = []
-    for rank_value, label in ((1, "top1"), (2, "top2")):
-        part = (
-            top2.filter(pl.col("rank") == rank_value)
-            .select([COL_CLONOTYPE, SIGNAL, CLONOTYPE_READS_AT_CONC])
-            .rename(
-                {SIGNAL: f"{label}_signal", CLONOTYPE_READS_AT_CONC: f"{label}_reads"}
-            )
-        )
-        pivot_parts.append(part)
-    wide = pivot_parts[0].join(pivot_parts[1], on=COL_CLONOTYPE, how="full", coalesce=True)
+    wide = ranked.group_by(COL_CLONOTYPE).agg(
+        pl.col(SIGNAL).filter(pl.col("rank") == 1).first().alias("top1_signal"),
+        pl.col(SIGNAL).filter(pl.col("rank") == 2).first().alias("top2_signal"),
+        pl.col(CLONOTYPE_READS_AT_CONC).filter(pl.col("rank") == 1).first().alias("top1_reads"),
+        pl.col(CLONOTYPE_READS_AT_CONC).filter(pl.col("rank") == 2).first().alias("top2_reads"),
+    )
 
     hook = (
         (pl.col("top1_reads") >= params.hook_effect_min_reads)
