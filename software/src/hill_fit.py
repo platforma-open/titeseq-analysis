@@ -19,6 +19,12 @@ from scipy.optimize import OptimizeWarning, curve_fit
 
 from constants import DELTA
 
+# Parameter bounds for the Hill fit — tuned once, not caller-configurable.
+KD_LO: float = 1e-15
+KD_HI: float = 1e3
+N_LO: float = 0.1
+N_HI: float = 10.0
+
 
 @dataclass
 class FitResult:
@@ -32,15 +38,7 @@ class FitResult:
     reason: str | None  # "convergence_failure" on internal failures; None on success
 
 
-def _hill_3p(x: np.ndarray, log_kd: float, n: float, amplitude: float, baseline_fixed: float) -> np.ndarray:
-    """Hill evaluated with baseline pinned; returns y values."""
-    kd = math.exp(log_kd)
-    top_minus_base = math.exp(amplitude)
-    xn = np.power(x, n)
-    return baseline_fixed + top_minus_base * xn / (kd**n + xn)
-
-
-def _hill_4p(x: np.ndarray, log_kd: float, n: float, amplitude: float, baseline: float) -> np.ndarray:
+def _hill(x: np.ndarray, log_kd: float, n: float, amplitude: float, baseline: float) -> np.ndarray:
     kd = math.exp(log_kd)
     top_minus_base = math.exp(amplitude)
     xn = np.power(x, n)
@@ -82,6 +80,20 @@ def _initial_guesses(x: np.ndarray, y: np.ndarray, baseline: float) -> tuple[flo
     return math.log(max(kd_guess, 1e-12)), 1.0, amp_guess
 
 
+def _amplitude_upper_bound(bin_mode: bool, max_bin_label: int | None) -> float:
+    """R10: top ≤ max_bin_label - 1 in bin mode; ≤ 1 (freq) in no-bin mode."""
+    if bin_mode and max_bin_label and max_bin_label > 1:
+        return math.log(max_bin_label - 1)
+    return math.log(0.95)
+
+
+def _failure() -> FitResult:
+    return FitResult(
+        kd=None, n=None, top=None, baseline=None,
+        r2_w=None, y_hat=None, converged=False, reason="convergence_failure",
+    )
+
+
 def fit_one_clonotype(
     x: np.ndarray,
     y: np.ndarray,
@@ -90,10 +102,6 @@ def fit_one_clonotype(
     *,
     bin_mode: bool,
     max_bin_label: int | None,
-    kd_lo: float = 1e-15,
-    kd_hi: float = 1e3,
-    n_lo: float = 0.1,
-    n_hi: float = 10.0,
 ) -> FitResult:
     """Single-clonotype Hill fit. Pure numpy inputs; no polars involvement.
 
@@ -108,89 +116,58 @@ def fit_one_clonotype(
     # sigma = 1/sqrt(w); guard against zero weights by treating them as very uncertain.
     sigma = np.where(w > 0, 1.0 / np.sqrt(w), 1e12)
 
-    amp_hi_mode = (
-        math.log(max_bin_label - 1) if bin_mode and max_bin_label and max_bin_label > 1
-        else math.log(0.95)
-    )
-    # Keep the lower bound well below log(DELTA) so the solver can land below δ
-    # for truly flat signals; the `top - baseline < DELTA` post-fit check rejects them.
+    amp_hi = _amplitude_upper_bound(bin_mode, max_bin_label)
+    # Lower bound well below log(DELTA) so the solver can land below δ for truly
+    # flat signals; the `top - baseline < DELTA` post-fit check rejects them.
     amp_lo = math.log(DELTA * 1e-6)
 
+    baseline_known = baseline_fixed is not None
+    anchor_for_guesses = baseline_fixed if baseline_known else float(np.min(y))
+    log_kd0, n0, amp0 = _initial_guesses(x, y, anchor_for_guesses)
+    log_kd0 = min(max(log_kd0, math.log(KD_LO)), math.log(KD_HI))
+    n0 = min(max(n0, N_LO), N_HI)
+    amp0 = min(max(amp0, amp_lo), amp_hi)
+
+    if baseline_known:
+        p0 = [log_kd0, n0, amp0]
+        lo = [math.log(KD_LO), N_LO, amp_lo]
+        hi = [math.log(KD_HI), N_HI, amp_hi]
+
+        def model(x_, log_kd, n, amp):
+            return _hill(x_, log_kd, n, amp, baseline_fixed)
+    else:
+        base_hi = float(max_bin_label - 1) if bin_mode and max_bin_label else 1.0
+        base0 = min(max(anchor_for_guesses, 0.0), base_hi)
+        p0 = [log_kd0, n0, amp0, base0]
+        lo = [math.log(KD_LO), N_LO, amp_lo, 0.0]
+        hi = [math.log(KD_HI), N_HI, amp_hi, base_hi]
+        model = _hill
+
     try:
-        if baseline_fixed is not None:
-            log_kd0, n0, amp0 = _initial_guesses(x, y, baseline_fixed)
-            # Clip initial guesses into bounds.
-            log_kd0 = min(max(log_kd0, math.log(kd_lo)), math.log(kd_hi))
-            n0 = min(max(n0, n_lo), n_hi)
-            amp0 = min(max(amp0, amp_lo), amp_hi_mode)
-
-            def model(x_, log_kd, n, amp):
-                return _hill_3p(x_, log_kd, n, amp, baseline_fixed)
-
-            popt, _ = curve_fit(
-                model,
-                x,
-                y,
-                p0=[log_kd0, n0, amp0],
-                sigma=sigma,
-                absolute_sigma=False,
-                bounds=(
-                    [math.log(kd_lo), n_lo, amp_lo],
-                    [math.log(kd_hi), n_hi, amp_hi_mode],
-                ),
-                method="trf",
-                maxfev=10_000,
-            )
-            log_kd, n, amp = popt
-            baseline_out = baseline_fixed
-            y_hat = _hill_3p(x, log_kd, n, amp, baseline_fixed)
-        else:
-            y_min = float(np.min(y))
-            log_kd0, n0, amp0 = _initial_guesses(x, y, y_min)
-            log_kd0 = min(max(log_kd0, math.log(kd_lo)), math.log(kd_hi))
-            n0 = min(max(n0, n_lo), n_hi)
-            amp0 = min(max(amp0, amp_lo), amp_hi_mode)
-            base_lo, base_hi = 0.0, float(max_bin_label - 1) if bin_mode and max_bin_label else 1.0
-            base0 = min(max(y_min, base_lo), base_hi)
-
-            popt, _ = curve_fit(
-                _hill_4p,
-                x,
-                y,
-                p0=[log_kd0, n0, amp0, base0],
-                sigma=sigma,
-                absolute_sigma=False,
-                bounds=(
-                    [math.log(kd_lo), n_lo, amp_lo, base_lo],
-                    [math.log(kd_hi), n_hi, amp_hi_mode, base_hi],
-                ),
-                method="trf",
-                maxfev=10_000,
-            )
-            log_kd, n, amp, baseline_out = popt
-            y_hat = _hill_4p(x, log_kd, n, amp, baseline_out)
-
-    except (RuntimeError, ValueError, OptimizeWarning):
-        return FitResult(
-            kd=None, n=None, top=None, baseline=None,
-            r2_w=None, y_hat=None, converged=False, reason="convergence_failure",
+        popt, _ = curve_fit(
+            model, x, y, p0=p0, sigma=sigma, absolute_sigma=False,
+            bounds=(lo, hi), method="trf", maxfev=10_000,
         )
+    except (RuntimeError, ValueError, OptimizeWarning):
+        return _failure()
+
+    if baseline_known:
+        log_kd, n, amp = popt
+        baseline_out = baseline_fixed
+    else:
+        log_kd, n, amp, baseline_out = popt
+    y_hat = _hill(x, log_kd, n, amp, baseline_out)
 
     top_minus_base = math.exp(amp)
     if top_minus_base < DELTA:
-        return FitResult(
-            kd=None, n=None, top=None, baseline=None,
-            r2_w=None, y_hat=None, converged=False, reason="convergence_failure",
-        )
+        return _failure()
 
-    kd = math.exp(log_kd)
-    r2 = weighted_r2(y, y_hat, w)
     return FitResult(
-        kd=kd,
+        kd=math.exp(log_kd),
         n=float(n),
-        top=baseline_out + top_minus_base,
+        top=float(baseline_out) + top_minus_base,
         baseline=float(baseline_out),
-        r2_w=r2,
+        r2_w=weighted_r2(y, y_hat, w),
         y_hat=y_hat,
         converged=True,
         reason=None,
