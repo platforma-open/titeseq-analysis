@@ -47,36 +47,42 @@ def validate_concentration_column(df: pl.DataFrame, has_bin: bool) -> list[str]:
     Returns list of warning strings (e.g. 0 M control without bin assignment in bin mode).
     Raises InputValidationError on any value < 0.
     """
-    warnings: list[str] = []
-    if df.filter(pl.col(COL_CONC_VAL) < 0).height > 0:
+    exprs = [(pl.col(COL_CONC_VAL) < 0).sum().alias("neg")]
+    if has_bin:
+        exprs.append(
+            ((pl.col(COL_CONC_VAL) == 0) & pl.col(COL_BIN).is_null())
+            .sum()
+            .alias("null_bin_at_zero")
+        )
+    counts = df.select(exprs).row(0, named=True)
+
+    if counts["neg"] > 0:
         raise InputValidationError("concentration contains negative values")
 
-    if has_bin:
-        # Zero concentration rows without bin assignment are an ambiguous mix (R2).
-        null_bin_at_zero = df.filter(
-            (pl.col(COL_CONC_VAL) == 0) & pl.col(COL_BIN).is_null()
-        ).height
-        if null_bin_at_zero > 0:
-            warnings.append(
-                f"{null_bin_at_zero} rows at concentration 0 lack a bin assignment; "
-                "ambiguous 0 M control entries (R2)"
-            )
+    warnings: list[str] = []
+    if has_bin and counts["null_bin_at_zero"] > 0:
+        warnings.append(
+            f"{counts['null_bin_at_zero']} rows at concentration 0 lack a bin assignment; "
+            "ambiguous 0 M control entries (R2)"
+        )
     return warnings
 
 
 def validate_bin_column(df: pl.DataFrame) -> None:
-    """R3: bin must be a positive integer. Non-consecutive labels are allowed."""
+    """R3: bin must be a positive integer. Non-consecutive labels are allowed.
+
+    Nulls are permitted at concentration 0 (warned separately); `<=0` on null
+    yields null which is ignored by `.sum()`, so no intermediate filter needed.
+    """
     if df[COL_BIN].dtype not in (pl.Int8, pl.Int16, pl.Int32, pl.Int64, pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64):
         raise InputValidationError(f"bin column must be integer type, got {df[COL_BIN].dtype}")
-    # Ignore nulls here — they are allowed at concentration 0 (warned about separately).
-    non_null = df.filter(pl.col(COL_BIN).is_not_null())
-    if non_null.filter(pl.col(COL_BIN) <= 0).height > 0:
+    if df.select((pl.col(COL_BIN) <= 0).sum()).item() > 0:
         raise InputValidationError("bin column must contain positive integers (>= 1)")
 
 
 def max_bin_label(df: pl.DataFrame) -> int:
     """Return the actual max bin label present. Spec: label, not count — labels may be non-consecutive."""
-    return int(df[COL_BIN].drop_nulls().max())
+    return int(df.select(pl.col(COL_BIN).max()).item())
 
 
 def validate_antigen_filter(
