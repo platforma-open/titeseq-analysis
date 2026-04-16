@@ -16,25 +16,6 @@ FailureReason = Literal[
     "n_out_of_range",
 ]
 
-FAILURE_REASONS: tuple[FailureReason, ...] = (
-    "insufficient_reads",
-    "insufficient_points",
-    "non_monotonic_signal",
-    "convergence_failure",
-    "low_r2",
-    "n_out_of_range",
-)
-
-# Precedence order when multiple failure conditions apply.
-FAILURE_PRECEDENCE: tuple[FailureReason, ...] = (
-    "insufficient_reads",
-    "insufficient_points",
-    "non_monotonic_signal",
-    "convergence_failure",
-    "low_r2",
-    "n_out_of_range",
-)
-
 # Minimum dynamic range between top and baseline (R10).
 DELTA: float = 0.05
 

@@ -56,9 +56,6 @@ class TestApplyFloorAndWeights:
 class TestClassifyInsufficient:
     # Spec R9: zero surviving points → insufficient_reads.
     def test_zero_points_marks_insufficient_reads(self):
-        filtered = _sig_frame([])
-        filtered = filtered.with_columns(pl.lit(0.0).alias(WEIGHT)) if filtered.height > 0 else filtered
-        # Empty frame with correct schema for the groupby; create empty signal frame:
         filtered = pl.DataFrame(
             {"clonotypeKey": [], "concentrationStr": [], "concentration": [],
              "signal": [], "clonotype_reads_at_conc": [], WEIGHT: []},
