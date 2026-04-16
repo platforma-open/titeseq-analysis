@@ -68,11 +68,14 @@ def run(
     has_antigen = COL_ANTIGEN in reads.columns
 
     validate_reads_schema(reads, has_bin=has_bin, has_antigen=has_antigen)
-    validate_concentration_column(reads, has_bin=has_bin)
+    warnings: list[str] = []
+    warnings += validate_concentration_column(reads, has_bin=has_bin)
     if has_bin:
         validate_bin_column(reads)
-    validate_antigen_filter(reads, antigen_column_ref, target_antigen)
+    warnings += validate_antigen_filter(reads, antigen_column_ref, target_antigen)
     validate_sample_metadata_uniqueness(reads, has_bin=has_bin, has_antigen=has_antigen)
+    for w in warnings:
+        print(f"WARN: {w}", file=sys.stderr)
 
     reads = apply_antigen_filter(reads, target_antigen)
     mbl = max_bin_label(reads) if has_bin else None

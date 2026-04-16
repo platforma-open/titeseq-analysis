@@ -147,6 +147,27 @@ class TestAllFailedDataset:
         assert pc["kd"].null_count() == 3
 
 
+class TestValidatorWarnings:
+    # R2: c=0 without a bin is ambiguous — validator emits a warning to stderr
+    # (a non-fatal signal; the row is still processed).
+    def test_c0_without_bin_emits_stderr_warning(self, capsys):
+        concs = [0.0, 0.1, 1.0, 10.0, 100.0]
+        rows = _build_bin_reads_for_hill(
+            "G1", true_kd=10.0, true_n=1.0, baseline=1.0,
+            amplitude=math.log(2.0),
+            concs=concs, conc_strs=None, bins=[1, 2, 3, 4], reads_per_conc=400,
+        )
+        # Inject a c=0 row with bin=None (ambiguous control)
+        rows.append({
+            "clonotypeKey": "G1", "sampleId": "s_c0_unbinned",
+            "concentrationStr": "0", "concentration": 0.0,
+            "bin": None, "reads": 100,
+        })
+        reads = pl.DataFrame(rows, schema_overrides={"bin": pl.Int64})
+        run(reads)
+        assert "ambiguous" in capsys.readouterr().err
+
+
 class TestInsufficientReads:
     # Low-read clonotype hits insufficient_reads.
     def test_all_below_floor_insufficient_reads(self):
