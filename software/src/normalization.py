@@ -25,29 +25,24 @@ def compute_mean_bin(reads: pl.DataFrame) -> pl.DataFrame:
 
     Groups by (clonotype, concentration). Per-bin frequency uses per-sample depth
     (total reads in that bin at that concentration). A bin-at-concentration with zero
-    depth contributes nothing to either numerator or denominator (filtered out).
+    depth contributes nothing to either numerator or denominator.
 
     Returns long frame: clonotypeKey, concentrationStr, concentration, mean_bin, clonotype_reads_at_conc.
     """
-    depth = (
-        reads.group_by([COL_CONC_STR, COL_BIN])
-        .agg(pl.col(COL_READS).sum().alias("depth"))
-    )
-    joined = reads.join(depth, on=[COL_CONC_STR, COL_BIN], how="left")
-    with_freq = joined.with_columns(
+    with_freq = reads.with_columns(
+        pl.col(COL_READS).sum().over([COL_CONC_STR, COL_BIN]).alias("depth"),
+    ).with_columns(
         pl.when(pl.col("depth") > 0)
         .then(pl.col(COL_READS) / pl.col("depth"))
         .otherwise(0.0)
         .alias(FREQ)
     )
-    agg = (
+    return (
         with_freq.group_by([COL_CLONOTYPE, COL_CONC_STR, COL_CONC_VAL])
         .agg(
-            [
-                (pl.col(COL_BIN).cast(pl.Float64) * pl.col(FREQ)).sum().alias("num"),
-                pl.col(FREQ).sum().alias("den"),
-                pl.col(COL_READS).sum().alias(CLONOTYPE_READS_AT_CONC),
-            ]
+            (pl.col(COL_BIN).cast(pl.Float64) * pl.col(FREQ)).sum().alias("num"),
+            pl.col(FREQ).sum().alias("den"),
+            pl.col(COL_READS).sum().alias(CLONOTYPE_READS_AT_CONC),
         )
         .with_columns(
             pl.when(pl.col("den") > 0)
@@ -57,7 +52,6 @@ def compute_mean_bin(reads: pl.DataFrame) -> pl.DataFrame:
         )
         .drop(["num", "den"])
     )
-    return agg
 
 
 def compute_frequency_signal(reads: pl.DataFrame) -> pl.DataFrame:
@@ -65,22 +59,17 @@ def compute_frequency_signal(reads: pl.DataFrame) -> pl.DataFrame:
 
     Returns long frame: clonotypeKey, concentrationStr, concentration, signal, clonotype_reads_at_conc.
     """
-    per_conc_total = (
-        reads.group_by(COL_CONC_STR)
-        .agg(pl.col(COL_READS).sum().alias(TOTAL_READS_AT_CONC))
+    per_clonotype = reads.group_by([COL_CLONOTYPE, COL_CONC_STR, COL_CONC_VAL]).agg(
+        pl.col(COL_READS).sum().alias(CLONOTYPE_READS_AT_CONC)
     )
-    per_clonotype = (
-        reads.group_by([COL_CLONOTYPE, COL_CONC_STR, COL_CONC_VAL])
-        .agg(pl.col(COL_READS).sum().alias(CLONOTYPE_READS_AT_CONC))
-    )
-    joined = per_clonotype.join(per_conc_total, on=COL_CONC_STR, how="left")
-    with_sig = joined.with_columns(
+    return per_clonotype.with_columns(
+        pl.col(CLONOTYPE_READS_AT_CONC).sum().over(COL_CONC_STR).alias(TOTAL_READS_AT_CONC),
+    ).with_columns(
         pl.when(pl.col(TOTAL_READS_AT_CONC) > 0)
         .then(pl.col(CLONOTYPE_READS_AT_CONC) / pl.col(TOTAL_READS_AT_CONC))
         .otherwise(None)
         .alias(SIGNAL)
     ).drop(TOTAL_READS_AT_CONC)
-    return with_sig
 
 
 def normalize(reads: pl.DataFrame, bin_mode: bool) -> pl.DataFrame:
