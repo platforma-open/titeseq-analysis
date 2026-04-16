@@ -8,7 +8,7 @@ import polars as pl
 import pytest
 
 from constants import DEFAULT_PARAMS
-from main import run
+from pipeline import run
 
 
 def _build_no_bin_reads_for_hill(

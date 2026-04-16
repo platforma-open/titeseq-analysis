@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 import polars as pl
 
-from main import run
+from pipeline import run
 
 
 @dataclass

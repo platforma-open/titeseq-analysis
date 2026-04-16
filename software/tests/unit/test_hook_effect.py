@@ -6,7 +6,7 @@ import polars as pl
 import pytest
 
 from constants import DEFAULT_PARAMS, FitParams
-from hook_effect import detect_hook_effect
+from pre_fit import detect_hook_effect
 
 
 def _build_fit_points(top2_signal, top1_signal, top2_reads, top1_reads):

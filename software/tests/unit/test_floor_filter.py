@@ -6,7 +6,7 @@ import polars as pl
 import pytest
 
 from constants import DEFAULT_PARAMS, FitParams
-from floor_filter import (
+from pre_fit import (
     WEIGHT,
     apply_floor_and_weights,
     classify_insufficient,

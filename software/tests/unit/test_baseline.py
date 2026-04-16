@@ -5,7 +5,7 @@ from __future__ import annotations
 import polars as pl
 import pytest
 
-from baseline import compute_global_baseline
+from pre_fit import compute_global_baseline
 
 
 def _c0(signals):

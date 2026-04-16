@@ -7,8 +7,8 @@ import math
 import numpy as np
 import polars as pl
 
-import main
-from main import run
+import pipeline
+from pipeline import run
 
 
 def _noiseless_bin_reads(clonotype: str, kd: float, n: float) -> list[dict]:
@@ -43,7 +43,7 @@ def _noiseless_bin_reads(clonotype: str, kd: float, n: float) -> list[dict]:
 def test_parallel_matches_serial(monkeypatch):
     # Enough clonotypes to be worth parallelising; threshold lowered so the pool
     # branch actually runs on this fixture.
-    monkeypatch.setattr(main, "_PARALLEL_MIN_TASKS", 4)
+    monkeypatch.setattr(pipeline, "_PARALLEL_MIN_TASKS", 4)
 
     kd_grid = [0.5, 2.0, 10.0, 50.0, 200.0]
     rows: list[dict] = []
@@ -64,15 +64,15 @@ def test_parallel_matches_serial(monkeypatch):
 # against paying spawn cost on tiny datasets.
 def test_pool_not_engaged_below_threshold(monkeypatch):
     called = {"n": 0}
-    original = main.ProcessPoolExecutor
+    original = pipeline.ProcessPoolExecutor
 
     class _Sentinel:
         def __init__(self, *a, **kw):
             called["n"] += 1
             raise AssertionError("ProcessPoolExecutor should not be constructed")
 
-    monkeypatch.setattr(main, "ProcessPoolExecutor", _Sentinel)
-    monkeypatch.setattr(main, "_PARALLEL_MIN_TASKS", 1000)
+    monkeypatch.setattr(pipeline, "ProcessPoolExecutor", _Sentinel)
+    monkeypatch.setattr(pipeline, "_PARALLEL_MIN_TASKS", 1000)
 
     reads = pl.DataFrame(_noiseless_bin_reads("C0", kd=10.0, n=1.0))
     out = run(reads, workers=4)  # below threshold → serial

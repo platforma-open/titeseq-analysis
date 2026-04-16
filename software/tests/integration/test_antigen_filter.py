@@ -7,7 +7,7 @@ import math
 import numpy as np
 import polars as pl
 
-from main import run
+from pipeline import run
 
 
 def _good_reads_for(clonotype, antigen, true_kd, baseline, concs, bins, per_conc=500):
