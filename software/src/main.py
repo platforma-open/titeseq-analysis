@@ -16,7 +16,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+from concurrent.futures import ProcessPoolExecutor
+from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -48,6 +51,10 @@ from io_layer import (
     validate_sample_metadata_uniqueness,
 )
 from normalization import SIGNAL, normalize
+
+# Process-pool startup on macOS (spawn) costs ~1-2s per worker for scipy import.
+# Below this task count, serial is always faster.
+_PARALLEL_MIN_TASKS: int = 200
 from output_build import (
     FITTED_MEAN_BIN_SCHEMA,
     PER_CLONOTYPE_SCHEMA,
@@ -86,16 +93,20 @@ def _fit_all_clonotypes(
     bin_mode: bool,
     max_bin: int | None,
     params: FitParams,
+    workers: int = 1,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
-    """Iterate clonotypes once; return (per_clonotype_frame, fitted_mean_bin_frame).
+    """Run pre-fit gates, fit all surviving clonotypes, integrate results.
+
+    Three phases:
+      1. Gate — mark Failed/insufficient_*/non_monotonic_signal without fitting;
+         collect (x, y, w) triples + fitted-row context for survivors.
+      2. Execute — dispatch fit_one_clonotype serially or via ProcessPoolExecutor
+         when workers > 1 and the task count justifies pool startup.
+      3. Integrate — classify each FitResult and splat into pre-allocated columns.
 
     Partitions fit_points once (O(N)) instead of filtering per clonotype inside
-    the loop (O(N * C)). Clonotypes failing the pre-fit gates (insufficient_*,
-    non_monotonic_signal) skip partition lookup entirely.
-
-    Output frames are built from pre-allocated numpy arrays and fitted-row chunks
-    — avoids the C × 7 Python dict allocations (per-clonotype) + Σk_c × 4 dicts
-    (fitted rows) that list-of-dicts → DataFrame conversion otherwise incurs.
+    the loop. Output frames are built columnarly from python lists (nullable)
+    and numpy chunks (fitted rows) — no per-clonotype dict churn.
     """
     sorted_points = fit_points.sort([COL_CLONOTYPE, COL_CONC_VAL])
     partitions = sorted_points.partition_by(COL_CLONOTYPE, as_dict=True)
@@ -111,10 +122,13 @@ def _fit_all_clonotypes(
     affinity_col: list[str] = [""] * n_clon
     reason_col: list[str | None] = [None] * n_clon
 
-    fitted_keys: list[np.ndarray] = []
-    fitted_conc_strs: list[np.ndarray] = []
-    fitted_conc_vals: list[np.ndarray] = []
-    fitted_y_hats: list[np.ndarray] = []
+    # Phase 1 — gate clonotypes; build picklable task list for survivors.
+    xs: list[np.ndarray] = []
+    ys: list[np.ndarray] = []
+    ws: list[np.ndarray] = []
+    # Per-task integration context — index, clonotype key, concentration strings, x.
+    # Kept separate from task inputs so x is not shipped back over the pool.
+    contexts: list[tuple[int, str, np.ndarray, np.ndarray]] = []
 
     for i, clonotype in enumerate(clonotypes_sorted):
         insufficient_reason = insufficient_map.get(clonotype)
@@ -129,14 +143,34 @@ def _fit_all_clonotypes(
 
         sub = partitions[(clonotype,)]
         x = sub[COL_CONC_VAL].to_numpy()
-        y = sub[SIGNAL].to_numpy()
-        w = sub[WEIGHT].to_numpy()
+        xs.append(x)
+        ys.append(sub[SIGNAL].to_numpy())
+        ws.append(sub[WEIGHT].to_numpy())
+        contexts.append((i, clonotype, sub[COL_CONC_STR].to_numpy(), x))
 
-        fit = fit_one_clonotype(
-            x, y, w, baseline_fixed=global_baseline, bin_mode=bin_mode, max_bin_label=max_bin
-        )
+    # Phase 2 — execute fits. partial binds the constant kwargs so the worker
+    # receives one arg from each of (xs, ys, ws) per call.
+    worker = partial(
+        fit_one_clonotype,
+        baseline_fixed=global_baseline,
+        bin_mode=bin_mode,
+        max_bin_label=max_bin,
+    )
+    if workers > 1 and len(xs) >= _PARALLEL_MIN_TASKS:
+        chunksize = max(1, len(xs) // (workers * 4))
+        with ProcessPoolExecutor(max_workers=workers) as ex:
+            fits = list(ex.map(worker, xs, ys, ws, chunksize=chunksize))
+    else:
+        fits = [worker(x, y, w) for x, y, w in zip(xs, ys, ws)]
+
+    # Phase 3 — integrate results.
+    fitted_keys: list[np.ndarray] = []
+    fitted_conc_strs: list[np.ndarray] = []
+    fitted_conc_vals: list[np.ndarray] = []
+    fitted_y_hats: list[np.ndarray] = []
+
+    for fit, (i, clonotype, cs, x) in zip(fits, contexts):
         cls = classify(fit.r2_w, fit.n, fit.converged, params)
-
         kd_col[i] = fit.kd
         n_col[i] = fit.n
         r2_col[i] = fit.r2_w
@@ -146,7 +180,7 @@ def _fit_all_clonotypes(
         if fit.converged and fit.y_hat is not None and cls.affinity_class != "Failed":
             k = x.shape[0]
             fitted_keys.append(np.full(k, clonotype, dtype=object))
-            fitted_conc_strs.append(sub[COL_CONC_STR].to_numpy())
+            fitted_conc_strs.append(cs)
             fitted_conc_vals.append(x)
             fitted_y_hats.append(fit.y_hat)
 
@@ -210,8 +244,14 @@ def run(
     params: FitParams = DEFAULT_PARAMS,
     target_antigen: str | None = None,
     antigen_column_ref: str | None = None,
+    workers: int = 1,
 ) -> dict[str, pl.DataFrame]:
-    """Execute the full pipeline on an in-memory reads frame."""
+    """Execute the full pipeline on an in-memory reads frame.
+
+    `workers` — passed through to the Hill fit dispatch; 1 (default) keeps
+    fits serial. Pool is engaged only when workers > 1 and the surviving
+    fit count meets the internal minimum.
+    """
     reads = canonicalize_concentration(reads)
     has_bin = COL_BIN in reads.columns
     has_antigen = COL_ANTIGEN in reads.columns
@@ -248,9 +288,22 @@ def run(
         bin_mode=has_bin,
         max_bin=mbl,
         params=params,
+        workers=workers,
     )
 
     return _build_outputs(per_clonotype, fitted, signal_frame, reads)
+
+
+def _resolve_workers(value: str | None) -> int:
+    """Map CLI --workers (str or None) to an int. 'auto' -> os.cpu_count() or 1."""
+    if value is None:
+        return 1
+    if value == "auto":
+        return os.cpu_count() or 1
+    n = int(value)
+    if n < 1:
+        raise ValueError(f"--workers must be >= 1 or 'auto', got {value!r}")
+    return n
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -262,6 +315,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--params", default=None, help="path to params JSON (optional)")
     parser.add_argument("--target-antigen", default=None)
     parser.add_argument("--antigen-column-ref", default=None)
+    parser.add_argument(
+        "--workers",
+        default=None,
+        help="fit worker count; int or 'auto' (os.cpu_count). Defaults to 1 (serial).",
+    )
     args = parser.parse_args(argv)
 
     reads = read_reads_table(args.reads)
@@ -275,6 +333,7 @@ def main(argv: list[str] | None = None) -> int:
         params=params,
         target_antigen=args.target_antigen,
         antigen_column_ref=args.antigen_column_ref,
+        workers=_resolve_workers(args.workers),
     )
     _write_frame(outputs["per_clonotype"], args.out_per_clonotype)
     _write_frame(outputs["mean_bin"], args.out_mean_bin)
