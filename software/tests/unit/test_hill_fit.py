@@ -38,15 +38,16 @@ class TestWeightedR2:
     def test_weighted_r2_pinned(self, y, y_hat, w, expected):
         assert weighted_r2(np.asarray(y), np.asarray(y_hat), np.asarray(w)) == pytest.approx(expected)
 
-    # Σw = 0 is a degenerate input; documented return value: nan.
-    def test_all_zero_weight_returns_nan(self):
-        result = weighted_r2(np.array([1.0, 2.0]), np.array([1.0, 2.0]), np.array([0.0, 0.0]))
-        assert math.isnan(result)
-
-    # Zero-variance y under weighting → denominator = 0 → nan (documented sentinel).
-    def test_zero_variance_returns_nan(self):
-        result = weighted_r2(np.array([2.0, 2.0, 2.0]), np.array([2.0, 2.0, 2.0]), np.array([1.0, 1.0, 1.0]))
-        assert math.isnan(result)
+    # Degenerate inputs (Σw = 0, zero-variance y under weighting) return nan sentinel.
+    @pytest.mark.parametrize(
+        "y, y_hat, w",
+        [
+            ([1.0, 2.0], [1.0, 2.0], [0.0, 0.0]),         # Σw = 0
+            ([2.0, 2.0, 2.0], [2.0, 2.0, 2.0], [1.0, 1.0, 1.0]),  # zero-variance y
+        ],
+    )
+    def test_degenerate_returns_nan(self, y, y_hat, w):
+        assert math.isnan(weighted_r2(np.array(y), np.array(y_hat), np.array(w)))
 
 
 class TestHillFitRoundtrip:

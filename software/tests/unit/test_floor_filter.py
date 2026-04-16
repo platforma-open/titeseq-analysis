@@ -29,28 +29,20 @@ class TestApplyFloorAndWeights:
         result = apply_floor_and_weights(df, DEFAULT_PARAMS)
         assert result[WEIGHT][0] == 10.0
 
-    # R9 floor: reads strictly below threshold are excluded.
-    def test_floor_excludes_below_threshold(self):
+    # R9 floor: inclusive at the threshold (>= min_reads_per_concentration).
+    # Below → dropped; at → kept; above → kept.
+    @pytest.mark.parametrize(
+        "reads_at_conc, kept",
+        [(2, False), (3, True), (10, True)],
+    )
+    def test_floor_threshold_inclusive(self, reads_at_conc, kept):
         params = FitParams(min_reads_per_concentration=3)
         df = _sig_frame([
             {"clonotypeKey": "A", "concentrationStr": "1", "concentration": 1.0,
-             "signal": 2.5, "clonotype_reads_at_conc": 2},
-            {"clonotypeKey": "A", "concentrationStr": "10", "concentration": 10.0,
-             "signal": 3.0, "clonotype_reads_at_conc": 5},
+             "signal": 2.5, "clonotype_reads_at_conc": reads_at_conc},
         ])
         result = apply_floor_and_weights(df, params)
-        assert result.height == 1
-        assert result["concentrationStr"][0] == "10"
-
-    # R9 floor: points exactly at the threshold are INCLUDED (inclusive check).
-    def test_exactly_at_floor_included(self):
-        params = FitParams(min_reads_per_concentration=3)
-        df = _sig_frame([
-            {"clonotypeKey": "A", "concentrationStr": "1", "concentration": 1.0,
-             "signal": 2.5, "clonotype_reads_at_conc": 3},
-        ])
-        result = apply_floor_and_weights(df, params)
-        assert result.height == 1
+        assert (result.height == 1) is kept
 
 
 class TestClassifyInsufficient:
@@ -89,7 +81,8 @@ class TestClassifyInsufficient:
         ]
         filtered = pl.DataFrame(rows)
         result = classify_insufficient(filtered, ["A"], params)
-        assert result.filter(pl.col("clonotypeKey") == "A")["insufficient_reason"][0] is None
+        reason_cell = result.filter(pl.col("clonotypeKey") == "A")["insufficient_reason"]
+        assert reason_cell.is_null().item() is True
 
     # c=0 rows are NOT counted toward the minimum points threshold (only fit points).
     def test_c0_excluded_from_point_count(self):
