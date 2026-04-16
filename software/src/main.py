@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import multiprocessing
 import os
 import sys
 from concurrent.futures import ProcessPoolExecutor
@@ -158,7 +159,11 @@ def _fit_all_clonotypes(
     )
     if workers > 1 and len(xs) >= _PARALLEL_MIN_TASKS:
         chunksize = max(1, len(xs) // (workers * 4))
-        with ProcessPoolExecutor(max_workers=workers) as ex:
+        # Force 'spawn' across platforms — on Linux the default ('fork') inherits
+        # OpenBLAS/MKL thread pools from the parent, which can deadlock or return
+        # wrong results. macOS/Windows already spawn by default.
+        ctx = multiprocessing.get_context("spawn")
+        with ProcessPoolExecutor(max_workers=workers, mp_context=ctx) as ex:
             fits = list(ex.map(worker, xs, ys, ws, chunksize=chunksize))
     else:
         fits = [worker(x, y, w) for x, y, w in zip(xs, ys, ws)]
@@ -294,12 +299,25 @@ def run(
     return _build_outputs(per_clonotype, fitted, signal_frame, reads)
 
 
+def _available_cpus() -> int:
+    """CPU budget respecting Linux cgroup/cpuset affinity when available.
+
+    os.cpu_count() returns the host count, which over-reports inside containers
+    with CPU limits (Docker, K8s). os.sched_getaffinity is the affinity-aware
+    alternative — only exposed on Linux/FreeBSD builds.
+    """
+    getaffinity = getattr(os, "sched_getaffinity", None)
+    if getaffinity is not None:
+        return len(getaffinity(0))
+    return os.cpu_count() or 1
+
+
 def _resolve_workers(value: str | None) -> int:
-    """Map CLI --workers (str or None) to an int. 'auto' -> os.cpu_count() or 1."""
+    """Map CLI --workers (str or None) to an int. 'auto' -> available CPU budget."""
     if value is None:
         return 1
     if value == "auto":
-        return os.cpu_count() or 1
+        return _available_cpus()
     n = int(value)
     if n < 1:
         raise ValueError(f"--workers must be >= 1 or 'auto', got {value!r}")

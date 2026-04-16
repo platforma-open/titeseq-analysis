@@ -6,7 +6,7 @@ import os
 
 import pytest
 
-from main import _resolve_workers
+from main import _available_cpus, _resolve_workers
 
 
 # None means "no flag given" — default to serial (1).
@@ -14,10 +14,18 @@ def test_none_defaults_to_one():
     assert _resolve_workers(None) == 1
 
 
-# 'auto' expands to the host's CPU count; fall back to 1 if cpu_count() returns None.
-def test_auto_uses_cpu_count():
-    expected = os.cpu_count() or 1
-    assert _resolve_workers("auto") == expected
+# 'auto' expands to the affinity-aware CPU budget — on Linux this respects
+# cgroup/cpuset limits (containers), falling back to os.cpu_count() elsewhere.
+def test_auto_uses_available_cpu_budget():
+    assert _resolve_workers("auto") == _available_cpus()
+
+
+# Affinity query, when available, must never exceed os.cpu_count().
+# Guards against the helper returning a nonsense value on constrained hosts.
+def test_available_cpus_bounded_by_host():
+    budget = _available_cpus()
+    host = os.cpu_count() or 1
+    assert 1 <= budget <= host
 
 
 @pytest.mark.parametrize("value, expected", [("1", 1), ("4", 4), ("16", 16)])
