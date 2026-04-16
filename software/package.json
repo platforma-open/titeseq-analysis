@@ -20,14 +20,14 @@
           "toolset": "pip",
           "requirements": "requirements.txt"
         },
-        "root": "./src_python"
+        "root": "./src"
       }
     },
     "entrypoints": {
-      "hello-world-python": {
+      "fit-curves": {
         "binary": {
           "artifact": "py-archive",
-          "cmd": [ "python", "{pkg}/hello.py" ]
+          "cmd": [ "python", "{pkg}/main.py" ]
         }
       }
     }

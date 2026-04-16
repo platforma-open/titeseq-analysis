@@ -1,0 +1,145 @@
+"""Input/output layer (R1-R5): read reads table, validate schema, canonicalize concentrations."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import polars as pl
+
+from constants import (
+    COL_ANTIGEN,
+    COL_BIN,
+    COL_CLONOTYPE,
+    COL_CONC_STR,
+    COL_CONC_VAL,
+    COL_READS,
+    COL_SAMPLE,
+)
+
+
+class InputValidationError(ValueError):
+    """Raised when the input table violates R1-R5."""
+
+
+def read_reads_table(path: str | Path) -> pl.DataFrame:
+    """Load reads frame from parquet or tsv; dispatch by extension."""
+    p = Path(path)
+    if p.suffix in (".parquet", ".pq"):
+        return pl.read_parquet(p)
+    return pl.read_csv(p, separator="\t")
+
+
+def validate_reads_schema(df: pl.DataFrame, has_bin: bool, has_antigen: bool) -> None:
+    """R1, R3, R4: verify required columns exist for the active mode."""
+    required = {COL_CLONOTYPE, COL_SAMPLE, COL_CONC_STR, COL_CONC_VAL, COL_READS}
+    if has_bin:
+        required.add(COL_BIN)
+    if has_antigen:
+        required.add(COL_ANTIGEN)
+    missing = required - set(df.columns)
+    if missing:
+        raise InputValidationError(f"missing required columns: {sorted(missing)}")
+
+
+def validate_concentration_column(df: pl.DataFrame, has_bin: bool) -> list[str]:
+    """R2: concentrations must be non-negative floats.
+
+    Returns list of warning strings (e.g. 0 M control without bin assignment in bin mode).
+    Raises InputValidationError on any value < 0.
+    """
+    warnings: list[str] = []
+    if df.filter(pl.col(COL_CONC_VAL) < 0).height > 0:
+        raise InputValidationError("concentration contains negative values")
+
+    if has_bin:
+        # Zero concentration rows without bin assignment are an ambiguous mix (R2).
+        null_bin_at_zero = df.filter(
+            (pl.col(COL_CONC_VAL) == 0) & pl.col(COL_BIN).is_null()
+        ).height
+        if null_bin_at_zero > 0:
+            warnings.append(
+                f"{null_bin_at_zero} rows at concentration 0 lack a bin assignment; "
+                "ambiguous 0 M control entries (R2)"
+            )
+    return warnings
+
+
+def validate_bin_column(df: pl.DataFrame) -> None:
+    """R3: bin must be a positive integer. Non-consecutive labels are allowed."""
+    if df[COL_BIN].dtype not in (pl.Int8, pl.Int16, pl.Int32, pl.Int64, pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64):
+        raise InputValidationError(f"bin column must be integer type, got {df[COL_BIN].dtype}")
+    # Ignore nulls here — they are allowed at concentration 0 (warned about separately).
+    non_null = df.filter(pl.col(COL_BIN).is_not_null())
+    if non_null.filter(pl.col(COL_BIN) <= 0).height > 0:
+        raise InputValidationError("bin column must contain positive integers (>= 1)")
+
+
+def max_bin_label(df: pl.DataFrame) -> int:
+    """Return the actual max bin label present. Spec: label, not count — labels may be non-consecutive."""
+    return int(df[COL_BIN].drop_nulls().max())
+
+
+def validate_antigen_filter(
+    df: pl.DataFrame, antigen_column_ref: str | None, target_antigen: str | None
+) -> list[str]:
+    """R4: antigen filtering semantics.
+
+    - antigenColumnRef without targetAntigen -> user-facing error.
+    - targetAntigen without antigenColumnRef -> warning (single-antigen assumption).
+    - targetAntigen not present in antigen column -> error.
+    """
+    warnings: list[str] = []
+    if antigen_column_ref is not None and target_antigen is None:
+        raise InputValidationError(
+            "antigenColumnRef provided without targetAntigen — specify which antigen to analyse"
+        )
+    if antigen_column_ref is None and target_antigen is not None:
+        warnings.append(
+            "targetAntigen set without antigenColumnRef — treating dataset as single-antigen"
+        )
+        return warnings
+    if antigen_column_ref is not None and target_antigen is not None:
+        present = set(df[COL_ANTIGEN].drop_nulls().unique().to_list())
+        if target_antigen not in present:
+            raise InputValidationError(
+                f"targetAntigen {target_antigen!r} not found in {COL_ANTIGEN} column; "
+                f"present values: {sorted(present)}"
+            )
+    return warnings
+
+
+def apply_antigen_filter(df: pl.DataFrame, target_antigen: str | None) -> pl.DataFrame:
+    """R4: keep only rows matching target_antigen (if antigen column present)."""
+    if target_antigen is None or COL_ANTIGEN not in df.columns:
+        return df
+    return df.filter(pl.col(COL_ANTIGEN) == target_antigen)
+
+
+def validate_sample_metadata_uniqueness(df: pl.DataFrame, has_bin: bool, has_antigen: bool) -> None:
+    """R5: each sampleId must map to a unique (concentration, bin, antigen) tuple."""
+    key_cols = [COL_CONC_STR]
+    if has_bin:
+        key_cols.append(COL_BIN)
+    if has_antigen:
+        key_cols.append(COL_ANTIGEN)
+
+    per_sample_unique = (
+        df.group_by(COL_SAMPLE)
+        .agg([pl.col(c).n_unique().alias(f"{c}_nunique") for c in key_cols])
+    )
+    for c in key_cols:
+        offenders = per_sample_unique.filter(pl.col(f"{c}_nunique") > 1)
+        if offenders.height > 0:
+            sample_list = offenders[COL_SAMPLE].to_list()[:5]
+            raise InputValidationError(
+                f"sampleId must map to a single {c}; violating samples: {sample_list}"
+            )
+
+
+def canonicalize_concentration(df: pl.DataFrame) -> pl.DataFrame:
+    """Ensure both concentration axes present; preserve original string exactly."""
+    if COL_CONC_STR not in df.columns:
+        df = df.with_columns(pl.col(COL_CONC_VAL).cast(pl.Utf8).alias(COL_CONC_STR))
+    if COL_CONC_VAL not in df.columns:
+        df = df.with_columns(pl.col(COL_CONC_STR).cast(pl.Float64).alias(COL_CONC_VAL))
+    return df
