@@ -7,7 +7,7 @@ import math
 import numpy as np
 import pytest
 
-from hill_fit import FitResult, fit_one_clonotype, weighted_r2
+from hill_fit import fit_one_clonotype, weighted_r2
 
 
 def hill_truth(x, baseline, amplitude, kd, n):
@@ -23,9 +23,9 @@ class TestWeightedR2:
     @pytest.mark.parametrize(
         "y, y_hat, w, expected",
         [
-            ([1.0, 2.0, 3.0], [1.0, 2.0, 3.0], [1.0, 1.0, 1.0], 1.0),    # perfect fit
-            ([1.0, 2.0, 3.0], [2.0, 2.0, 2.0], [1.0, 1.0, 1.0], 0.0),    # fit = constant mean
-            ([1.0, 2.0, 3.0], [3.0, 2.0, 1.0], [1.0, 1.0, 1.0], -3.0),   # anti-fit, NOT clamped
+            ([1.0, 2.0, 3.0], [1.0, 2.0, 3.0], [1.0, 1.0, 1.0], 1.0),  # perfect fit
+            ([1.0, 2.0, 3.0], [2.0, 2.0, 2.0], [1.0, 1.0, 1.0], 0.0),  # fit = constant mean
+            ([1.0, 2.0, 3.0], [3.0, 2.0, 1.0], [1.0, 1.0, 1.0], -3.0),  # anti-fit, NOT clamped
             # Zero-weight point: excluded from both num and weighted mean.
             # ŷ matches y on weighted points → R² = 1.0 regardless of y_hat[2].
             ([1.0, 2.0, 3.0], [1.0, 2.0, 100.0], [1.0, 1.0, 0.0], 1.0),
@@ -42,7 +42,7 @@ class TestWeightedR2:
     @pytest.mark.parametrize(
         "y, y_hat, w",
         [
-            ([1.0, 2.0], [1.0, 2.0], [0.0, 0.0]),         # Σw = 0
+            ([1.0, 2.0], [1.0, 2.0], [0.0, 0.0]),  # Σw = 0
             ([2.0, 2.0, 2.0], [2.0, 2.0, 2.0], [1.0, 1.0, 1.0]),  # zero-variance y
         ],
     )
@@ -60,7 +60,7 @@ class TestHillFitRoundtrip:
             (10.0, 2.0, 1e-4, 1e-4),
             (10.0, 0.5, 1e-3, 1e-4),
             (0.1, 1.0, 1e-4, 1e-4),
-            (1000.0, 1.0, 10.0, 1e-3),   # high-KD arm: concentrations barely reach mid-point
+            (1000.0, 1.0, 10.0, 1e-3),  # high-KD arm: concentrations barely reach mid-point
         ],
     )
     def test_noiseless_roundtrip(self, true_kd, true_n, abs_err_kd, abs_err_n):
@@ -70,9 +70,7 @@ class TestHillFitRoundtrip:
         y = hill_truth(x, baseline, amplitude, true_kd, true_n)
         w = np.ones_like(x)
 
-        fit = fit_one_clonotype(
-            x, y, w, baseline_fixed=baseline, bin_mode=True, max_bin_label=8
-        )
+        fit = fit_one_clonotype(x, y, w, baseline_fixed=baseline, bin_mode=True, max_bin_label=8)
         assert fit.converged is True
         assert fit.kd == pytest.approx(true_kd, abs=abs_err_kd, rel=1e-3)
         assert fit.n == pytest.approx(true_n, abs=abs_err_n)

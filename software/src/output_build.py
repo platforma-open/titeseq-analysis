@@ -21,9 +21,7 @@ PER_CLONOTYPE_SCHEMA: dict[str, pl.DataType] = {
 }
 
 
-def flag_kd_out_of_range(
-    frame: pl.DataFrame, min_concentration: float, max_concentration: float
-) -> pl.DataFrame:
+def flag_kd_out_of_range(frame: pl.DataFrame, min_concentration: float, max_concentration: float) -> pl.DataFrame:
     """R14b: set kdOutOfRange = true when K_D is outside [min_concentration, max_concentration].
 
     Boundary (kd == min or kd == max) is treated as in-range (closed interval).
@@ -32,9 +30,7 @@ def flag_kd_out_of_range(
     return frame.with_columns(
         pl.when(pl.col("kd").is_null())
         .then(None)
-        .otherwise(
-            (pl.col("kd") < min_concentration) | (pl.col("kd") > max_concentration)
-        )
+        .otherwise((pl.col("kd") < min_concentration) | (pl.col("kd") > max_concentration))
         .alias("kdOutOfRange")
     )
 
@@ -45,16 +41,13 @@ def build_mean_bin_frame(signal_frame: pl.DataFrame) -> pl.DataFrame:
     c=0 rows are excluded — they are baseline fixers, not output values.
     Output columns: clonotypeKey, concentrationStr, concentration, meanBin.
     """
-    return (
-        signal_frame.filter(pl.col(COL_CONC_VAL) != 0)
-        .select(
-            [
-                COL_CLONOTYPE,
-                COL_CONC_STR,
-                COL_CONC_VAL,
-                pl.col("signal").alias("meanBin"),
-            ]
-        )
+    return signal_frame.filter(pl.col(COL_CONC_VAL) != 0).select(
+        [
+            COL_CLONOTYPE,
+            COL_CONC_STR,
+            COL_CONC_VAL,
+            pl.col("signal").alias("meanBin"),
+        ]
     )
 
 

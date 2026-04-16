@@ -29,11 +29,16 @@ def _noiseless_bin_reads(clonotype: str, kd: float, n: float) -> list[dict]:
         if counts.sum() == 0:
             counts[len(counts) // 2] = 1
         for j, b in enumerate(bins):
-            rows.append({
-                "clonotypeKey": clonotype, "sampleId": f"s_c{i}_b{b}",
-                "concentrationStr": str(c), "concentration": float(c),
-                "bin": int(b), "reads": int(counts[j]),
-            })
+            rows.append(
+                {
+                    "clonotypeKey": clonotype,
+                    "sampleId": f"s_c{i}_b{b}",
+                    "concentrationStr": str(c),
+                    "concentration": float(c),
+                    "bin": int(b),
+                    "reads": int(counts[j]),
+                }
+            )
     return rows
 
 

@@ -15,14 +15,26 @@ def _build_single_clonotype(reads_per_bin: list[int], depth_per_bin: list[int]) 
     for j, (r, d) in enumerate(zip(reads_per_bin, depth_per_bin)):
         bin_label = j + 1
         rows.append(
-            {"clonotypeKey": "A", "sampleId": f"s_b{bin_label}",
-             "concentrationStr": "1", "concentration": 1.0, "bin": bin_label, "reads": r}
+            {
+                "clonotypeKey": "A",
+                "sampleId": f"s_b{bin_label}",
+                "concentrationStr": "1",
+                "concentration": 1.0,
+                "bin": bin_label,
+                "reads": r,
+            }
         )
         filler = d - r
         if filler > 0:
             rows.append(
-                {"clonotypeKey": "F", "sampleId": f"s_b{bin_label}",
-                 "concentrationStr": "1", "concentration": 1.0, "bin": bin_label, "reads": filler}
+                {
+                    "clonotypeKey": "F",
+                    "sampleId": f"s_b{bin_label}",
+                    "concentrationStr": "1",
+                    "concentration": 1.0,
+                    "bin": bin_label,
+                    "reads": filler,
+                }
             )
     return pl.DataFrame(rows)
 
@@ -58,10 +70,22 @@ class TestComputeMeanBin:
     def test_single_bin_equals_that_bin_label(self):
         reads = pl.DataFrame(
             [
-                {"clonotypeKey": "A", "sampleId": "s", "concentrationStr": "1",
-                 "concentration": 1.0, "bin": 4, "reads": 7},
-                {"clonotypeKey": "F", "sampleId": "s", "concentrationStr": "1",
-                 "concentration": 1.0, "bin": 4, "reads": 93},
+                {
+                    "clonotypeKey": "A",
+                    "sampleId": "s",
+                    "concentrationStr": "1",
+                    "concentration": 1.0,
+                    "bin": 4,
+                    "reads": 7,
+                },
+                {
+                    "clonotypeKey": "F",
+                    "sampleId": "s",
+                    "concentrationStr": "1",
+                    "concentration": 1.0,
+                    "bin": 4,
+                    "reads": 93,
+                },
             ]
         )
         out = compute_mean_bin(reads).filter(pl.col("clonotypeKey") == "A")
@@ -75,20 +99,30 @@ class TestComputeFrequencySignal:
         [
             (100, 9_900, 0.01),
             (1, 9_999, 0.0001),
-            (10_000, 0, 1.0),   # ceiling: every read is this clonotype
-            (0, 10_000, 0.0),    # zero numerator
+            (10_000, 0, 1.0),  # ceiling: every read is this clonotype
+            (0, 10_000, 0.0),  # zero numerator
         ],
     )
     def test_no_bin_signal_pinned(self, reads_clonotype, reads_other, expected):
-        rows = [{
-            "clonotypeKey": "A", "sampleId": "s", "concentrationStr": "10",
-            "concentration": 10.0, "reads": reads_clonotype,
-        }]
+        rows = [
+            {
+                "clonotypeKey": "A",
+                "sampleId": "s",
+                "concentrationStr": "10",
+                "concentration": 10.0,
+                "reads": reads_clonotype,
+            }
+        ]
         if reads_other > 0:
-            rows.append({
-                "clonotypeKey": "B", "sampleId": "s", "concentrationStr": "10",
-                "concentration": 10.0, "reads": reads_other,
-            })
+            rows.append(
+                {
+                    "clonotypeKey": "B",
+                    "sampleId": "s",
+                    "concentrationStr": "10",
+                    "concentration": 10.0,
+                    "reads": reads_other,
+                }
+            )
         reads = pl.DataFrame(rows)
         out = compute_frequency_signal(reads).filter(pl.col("clonotypeKey") == "A")
         assert out.height == 1
@@ -97,8 +131,7 @@ class TestComputeFrequencySignal:
     # total_reads_at_conc = 0 → signal is null (row survives with null, caller drops).
     def test_zero_total_reads_yields_null_signal(self):
         reads = pl.DataFrame(
-            [{"clonotypeKey": "A", "sampleId": "s", "concentrationStr": "10",
-              "concentration": 10.0, "reads": 0}]
+            [{"clonotypeKey": "A", "sampleId": "s", "concentrationStr": "10", "concentration": 10.0, "reads": 0}]
         )
         out = compute_frequency_signal(reads)
         assert out[SIGNAL][0] is None

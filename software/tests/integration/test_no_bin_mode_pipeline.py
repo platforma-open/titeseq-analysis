@@ -26,16 +26,26 @@ def _build_no_bin_reads_for_hill(
         for k, reads_list in clonotype_reads_at_conc.items():
             r = reads_list[i]
             used += r
-            rows.append({
-                "clonotypeKey": k, "sampleId": f"s_c{i}",
-                "concentrationStr": cs, "concentration": c, "reads": r,
-            })
+            rows.append(
+                {
+                    "clonotypeKey": k,
+                    "sampleId": f"s_c{i}",
+                    "concentrationStr": cs,
+                    "concentration": c,
+                    "reads": r,
+                }
+            )
         filler = total - used
         if filler > 0:
-            rows.append({
-                "clonotypeKey": "Filler", "sampleId": f"s_c{i}",
-                "concentrationStr": cs, "concentration": c, "reads": filler,
-            })
+            rows.append(
+                {
+                    "clonotypeKey": "Filler",
+                    "sampleId": f"s_c{i}",
+                    "concentrationStr": cs,
+                    "concentration": c,
+                    "reads": filler,
+                }
+            )
     return pl.DataFrame(rows)
 
 
@@ -59,7 +69,8 @@ class TestNoBinModePipeline:
         df = _build_no_bin_reads_for_hill(
             {"G": reads_g},
             total_reads_at_conc=[total] * len(concs),
-            conc_strs=conc_strs, concs=concs,
+            conc_strs=conc_strs,
+            concs=concs,
         )
         out = run(df, params=DEFAULT_PARAMS)
         pc = out["per_clonotype"].filter(pl.col("clonotypeKey") == "G")

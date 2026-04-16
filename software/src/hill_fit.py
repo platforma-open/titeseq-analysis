@@ -67,7 +67,7 @@ def weighted_r2(y: np.ndarray, y_hat: np.ndarray, w: np.ndarray) -> float:
 
 def _initial_guesses(x: np.ndarray, y: np.ndarray, baseline: float) -> tuple[float, float, float]:
     """Return (log_kd0, n0, amplitude0). Robust to monotonic + flat-ish inputs."""
-    y_min, y_max = float(np.min(y)), float(np.max(y))
+    _y_min, y_max = float(np.min(y)), float(np.max(y))
     top_guess = max(y_max, baseline + 1e-6)
     amp_guess = math.log(max(top_guess - baseline, 1e-6))
     half = baseline + (top_guess - baseline) / 2.0
@@ -89,8 +89,14 @@ def _amplitude_upper_bound(bin_mode: bool, max_bin_label: int | None) -> float:
 
 def _failure() -> FitResult:
     return FitResult(
-        kd=None, n=None, top=None, baseline=None,
-        r2_w=None, y_hat=None, converged=False, reason="convergence_failure",
+        kd=None,
+        n=None,
+        top=None,
+        baseline=None,
+        r2_w=None,
+        y_hat=None,
+        converged=False,
+        reason="convergence_failure",
     )
 
 
@@ -145,8 +151,15 @@ def fit_one_clonotype(
 
     try:
         popt, _ = curve_fit(
-            model, x, y, p0=p0, sigma=sigma, absolute_sigma=False,
-            bounds=(lo, hi), method="trf", maxfev=10_000,
+            model,
+            x,
+            y,
+            p0=p0,
+            sigma=sigma,
+            absolute_sigma=False,
+            bounds=(lo, hi),
+            method="trf",
+            maxfev=10_000,
         )
     except (RuntimeError, ValueError, OptimizeWarning):
         return _failure()

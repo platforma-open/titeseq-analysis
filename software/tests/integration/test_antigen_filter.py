@@ -19,11 +19,17 @@ def _good_reads_for(clonotype, antigen, true_kd, baseline, concs, bins, per_conc
         weights /= weights.sum()
         counts = np.round(weights * per_conc).astype(int)
         for j, b in enumerate(bins):
-            rows.append({
-                "clonotypeKey": clonotype, "sampleId": f"{antigen}_s_c{i}_b{b}",
-                "concentrationStr": str(c), "concentration": float(c), "bin": int(b),
-                "reads": int(counts[j]), "antigen": antigen,
-            })
+            rows.append(
+                {
+                    "clonotypeKey": clonotype,
+                    "sampleId": f"{antigen}_s_c{i}_b{b}",
+                    "concentrationStr": str(c),
+                    "concentration": float(c),
+                    "bin": int(b),
+                    "reads": int(counts[j]),
+                    "antigen": antigen,
+                }
+            )
     return rows
 
 

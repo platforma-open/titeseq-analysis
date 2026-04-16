@@ -8,7 +8,7 @@ import numpy as np
 import polars as pl
 import pytest
 
-from constants import DEFAULT_PARAMS, FitParams
+from constants import DEFAULT_PARAMS
 from pipeline import run
 
 
@@ -47,9 +47,12 @@ def _build_bin_reads_for_hill(
         for j, b in enumerate(bins):
             rows.append(
                 {
-                    "clonotypeKey": clonotype, "sampleId": f"s_c{i}_b{b}",
-                    "concentrationStr": conc_strs[i], "concentration": float(c),
-                    "bin": int(b), "reads": int(counts[j]),
+                    "clonotypeKey": clonotype,
+                    "sampleId": f"s_c{i}_b{b}",
+                    "concentrationStr": conc_strs[i],
+                    "concentration": float(c),
+                    "bin": int(b),
+                    "reads": int(counts[j]),
                 }
             )
     return rows
@@ -59,11 +62,15 @@ class TestBinModePipeline:
     # Noiseless Hill reads → Good class, K_D recovered within relative tolerance.
     def test_good_clonotype_recovered(self):
         rows = _build_bin_reads_for_hill(
-            "G1", true_kd=10.0, true_n=1.0, baseline=1.5,
+            "G1",
+            true_kd=10.0,
+            true_n=1.0,
+            baseline=1.5,
             amplitude=math.log(2.0),
             concs=[0.1, 0.3, 1.0, 3.0, 10.0, 30.0, 100.0, 300.0],
             conc_strs=None,
-            bins=[1, 2, 3, 4], reads_per_conc=500,
+            bins=[1, 2, 3, 4],
+            reads_per_conc=500,
         )
         reads = pl.DataFrame(rows)
         out = run(reads, params=DEFAULT_PARAMS)
@@ -76,10 +83,15 @@ class TestBinModePipeline:
     def test_c0_control_fixes_baseline(self):
         concs = [0.0, 0.1, 0.3, 1.0, 3.0, 10.0, 30.0, 100.0]
         rows = _build_bin_reads_for_hill(
-            "G1", true_kd=5.0, true_n=1.0, baseline=1.0,
+            "G1",
+            true_kd=5.0,
+            true_n=1.0,
+            baseline=1.0,
             amplitude=math.log(2.5),
-            concs=concs, conc_strs=None,
-            bins=[1, 2, 3, 4], reads_per_conc=500,
+            concs=concs,
+            conc_strs=None,
+            bins=[1, 2, 3, 4],
+            reads_per_conc=500,
         )
         reads = pl.DataFrame(rows)
         out = run(reads, params=DEFAULT_PARAMS)
@@ -90,15 +102,26 @@ class TestBinModePipeline:
     # Output table shape: fittedMeanBin only emitted for converged fits.
     def test_fitted_mean_bin_only_for_converged(self):
         rows = _build_bin_reads_for_hill(
-            "G1", true_kd=10.0, true_n=1.0, baseline=1.5,
+            "G1",
+            true_kd=10.0,
+            true_n=1.0,
+            baseline=1.5,
             amplitude=math.log(2.0),
             concs=[0.1, 1.0, 10.0, 100.0, 1000.0],
-            conc_strs=None, bins=[1, 2, 3, 4], reads_per_conc=500,
+            conc_strs=None,
+            bins=[1, 2, 3, 4],
+            reads_per_conc=500,
         )
         rows += _build_bin_reads_for_hill(
-            "F1", true_kd=0.0, true_n=1.0, baseline=2.0, amplitude=math.log(0.001),
+            "F1",
+            true_kd=0.0,
+            true_n=1.0,
+            baseline=2.0,
+            amplitude=math.log(0.001),
             concs=[0.1, 1.0, 10.0, 100.0, 1000.0],
-            conc_strs=None, bins=[1, 2, 3, 4], reads_per_conc=500,
+            conc_strs=None,
+            bins=[1, 2, 3, 4],
+            reads_per_conc=500,
         )
         reads = pl.DataFrame(rows)
         out = run(reads)
@@ -113,9 +136,15 @@ class TestBinModePipeline:
     def test_mean_bin_output_excludes_c0(self):
         concs = [0.0, 0.1, 1.0, 10.0, 100.0, 1000.0]
         rows = _build_bin_reads_for_hill(
-            "G1", true_kd=10.0, true_n=1.0, baseline=1.0,
+            "G1",
+            true_kd=10.0,
+            true_n=1.0,
+            baseline=1.0,
             amplitude=math.log(2.0),
-            concs=concs, conc_strs=None, bins=[1, 2, 3, 4], reads_per_conc=400,
+            concs=concs,
+            conc_strs=None,
+            bins=[1, 2, 3, 4],
+            reads_per_conc=400,
         )
         reads = pl.DataFrame(rows)
         out = run(reads)
@@ -133,11 +162,16 @@ class TestAllFailedDataset:
             clonotype = f"C{k}"
             for i, c in enumerate(concs):
                 for b in [1, 2, 3, 4]:
-                    rows.append({
-                        "clonotypeKey": clonotype, "sampleId": f"s_c{i}_b{b}",
-                        "concentrationStr": str(c), "concentration": float(c),
-                        "bin": b, "reads": 25,  # equal across bins → mean_bin = 2.5 flat
-                    })
+                    rows.append(
+                        {
+                            "clonotypeKey": clonotype,
+                            "sampleId": f"s_c{i}_b{b}",
+                            "concentrationStr": str(c),
+                            "concentration": float(c),
+                            "bin": b,
+                            "reads": 25,  # equal across bins → mean_bin = 2.5 flat
+                        }
+                    )
         reads = pl.DataFrame(rows)
         out = run(reads)
         pc = out["per_clonotype"]
@@ -153,16 +187,27 @@ class TestValidatorWarnings:
     def test_c0_without_bin_emits_stderr_warning(self, capsys):
         concs = [0.0, 0.1, 1.0, 10.0, 100.0]
         rows = _build_bin_reads_for_hill(
-            "G1", true_kd=10.0, true_n=1.0, baseline=1.0,
+            "G1",
+            true_kd=10.0,
+            true_n=1.0,
+            baseline=1.0,
             amplitude=math.log(2.0),
-            concs=concs, conc_strs=None, bins=[1, 2, 3, 4], reads_per_conc=400,
+            concs=concs,
+            conc_strs=None,
+            bins=[1, 2, 3, 4],
+            reads_per_conc=400,
         )
         # Inject a c=0 row with bin=None (ambiguous control)
-        rows.append({
-            "clonotypeKey": "G1", "sampleId": "s_c0_unbinned",
-            "concentrationStr": "0", "concentration": 0.0,
-            "bin": None, "reads": 100,
-        })
+        rows.append(
+            {
+                "clonotypeKey": "G1",
+                "sampleId": "s_c0_unbinned",
+                "concentrationStr": "0",
+                "concentration": 0.0,
+                "bin": None,
+                "reads": 100,
+            }
+        )
         reads = pl.DataFrame(rows, schema_overrides={"bin": pl.Int64})
         run(reads)
         assert "ambiguous" in capsys.readouterr().err
@@ -175,17 +220,27 @@ class TestInsufficientReads:
         rows = []
         for i, c in enumerate(concs):
             for b in [1, 2, 3, 4]:
-                rows.append({
-                    "clonotypeKey": "Low", "sampleId": f"s_c{i}_b{b}",
-                    "concentrationStr": str(c), "concentration": float(c),
-                    "bin": b, "reads": 0,  # no reads at all
-                })
+                rows.append(
+                    {
+                        "clonotypeKey": "Low",
+                        "sampleId": f"s_c{i}_b{b}",
+                        "concentrationStr": str(c),
+                        "concentration": float(c),
+                        "bin": b,
+                        "reads": 0,  # no reads at all
+                    }
+                )
                 # Filler reads under a second clonotype to create non-zero depth
-                rows.append({
-                    "clonotypeKey": "Filler", "sampleId": f"s_c{i}_b{b}",
-                    "concentrationStr": str(c), "concentration": float(c),
-                    "bin": b, "reads": 100,
-                })
+                rows.append(
+                    {
+                        "clonotypeKey": "Filler",
+                        "sampleId": f"s_c{i}_b{b}",
+                        "concentrationStr": str(c),
+                        "concentration": float(c),
+                        "bin": b,
+                        "reads": 100,
+                    }
+                )
         reads = pl.DataFrame(rows)
         out = run(reads)
         low = out["per_clonotype"].filter(pl.col("clonotypeKey") == "Low")

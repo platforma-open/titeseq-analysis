@@ -7,7 +7,6 @@ import math
 
 import numpy as np
 import polars as pl
-import pytest
 
 from main import main
 
@@ -24,11 +23,16 @@ def _hill_reads(clonotype: str, true_kd: float, concs, bins, per_conc=500):
         if counts.sum() == 0:
             counts[len(counts) // 2] = 1
         for j, b in enumerate(bins):
-            rows.append({
-                "clonotypeKey": clonotype, "sampleId": f"s_c{i}_b{b}",
-                "concentrationStr": str(c), "concentration": float(c),
-                "bin": int(b), "reads": int(counts[j]),
-            })
+            rows.append(
+                {
+                    "clonotypeKey": clonotype,
+                    "sampleId": f"s_c{i}_b{b}",
+                    "concentrationStr": str(c),
+                    "concentration": float(c),
+                    "bin": int(b),
+                    "reads": int(counts[j]),
+                }
+            )
     return rows
 
 
@@ -42,12 +46,18 @@ def test_cli_parquet_roundtrip(tmp_path):
     mb_path = tmp_path / "mb.parquet"
     fmb_path = tmp_path / "fmb.parquet"
 
-    rc = main([
-        "--reads", str(reads_path),
-        "--out-per-clonotype", str(pc_path),
-        "--out-mean-bin", str(mb_path),
-        "--out-fitted-mean-bin", str(fmb_path),
-    ])
+    rc = main(
+        [
+            "--reads",
+            str(reads_path),
+            "--out-per-clonotype",
+            str(pc_path),
+            "--out-mean-bin",
+            str(mb_path),
+            "--out-fitted-mean-bin",
+            str(fmb_path),
+        ]
+    )
     assert rc == 0
     assert pc_path.exists() and mb_path.exists() and fmb_path.exists()
 
@@ -66,12 +76,18 @@ def test_cli_tsv_output(tmp_path):
     mb_path = tmp_path / "mb.tsv"
     fmb_path = tmp_path / "fmb.tsv"
 
-    rc = main([
-        "--reads", str(reads_path),
-        "--out-per-clonotype", str(pc_path),
-        "--out-mean-bin", str(mb_path),
-        "--out-fitted-mean-bin", str(fmb_path),
-    ])
+    rc = main(
+        [
+            "--reads",
+            str(reads_path),
+            "--out-per-clonotype",
+            str(pc_path),
+            "--out-mean-bin",
+            str(mb_path),
+            "--out-fitted-mean-bin",
+            str(fmb_path),
+        ]
+    )
     assert rc == 0
     assert pc_path.read_text().startswith("clonotypeKey")
 
@@ -83,25 +99,36 @@ def test_cli_with_params_json(tmp_path):
     pl.DataFrame(rows).write_parquet(reads_path)
 
     params_path = tmp_path / "params.json"
-    params_path.write_text(json.dumps({
-        "min_reads_per_concentration": 3,
-        "min_concentration_points": 5,
-        "r2_threshold_good": 0.8,
-        "r2_threshold_failed": 0.5,
-        "n_min": 0.5,
-        "n_max": 2.0,
-        "hook_effect_threshold_bin": 0.2,
-        "hook_effect_threshold_no_bin": 0.02,
-        "hook_effect_min_reads": 20,
-    }))
+    params_path.write_text(
+        json.dumps(
+            {
+                "min_reads_per_concentration": 3,
+                "min_concentration_points": 5,
+                "r2_threshold_good": 0.8,
+                "r2_threshold_failed": 0.5,
+                "n_min": 0.5,
+                "n_max": 2.0,
+                "hook_effect_threshold_bin": 0.2,
+                "hook_effect_threshold_no_bin": 0.02,
+                "hook_effect_min_reads": 20,
+            }
+        )
+    )
 
-    rc = main([
-        "--reads", str(reads_path),
-        "--out-per-clonotype", str(tmp_path / "pc.parquet"),
-        "--out-mean-bin", str(tmp_path / "mb.parquet"),
-        "--out-fitted-mean-bin", str(tmp_path / "fmb.parquet"),
-        "--params", str(params_path),
-    ])
+    rc = main(
+        [
+            "--reads",
+            str(reads_path),
+            "--out-per-clonotype",
+            str(tmp_path / "pc.parquet"),
+            "--out-mean-bin",
+            str(tmp_path / "mb.parquet"),
+            "--out-fitted-mean-bin",
+            str(tmp_path / "fmb.parquet"),
+            "--params",
+            str(params_path),
+        ]
+    )
     assert rc == 0
 
 
@@ -119,21 +146,32 @@ def test_cli_hook_effect_triggers_failure(tmp_path):
         weights /= weights.sum()
         counts = np.round(weights * 500).astype(int)
         for j, b in enumerate(bins):
-            rows.append({
-                "clonotypeKey": "H1", "sampleId": f"s_c{i}_b{b}",
-                "concentrationStr": str(c), "concentration": float(c),
-                "bin": int(b), "reads": int(counts[j]),
-            })
+            rows.append(
+                {
+                    "clonotypeKey": "H1",
+                    "sampleId": f"s_c{i}_b{b}",
+                    "concentrationStr": str(c),
+                    "concentration": float(c),
+                    "bin": int(b),
+                    "reads": int(counts[j]),
+                }
+            )
     reads_path = tmp_path / "reads.parquet"
     pl.DataFrame(rows).write_parquet(reads_path)
 
     pc_path = tmp_path / "pc.parquet"
-    rc = main([
-        "--reads", str(reads_path),
-        "--out-per-clonotype", str(pc_path),
-        "--out-mean-bin", str(tmp_path / "mb.parquet"),
-        "--out-fitted-mean-bin", str(tmp_path / "fmb.parquet"),
-    ])
+    rc = main(
+        [
+            "--reads",
+            str(reads_path),
+            "--out-per-clonotype",
+            str(pc_path),
+            "--out-mean-bin",
+            str(tmp_path / "mb.parquet"),
+            "--out-fitted-mean-bin",
+            str(tmp_path / "fmb.parquet"),
+        ]
+    )
     assert rc == 0
     pc = pl.read_parquet(pc_path)
     h1 = pc.filter(pl.col("clonotypeKey") == "H1")

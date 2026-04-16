@@ -27,15 +27,7 @@ import numpy as np
 import polars as pl
 
 from classify import classify
-from constants import (
-    COL_ANTIGEN,
-    COL_BIN,
-    COL_CLONOTYPE,
-    COL_CONC_STR,
-    COL_CONC_VAL,
-    DEFAULT_PARAMS,
-    FitParams,
-)
+from constants import COL_ANTIGEN, COL_BIN, COL_CLONOTYPE, COL_CONC_STR, COL_CONC_VAL, DEFAULT_PARAMS, FitParams
 from hill_fit import fit_one_clonotype
 from io_layer import (
     apply_antigen_filter,
@@ -48,12 +40,7 @@ from io_layer import (
     validate_sample_metadata_uniqueness,
 )
 from normalization import SIGNAL, normalize
-from output_build import (
-    FITTED_MEAN_BIN_SCHEMA,
-    PER_CLONOTYPE_SCHEMA,
-    build_mean_bin_frame,
-    flag_kd_out_of_range,
-)
+from output_build import FITTED_MEAN_BIN_SCHEMA, PER_CLONOTYPE_SCHEMA, build_mean_bin_frame, flag_kd_out_of_range
 from pre_fit import (
     WEIGHT,
     apply_floor_and_weights,
@@ -217,9 +204,7 @@ def _fit_all_clonotypes(
             schema=FITTED_MEAN_BIN_SCHEMA,
         )
     else:
-        fitted = pl.DataFrame(
-            {k: [] for k in FITTED_MEAN_BIN_SCHEMA}, schema=FITTED_MEAN_BIN_SCHEMA
-        )
+        fitted = pl.DataFrame({k: [] for k in FITTED_MEAN_BIN_SCHEMA}, schema=FITTED_MEAN_BIN_SCHEMA)
 
     return per_clonotype, fitted
 
@@ -231,14 +216,16 @@ def _build_outputs(
     reads: pl.DataFrame,
 ) -> dict[str, pl.DataFrame]:
     """Apply R14b kdOutOfRange flag and assemble the three-frame output dict."""
-    min_max = reads.filter(pl.col(COL_CONC_VAL) > 0).select(
-        pl.col(COL_CONC_VAL).min().alias("min"),
-        pl.col(COL_CONC_VAL).max().alias("max"),
-    ).row(0, named=True)
-    if min_max["min"] is not None:
-        per_clonotype = flag_kd_out_of_range(
-            per_clonotype, float(min_max["min"]), float(min_max["max"])
+    min_max = (
+        reads.filter(pl.col(COL_CONC_VAL) > 0)
+        .select(
+            pl.col(COL_CONC_VAL).min().alias("min"),
+            pl.col(COL_CONC_VAL).max().alias("max"),
         )
+        .row(0, named=True)
+    )
+    if min_max["min"] is not None:
+        per_clonotype = flag_kd_out_of_range(per_clonotype, float(min_max["min"]), float(min_max["max"]))
 
     return {
         "per_clonotype": per_clonotype,
@@ -266,8 +253,11 @@ def run(
     has_antigen = COL_ANTIGEN in reads.columns
 
     _validate_inputs(
-        reads, has_bin=has_bin, has_antigen=has_antigen,
-        target_antigen=target_antigen, antigen_column_ref=antigen_column_ref,
+        reads,
+        has_bin=has_bin,
+        has_antigen=has_antigen,
+        target_antigen=target_antigen,
+        antigen_column_ref=antigen_column_ref,
     )
 
     reads = apply_antigen_filter(reads, target_antigen)
@@ -278,9 +268,7 @@ def run(
 
     all_clonotypes = signal_frame[COL_CLONOTYPE].unique().to_list()
     insufficient = classify_insufficient(floor_frame, all_clonotypes, params)
-    insufficient_map = dict(
-        zip(insufficient[COL_CLONOTYPE].to_list(), insufficient["insufficient_reason"].to_list())
-    )
+    insufficient_map = dict(zip(insufficient[COL_CLONOTYPE].to_list(), insufficient["insufficient_reason"].to_list()))
 
     c0_points, fit_points = split_c0(floor_frame)
     global_b = compute_global_baseline(c0_points)

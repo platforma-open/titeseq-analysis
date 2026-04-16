@@ -14,28 +14,21 @@ from __future__ import annotations
 
 import polars as pl
 
-from constants import (
-    COL_CLONOTYPE,
-    COL_CONC_STR,
-    COL_CONC_VAL,
-    FitParams,
-)
+from constants import COL_CLONOTYPE, COL_CONC_STR, COL_CONC_VAL, FitParams
 from normalization import CLONOTYPE_READS_AT_CONC, SIGNAL
 
 WEIGHT = "weight"
 
 
-def apply_floor_and_weights(
-    signal_frame: pl.DataFrame, params: FitParams
-) -> pl.DataFrame:
+def apply_floor_and_weights(signal_frame: pl.DataFrame, params: FitParams) -> pl.DataFrame:
     """Apply R8 weights (w_j = clonotype_reads_at_conc) and R9 read floor.
 
     Rows with `clonotype_reads_at_conc < min_reads_per_concentration` are dropped;
     remaining rows get a `weight` column equal to the per-(clonotype, conc) read sum.
     """
-    kept = signal_frame.filter(
-        pl.col(CLONOTYPE_READS_AT_CONC) >= params.min_reads_per_concentration
-    ).with_columns(pl.col(CLONOTYPE_READS_AT_CONC).cast(pl.Float64).alias(WEIGHT))
+    kept = signal_frame.filter(pl.col(CLONOTYPE_READS_AT_CONC) >= params.min_reads_per_concentration).with_columns(
+        pl.col(CLONOTYPE_READS_AT_CONC).cast(pl.Float64).alias(WEIGHT)
+    )
     return kept
 
 
@@ -55,9 +48,7 @@ def classify_insufficient(
     counts = non_zero.group_by(COL_CLONOTYPE).agg(pl.len().alias("n_points"))
 
     all_df = pl.DataFrame({COL_CLONOTYPE: all_clonotypes})
-    joined = all_df.join(counts, on=COL_CLONOTYPE, how="left").with_columns(
-        pl.col("n_points").fill_null(0)
-    )
+    joined = all_df.join(counts, on=COL_CLONOTYPE, how="left").with_columns(pl.col("n_points").fill_null(0))
 
     reason = (
         pl.when(pl.col("n_points") == 0)
@@ -73,9 +64,7 @@ def classify_insufficient(
 
 def split_c0(filtered: pl.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Partition floor-passed points into (c=0 rows for baseline, fit rows)."""
-    c0 = filtered.filter(pl.col(COL_CONC_VAL) == 0).select(
-        [COL_CLONOTYPE, COL_CONC_STR, SIGNAL, WEIGHT]
-    )
+    c0 = filtered.filter(pl.col(COL_CONC_VAL) == 0).select([COL_CLONOTYPE, COL_CONC_STR, SIGNAL, WEIGHT])
     non_c0 = filtered.filter(pl.col(COL_CONC_VAL) != 0)
     return c0, non_c0
 
@@ -94,9 +83,7 @@ def compute_global_baseline(c0_points: pl.DataFrame) -> float | None:
     return float(mean_val)
 
 
-def detect_hook_effect(
-    fit_points: pl.DataFrame, bin_mode: bool, params: FitParams
-) -> pl.DataFrame:
+def detect_hook_effect(fit_points: pl.DataFrame, bin_mode: bool, params: FitParams) -> pl.DataFrame:
     """R9b: signal drop from conc rank-2 to conc rank-1 that exceeds threshold flags a hook.
 
     Both top-2 and top-1 concentration points must have >= hook_effect_min_reads.
@@ -104,14 +91,9 @@ def detect_hook_effect(
 
     Returns DataFrame: clonotypeKey, hook_flag (bool).
     """
-    threshold = (
-        params.hook_effect_threshold_bin if bin_mode else params.hook_effect_threshold_no_bin
-    )
+    threshold = params.hook_effect_threshold_bin if bin_mode else params.hook_effect_threshold_no_bin
     ranked = fit_points.with_columns(
-        pl.col(COL_CONC_VAL)
-        .rank(method="ordinal", descending=True)
-        .over(COL_CLONOTYPE)
-        .alias("rank")
+        pl.col(COL_CONC_VAL).rank(method="ordinal", descending=True).over(COL_CLONOTYPE).alias("rank")
     ).filter(pl.col("rank") <= 2)
 
     wide = ranked.group_by(COL_CLONOTYPE).agg(
@@ -126,6 +108,4 @@ def detect_hook_effect(
         & (pl.col("top2_reads") >= params.hook_effect_min_reads)
         & ((pl.col("top2_signal") - pl.col("top1_signal")) > threshold)
     )
-    return wide.with_columns(hook.fill_null(False).alias("hook_flag")).select(
-        [COL_CLONOTYPE, "hook_flag"]
-    )
+    return wide.with_columns(hook.fill_null(False).alias("hook_flag")).select([COL_CLONOTYPE, "hook_flag"])

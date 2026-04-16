@@ -4,14 +4,7 @@ from __future__ import annotations
 
 import polars as pl
 
-from constants import (
-    COL_BIN,
-    COL_CLONOTYPE,
-    COL_CONC_STR,
-    COL_CONC_VAL,
-    COL_READS,
-    COL_SAMPLE,
-)
+from constants import COL_BIN, COL_CLONOTYPE, COL_CONC_STR, COL_CONC_VAL, COL_READS
 
 MEAN_BIN = "mean_bin"
 SIGNAL = "signal"  # unified name: mean_bin in bin mode, frequency in no-bin mode
@@ -31,12 +24,7 @@ def compute_mean_bin(reads: pl.DataFrame) -> pl.DataFrame:
     """
     with_freq = reads.with_columns(
         pl.col(COL_READS).sum().over([COL_CONC_STR, COL_BIN]).alias("depth"),
-    ).with_columns(
-        pl.when(pl.col("depth") > 0)
-        .then(pl.col(COL_READS) / pl.col("depth"))
-        .otherwise(0.0)
-        .alias(FREQ)
-    )
+    ).with_columns(pl.when(pl.col("depth") > 0).then(pl.col(COL_READS) / pl.col("depth")).otherwise(0.0).alias(FREQ))
     return (
         with_freq.group_by([COL_CLONOTYPE, COL_CONC_STR, COL_CONC_VAL])
         .agg(
@@ -44,12 +32,7 @@ def compute_mean_bin(reads: pl.DataFrame) -> pl.DataFrame:
             pl.col(FREQ).sum().alias("den"),
             pl.col(COL_READS).sum().alias(CLONOTYPE_READS_AT_CONC),
         )
-        .with_columns(
-            pl.when(pl.col("den") > 0)
-            .then(pl.col("num") / pl.col("den"))
-            .otherwise(None)
-            .alias(MEAN_BIN)
-        )
+        .with_columns(pl.when(pl.col("den") > 0).then(pl.col("num") / pl.col("den")).otherwise(None).alias(MEAN_BIN))
         .drop(["num", "den"])
     )
 
@@ -62,14 +45,18 @@ def compute_frequency_signal(reads: pl.DataFrame) -> pl.DataFrame:
     per_clonotype = reads.group_by([COL_CLONOTYPE, COL_CONC_STR, COL_CONC_VAL]).agg(
         pl.col(COL_READS).sum().alias(CLONOTYPE_READS_AT_CONC)
     )
-    return per_clonotype.with_columns(
-        pl.col(CLONOTYPE_READS_AT_CONC).sum().over(COL_CONC_STR).alias(TOTAL_READS_AT_CONC),
-    ).with_columns(
-        pl.when(pl.col(TOTAL_READS_AT_CONC) > 0)
-        .then(pl.col(CLONOTYPE_READS_AT_CONC) / pl.col(TOTAL_READS_AT_CONC))
-        .otherwise(None)
-        .alias(SIGNAL)
-    ).drop(TOTAL_READS_AT_CONC)
+    return (
+        per_clonotype.with_columns(
+            pl.col(CLONOTYPE_READS_AT_CONC).sum().over(COL_CONC_STR).alias(TOTAL_READS_AT_CONC),
+        )
+        .with_columns(
+            pl.when(pl.col(TOTAL_READS_AT_CONC) > 0)
+            .then(pl.col(CLONOTYPE_READS_AT_CONC) / pl.col(TOTAL_READS_AT_CONC))
+            .otherwise(None)
+            .alias(SIGNAL)
+        )
+        .drop(TOTAL_READS_AT_CONC)
+    )
 
 
 def normalize(reads: pl.DataFrame, bin_mode: bool) -> pl.DataFrame:

@@ -17,12 +17,14 @@ from pre_fit import (
 
 
 def _c0(signals):
-    return pl.DataFrame({
-        "clonotypeKey": [f"C{i}" for i in range(len(signals))],
-        "concentrationStr": ["0"] * len(signals),
-        "signal": signals,
-        "weight": [10.0] * len(signals),
-    })
+    return pl.DataFrame(
+        {
+            "clonotypeKey": [f"C{i}" for i in range(len(signals))],
+            "concentrationStr": ["0"] * len(signals),
+            "signal": signals,
+            "weight": [10.0] * len(signals),
+        }
+    )
 
 
 class TestGlobalBaseline:
@@ -40,8 +42,7 @@ class TestGlobalBaseline:
     def test_empty_returns_none(self):
         df = pl.DataFrame(
             {"clonotypeKey": [], "concentrationStr": [], "signal": [], "weight": []},
-            schema={"clonotypeKey": pl.Utf8, "concentrationStr": pl.Utf8,
-                    "signal": pl.Float64, "weight": pl.Float64},
+            schema={"clonotypeKey": pl.Utf8, "concentrationStr": pl.Utf8, "signal": pl.Float64, "weight": pl.Float64},
         )
         assert compute_global_baseline(df) is None
 
@@ -60,10 +61,17 @@ def _sig_frame(rows):
 class TestApplyFloorAndWeights:
     # R8: weight w_j = clonotype_reads_at_conc at concentration j.
     def test_weight_equals_reads_sum(self):
-        df = _sig_frame([
-            {"clonotypeKey": "A", "concentrationStr": "1", "concentration": 1.0,
-             "signal": 2.5, "clonotype_reads_at_conc": 10},
-        ])
+        df = _sig_frame(
+            [
+                {
+                    "clonotypeKey": "A",
+                    "concentrationStr": "1",
+                    "concentration": 1.0,
+                    "signal": 2.5,
+                    "clonotype_reads_at_conc": 10,
+                },
+            ]
+        )
         result = apply_floor_and_weights(df, DEFAULT_PARAMS)
         assert result[WEIGHT][0] == 10.0
 
@@ -75,10 +83,17 @@ class TestApplyFloorAndWeights:
     )
     def test_floor_threshold_inclusive(self, reads_at_conc, kept):
         params = FitParams(min_reads_per_concentration=3)
-        df = _sig_frame([
-            {"clonotypeKey": "A", "concentrationStr": "1", "concentration": 1.0,
-             "signal": 2.5, "clonotype_reads_at_conc": reads_at_conc},
-        ])
+        df = _sig_frame(
+            [
+                {
+                    "clonotypeKey": "A",
+                    "concentrationStr": "1",
+                    "concentration": 1.0,
+                    "signal": 2.5,
+                    "clonotype_reads_at_conc": reads_at_conc,
+                },
+            ]
+        )
         result = apply_floor_and_weights(df, params)
         assert (result.height == 1) is kept
 
@@ -87,11 +102,22 @@ class TestClassifyInsufficient:
     # Spec R9: zero surviving points → insufficient_reads.
     def test_zero_points_marks_insufficient_reads(self):
         filtered = pl.DataFrame(
-            {"clonotypeKey": [], "concentrationStr": [], "concentration": [],
-             "signal": [], "clonotype_reads_at_conc": [], WEIGHT: []},
-            schema={"clonotypeKey": pl.Utf8, "concentrationStr": pl.Utf8,
-                    "concentration": pl.Float64, "signal": pl.Float64,
-                    "clonotype_reads_at_conc": pl.Int64, WEIGHT: pl.Float64},
+            {
+                "clonotypeKey": [],
+                "concentrationStr": [],
+                "concentration": [],
+                "signal": [],
+                "clonotype_reads_at_conc": [],
+                WEIGHT: [],
+            },
+            schema={
+                "clonotypeKey": pl.Utf8,
+                "concentrationStr": pl.Utf8,
+                "concentration": pl.Float64,
+                "signal": pl.Float64,
+                "clonotype_reads_at_conc": pl.Int64,
+                WEIGHT: pl.Float64,
+            },
         )
         result = classify_insufficient(filtered, ["A"], DEFAULT_PARAMS)
         row = result.filter(pl.col("clonotypeKey") == "A")
@@ -101,8 +127,14 @@ class TestClassifyInsufficient:
     def test_under_min_points_marks_insufficient_points(self):
         params = FitParams(min_concentration_points=5)
         rows = [
-            {"clonotypeKey": "A", "concentrationStr": str(c), "concentration": float(c),
-             "signal": 2.0, "clonotype_reads_at_conc": 10, WEIGHT: 10.0}
+            {
+                "clonotypeKey": "A",
+                "concentrationStr": str(c),
+                "concentration": float(c),
+                "signal": 2.0,
+                "clonotype_reads_at_conc": 10,
+                WEIGHT: 10.0,
+            }
             for c in [1, 10, 100]  # only 3 non-zero points
         ]
         filtered = pl.DataFrame(rows)
@@ -113,8 +145,14 @@ class TestClassifyInsufficient:
     def test_exactly_min_points_not_marked(self):
         params = FitParams(min_concentration_points=5)
         rows = [
-            {"clonotypeKey": "A", "concentrationStr": str(c), "concentration": float(c),
-             "signal": 2.0, "clonotype_reads_at_conc": 10, WEIGHT: 10.0}
+            {
+                "clonotypeKey": "A",
+                "concentrationStr": str(c),
+                "concentration": float(c),
+                "signal": 2.0,
+                "clonotype_reads_at_conc": 10,
+                WEIGHT: 10.0,
+            }
             for c in [1, 3, 10, 30, 100]  # exactly 5
         ]
         filtered = pl.DataFrame(rows)
@@ -125,11 +163,25 @@ class TestClassifyInsufficient:
     # c=0 rows are NOT counted toward the minimum points threshold (only fit points).
     def test_c0_excluded_from_point_count(self):
         params = FitParams(min_concentration_points=5)
-        rows = [{"clonotypeKey": "A", "concentrationStr": "0", "concentration": 0.0,
-                 "signal": 1.0, "clonotype_reads_at_conc": 10, WEIGHT: 10.0}]
+        rows = [
+            {
+                "clonotypeKey": "A",
+                "concentrationStr": "0",
+                "concentration": 0.0,
+                "signal": 1.0,
+                "clonotype_reads_at_conc": 10,
+                WEIGHT: 10.0,
+            }
+        ]
         rows += [
-            {"clonotypeKey": "A", "concentrationStr": str(c), "concentration": float(c),
-             "signal": 2.0, "clonotype_reads_at_conc": 10, WEIGHT: 10.0}
+            {
+                "clonotypeKey": "A",
+                "concentrationStr": str(c),
+                "concentration": float(c),
+                "signal": 2.0,
+                "clonotype_reads_at_conc": 10,
+                WEIGHT: 10.0,
+            }
             for c in [1, 3, 10, 30]  # only 4 non-zero → still insufficient
         ]
         filtered = pl.DataFrame(rows)
@@ -139,12 +191,26 @@ class TestClassifyInsufficient:
 
 class TestSplitC0:
     def test_partitions_c0_from_fit_points(self):
-        df = pl.DataFrame([
-            {"clonotypeKey": "A", "concentrationStr": "0", "concentration": 0.0,
-             "signal": 1.2, "clonotype_reads_at_conc": 100, WEIGHT: 100.0},
-            {"clonotypeKey": "A", "concentrationStr": "10", "concentration": 10.0,
-             "signal": 2.5, "clonotype_reads_at_conc": 100, WEIGHT: 100.0},
-        ])
+        df = pl.DataFrame(
+            [
+                {
+                    "clonotypeKey": "A",
+                    "concentrationStr": "0",
+                    "concentration": 0.0,
+                    "signal": 1.2,
+                    "clonotype_reads_at_conc": 100,
+                    WEIGHT: 100.0,
+                },
+                {
+                    "clonotypeKey": "A",
+                    "concentrationStr": "10",
+                    "concentration": 10.0,
+                    "signal": 2.5,
+                    "clonotype_reads_at_conc": 100,
+                    WEIGHT: 100.0,
+                },
+            ]
+        )
         c0, non_c0 = split_c0(df)
         assert c0.height == 1
         assert c0["concentrationStr"][0] == "0"
@@ -155,10 +221,22 @@ def _build_fit_points(top2_signal, top1_signal, top2_reads, top1_reads):
     """One clonotype with two concentration points; 10 and 100 are the top-2 and top-1."""
     return pl.DataFrame(
         [
-            {"clonotypeKey": "A", "concentrationStr": "10", "concentration": 10.0,
-             "signal": top2_signal, "clonotype_reads_at_conc": top2_reads, "weight": float(top2_reads)},
-            {"clonotypeKey": "A", "concentrationStr": "100", "concentration": 100.0,
-             "signal": top1_signal, "clonotype_reads_at_conc": top1_reads, "weight": float(top1_reads)},
+            {
+                "clonotypeKey": "A",
+                "concentrationStr": "10",
+                "concentration": 10.0,
+                "signal": top2_signal,
+                "clonotype_reads_at_conc": top2_reads,
+                "weight": float(top2_reads),
+            },
+            {
+                "clonotypeKey": "A",
+                "concentrationStr": "100",
+                "concentration": 100.0,
+                "signal": top1_signal,
+                "clonotype_reads_at_conc": top1_reads,
+                "weight": float(top1_reads),
+            },
         ]
     )
 
@@ -169,14 +247,14 @@ class TestHookEffectBinMode:
     @pytest.mark.parametrize(
         "top2_signal, top1_signal, top2_reads, top1_reads, expected",
         [
-            (3.0, 2.5, 100, 100, True),    # drop 0.5 > 0.2 → flag
+            (3.0, 2.5, 100, 100, True),  # drop 0.5 > 0.2 → flag
             (3.0, 2.85, 100, 100, False),  # drop 0.15 < 0.2 → no flag
-            (3.0, 3.2, 100, 100, False),   # signal rose → no flag
-            (3.0, 2.0, 100, 10, False),    # top1_reads < 20 → skip
-            (3.0, 2.0, 10, 100, False),    # top2_reads < 20 → skip
-            (3.0, 3.0, 100, 100, False),   # flat (zero drop) → no flag (strict >)
+            (3.0, 3.2, 100, 100, False),  # signal rose → no flag
+            (3.0, 2.0, 100, 10, False),  # top1_reads < 20 → skip
+            (3.0, 2.0, 10, 100, False),  # top2_reads < 20 → skip
+            (3.0, 3.0, 100, 100, False),  # flat (zero drop) → no flag (strict >)
             (3.0, 2.81, 100, 100, False),  # drop 0.19 just under threshold → no flag
-            (3.0, 2.79, 100, 100, True),   # drop 0.21 just over threshold → flag
+            (3.0, 2.79, 100, 100, True),  # drop 0.21 just over threshold → flag
         ],
     )
     def test_bin_mode_hook_detection(self, top2_signal, top1_signal, top2_reads, top1_reads, expected):
@@ -192,10 +270,10 @@ class TestHookEffectNoBinMode:
     @pytest.mark.parametrize(
         "top2_signal, top1_signal, expected",
         [
-            (0.05, 0.02, True),    # drop 0.03 > 0.02 → flag
-            (0.05, 0.04, False),   # drop 0.01 < 0.02 → no flag
+            (0.05, 0.02, True),  # drop 0.03 > 0.02 → flag
+            (0.05, 0.04, False),  # drop 0.01 < 0.02 → no flag
             (0.05, 0.031, False),  # drop 0.019 just under threshold → no flag
-            (0.05, 0.029, True),   # drop 0.021 just over threshold → flag
+            (0.05, 0.029, True),  # drop 0.021 just over threshold → flag
         ],
     )
     def test_no_bin_mode_hook_detection(self, top2_signal, top1_signal, expected):

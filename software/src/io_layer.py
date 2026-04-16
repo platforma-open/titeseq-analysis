@@ -6,15 +6,7 @@ from pathlib import Path
 
 import polars as pl
 
-from constants import (
-    COL_ANTIGEN,
-    COL_BIN,
-    COL_CLONOTYPE,
-    COL_CONC_STR,
-    COL_CONC_VAL,
-    COL_READS,
-    COL_SAMPLE,
-)
+from constants import COL_ANTIGEN, COL_BIN, COL_CLONOTYPE, COL_CONC_STR, COL_CONC_VAL, COL_READS, COL_SAMPLE
 
 
 class InputValidationError(ValueError):
@@ -49,11 +41,7 @@ def validate_concentration_column(df: pl.DataFrame, has_bin: bool) -> list[str]:
     """
     exprs = [(pl.col(COL_CONC_VAL) < 0).sum().alias("neg")]
     if has_bin:
-        exprs.append(
-            ((pl.col(COL_CONC_VAL) == 0) & pl.col(COL_BIN).is_null())
-            .sum()
-            .alias("null_bin_at_zero")
-        )
+        exprs.append(((pl.col(COL_CONC_VAL) == 0) & pl.col(COL_BIN).is_null()).sum().alias("null_bin_at_zero"))
     counts = df.select(exprs).row(0, named=True)
 
     if counts["neg"] > 0:
@@ -85,9 +73,7 @@ def max_bin_label(df: pl.DataFrame) -> int:
     return int(df.select(pl.col(COL_BIN).max()).item())
 
 
-def validate_antigen_filter(
-    df: pl.DataFrame, antigen_column_ref: str | None, target_antigen: str | None
-) -> list[str]:
+def validate_antigen_filter(df: pl.DataFrame, antigen_column_ref: str | None, target_antigen: str | None) -> list[str]:
     """R4: antigen filtering semantics.
 
     - antigenColumnRef without targetAntigen -> user-facing error.
@@ -96,20 +82,15 @@ def validate_antigen_filter(
     """
     warnings: list[str] = []
     if antigen_column_ref is not None and target_antigen is None:
-        raise InputValidationError(
-            "antigenColumnRef provided without targetAntigen — specify which antigen to analyse"
-        )
+        raise InputValidationError("antigenColumnRef provided without targetAntigen — specify which antigen to analyse")
     if antigen_column_ref is None and target_antigen is not None:
-        warnings.append(
-            "targetAntigen set without antigenColumnRef — treating dataset as single-antigen"
-        )
+        warnings.append("targetAntigen set without antigenColumnRef — treating dataset as single-antigen")
         return warnings
     if antigen_column_ref is not None and target_antigen is not None:
         present = set(df[COL_ANTIGEN].drop_nulls().unique().to_list())
         if target_antigen not in present:
             raise InputValidationError(
-                f"targetAntigen {target_antigen!r} not found in {COL_ANTIGEN} column; "
-                f"present values: {sorted(present)}"
+                f"targetAntigen {target_antigen!r} not found in {COL_ANTIGEN} column; present values: {sorted(present)}"
             )
     return warnings
 
@@ -129,17 +110,12 @@ def validate_sample_metadata_uniqueness(df: pl.DataFrame, has_bin: bool, has_ant
     if has_antigen:
         key_cols.append(COL_ANTIGEN)
 
-    per_sample_unique = (
-        df.group_by(COL_SAMPLE)
-        .agg([pl.col(c).n_unique().alias(f"{c}_nunique") for c in key_cols])
-    )
+    per_sample_unique = df.group_by(COL_SAMPLE).agg([pl.col(c).n_unique().alias(f"{c}_nunique") for c in key_cols])
     for c in key_cols:
         offenders = per_sample_unique.filter(pl.col(f"{c}_nunique") > 1)
         if offenders.height > 0:
             sample_list = offenders[COL_SAMPLE].to_list()[:5]
-            raise InputValidationError(
-                f"sampleId must map to a single {c}; violating samples: {sample_list}"
-            )
+            raise InputValidationError(f"sampleId must map to a single {c}; violating samples: {sample_list}")
 
 
 def canonicalize_concentration(df: pl.DataFrame) -> pl.DataFrame:
