@@ -1,0 +1,25 @@
+// "hello world"
+wf := import("@platforma-sdk/workflow-tengo:workflow")
+exec := import("@platforma-sdk/workflow-tengo:exec")
+assets:= import("@platforma-sdk/workflow-tengo:assets")
+
+wf.body(func(args) {
+	python := exec.builder().
+		software(assets.importSoftware("@platforma-open/platforma-open.titeseq-analysis.software:hello-world-python")).
+		arg(args.name).
+		saveStdoutContent().
+		run()
+	pythonMessage := python.getStdoutContent()
+
+	tengoMessage := "Hello from Tengo, " + args.name + "!"
+
+	return {
+		outputs: {
+			pythonMessage: pythonMessage,
+			tengoMessage: tengoMessage
+		},
+
+		exports: {}
+	}
+})
+
