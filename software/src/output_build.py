@@ -19,18 +19,6 @@ PER_CLONOTYPE_SCHEMA: dict[str, pl.DataType] = {
     "fitFailureReason": pl.Utf8,
     "kdOutOfRange": pl.Boolean,
 }
-PER_CLONOTYPE_COLS = list(PER_CLONOTYPE_SCHEMA.keys())
-
-
-def build_per_clonotype_frame(rows: list[dict]) -> pl.DataFrame:
-    """Build the per-clonotype output frame from a list of row dicts.
-
-    Expected keys per row: clonotypeKey, kd (nullable), hillCoefficient (nullable),
-    r2 (nullable), affinityClass, fitFailureReason (nullable), kdOutOfRange (nullable).
-    """
-    if not rows:
-        return pl.DataFrame({k: [] for k in PER_CLONOTYPE_SCHEMA}, schema=PER_CLONOTYPE_SCHEMA)
-    return pl.DataFrame(rows, schema=PER_CLONOTYPE_SCHEMA)
 
 
 def flag_kd_out_of_range(
@@ -76,14 +64,3 @@ FITTED_MEAN_BIN_SCHEMA: dict[str, pl.DataType] = {
     COL_CONC_VAL: pl.Float64,
     "fittedMeanBin": pl.Float64,
 }
-
-
-def build_fitted_mean_bin_frame(fitted_rows: list[dict]) -> pl.DataFrame:
-    """R14: per-(clonotype, concentration) fitted signal at experimental concentrations.
-
-    fitted_rows: list of dicts with keys clonotypeKey, concentrationStr, concentration, fittedMeanBin.
-    Failed fits contribute no rows (null via absence).
-    """
-    if not fitted_rows:
-        return pl.DataFrame({k: [] for k in FITTED_MEAN_BIN_SCHEMA}, schema=FITTED_MEAN_BIN_SCHEMA)
-    return pl.DataFrame(fitted_rows, schema=FITTED_MEAN_BIN_SCHEMA)

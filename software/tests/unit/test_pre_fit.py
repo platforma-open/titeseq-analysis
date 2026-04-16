@@ -1,4 +1,4 @@
-"""Behavioral tests for floor_filter.py (R8 weights, R9 floor + insufficient-* classification)."""
+"""Behavioral tests for pre_fit.py (R6 baseline, R8 weights, R9 floor, R9b hook effect)."""
 
 from __future__ import annotations
 
@@ -10,12 +10,50 @@ from pre_fit import (
     WEIGHT,
     apply_floor_and_weights,
     classify_insufficient,
+    compute_global_baseline,
+    detect_hook_effect,
     split_c0,
 )
 
 
+def _c0(signals):
+    return pl.DataFrame({
+        "clonotypeKey": [f"C{i}" for i in range(len(signals))],
+        "concentrationStr": ["0"] * len(signals),
+        "signal": signals,
+        "weight": [10.0] * len(signals),
+    })
+
+
+class TestGlobalBaseline:
+    # Arithmetic mean of per-clonotype mean_bin at c=0; spec explicit.
+    def test_arithmetic_mean_of_c0_signals(self):
+        df = _c0([1.2, 1.4, 1.6])
+        assert compute_global_baseline(df) == pytest.approx(1.4)
+
+    # A c=0 signal of exactly 0.0 is a valid observation — counts in the mean.
+    def test_zero_signal_counts_in_mean(self):
+        df = _c0([0.0, 2.0])
+        assert compute_global_baseline(df) == pytest.approx(1.0)
+
+    # No c=0 data at all → None (downstream uses 4-param fit).
+    def test_empty_returns_none(self):
+        df = pl.DataFrame(
+            {"clonotypeKey": [], "concentrationStr": [], "signal": [], "weight": []},
+            schema={"clonotypeKey": pl.Utf8, "concentrationStr": pl.Utf8,
+                    "signal": pl.Float64, "weight": pl.Float64},
+        )
+        assert compute_global_baseline(df) is None
+
+    # Upstream floor filter drops some clonotypes from the c=0 set;
+    # only surviving rows contribute to B.
+    def test_only_passes_surviving_rows(self):
+        df = _c0([1.2, 1.8])  # pretend two survived; floor-filtered third absent
+        assert compute_global_baseline(df) == pytest.approx(1.5)
+
+
 def _sig_frame(rows):
-    """Build a signal-frame shape: clonotypeKey, concentrationStr, concentration, signal, clonotype_reads_at_conc."""
+    """Signal-frame shape: clonotypeKey, concentrationStr, concentration, signal, clonotype_reads_at_conc."""
     return pl.DataFrame(rows)
 
 
@@ -111,3 +149,57 @@ class TestSplitC0:
         assert c0.height == 1
         assert c0["concentrationStr"][0] == "0"
         assert non_c0.height == 1
+
+
+def _build_fit_points(top2_signal, top1_signal, top2_reads, top1_reads):
+    """One clonotype with two concentration points; 10 and 100 are the top-2 and top-1."""
+    return pl.DataFrame(
+        [
+            {"clonotypeKey": "A", "concentrationStr": "10", "concentration": 10.0,
+             "signal": top2_signal, "clonotype_reads_at_conc": top2_reads, "weight": float(top2_reads)},
+            {"clonotypeKey": "A", "concentrationStr": "100", "concentration": 100.0,
+             "signal": top1_signal, "clonotype_reads_at_conc": top1_reads, "weight": float(top1_reads)},
+        ]
+    )
+
+
+class TestHookEffectBinMode:
+    """threshold = 0.2; min_reads = 20. Strict > drop flags a hook."""
+
+    @pytest.mark.parametrize(
+        "top2_signal, top1_signal, top2_reads, top1_reads, expected",
+        [
+            (3.0, 2.5, 100, 100, True),    # drop 0.5 > 0.2 → flag
+            (3.0, 2.85, 100, 100, False),  # drop 0.15 < 0.2 → no flag
+            (3.0, 3.2, 100, 100, False),   # signal rose → no flag
+            (3.0, 2.0, 100, 10, False),    # top1_reads < 20 → skip
+            (3.0, 2.0, 10, 100, False),    # top2_reads < 20 → skip
+            (3.0, 3.0, 100, 100, False),   # flat (zero drop) → no flag (strict >)
+            (3.0, 2.81, 100, 100, False),  # drop 0.19 just under threshold → no flag
+            (3.0, 2.79, 100, 100, True),   # drop 0.21 just over threshold → flag
+        ],
+    )
+    def test_bin_mode_hook_detection(self, top2_signal, top1_signal, top2_reads, top1_reads, expected):
+        df = _build_fit_points(top2_signal, top1_signal, top2_reads, top1_reads)
+        result = detect_hook_effect(df, bin_mode=True, params=DEFAULT_PARAMS)
+        row = result.filter(pl.col("clonotypeKey") == "A")
+        assert bool(row["hook_flag"][0]) is expected
+
+
+class TestHookEffectNoBinMode:
+    """threshold = 0.02 (default no-bin)."""
+
+    @pytest.mark.parametrize(
+        "top2_signal, top1_signal, expected",
+        [
+            (0.05, 0.02, True),    # drop 0.03 > 0.02 → flag
+            (0.05, 0.04, False),   # drop 0.01 < 0.02 → no flag
+            (0.05, 0.031, False),  # drop 0.019 just under threshold → no flag
+            (0.05, 0.029, True),   # drop 0.021 just over threshold → flag
+        ],
+    )
+    def test_no_bin_mode_hook_detection(self, top2_signal, top1_signal, expected):
+        df = _build_fit_points(top2_signal, top1_signal, 100, 100)
+        result = detect_hook_effect(df, bin_mode=False, params=DEFAULT_PARAMS)
+        row = result.filter(pl.col("clonotypeKey") == "A")
+        assert bool(row["hook_flag"][0]) is expected

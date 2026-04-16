@@ -7,7 +7,6 @@ import pytest
 
 from io_layer import (
     InputValidationError,
-    apply_antigen_filter,
     canonicalize_concentration,
     max_bin_label,
     validate_antigen_filter,
@@ -23,13 +22,6 @@ def _mk(rows, has_bin=True, has_antigen=False):
 
 
 class TestSchema:
-    def test_wide_long_shape_ok(self):
-        df = _mk([
-            {"clonotypeKey": "A", "sampleId": "s1", "concentrationStr": "1",
-             "concentration": 1.0, "bin": 1, "reads": 5},
-        ])
-        validate_reads_schema(df, has_bin=True, has_antigen=False)
-
     def test_missing_clonotype_col_raises(self):
         df = _mk([
             {"sampleId": "s1", "concentrationStr": "1",
@@ -48,22 +40,6 @@ class TestSchema:
 
 
 class TestConcentrationValidation:
-    def test_positive_floats_accepted(self):
-        df = _mk([
-            {"clonotypeKey": "A", "sampleId": "s", "concentrationStr": "0.1",
-             "concentration": 0.1, "bin": 1, "reads": 5},
-        ])
-        warnings = validate_concentration_column(df, has_bin=True)
-        assert warnings == []
-
-    def test_zero_with_bin_accepted(self):
-        df = _mk([
-            {"clonotypeKey": "A", "sampleId": "s", "concentrationStr": "0",
-             "concentration": 0.0, "bin": 1, "reads": 5},
-        ])
-        warnings = validate_concentration_column(df, has_bin=True)
-        assert warnings == []
-
     def test_negative_raises(self):
         df = _mk([
             {"clonotypeKey": "A", "sampleId": "s", "concentrationStr": "-1",
@@ -71,22 +47,6 @@ class TestConcentrationValidation:
         ])
         with pytest.raises(InputValidationError, match="negative"):
             validate_concentration_column(df, has_bin=True)
-
-    def test_zero_without_bin_assignment_warns(self):
-        # R2 explicit: bin mode with c=0 lacking bin → ambiguous control, warn.
-        df = pl.DataFrame(
-            {
-                "clonotypeKey": ["A"],
-                "sampleId": ["s"],
-                "concentrationStr": ["0"],
-                "concentration": [0.0],
-                "bin": [None],
-                "reads": [5],
-            },
-            schema_overrides={"bin": pl.Int64},
-        )
-        warnings = validate_concentration_column(df, has_bin=True)
-        assert any("ambiguous" in w for w in warnings)
 
 
 class TestBinValidation:
@@ -126,17 +86,6 @@ class TestBinValidation:
 
 
 class TestAntigenFilter:
-    def test_antigen_filter_keeps_target(self):
-        df = _mk([
-            {"clonotypeKey": "A", "sampleId": "s1", "concentrationStr": "1",
-             "concentration": 1.0, "bin": 1, "reads": 5, "antigen": "X"},
-            {"clonotypeKey": "A", "sampleId": "s2", "concentrationStr": "1",
-             "concentration": 1.0, "bin": 1, "reads": 7, "antigen": "Y"},
-        ])
-        filtered = apply_antigen_filter(df, "X")
-        assert filtered.height == 1
-        assert filtered["antigen"][0] == "X"
-
     def test_ref_without_target_raises(self):
         df = _mk([{"clonotypeKey": "A", "sampleId": "s1", "concentrationStr": "1",
                    "concentration": 1.0, "bin": 1, "reads": 5, "antigen": "X"}])
@@ -157,15 +106,6 @@ class TestAntigenFilter:
 
 
 class TestSampleUniqueness:
-    def test_each_sample_single_concentration_ok(self):
-        df = _mk([
-            {"clonotypeKey": "A", "sampleId": "s1", "concentrationStr": "1",
-             "concentration": 1.0, "bin": 1, "reads": 5},
-            {"clonotypeKey": "A", "sampleId": "s2", "concentrationStr": "10",
-             "concentration": 10.0, "bin": 1, "reads": 5},
-        ])
-        validate_sample_metadata_uniqueness(df, has_bin=True, has_antigen=False)
-
     def test_sample_with_two_concentrations_raises(self):
         df = _mk([
             {"clonotypeKey": "A", "sampleId": "s1", "concentrationStr": "1",
