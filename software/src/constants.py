@@ -17,7 +17,9 @@ FailureReason = Literal[
 ]
 
 # Minimum dynamic range between top and baseline (R10).
-DELTA: float = 0.05
+# Bin mode: δ = 0.5 on bin-index scale; no-bin mode: δ = 0.05 on frequency scale.
+DELTA_BIN: float = 0.5
+DELTA_NO_BIN: float = 0.05
 
 
 @dataclass(frozen=True)

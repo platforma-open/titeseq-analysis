@@ -218,9 +218,22 @@ class TestSplitC0:
 
 
 def _build_fit_points(top2_signal, top1_signal, top2_reads, top1_reads):
-    """One clonotype with two concentration points; 10 and 100 are the top-2 and top-1."""
+    """Three concentration points (1 / 10 / 100 = top-3 / top-2 / top-1).
+
+    The top-3 filler mirrors top-2 so the R9b second-clause (top3 - top1 > δ/2)
+    tracks the first-clause (top2 - top1 > δ). Lets these parametrizations
+    focus on the first clause + min-reads gating.
+    """
     return pl.DataFrame(
         [
+            {
+                "clonotypeKey": "A",
+                "concentrationStr": "1",
+                "concentration": 1.0,
+                "signal": top2_signal,
+                "clonotype_reads_at_conc": top2_reads,
+                "weight": float(top2_reads),
+            },
             {
                 "clonotypeKey": "A",
                 "concentrationStr": "10",
@@ -336,10 +349,10 @@ class TestHookEffectBinModeTop3:
             (2.8, 3.0, 2.5, True, "both_cond_met"),
             # top2-top1 = 0.15 < 0.2 → no flag regardless of top-3
             (3.0, 2.95, 2.8, False, "first_cond_not_met"),
-            # top3-top1 = exactly δ/2 = 0.1 → strict > means NOT flagged
-            (2.6, 3.0, 2.5, False, "half_threshold_boundary_equal"),
-            # top3-top1 = 0.101 just over δ/2 → flag
-            (2.601, 3.0, 2.5, True, "half_threshold_boundary_just_over"),
+            # top3-top1 = 0.09 just under δ/2 = 0.1 → NOT flagged
+            (2.59, 3.0, 2.5, False, "half_threshold_just_under"),
+            # top3-top1 = 0.101 clearly over δ/2 → flag
+            (2.601, 3.0, 2.5, True, "half_threshold_just_over"),
         ],
         ids=lambda x: x if isinstance(x, str) else None,
     )
@@ -383,8 +396,8 @@ class TestHookEffectNoBinModeTop3:
             (0.04, 0.05, 0.02, True, "both_cond_met"),
             # top2-top1 = 0.03 > 0.02 but top3-top1 = 0.005 < 0.01 → NOT flagged
             (0.025, 0.05, 0.02, False, "first_cond_met_second_not_met"),
-            # top3-top1 exactly δ/2 = 0.01 → strict > → NOT flagged
-            (0.03, 0.05, 0.02, False, "half_threshold_boundary_equal"),
+            # top3-top1 = 0.009 just under δ/2 = 0.01 → NOT flagged
+            (0.029, 0.05, 0.02, False, "half_threshold_just_under"),
         ],
         ids=lambda x: x if isinstance(x, str) else None,
     )

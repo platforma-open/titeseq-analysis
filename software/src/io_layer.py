@@ -36,7 +36,8 @@ def validate_reads_schema(df: pl.DataFrame, has_bin: bool, has_antigen: bool) ->
 def validate_concentration_column(df: pl.DataFrame, has_bin: bool) -> list[str]:
     """R2: concentrations must be non-negative floats.
 
-    Returns list of warning strings (e.g. 0 M control without bin assignment in bin mode).
+    Returns list of warning strings (e.g. 0 M control without bin assignment in bin mode;
+    R5 narrow-range warning when non-zero max/min spans less than one order of magnitude).
     Raises InputValidationError on any value < 0.
     """
     exprs = [(pl.col(COL_CONC_VAL) < 0).sum().alias("neg")]
@@ -53,6 +54,22 @@ def validate_concentration_column(df: pl.DataFrame, has_bin: bool) -> list[str]:
             f"{counts['null_bin_at_zero']} rows at concentration 0 lack a bin assignment; "
             "ambiguous 0 M control entries (R2)"
         )
+
+    # R5: narrow dose range may not bracket K_D,app; excludes 0 M control.
+    nonzero = df.filter(pl.col(COL_CONC_VAL) > 0).select(pl.col(COL_CONC_VAL).unique())
+    n_nonzero = nonzero.height
+    if n_nonzero == 1:
+        warnings.append(
+            "only one non-zero concentration present; narrow dose range may not bracket K_D,app (R5)"
+        )
+    elif n_nonzero >= 2:
+        max_c = float(nonzero.select(pl.col(COL_CONC_VAL).max()).item())
+        min_c = float(nonzero.select(pl.col(COL_CONC_VAL).min()).item())
+        if min_c > 0 and max_c / min_c < 10.0:
+            warnings.append(
+                f"non-zero concentrations span {max_c / min_c:.2f}x (less than one order of magnitude); "
+                "narrow dose range may not bracket K_D,app (R5)"
+            )
     return warnings
 
 
@@ -116,6 +133,39 @@ def validate_sample_metadata_uniqueness(df: pl.DataFrame, has_bin: bool, has_ant
         if offenders.height > 0:
             sample_list = offenders[COL_SAMPLE].to_list()[:5]
             raise InputValidationError(f"sampleId must map to a single {c}; violating samples: {sample_list}")
+
+
+def validate_bin_concentration_grid(df: pl.DataFrame) -> list[str]:
+    """R5 sub-clause: warn when (bin, concentration) combos are non-uniformly populated.
+
+    Absent combinations silently reduce the number of bins contributing to mean_bin
+    at that concentration, biasing the result without any flag. The reference grid
+    is every (bin, concentrationStr) pair observed for ANY clonotype; any clonotype
+    with fewer combinations present is flagged.
+    """
+    warnings: list[str] = []
+    if COL_BIN not in df.columns:
+        return warnings
+
+    ref_grid = df.select([COL_BIN, COL_CONC_STR]).unique()
+    n_grid = ref_grid.height
+    if n_grid <= 1:
+        return warnings
+
+    per_clone = (
+        df.select([COL_CLONOTYPE, COL_BIN, COL_CONC_STR])
+        .unique()
+        .group_by(COL_CLONOTYPE)
+        .agg(pl.len().alias("n_combos"))
+    )
+    missing = per_clone.filter(pl.col("n_combos") < n_grid)
+    if missing.height > 0:
+        offenders = missing[COL_CLONOTYPE].to_list()[:5]
+        warnings.append(
+            f"{missing.height} clonotype(s) have missing (bin, concentration) combinations; "
+            f"expected {n_grid}, examples: {offenders} (R5)"
+        )
+    return warnings
 
 
 def canonicalize_concentration(df: pl.DataFrame) -> pl.DataFrame:

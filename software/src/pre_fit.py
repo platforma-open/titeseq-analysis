@@ -84,28 +84,36 @@ def compute_global_baseline(c0_points: pl.DataFrame) -> float | None:
 
 
 def detect_hook_effect(fit_points: pl.DataFrame, bin_mode: bool, params: FitParams) -> pl.DataFrame:
-    """R9b: signal drop from conc rank-2 to conc rank-1 that exceeds threshold flags a hook.
+    """R9b: flag a hook only when BOTH spec conditions hold:
 
-    Both top-2 and top-1 concentration points must have >= hook_effect_min_reads.
-    Uses strict `>` for the drop comparison (drop == threshold does NOT flag).
+      1. (top2_signal - top1_signal) > threshold
+      2. (top3_signal - top1_signal) > threshold / 2
+
+    All three top-rank points must clear `hook_effect_min_reads`; clonotypes with
+    fewer than three non-zero concentration points (null top-3) are not flagged.
+    Strict `>` is used throughout (boundary values do NOT flag).
 
     Returns DataFrame: clonotypeKey, hook_flag (bool).
     """
     threshold = params.hook_effect_threshold_bin if bin_mode else params.hook_effect_threshold_no_bin
     ranked = fit_points.with_columns(
         pl.col(COL_CONC_VAL).rank(method="ordinal", descending=True).over(COL_CLONOTYPE).alias("rank")
-    ).filter(pl.col("rank") <= 2)
+    ).filter(pl.col("rank") <= 3)
 
     wide = ranked.group_by(COL_CLONOTYPE).agg(
         pl.col(SIGNAL).filter(pl.col("rank") == 1).first().alias("top1_signal"),
         pl.col(SIGNAL).filter(pl.col("rank") == 2).first().alias("top2_signal"),
+        pl.col(SIGNAL).filter(pl.col("rank") == 3).first().alias("top3_signal"),
         pl.col(CLONOTYPE_READS_AT_CONC).filter(pl.col("rank") == 1).first().alias("top1_reads"),
         pl.col(CLONOTYPE_READS_AT_CONC).filter(pl.col("rank") == 2).first().alias("top2_reads"),
+        pl.col(CLONOTYPE_READS_AT_CONC).filter(pl.col("rank") == 3).first().alias("top3_reads"),
     )
 
     hook = (
         (pl.col("top1_reads") >= params.hook_effect_min_reads)
         & (pl.col("top2_reads") >= params.hook_effect_min_reads)
+        & (pl.col("top3_reads") >= params.hook_effect_min_reads)
         & ((pl.col("top2_signal") - pl.col("top1_signal")) > threshold)
+        & ((pl.col("top3_signal") - pl.col("top1_signal")) > threshold / 2)
     )
     return wide.with_columns(hook.fill_null(False).alias("hook_flag")).select([COL_CLONOTYPE, "hook_flag"])

@@ -17,7 +17,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.optimize import OptimizeWarning, curve_fit
 
-from constants import DELTA
+from constants import DELTA_BIN, DELTA_NO_BIN
 
 # Parameter bounds for the Hill fit — tuned once, not caller-configurable.
 KD_LO: float = 1e-15
@@ -113,7 +113,7 @@ def fit_one_clonotype(
 
     Returns FitResult with `converged=False, reason="convergence_failure"` on:
       - scipy.curve_fit raising
-      - y dynamic range < DELTA after fit (top − baseline < δ)
+      - top − baseline < mode-specific δ after fit (bin: 0.5, no-bin: 0.05)
     """
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=float)
@@ -122,10 +122,9 @@ def fit_one_clonotype(
     # sigma = 1/sqrt(w); guard against zero weights by treating them as very uncertain.
     sigma = np.where(w > 0, 1.0 / np.sqrt(w), 1e12)
 
+    delta = DELTA_BIN if bin_mode else DELTA_NO_BIN
     amp_hi = _amplitude_upper_bound(bin_mode, max_bin_label)
-    # Lower bound well below log(DELTA) so the solver can land below δ for truly
-    # flat signals; the `top - baseline < DELTA` post-fit check rejects them.
-    amp_lo = math.log(DELTA * 1e-6)
+    amp_lo = math.log(delta)
 
     baseline_known = baseline_fixed is not None
     anchor_for_guesses = baseline_fixed if baseline_known else float(np.min(y))
@@ -171,9 +170,11 @@ def fit_one_clonotype(
         log_kd, n, amp, baseline_out = popt
     y_hat = _hill(x, log_kd, n, amp, baseline_out)
 
-    top_minus_base = math.exp(amp)
-    if top_minus_base < DELTA:
+    # A fit pinned at amp_lo (within FP tolerance) means the data wanted a
+    # dynamic range below δ; spec says reject as convergence_failure.
+    if amp <= amp_lo + 1e-6:
         return _failure()
+    top_minus_base = math.exp(amp)
 
     return FitResult(
         kd=math.exp(log_kd),
