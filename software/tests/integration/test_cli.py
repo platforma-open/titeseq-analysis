@@ -134,12 +134,14 @@ def test_cli_with_params_json(tmp_path):
 
 # Hook-flagged clonotype → non_monotonic_signal branch in run()
 def test_cli_hook_effect_triggers_failure(tmp_path):
-    # Mean bin at top conc drops below prior → hook flag
+    # R9b requires BOTH clauses: (top2-top1 > theta) AND (top3-top1 > theta/2).
+    # Signals must stay elevated at top-3 AND top-2 before dropping at top-1.
     concs = [0.1, 1.0, 10.0, 100.0, 1000.0]
     bins = [1, 2, 3, 4]
     rows = []
-    # Rising until c=100, drops at c=1000
-    targets = [1.5, 2.0, 2.8, 3.6, 2.5]
+    # Top-3 (c=10) and top-2 (c=100) both populate bins {3,4} → signal 3.5;
+    # top-1 (c=1000) populates bins {2,3} → signal 2.5 → drop of 1.0.
+    targets = [1.5, 2.0, 3.5, 3.6, 2.5]
     for i, c in enumerate(concs):
         target = targets[i]
         weights = np.exp(-0.5 * ((np.array(bins, dtype=float) - target) / 0.25) ** 2)
