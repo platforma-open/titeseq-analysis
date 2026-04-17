@@ -108,7 +108,6 @@ wf.body(func(args) {
 		arg("--out-per-clonotype").arg("per_clonotype.tsv").
 		arg("--out-mean-bin").arg("mean_bin.tsv").
 		arg("--out-fitted-mean-bin").arg("fitted_mean_bin.tsv").
-		arg("--workers").arg("auto").
 		saveFile("per_clonotype.tsv").
 		saveFile("mean_bin.tsv").
 		saveFile("fitted_mean_bin.tsv").

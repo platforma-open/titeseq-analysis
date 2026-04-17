@@ -18,9 +18,7 @@ argparse and file I/O.
 
 from __future__ import annotations
 
-import multiprocessing
 import sys
-from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 
 import numpy as np
@@ -57,11 +55,6 @@ from pre_fit import (
     split_c0,
 )
 
-# Process-pool startup on macOS (spawn) costs ~1-2s per worker for scipy import.
-# Below this task count, serial is always faster.
-_PARALLEL_MIN_TASKS: int = 200
-
-
 def _validate_inputs(
     reads: pl.DataFrame,
     *,
@@ -93,15 +86,13 @@ def _fit_all_clonotypes(
     bin_mode: bool,
     max_bin: int | None,
     params: FitParams,
-    workers: int = 1,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Run pre-fit gates, fit all surviving clonotypes, integrate results.
 
     Three phases:
       1. Gate — mark Failed/insufficient_*/non_monotonic_signal without fitting;
          collect (x, y, w) triples + fitted-row context for survivors.
-      2. Execute — dispatch fit_one_clonotype serially or via ProcessPoolExecutor
-         when workers > 1 and the task count justifies pool startup.
+      2. Execute — run fit_one_clonotype serially over the survivor list.
       3. Integrate — classify each FitResult and splat into pre-allocated columns.
 
     Partitions fit_points once (O(N)) instead of filtering per clonotype inside
@@ -156,16 +147,7 @@ def _fit_all_clonotypes(
         bin_mode=bin_mode,
         max_bin_label=max_bin,
     )
-    if workers > 1 and len(xs) >= _PARALLEL_MIN_TASKS:
-        chunksize = max(1, len(xs) // (workers * 4))
-        # Force 'spawn' across platforms — on Linux the default ('fork') inherits
-        # OpenBLAS/MKL thread pools from the parent, which can deadlock or return
-        # wrong results. macOS/Windows already spawn by default.
-        ctx = multiprocessing.get_context("spawn")
-        with ProcessPoolExecutor(max_workers=workers, mp_context=ctx) as ex:
-            fits = list(ex.map(worker, xs, ys, ws, chunksize=chunksize))
-    else:
-        fits = [worker(x, y, w) for x, y, w in zip(xs, ys, ws)]
+    fits = [worker(x, y, w) for x, y, w in zip(xs, ys, ws)]
 
     # Phase 3 — integrate results.
     fitted_keys: list[np.ndarray] = []
@@ -250,14 +232,8 @@ def run(
     params: FitParams = DEFAULT_PARAMS,
     target_antigen: str | None = None,
     antigen_column_ref: str | None = None,
-    workers: int = 1,
 ) -> dict[str, pl.DataFrame]:
-    """Execute the full pipeline on an in-memory reads frame.
-
-    `workers` — passed through to the Hill fit dispatch; 1 (default) keeps
-    fits serial. Pool is engaged only when workers > 1 and the surviving
-    fit count meets the internal minimum.
-    """
+    """Execute the full pipeline on an in-memory reads frame."""
     reads = canonicalize_concentration(reads)
     has_bin = COL_BIN in reads.columns
     has_antigen = COL_ANTIGEN in reads.columns
@@ -295,7 +271,6 @@ def run(
         bin_mode=has_bin,
         max_bin=mbl,
         params=params,
-        workers=workers,
     )
 
     return _build_outputs(per_clonotype, fitted, signal_frame, reads)
