@@ -1,25 +1,363 @@
-// "hello world"
+// Entry template for titeseq-analysis block (affinity profiling).
+// Assembles long-format reads TSV from the abundance PColumn + per-sample
+// metadata, invokes the Python fit-curves binary, and imports the 3 output
+// TSVs into traced PFrames with annotations from pcolumn-spec.md.
+
 wf := import("@platforma-sdk/workflow-tengo:workflow")
 exec := import("@platforma-sdk/workflow-tengo:exec")
-assets:= import("@platforma-sdk/workflow-tengo:assets")
+assets := import("@platforma-sdk/workflow-tengo:assets")
+xsv := import("@platforma-sdk/workflow-tengo:pframes.xsv")
+pframes := import("@platforma-sdk/workflow-tengo:pframes")
+pSpec := import("@platforma-sdk/workflow-tengo:pframes.spec")
+maps := import("@platforma-sdk/workflow-tengo:maps")
+json := import("json")
+
+fitCurvesSw := assets.importSoftware("@platforma-open/platforma-open.titeseq-analysis.software:fit-curves")
+
+setTableProps := func(spec, label, visibility, orderPriority) {
+	visibilityValue := ""
+	if visibility == true || visibility == false {
+		visibilityValue = visibility ? "default" : "optional"
+	} else {
+		visibilityValue = visibility
+	}
+	annotations := {
+		"pl7.app/label": label,
+		"pl7.app/table/visibility": visibilityValue
+	}
+	if !is_undefined(orderPriority) {
+		annotations["pl7.app/table/orderPriority"] = orderPriority
+	}
+	return maps.deepMerge(spec, { annotations: annotations })
+}
+
+wf.prepare(func(args) {
+	bb := wf.createPBundleBuilder()
+	bb.ignoreMissingDomains()
+	bb.addAnchor("abundance", args.abundanceRef)
+
+	bb.addSingle(args.concentrationColumnRef, "concentration")
+
+	if !is_undefined(args.binColumnRef) {
+		bb.addSingle(args.binColumnRef, "bin")
+	}
+	if !is_undefined(args.antigenColumnRef) {
+		bb.addSingle(args.antigenColumnRef, "antigen")
+	}
+
+	return { columns: bb.build() }
+})
 
 wf.body(func(args) {
-	python := exec.builder().
-		software(assets.importSoftware("@platforma-open/platforma-open.titeseq-analysis.software:hello-world-python")).
-		arg(args.name).
-		saveStdoutContent().
-		run()
-	pythonMessage := python.getStdoutContent()
+	blockId := wf.blockId().getDataAsJson()
 
-	tengoMessage := "Hello from Tengo, " + args.name + "!"
+	columns := args.columns
+	abundanceSpec := columns.getSpec("abundance")
+	concSpec := columns.getSpec("concentration")
+
+	hasBin := !is_undefined(args.binColumnRef)
+	hasAntigen := !is_undefined(args.antigenColumnRef)
+
+	unitLabel := ""
+	if !is_undefined(concSpec.annotations) && !is_undefined(concSpec.annotations["pl7.app/label"]) {
+		unitLabel = concSpec.annotations["pl7.app/label"]
+	}
+
+	// Stage B: build long-format reads.tsv.
+	// The tsvFileBuilder joins all columns on their shared axes, so adding
+	// abundance ([sampleId][clonotypeKey]) + concentration ([sampleId]) + bin/antigen ([sampleId])
+	// produces one row per (sampleId, clonotypeKey) with aligned metadata.
+	readsBuilder := pframes.tsvFileBuilder()
+	readsBuilder.setAxisHeader(abundanceSpec.axesSpec[0].name, "sampleId")
+	readsBuilder.setAxisHeader(abundanceSpec.axesSpec[1].name, "clonotypeKey")
+	readsBuilder.add(columns.getColumn("abundance"), { header: "reads" })
+	readsBuilder.add(columns.getColumn("concentration"), { header: "concentration" })
+	if hasBin {
+		readsBuilder.add(columns.getColumn("bin"), { header: "bin" })
+	}
+	if hasAntigen {
+		readsBuilder.add(columns.getColumn("antigen"), { header: "antigen" })
+	}
+	readsBuilder.mem("16GiB")
+	readsBuilder.cpu(1)
+	readsTsv := readsBuilder.build()
+
+	// Stage D: params.json payload. Python auto-detects bin-mode (COL_BIN presence)
+	// and baseline-from-zero (c=0 rows), so only tuning params go here.
+	paramsPayload := {
+		min_reads_per_concentration: args.minReadsPerConcentration,
+		min_concentration_points: args.minConcentrationPoints,
+		r2_threshold_good: args.r2ThresholdGood,
+		r2_threshold_failed: args.r2ThresholdFailed,
+		n_min: args.nMin,
+		n_max: args.nMax,
+		hook_effect_threshold_bin: args.hookEffectThresholdBin,
+		hook_effect_threshold_no_bin: args.hookEffectThresholdNoBin,
+		hook_effect_min_reads: args.hookEffectMinReads
+	}
+
+	// Stage E: exec Python fit-curves.
+	execBuilder := exec.builder().
+		software(fitCurvesSw).
+		mem("16GiB").
+		cpu("auto").
+		writeFile("params.json", json.encode(paramsPayload)).
+		addFile("reads.tsv", readsTsv).
+		arg("--reads").arg("reads.tsv").
+		arg("--params").arg("params.json").
+		arg("--out-per-clonotype").arg("per_clonotype.tsv").
+		arg("--out-mean-bin").arg("mean_bin.tsv").
+		arg("--out-fitted-mean-bin").arg("fitted_mean_bin.tsv").
+		arg("--workers").arg("auto").
+		saveFile("per_clonotype.tsv").
+		saveFile("mean_bin.tsv").
+		saveFile("fitted_mean_bin.tsv").
+		saveStdoutStream()
+
+	if hasAntigen {
+		execBuilder.arg("--antigen-column-ref").arg("antigen")
+		if !is_undefined(args.targetAntigen) && args.targetAntigen != "" {
+			execBuilder.arg("--target-antigen").arg(args.targetAntigen)
+		}
+	}
+
+	fit := execBuilder.run()
+
+	// Shared axis specs for the output PColumns.
+	clonotypeAxisSpec := abundanceSpec.axesSpec[1]
+
+	// Concentration axis is Float (R14) — required for log-scale rendering in Graph Maker.
+	// Block-scoped domain isolates multi-antigen instances from each other.
+	concAnnotations := { "pl7.app/label": "Concentration" }
+	if unitLabel != "" {
+		concAnnotations["pl7.app/axis/unit"] = unitLabel
+	}
+	concAxisSpec := {
+		name: "pl7.app/vdj/concentration",
+		type: "Float",
+		domain: { "pl7.app/block": blockId },
+		annotations: concAnnotations
+	}
+
+	// R19b: swap "Mean bin" → "Clonotype frequency" in no-bin mode.
+	meanBinLabel := "Mean bin"
+	fittedMeanBinLabel := "Fitted mean bin"
+	if !hasBin {
+		meanBinLabel = "Clonotype frequency"
+		fittedMeanBinLabel = "Fitted clonotype frequency"
+	}
+
+	// K_D,app unit annotation propagated from the concentration column label (R2).
+	kdAnnotations := {
+		"pl7.app/label": "K_D,app",
+		"pl7.app/isScore": "true",
+		"pl7.app/score/rankingOrder": "increasing",
+		"pl7.app/table/visibility": "default",
+		"pl7.app/table/orderPriority": "201"
+	}
+	if unitLabel != "" {
+		kdAnnotations["pl7.app/unit"] = unitLabel
+	}
+
+	// Stage F: import per_clonotype.tsv → summary PColumns.
+	// Python writes column `r2`; the output spec name `pl7.app/vdj/curveFitR2` is
+	// what discovery & the UI see, so the rename is invisible downstream.
+	summaryImported := xsv.importFile(fit.getFile("per_clonotype.tsv"), "tsv", {
+		axes: [{
+			column: "clonotypeKey",
+			spec: clonotypeAxisSpec
+		}],
+		columns: [
+			{
+				column: "kd",
+				spec: {
+					name: "pl7.app/vdj/kd",
+					valueType: "Double",
+					domain: { "pl7.app/block": blockId },
+					annotations: kdAnnotations
+				}
+			},
+			{
+				column: "hillCoefficient",
+				spec: {
+					name: "pl7.app/vdj/hillCoefficient",
+					valueType: "Double",
+					domain: { "pl7.app/block": blockId },
+					annotations: {
+						"pl7.app/label": "Hill coefficient",
+						"pl7.app/isScore": "false",
+						"pl7.app/table/visibility": "default",
+						"pl7.app/table/orderPriority": "198"
+					}
+				}
+			},
+			{
+				column: "r2",
+				spec: {
+					name: "pl7.app/vdj/curveFitR2",
+					valueType: "Double",
+					domain: { "pl7.app/block": blockId },
+					annotations: {
+						"pl7.app/label": "Curve fit R²",
+						"pl7.app/isScore": "false",
+						"pl7.app/table/visibility": "default",
+						"pl7.app/table/orderPriority": "199"
+					}
+				}
+			},
+			{
+				column: "affinityClass",
+				spec: {
+					name: "pl7.app/vdj/affinityClass",
+					valueType: "String",
+					domain: { "pl7.app/block": blockId },
+					annotations: {
+						"pl7.app/label": "Affinity class",
+						"pl7.app/isScore": "true",
+						"pl7.app/isDiscreteFilter": "true",
+						"pl7.app/discreteValues": "[\"Good\",\"Partial\",\"Failed\"]",
+						"pl7.app/score/rankingOrder": "decreasing",
+						"pl7.app/score/defaultCutoff": "[\"Good\",\"Partial\"]",
+						"pl7.app/table/visibility": "default",
+						"pl7.app/table/orderPriority": "202"
+					}
+				}
+			},
+			{
+				column: "fitFailureReason",
+				spec: {
+					name: "pl7.app/vdj/fitFailureReason",
+					valueType: "String",
+					domain: { "pl7.app/block": blockId },
+					annotations: {
+						"pl7.app/label": "Fit failure reason",
+						"pl7.app/isScore": "false",
+						"pl7.app/table/visibility": "hidden",
+						"pl7.app/table/orderPriority": "197"
+					}
+				}
+			},
+			{
+				column: "kdOutOfRange",
+				spec: {
+					name: "pl7.app/vdj/kdOutOfRange",
+					valueType: "Boolean",
+					domain: { "pl7.app/block": blockId },
+					annotations: {
+						"pl7.app/label": "K_D,app out of range",
+						"pl7.app/isScore": "false",
+						"pl7.app/table/visibility": "default",
+						"pl7.app/table/orderPriority": "196"
+					}
+				}
+			}
+		],
+		storageFormat: "Parquet",
+		partitionKeyLength: 0
+	}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
+
+	// Stage G: import mean_bin.tsv → meanBin (observed signal).
+	// Python writes `concentrationStr, concentration, meanBin`; the Float `concentration`
+	// column is used as the axis key.
+	meanBinImported := xsv.importFile(fit.getFile("mean_bin.tsv"), "tsv", {
+		axes: [
+			{ column: "clonotypeKey", spec: clonotypeAxisSpec },
+			{ column: "concentration", spec: concAxisSpec }
+		],
+		columns: [
+			{
+				column: "meanBin",
+				spec: {
+					name: "pl7.app/vdj/meanBin",
+					valueType: "Double",
+					domain: { "pl7.app/block": blockId },
+					annotations: {
+						"pl7.app/label": meanBinLabel,
+						"pl7.app/isScore": "false",
+						"pl7.app/table/visibility": "hidden"
+					}
+				}
+			}
+		],
+		storageFormat: "Parquet",
+		partitionKeyLength: 0
+	}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
+
+	// Stage G2: import fitted_mean_bin.tsv → fittedMeanBin (curve overlay).
+	fittedMeanBinImported := xsv.importFile(fit.getFile("fitted_mean_bin.tsv"), "tsv", {
+		axes: [
+			{ column: "clonotypeKey", spec: clonotypeAxisSpec },
+			{ column: "concentration", spec: concAxisSpec }
+		],
+		columns: [
+			{
+				column: "fittedMeanBin",
+				spec: {
+					name: "pl7.app/vdj/fittedMeanBin",
+					valueType: "Double",
+					domain: { "pl7.app/block": blockId },
+					annotations: {
+						"pl7.app/label": fittedMeanBinLabel,
+						"pl7.app/isScore": "false",
+						"pl7.app/table/visibility": "hidden"
+					}
+				}
+			}
+		],
+		storageFormat: "Parquet",
+		partitionKeyLength: 0
+	}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
+
+	// Stage H: trace injection. `makeTrace` bundles the upstream abundance provenance
+	// with a self-descriptor; `trace.inject` rewrites only the small spec resources
+	// (data resources are untouched thanks to splitDataAndSpec).
+	traceLabel := args.customBlockLabel
+	if traceLabel == "" {
+		traceLabel = args.defaultBlockLabel
+	}
+	trace := pSpec.makeTrace(abundanceSpec, {
+		type: "milaboratories.titeseq-analysis",
+		importance: 30,
+		label: traceLabel
+	})
+
+	// Stage I: traced PFrames.
+	summaryPfb := pframes.pFrameBuilder()
+	for k, v in summaryImported {
+		summaryPfb.add(k, trace.inject(v.spec), v.data)
+	}
+	summaryPf := summaryPfb.build()
+
+	signalPfb := pframes.pFrameBuilder()
+	for k, v in meanBinImported {
+		signalPfb.add(k, trace.inject(v.spec), v.data)
+	}
+	for k, v in fittedMeanBinImported {
+		signalPfb.add(k, trace.inject(v.spec), v.data)
+	}
+	signalPf := signalPfb.build()
+
+	// Single export bundle for Lead Selection discovery (R20, R21).
+	exportPfb := pframes.pFrameBuilder()
+	for k, v in summaryImported {
+		exportPfb.add(k, trace.inject(v.spec), v.data)
+	}
+	for k, v in meanBinImported {
+		exportPfb.add(k, trace.inject(v.spec), v.data)
+	}
+	for k, v in fittedMeanBinImported {
+		exportPfb.add(k, trace.inject(v.spec), v.data)
+	}
+	exportPf := exportPfb.build()
 
 	return {
 		outputs: {
-			pythonMessage: pythonMessage,
-			tengoMessage: tengoMessage
+			summaryPf: pframes.exportFrame(summaryPf),
+			signalPf: pframes.exportFrame(signalPf),
+			logHandle: fit.getStdoutStream()
 		},
-
-		exports: {}
+		exports: {
+			pf: exportPf
+		}
 	}
 })
-

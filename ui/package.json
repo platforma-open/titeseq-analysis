@@ -10,7 +10,9 @@
     "check": "ts-builder check --target browser"
   },
   "dependencies": {
+    "@milaboratories/graph-maker": "catalog:",
     "@platforma-open/platforma-open.titeseq-analysis.model": "workspace:*",
+    "@platforma-sdk/model": "catalog:",
     "@platforma-sdk/ui-vue": "catalog:"
   },
   "devDependencies": {

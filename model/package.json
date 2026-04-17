@@ -20,6 +20,7 @@
     "check": "ts-builder check --target block-model"
   },
   "dependencies": {
+    "@milaboratories/graph-maker": "catalog:",
     "@platforma-sdk/model": "catalog:"
   },
   "devDependencies": {

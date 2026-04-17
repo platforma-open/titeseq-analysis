@@ -1,0 +1,63 @@
+<script setup lang="ts">
+import type { PredefinedGraphOption } from "@milaboratories/graph-maker";
+import { GraphMaker } from "@milaboratories/graph-maker";
+import type { PColumnIdAndSpec } from "@platforma-sdk/model";
+import { PlAlert, PlBlockPage } from "@platforma-sdk/ui-vue";
+import { computed } from "vue";
+import { useApp } from "../app";
+import PageHeader from "../components/PageHeader.vue";
+
+const app = useApp();
+
+const binMode = computed(() => app.model.outputs.binMode === true);
+const isEmpty = computed(() => app.model.outputs.isEmpty === true);
+
+const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | undefined => {
+  const pCols = app.model.outputs.titrationCurvesPfCols;
+  if (!pCols) return undefined;
+
+  const meanBin = pCols.find((p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/meanBin");
+  if (!meanBin) return undefined;
+
+  const concAxis = meanBin.spec.axesSpec.find((a) => a.name === "pl7.app/vdj/concentration");
+  const clonotypeAxis = meanBin.spec.axesSpec.find(
+    (a) => a.name === "pl7.app/vdj/clonotypeKey" || a.name === "pl7.app/vdj/scClonotypeKey",
+  );
+  if (!concAxis || !clonotypeAxis) return undefined;
+
+  return [
+    { inputName: "x", selectedSource: concAxis },
+    { inputName: "y", selectedSource: meanBin.spec },
+    { inputName: "grouping", selectedSource: clonotypeAxis },
+  ];
+});
+</script>
+
+<template>
+  <PlBlockPage
+    v-model:subtitle="app.model.args.customBlockLabel"
+    :subtitle-placeholder="app.model.args.defaultBlockLabel"
+    title="Titration Curves"
+  >
+    <template #append>
+      <PageHeader />
+    </template>
+
+    <PlAlert v-if="!binMode" type="warn">
+      No-bin mode: K_D,app values reflect clonotype frequency shifts, not fluorescence. They are not
+      comparable to bin-derived results — do not mix in the same Lead Selection ranking.
+    </PlAlert>
+    <PlAlert v-if="isEmpty" type="warn">
+      All clonotypes failed to fit. Loosen thresholds in Settings or inspect the fit log.
+    </PlAlert>
+
+    <GraphMaker
+      v-model="app.model.ui.graphStateTitrationCurves"
+      chart-type="scatterplot"
+      :data-state-key="app.model.outputs.titrationCurvesPf"
+      :p-frame="app.model.outputs.titrationCurvesPf"
+      :default-options="defaultOptions"
+      :status-text="{ noPframe: { title: 'Configure inputs in Settings and run the block.' } }"
+    />
+  </PlBlockPage>
+</template>

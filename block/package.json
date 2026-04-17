@@ -24,14 +24,14 @@
       "ui": "@platforma-open/platforma-open.titeseq-analysis.ui/dist"
     },
     "meta": {
-      "title": "Block Title",
+      "title": "Titeseq Analysis — Affinity Profiling",
       "logo": "file:../logos/block-logo.png",
       "url": "https://github.com/platforma-open/platforma-open.titeseq-analysis",
       "support": "mailto:support@milaboratories.com",
-      "description": "Simple Hello World block that can be used as a boilerplate for newly created blocks.",
+      "description": "Reconstruct K_D,app from titeseq reads by fitting a Hill equation to mean-bin signal vs antigen concentration; rank lead variants by measured binding affinity.",
       "longDescription": "file:../docs/description.md",
       "changelog": "file:../CHANGELOG.md",
-      "tags": ["tutorial"],
+      "tags": ["antibody-discovery", "affinity", "titeseq", "vdj"],
       "organization": {
         "name": "MiLaboratories Inc",
         "url": "https://milaboratories.com/",
