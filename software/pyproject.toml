@@ -22,6 +22,17 @@ markers = [
     "hot_path: perf smoke tests",
 ]
 
+[tool.coverage.run]
+source = ["src"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
+
 [tool.ruff]
 exclude = [
     ".bzr", ".direnv", ".eggs", ".git", ".git-rewrite", ".hg",
