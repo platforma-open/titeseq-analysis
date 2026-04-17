@@ -41,7 +41,13 @@ from io_layer import (
     validate_sample_metadata_uniqueness,
 )
 from normalization import SIGNAL, normalize
-from output_build import FITTED_MEAN_BIN_SCHEMA, PER_CLONOTYPE_SCHEMA, build_mean_bin_frame, flag_kd_out_of_range
+from output_build import (
+    FITTED_MEAN_BIN_SCHEMA,
+    PER_CLONOTYPE_SCHEMA,
+    add_diagnostic_plot_columns,
+    build_mean_bin_frame,
+    flag_kd_out_of_range,
+)
 from pre_fit import (
     WEIGHT,
     apply_floor_and_weights,
@@ -228,6 +234,8 @@ def _build_outputs(
     )
     if min_max["min"] is not None:
         per_clonotype = flag_kd_out_of_range(per_clonotype, float(min_max["min"]), float(min_max["max"]))
+    max_c = float(min_max["max"]) if min_max["max"] is not None else 1.0
+    per_clonotype = add_diagnostic_plot_columns(per_clonotype, max_c)
 
     return {
         "per_clonotype": per_clonotype,

@@ -35,6 +35,25 @@ def flag_kd_out_of_range(frame: pl.DataFrame, min_concentration: float, max_conc
     )
 
 
+def add_diagnostic_plot_columns(frame: pl.DataFrame, max_concentration: float) -> pl.DataFrame:
+    """R17: append plot-only positions so Failed rows with null K_D render on the scatter.
+
+    kdPlotPosition places null K_D at one decade right of the fitted range on a log axis;
+    hillPlotPosition parks null Hill coefficients at 1.0 (centered in the typical [0.5, 2.0] band).
+    Both columns are diagnostic — not for reporting — and never null.
+    """
+    return frame.with_columns(
+        pl.when(pl.col("kd").is_null())
+        .then(max_concentration * 10.0)
+        .otherwise(pl.col("kd"))
+        .alias("kdPlotPosition"),
+        pl.when(pl.col("hillCoefficient").is_null())
+        .then(1.0)
+        .otherwise(pl.col("hillCoefficient"))
+        .alias("hillPlotPosition"),
+    )
+
+
 def build_mean_bin_frame(signal_frame: pl.DataFrame) -> pl.DataFrame:
     """R14: per-(clonotype, concentration) observed signal (mean_bin or frequency).
 

@@ -250,6 +250,32 @@ wf.body(func(args) {
 						"pl7.app/table/orderPriority": "196"
 					}
 				}
+			},
+			{
+				column: "kdPlotPosition",
+				spec: {
+					name: "pl7.app/vdj/kdPlotPosition",
+					valueType: "Double",
+					domain: { "pl7.app/block": blockId },
+					annotations: {
+						"pl7.app/label": "K_D,app (plot position)",
+						"pl7.app/isScore": "false",
+						"pl7.app/table/visibility": "hidden"
+					}
+				}
+			},
+			{
+				column: "hillPlotPosition",
+				spec: {
+					name: "pl7.app/vdj/hillPlotPosition",
+					valueType: "Double",
+					domain: { "pl7.app/block": blockId },
+					annotations: {
+						"pl7.app/label": "Hill coefficient (plot position)",
+						"pl7.app/isScore": "false",
+						"pl7.app/table/visibility": "hidden"
+					}
+				}
 			}
 		],
 		storageFormat: "Parquet",

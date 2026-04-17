@@ -13,18 +13,27 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
   const pCols = app.model.outputs.summaryPfCols;
   if (!pCols) return undefined;
 
-  const kd = pCols.find((p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/kd");
-  const hill = pCols.find((p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/hillCoefficient");
+  const kdPlot = pCols.find((p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/kdPlotPosition");
+  const hillPlot = pCols.find(
+    (p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/hillPlotPosition",
+  );
   const affinityClass = pCols.find(
     (p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/affinityClass",
   );
-  if (!kd || !hill || !affinityClass) return undefined;
+  const failureReason = pCols.find(
+    (p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/fitFailureReason",
+  );
+  if (!kdPlot || !hillPlot || !affinityClass) return undefined;
 
-  return [
-    { inputName: "x", selectedSource: kd.spec },
-    { inputName: "y", selectedSource: hill.spec },
+  const options: PredefinedGraphOption<"scatterplot">[] = [
+    { inputName: "x", selectedSource: kdPlot.spec },
+    { inputName: "y", selectedSource: hillPlot.spec },
     { inputName: "grouping", selectedSource: affinityClass.spec },
   ];
+  if (failureReason) {
+    options.push({ inputName: "shape", selectedSource: failureReason.spec });
+  }
+  return options;
 });
 </script>
 
