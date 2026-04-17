@@ -281,3 +281,114 @@ class TestHookEffectNoBinMode:
         result = detect_hook_effect(df, bin_mode=False, params=DEFAULT_PARAMS)
         row = result.filter(pl.col("clonotypeKey") == "A")
         assert bool(row["hook_flag"][0]) is expected
+
+
+def _build_fit_points_3(
+    top3_signal,
+    top2_signal,
+    top1_signal,
+    top3_reads=100,
+    top2_reads=100,
+    top1_reads=100,
+):
+    """One clonotype with three concentration points at 1 / 10 / 100 (top-3 / top-2 / top-1)."""
+    return pl.DataFrame(
+        [
+            {
+                "clonotypeKey": "A",
+                "concentrationStr": "1",
+                "concentration": 1.0,
+                "signal": top3_signal,
+                "clonotype_reads_at_conc": top3_reads,
+                "weight": float(top3_reads),
+            },
+            {
+                "clonotypeKey": "A",
+                "concentrationStr": "10",
+                "concentration": 10.0,
+                "signal": top2_signal,
+                "clonotype_reads_at_conc": top2_reads,
+                "weight": float(top2_reads),
+            },
+            {
+                "clonotypeKey": "A",
+                "concentrationStr": "100",
+                "concentration": 100.0,
+                "signal": top1_signal,
+                "clonotype_reads_at_conc": top1_reads,
+                "weight": float(top1_reads),
+            },
+        ]
+    )
+
+
+class TestHookEffectBinModeTop3:
+    """R9b (bin mode, δ=0.2): flag only when BOTH top2-top1 > δ AND top3-top1 > δ/2."""
+
+    # top2-top1 > δ alone is not enough — the top-3 clause guards against
+    # genuine dose-response curves that dip only at the very top concentration.
+    @pytest.mark.parametrize(
+        "top3, top2, top1, expected, case",
+        [
+            # top2-top1 = 0.5 > 0.2 (first clause passes), top3-top1 = 0.02 ≤ 0.1 (second fails)
+            (2.52, 3.0, 2.5, False, "first_cond_met_second_not_met"),
+            # top2-top1 = 0.5 > 0.2, top3-top1 = 0.3 > 0.1 → flag
+            (2.8, 3.0, 2.5, True, "both_cond_met"),
+            # top2-top1 = 0.15 < 0.2 → no flag regardless of top-3
+            (3.0, 2.95, 2.8, False, "first_cond_not_met"),
+            # top3-top1 = exactly δ/2 = 0.1 → strict > means NOT flagged
+            (2.6, 3.0, 2.5, False, "half_threshold_boundary_equal"),
+            # top3-top1 = 0.101 just over δ/2 → flag
+            (2.601, 3.0, 2.5, True, "half_threshold_boundary_just_over"),
+        ],
+        ids=lambda x: x if isinstance(x, str) else None,
+    )
+    def test_bin_mode_top3_clause(self, top3, top2, top1, expected, case):
+        df = _build_fit_points_3(top3, top2, top1)
+        result = detect_hook_effect(df, bin_mode=True, params=DEFAULT_PARAMS)
+        assert bool(result.filter(pl.col("clonotypeKey") == "A")["hook_flag"][0]) is expected, case
+
+    # Spec R9b: min-reads floor applies to the top-1, top-2, AND top-3 points.
+    # If any of the three is below floor the check is skipped entirely.
+    @pytest.mark.parametrize(
+        "top3_reads, top2_reads, top1_reads, expected",
+        [
+            (100, 100, 100, True),  # all ≥ 20 → evaluate; drop qualifies under both clauses
+            (10, 100, 100, False),  # top-3 below floor → skip
+            (100, 10, 100, False),  # top-2 below floor → skip
+            (100, 100, 10, False),  # top-1 below floor → skip
+        ],
+    )
+    def test_min_reads_gate_extends_to_top3(self, top3_reads, top2_reads, top1_reads, expected):
+        # Signals chosen so both spec conditions are satisfied when the gate allows.
+        df = _build_fit_points_3(
+            2.8,
+            3.0,
+            2.5,
+            top3_reads=top3_reads,
+            top2_reads=top2_reads,
+            top1_reads=top1_reads,
+        )
+        result = detect_hook_effect(df, bin_mode=True, params=DEFAULT_PARAMS)
+        assert bool(result.filter(pl.col("clonotypeKey") == "A")["hook_flag"][0]) is expected
+
+
+class TestHookEffectNoBinModeTop3:
+    """R9b (no-bin mode, δ=0.02): same two-clause logic at a smaller scale."""
+
+    @pytest.mark.parametrize(
+        "top3, top2, top1, expected, case",
+        [
+            # top2-top1 = 0.03 > 0.02 AND top3-top1 = 0.02 > 0.01 → flag
+            (0.04, 0.05, 0.02, True, "both_cond_met"),
+            # top2-top1 = 0.03 > 0.02 but top3-top1 = 0.005 < 0.01 → NOT flagged
+            (0.025, 0.05, 0.02, False, "first_cond_met_second_not_met"),
+            # top3-top1 exactly δ/2 = 0.01 → strict > → NOT flagged
+            (0.03, 0.05, 0.02, False, "half_threshold_boundary_equal"),
+        ],
+        ids=lambda x: x if isinstance(x, str) else None,
+    )
+    def test_no_bin_mode_top3_clause(self, top3, top2, top1, expected, case):
+        df = _build_fit_points_3(top3, top2, top1)
+        result = detect_hook_effect(df, bin_mode=False, params=DEFAULT_PARAMS)
+        assert bool(result.filter(pl.col("clonotypeKey") == "A")["hook_flag"][0]) is expected, case

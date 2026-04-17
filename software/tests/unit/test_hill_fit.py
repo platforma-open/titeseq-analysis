@@ -122,3 +122,66 @@ class TestHillFitFailureModes:
         fit = fit_one_clonotype(x, y, w, baseline_fixed=1.0, bin_mode=True, max_bin_label=8)
         assert fit.converged is False
         assert fit.reason == "convergence_failure"
+
+
+class TestDeltaDynamicRangeGate:
+    """R10: `top − baseline` must be ≥ mode-specific δ.
+
+    Spec: δ_bin = 0.5, δ_no_bin = 0.05. Fits whose true dynamic range falls
+    below the mode's δ must be rejected as convergence_failure; fits above
+    must converge.
+    """
+
+    @pytest.mark.parametrize(
+        "bin_mode, amplitude, should_converge",
+        [
+            # Bin mode, δ = 0.5:
+            (True, math.log(0.3), False),  # 0.3 < 0.5 → reject (current code ACCEPTS; catches bug)
+            (True, math.log(0.6), True),  # 0.6 ≥ 0.5 → accept
+            (True, math.log(2.0), True),  # healthy signal
+            # No-bin mode, δ = 0.05:
+            (False, math.log(0.03), False),  # 0.03 < 0.05 → reject
+            (False, math.log(0.08), True),  # 0.08 ≥ 0.05 → accept
+        ],
+    )
+    def test_mode_specific_delta_gate(self, bin_mode, amplitude, should_converge):
+        baseline = 1.0 if bin_mode else 0.01
+        max_bin_label = 8 if bin_mode else None
+        x = LOG_CONCS
+        y = hill_truth(x, baseline, amplitude, kd=10.0, n=1.0)
+        w = np.ones_like(x) * 100.0
+
+        fit = fit_one_clonotype(
+            x, y, w, baseline_fixed=baseline, bin_mode=bin_mode, max_bin_label=max_bin_label
+        )
+        assert fit.converged is should_converge, (
+            f"{'bin' if bin_mode else 'no-bin'} amp={math.exp(amplitude):.3f}: "
+            f"expected converged={should_converge}, got {fit.converged}"
+        )
+        if not should_converge:
+            assert fit.reason == "convergence_failure"
+
+
+class TestAmplitudeBoundsRespected:
+    """R10 reparametrization: every CONVERGED fit must have top − baseline ≥ δ_mode.
+
+    Belt-and-braces invariant — guards against future refactors of the amp_lo
+    solver bound drifting back below the spec minimum. Complements TestDeltaDynamicRangeGate.
+    """
+
+    @pytest.mark.parametrize("bin_mode, delta_expected", [(True, 0.5), (False, 0.05)])
+    def test_converged_top_minus_baseline_ge_delta(self, bin_mode, delta_expected):
+        baseline = 1.0 if bin_mode else 0.01
+        max_bin_label = 8 if bin_mode else None
+        amplitude = math.log(1.5) if bin_mode else math.log(0.3)
+        x = LOG_CONCS
+        y = hill_truth(x, baseline, amplitude, kd=10.0, n=1.0)
+        w = np.ones_like(x) * 100.0
+
+        fit = fit_one_clonotype(
+            x, y, w, baseline_fixed=baseline, bin_mode=bin_mode, max_bin_label=max_bin_label
+        )
+        assert fit.converged is True
+        assert (fit.top - fit.baseline) >= delta_expected - 1e-9, (
+            f"top − baseline = {fit.top - fit.baseline:.4f} violates δ = {delta_expected}"
+        )
