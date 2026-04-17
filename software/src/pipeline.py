@@ -35,6 +35,7 @@ from io_layer import (
     max_bin_label,
     validate_antigen_filter,
     validate_bin_column,
+    validate_bin_concentration_grid,
     validate_concentration_column,
     validate_reads_schema,
     validate_sample_metadata_uniqueness,
@@ -69,6 +70,7 @@ def _validate_inputs(
     warnings += validate_concentration_column(reads, has_bin=has_bin)
     if has_bin:
         validate_bin_column(reads)
+        warnings += validate_bin_concentration_grid(reads)
     warnings += validate_antigen_filter(reads, antigen_column_ref, target_antigen)
     validate_sample_metadata_uniqueness(reads, has_bin=has_bin, has_antigen=has_antigen)
     for w in warnings:

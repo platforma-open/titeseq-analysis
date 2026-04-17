@@ -331,20 +331,9 @@ class TestNarrowConcentrationRangeWarning:
         ), f"warnings={warnings}"
 
 
-# R5 sub-clause: validate_bin_concentration_grid is not yet implemented.
-# Once added to io_layer, these tests exercise it. Until then they are skipped.
-try:
-    from io_layer import validate_bin_concentration_grid as _validate_grid  # type: ignore
-
-    _HAS_GRID_VALIDATOR = True
-except ImportError:
-    _HAS_GRID_VALIDATOR = False
+from io_layer import validate_bin_concentration_grid as _validate_grid
 
 
-@pytest.mark.skipif(
-    not _HAS_GRID_VALIDATOR,
-    reason="validate_bin_concentration_grid not implemented yet (R5 sub-clause)",
-)
 class TestBinConcentrationGrid:
     """R5 sub-clause: warn when (bin, concentration) combos are non-uniformly populated.
 
