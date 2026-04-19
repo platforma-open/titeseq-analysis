@@ -9,40 +9,22 @@ assets := import("@platforma-sdk/workflow-tengo:assets")
 xsv := import("@platforma-sdk/workflow-tengo:pframes.xsv")
 pframes := import("@platforma-sdk/workflow-tengo:pframes")
 pSpec := import("@platforma-sdk/workflow-tengo:pframes.spec")
-maps := import("@platforma-sdk/workflow-tengo:maps")
 json := import("json")
 
 fitCurvesSw := assets.importSoftware("@platforma-open/platforma-open.titeseq-analysis.software:fit-curves")
-
-setTableProps := func(spec, label, visibility, orderPriority) {
-	visibilityValue := ""
-	if visibility == true || visibility == false {
-		visibilityValue = visibility ? "default" : "optional"
-	} else {
-		visibilityValue = visibility
-	}
-	annotations := {
-		"pl7.app/label": label,
-		"pl7.app/table/visibility": visibilityValue
-	}
-	if !is_undefined(orderPriority) {
-		annotations["pl7.app/table/orderPriority"] = orderPriority
-	}
-	return maps.deepMerge(spec, { annotations: annotations })
-}
 
 wf.prepare(func(args) {
 	bb := wf.createPBundleBuilder()
 	bb.ignoreMissingDomains()
 	bb.addAnchor("abundance", args.abundanceRef)
 
-	bb.addSingle(args.concentrationColumnRef, "concentration")
+	bb.addAnchor("concentration", args.concentrationColumnRef)
 
 	if !is_undefined(args.binColumnRef) {
-		bb.addSingle(args.binColumnRef, "bin")
+		bb.addAnchor("bin", args.binColumnRef)
 	}
 	if !is_undefined(args.antigenColumnRef) {
-		bb.addSingle(args.antigenColumnRef, "antigen")
+		bb.addAnchor("antigen", args.antigenColumnRef)
 	}
 
 	return { columns: bb.build() }
@@ -100,7 +82,7 @@ wf.body(func(args) {
 	execBuilder := exec.builder().
 		software(fitCurvesSw).
 		mem("16GiB").
-		cpu("auto").
+		cpu(4).
 		writeFile("params.json", json.encode(paramsPayload)).
 		addFile("reads.tsv", readsTsv).
 		arg("--reads").arg("reads.tsv").
@@ -133,7 +115,7 @@ wf.body(func(args) {
 	}
 	concAxisSpec := {
 		name: "pl7.app/vdj/concentration",
-		type: "Float",
+		type: "String",
 		domain: { "pl7.app/block": blockId },
 		annotations: concAnnotations
 	}
@@ -240,7 +222,7 @@ wf.body(func(args) {
 				column: "kdOutOfRange",
 				spec: {
 					name: "pl7.app/vdj/kdOutOfRange",
-					valueType: "Boolean",
+					valueType: "String",
 					domain: { "pl7.app/block": blockId },
 					annotations: {
 						"pl7.app/label": "K_D,app out of range",
@@ -287,7 +269,7 @@ wf.body(func(args) {
 	meanBinImported := xsv.importFile(fit.getFile("mean_bin.tsv"), "tsv", {
 		axes: [
 			{ column: "clonotypeKey", spec: clonotypeAxisSpec },
-			{ column: "concentration", spec: concAxisSpec }
+			{ column: "concentrationStr", spec: concAxisSpec }
 		],
 		columns: [
 			{
@@ -312,7 +294,7 @@ wf.body(func(args) {
 	fittedMeanBinImported := xsv.importFile(fit.getFile("fitted_mean_bin.tsv"), "tsv", {
 		axes: [
 			{ column: "clonotypeKey", spec: clonotypeAxisSpec },
-			{ column: "concentration", spec: concAxisSpec }
+			{ column: "concentrationStr", spec: concAxisSpec }
 		],
 		columns: [
 			{
