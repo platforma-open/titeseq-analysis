@@ -28,10 +28,10 @@
       "logo": "file:../logos/block-logo.png",
       "url": "https://github.com/platforma-open/platforma-open.titeseq-analysis",
       "support": "mailto:support@milaboratories.com",
-      "description": "Reconstruct K_D,app from titeseq reads by fitting a Hill equation to mean-bin signal vs antigen concentration; rank lead variants by measured binding affinity.",
+      "description": "Estimates apparent binding affinity (K_D,app) of antibody variants from titeseq reads by fitting a Hill equation to mean-bin signal across antigen concentrations.",
       "longDescription": "file:../docs/description.md",
       "changelog": "file:../CHANGELOG.md",
-      "tags": ["antibody-discovery", "affinity", "titeseq", "vdj"],
+      "tags": ["airr", "downstream", "affinity", "titeseq"],
       "organization": {
         "name": "MiLaboratories Inc",
         "url": "https://milaboratories.com/",
