@@ -174,4 +174,6 @@ def canonicalize_concentration(df: pl.DataFrame) -> pl.DataFrame:
         df = df.with_columns(pl.col(COL_CONC_VAL).cast(pl.Utf8).alias(COL_CONC_STR))
     if COL_CONC_VAL not in df.columns:
         df = df.with_columns(pl.col(COL_CONC_STR).cast(pl.Float64).alias(COL_CONC_VAL))
+    if df.schema[COL_CONC_VAL] != pl.Float64:
+        df = df.with_columns(pl.col(COL_CONC_VAL).cast(pl.Float64))
     return df
