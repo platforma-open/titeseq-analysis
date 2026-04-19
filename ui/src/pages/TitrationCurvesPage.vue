@@ -35,8 +35,8 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
 
 <template>
   <PlBlockPage
-    v-model:subtitle="app.model.args.customBlockLabel"
-    :subtitle-placeholder="app.model.args.defaultBlockLabel"
+    v-model:subtitle="app.model.data.customBlockLabel"
+    :subtitle-placeholder="app.model.data.defaultBlockLabel"
     title="Titration Curves"
   >
     <template #append>
@@ -48,16 +48,18 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
       comparable to bin-derived results — do not mix in the same Lead Selection ranking.
     </PlAlert>
     <PlAlert v-if="isEmpty" type="warn">
-      All clonotypes failed to fit. Loosen thresholds in Settings or inspect the fit log.
+      All clonotypes failed to fit. Loosen thresholds via Inputs or inspect the fit log.
     </PlAlert>
 
     <GraphMaker
-      v-model="app.model.ui.graphStateTitrationCurves"
+      v-model="app.model.data.graphStateTitrationCurves"
       chart-type="scatterplot"
       :data-state-key="app.model.outputs.titrationCurvesPf"
       :p-frame="app.model.outputs.titrationCurvesPf"
       :default-options="defaultOptions"
-      :status-text="{ noPframe: { title: 'Configure inputs in Settings and run the block.' } }"
+      :status-text="{
+        noPframe: { title: 'Configure inputs on the Overview tab and run the block.' },
+      }"
     />
   </PlBlockPage>
 </template>

@@ -7,7 +7,8 @@ import type {
   PlRef,
 } from "@platforma-sdk/model";
 import {
-  BlockModel,
+  BlockModelV3,
+  DataModelBuilder,
   createPFrameForGraphs,
   createPlDataTableStateV2,
   createPlDataTableV2,
@@ -43,7 +44,7 @@ export type BlockArgs = {
   customBlockLabel: string;
 };
 
-export type UiState = {
+export type BlockData = BlockArgs & {
   tableState: PlDataTableStateV2;
   graphStateTitrationCurves: GraphMakerState;
   graphStateKDHistogram: GraphMakerState;
@@ -51,8 +52,26 @@ export type UiState = {
   settingsOpen: boolean;
 };
 
-function getDefaultBlockArgs(): BlockArgs {
-  return {
+type LegacyUiState = {
+  tableState: PlDataTableStateV2;
+  graphStateTitrationCurves: GraphMakerState;
+  graphStateKDHistogram: GraphMakerState;
+  graphStateAffinityVsFit: GraphMakerState;
+  settingsOpen: boolean;
+};
+
+const dataModel = new DataModelBuilder()
+  .from<BlockData>("v1")
+  .upgradeLegacy<BlockArgs, LegacyUiState>(({ args, uiState }) => ({
+    ...args,
+    ...uiState,
+  }))
+  .init(() => ({
+    abundanceRef: undefined,
+    concentrationColumnRef: undefined,
+    binColumnRef: undefined,
+    antigenColumnRef: undefined,
+    targetAntigen: undefined,
     minReadsPerConcentration: 3,
     minConcentrationPoints: 5,
     r2ThresholdGood: 0.8,
@@ -64,22 +83,6 @@ function getDefaultBlockArgs(): BlockArgs {
     hookEffectMinReads: 20,
     defaultBlockLabel: "Titeseq Analysis",
     customBlockLabel: "",
-  };
-}
-
-function isNumericValueType(vt: string | undefined): boolean {
-  return vt === "Int" || vt === "Long" || vt === "Float" || vt === "Double";
-}
-
-function isIntegerValueType(vt: string | undefined): boolean {
-  return vt === "Int" || vt === "Long";
-}
-
-export const model = BlockModel.create()
-
-  .withArgs<BlockArgs>(getDefaultBlockArgs())
-
-  .withUiState<UiState>({
     tableState: createPlDataTableStateV2(),
     graphStateTitrationCurves: {
       title: "Titration Curves",
@@ -121,25 +124,55 @@ export const model = BlockModel.create()
         },
       },
     },
-    settingsOpen: true,
+    settingsOpen: false,
+  }));
+
+function isNumericValueType(vt: string | undefined): boolean {
+  return vt === "Int" || vt === "Long" || vt === "Float" || vt === "Double";
+}
+
+function isIntegerValueType(vt: string | undefined): boolean {
+  return vt === "Int" || vt === "Long";
+}
+
+export const model = BlockModelV3.create(dataModel)
+
+  .args<BlockArgs>((data) => {
+    if (data.abundanceRef === undefined) throw new Error("Abundance column is required");
+    if (data.concentrationColumnRef === undefined)
+      throw new Error("Concentration column is required");
+    if (data.antigenColumnRef !== undefined && !data.targetAntigen)
+      throw new Error("Target antigen is required when an antigen column is selected");
+    if (data.r2ThresholdFailed > data.r2ThresholdGood)
+      throw new Error("Failed R² threshold must be ≤ Good R² threshold");
+    if (data.nMin >= data.nMax) throw new Error("Hill coefficient nMin must be < nMax");
+    if (data.r2ThresholdGood < 0 || data.r2ThresholdGood > 1)
+      throw new Error("R² threshold (Good) out of range");
+    if (data.r2ThresholdFailed < 0 || data.r2ThresholdFailed > 1)
+      throw new Error("R² threshold (Failed) out of range");
+    if (data.minReadsPerConcentration < 1)
+      throw new Error("Min reads per concentration must be ≥ 1");
+    if (data.minConcentrationPoints < 3) throw new Error("Min concentration points must be ≥ 3");
+    return {
+      abundanceRef: data.abundanceRef,
+      concentrationColumnRef: data.concentrationColumnRef,
+      binColumnRef: data.binColumnRef,
+      antigenColumnRef: data.antigenColumnRef,
+      targetAntigen: data.targetAntigen,
+      minReadsPerConcentration: data.minReadsPerConcentration,
+      minConcentrationPoints: data.minConcentrationPoints,
+      r2ThresholdGood: data.r2ThresholdGood,
+      r2ThresholdFailed: data.r2ThresholdFailed,
+      nMin: data.nMin,
+      nMax: data.nMax,
+      hookEffectThresholdBin: data.hookEffectThresholdBin,
+      hookEffectThresholdNoBin: data.hookEffectThresholdNoBin,
+      hookEffectMinReads: data.hookEffectMinReads,
+      defaultBlockLabel: data.defaultBlockLabel,
+      customBlockLabel: data.customBlockLabel,
+    };
   })
 
-  // Block-run gate (R1, R2, R4 blocking checks; numeric validity).
-  .argsValid((ctx) => {
-    const args = ctx.args;
-    if (args.abundanceRef === undefined) return false;
-    if (args.concentrationColumnRef === undefined) return false;
-    if (args.antigenColumnRef !== undefined && !args.targetAntigen) return false;
-    if (args.r2ThresholdFailed > args.r2ThresholdGood) return false;
-    if (args.nMin >= args.nMax) return false;
-    if (args.r2ThresholdGood < 0 || args.r2ThresholdGood > 1) return false;
-    if (args.r2ThresholdFailed < 0 || args.r2ThresholdFailed > 1) return false;
-    if (args.minReadsPerConcentration < 1) return false;
-    if (args.minConcentrationPoints < 3) return false;
-    return true;
-  })
-
-  // Abundance PColumn (R1): `[sampleId][clonotypeKey] → numeric`.
   .output("abundanceOptions", (ctx) =>
     ctx.resultPool.getOptions(
       [
@@ -158,7 +191,6 @@ export const model = BlockModel.create()
     ),
   )
 
-  // Concentration metadata (R2): per-sample numeric.
   .output("concentrationOptions", (ctx) =>
     ctx.resultPool.getOptions(
       (spec) =>
@@ -169,7 +201,6 @@ export const model = BlockModel.create()
     ),
   )
 
-  // Bin metadata (R3): per-sample integer, optional.
   .output("binOptions", (ctx) =>
     ctx.resultPool.getOptions(
       (spec) =>
@@ -180,7 +211,6 @@ export const model = BlockModel.create()
     ),
   )
 
-  // Antigen metadata (R4): per-sample string, optional.
   .output("antigenOptions", (ctx) =>
     ctx.resultPool.getOptions(
       (spec) =>
@@ -191,21 +221,18 @@ export const model = BlockModel.create()
     ),
   )
 
-  // Concentration-column unit label (propagated to the `pl7.app/unit`
-  // annotation on the `kd` output column in the workflow, R2).
   .output("concentrationUnitLabel", (ctx) => {
-    if (ctx.args.concentrationColumnRef === undefined) return undefined;
-    const spec = ctx.resultPool.getPColumnSpecByRef(ctx.args.concentrationColumnRef);
+    if (ctx.data.concentrationColumnRef === undefined) return undefined;
+    const spec = ctx.resultPool.getPColumnSpecByRef(ctx.data.concentrationColumnRef);
     return spec?.annotations?.["pl7.app/label"];
   })
 
-  // Surfaced in the settings drawer as an alert bar.
   .output("validationWarnings", (ctx): ValidationIssue[] => {
     const issues: ValidationIssue[] = [];
-    const args = ctx.args;
+    const data = ctx.data;
 
-    if (args.concentrationColumnRef !== undefined) {
-      const spec = ctx.resultPool.getPColumnSpecByRef(args.concentrationColumnRef);
+    if (data.concentrationColumnRef !== undefined) {
+      const spec = ctx.resultPool.getPColumnSpecByRef(data.concentrationColumnRef);
       const unitLabel = spec?.annotations?.["pl7.app/label"];
       if (unitLabel && /\s/.test(unitLabel)) {
         issues.push({
@@ -218,7 +245,7 @@ export const model = BlockModel.create()
       }
     }
 
-    if (args.antigenColumnRef === undefined && args.targetAntigen) {
+    if (data.antigenColumnRef === undefined && data.targetAntigen) {
       issues.push({
         severity: "warning",
         message:
@@ -227,7 +254,7 @@ export const model = BlockModel.create()
       });
     }
 
-    if (args.antigenColumnRef !== undefined && !args.targetAntigen) {
+    if (data.antigenColumnRef !== undefined && !data.targetAntigen) {
       issues.push({
         severity: "error",
         message:
@@ -236,14 +263,14 @@ export const model = BlockModel.create()
       });
     }
 
-    if (args.r2ThresholdFailed > args.r2ThresholdGood) {
+    if (data.r2ThresholdFailed > data.r2ThresholdGood) {
       issues.push({
         severity: "error",
         message: "Failed R² threshold must be ≤ Good R² threshold.",
       });
     }
 
-    if (args.nMin >= args.nMax) {
+    if (data.nMin >= data.nMax) {
       issues.push({
         severity: "error",
         message: "Hill coefficient nMin must be strictly less than nMax.",
@@ -253,36 +280,28 @@ export const model = BlockModel.create()
     return issues;
   })
 
-  // Log handle for the Python fitting script (stderr captures WARN lines).
   .output("logHandle", (ctx) => ctx.outputs?.resolve("logHandle")?.getLogHandle())
 
-  // Detects the "workflow running" state for auto-closing the settings drawer.
   .output("isRunning", (ctx) => ctx.outputs?.getIsReadyOrError() === false)
 
-  // Per-clonotype summary columns for the Table tab (R18).
   .outputWithStatus("summaryTable", (ctx) => {
     const pCols = ctx.outputs?.resolve("summaryPf")?.getPColumns();
     if (pCols === undefined) return undefined;
-    return createPlDataTableV2(ctx, pCols, ctx.uiState.tableState);
+    return createPlDataTableV2(ctx, pCols, ctx.data.tableState);
   })
 
-  // PFrame for the Titration Curves tab (R15): meanBin scatter +
-  // fittedMeanBin curve overlay, faceted by clonotypeKey.
   .outputWithStatus("titrationCurvesPf", (ctx): PFrameHandle | undefined => {
     const pCols = ctx.outputs?.resolve("signalPf")?.getPColumns();
     if (pCols === undefined) return undefined;
     return createPFrameForGraphs(ctx, pCols);
   })
 
-  // Column specs for default graph options on the Titration Curves page.
   .output("titrationCurvesPfCols", (ctx) => {
     const pCols = ctx.outputs?.resolve("signalPf")?.getPColumns();
     if (pCols === undefined) return undefined;
     return pCols.map((c) => ({ columnId: c.id, spec: c.spec }) satisfies PColumnIdAndSpec);
   })
 
-  // PFrame for the K_D Distribution (R16) and Affinity vs Fit (R17) tabs.
-  // Both tabs derive their defaults from the per-clonotype summary columns.
   .outputWithStatus("summaryPfHandle", (ctx): PFrameHandle | undefined => {
     const pCols = ctx.outputs?.resolve("summaryPf")?.getPColumns();
     if (pCols === undefined) return undefined;
@@ -295,40 +314,28 @@ export const model = BlockModel.create()
     return pCols.map((c) => ({ columnId: c.id, spec: c.spec }) satisfies PColumnIdAndSpec);
   })
 
-  // Empty/failed-state banner signal (R19b, T11). Derived client-side from
-  // the summary specs because the workflow currently writes no explicit flag.
   .output("isEmpty", (ctx) => {
     const pCols = ctx.outputs?.resolve("summaryPf")?.getPColumns();
     if (pCols === undefined) return undefined;
     return pCols.length === 0;
   })
 
-  // "bin" mode is inferred from the presence of a bin column. Used by the
-  // UI to swap labels (R19b: "Mean bin" → "Clonotype frequency") and to
-  // show the no-bin-mode persistent warning banner.
-  .output("binMode", (ctx) => ctx.args.binColumnRef !== undefined)
+  .output("binMode", (ctx) => ctx.data.binColumnRef !== undefined)
 
-  .title((ctx) => {
-    const parts = ["Titeseq Analysis"];
-    const abundanceRef = ctx.args.abundanceRef;
-    if (abundanceRef !== undefined) {
-      const label =
-        ctx.resultPool.getPColumnSpecByRef(abundanceRef)?.annotations?.["pl7.app/label"];
-      if (label) parts.push(`— ${label}`);
-    }
-    if (ctx.args.targetAntigen) parts.push(`(${ctx.args.targetAntigen})`);
-    return parts.join(" ");
-  })
+  .title((ctx) =>
+    ctx.data.targetAntigen ? `Titeseq Analysis (${ctx.data.targetAntigen})` : "Titeseq Analysis",
+  )
 
-  .subtitle((ctx) => ctx.args.customBlockLabel || ctx.args.defaultBlockLabel)
+  .subtitle((ctx) => ctx.data.customBlockLabel || ctx.data.defaultBlockLabel)
 
   .sections((_ctx) => [
-    { type: "link" as const, href: "/" as const, label: "Titration Curves" },
-    { type: "link" as const, href: "/kd-distribution" as const, label: "K_D Distribution" },
-    { type: "link" as const, href: "/affinity-vs-fit" as const, label: "Affinity vs Fit Quality" },
-    { type: "link" as const, href: "/table" as const, label: "Table" },
+    { type: "link", href: "/", label: "Overview" },
+    { type: "link", href: "/titration-curves", label: "Titration Curves" },
+    { type: "link", href: "/kd-distribution", label: "K_D Distribution" },
+    { type: "link", href: "/affinity-vs-fit", label: "Affinity vs Fit Quality" },
+    { type: "link", href: "/table", label: "Table" },
   ])
 
-  .done(2);
+  .done();
 
 export type BlockOutputs = InferOutputsType<typeof model>;

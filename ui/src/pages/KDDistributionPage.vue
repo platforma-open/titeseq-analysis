@@ -32,20 +32,22 @@ const defaultOptions = computed((): PredefinedGraphOption<"histogram">[] | undef
 
 <template>
   <PlBlockPage
-    v-model:subtitle="app.model.args.customBlockLabel"
-    :subtitle-placeholder="app.model.args.defaultBlockLabel"
+    v-model:subtitle="app.model.data.customBlockLabel"
+    :subtitle-placeholder="app.model.data.defaultBlockLabel"
     title="K_D Distribution"
   >
     <template #append>
       <PageHeader />
     </template>
     <GraphMaker
-      v-model="app.model.ui.graphStateKDHistogram"
+      v-model="app.model.data.graphStateKDHistogram"
       chart-type="histogram"
       :data-state-key="app.model.outputs.summaryPfHandle"
       :p-frame="app.model.outputs.summaryPfHandle"
       :default-options="defaultOptions"
-      :status-text="{ noPframe: { title: 'Configure inputs in Settings and run the block.' } }"
+      :status-text="{
+        noPframe: { title: 'Configure inputs on the Overview tab and run the block.' },
+      }"
     />
   </PlBlockPage>
 </template>

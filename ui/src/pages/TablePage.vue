@@ -12,17 +12,17 @@ const tableSettings = usePlDataTableSettingsV2({
 
 <template>
   <PlBlockPage
-    v-model:subtitle="app.model.args.customBlockLabel"
-    :subtitle-placeholder="app.model.args.defaultBlockLabel"
+    v-model:subtitle="app.model.data.customBlockLabel"
+    :subtitle-placeholder="app.model.data.defaultBlockLabel"
     title="Clonotype fit results"
   >
     <template #append>
       <PageHeader />
     </template>
     <PlAgDataTableV2
-      v-model="app.model.ui.tableState"
+      v-model="app.model.data.tableState"
       :settings="tableSettings"
-      not-ready-text="Configure inputs in Settings and run the block."
+      not-ready-text="Configure inputs on the Overview tab and run the block."
       no-rows-text="No clonotypes available."
     />
   </PlBlockPage>

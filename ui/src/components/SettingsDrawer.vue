@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import type { PlRef } from "@platforma-sdk/model";
 import {
   PlAccordionSection,
   PlAlert,
@@ -25,16 +24,12 @@ watch(
 
 const warnings = computed(() => app.model.outputs.validationWarnings ?? []);
 
-function clearIfUndef(ref: PlRef | undefined): PlRef | undefined {
-  return ref;
-}
-
 const binMode = computed(() => app.model.outputs.binMode === true);
 </script>
 
 <template>
   <PlSlideModal v-model="open" close-on-outside-click shadow>
-    <template #title>Settings</template>
+    <template #title>Inputs &amp; Parameters</template>
 
     <PlAlert v-for="(w, i) in warnings" :key="i" :type="w.severity === 'error' ? 'error' : 'warn'">
       {{ w.message }}
@@ -42,16 +37,13 @@ const binMode = computed(() => app.model.outputs.binMode === true);
 
     <PlSectionSeparator>Inputs</PlSectionSeparator>
     <PlDropdownRef
-      v-model="app.model.args.abundanceRef"
+      v-model="app.model.data.abundanceRef"
       :options="app.model.outputs.abundanceOptions"
       label="Abundance (reads per clonotype)"
       required
-      @update:model-value="
-        (v: PlRef | undefined) => (app.model.args.abundanceRef = clearIfUndef(v))
-      "
     />
     <PlDropdownRef
-      v-model="app.model.args.concentrationColumnRef"
+      v-model="app.model.data.concentrationColumnRef"
       :options="app.model.outputs.concentrationOptions"
       label="Antigen concentration (per sample)"
       required
@@ -62,7 +54,7 @@ const binMode = computed(() => app.model.outputs.binMode === true);
       </template>
     </PlDropdownRef>
     <PlDropdownRef
-      v-model="app.model.args.binColumnRef"
+      v-model="app.model.data.binColumnRef"
       :options="app.model.outputs.binOptions"
       label="FACS bin (optional)"
       clearable
@@ -73,14 +65,14 @@ const binMode = computed(() => app.model.outputs.binMode === true);
       </template>
     </PlDropdownRef>
     <PlDropdownRef
-      v-model="app.model.args.antigenColumnRef"
+      v-model="app.model.data.antigenColumnRef"
       :options="app.model.outputs.antigenOptions"
       label="Antigen (optional)"
       clearable
     />
     <PlTextField
-      v-if="app.model.args.antigenColumnRef"
-      v-model="app.model.args.targetAntigen"
+      v-if="app.model.data.antigenColumnRef"
+      v-model="app.model.data.targetAntigen"
       label="Target antigen"
       :placeholder="'e.g. Spike-RBD'"
     >
@@ -91,7 +83,7 @@ const binMode = computed(() => app.model.outputs.binMode === true);
 
     <PlAccordionSection label="Read coverage">
       <PlNumberField
-        v-model="app.model.args.minReadsPerConcentration"
+        v-model="app.model.data.minReadsPerConcentration"
         label="Min reads per concentration"
         :min-value="1"
         :step="1"
@@ -102,7 +94,7 @@ const binMode = computed(() => app.model.outputs.binMode === true);
         </template>
       </PlNumberField>
       <PlNumberField
-        v-model="app.model.args.minConcentrationPoints"
+        v-model="app.model.data.minConcentrationPoints"
         label="Min concentration points"
         :min-value="3"
         :step="1"
@@ -116,27 +108,27 @@ const binMode = computed(() => app.model.outputs.binMode === true);
 
     <PlAccordionSection label="Fit quality">
       <PlNumberField
-        v-model="app.model.args.r2ThresholdGood"
+        v-model="app.model.data.r2ThresholdGood"
         label="R² threshold — Good"
         :min-value="0"
         :max-value="1"
         :step="0.05"
       />
       <PlNumberField
-        v-model="app.model.args.r2ThresholdFailed"
+        v-model="app.model.data.r2ThresholdFailed"
         label="R² threshold — Failed"
         :min-value="0"
         :max-value="1"
         :step="0.05"
       />
       <PlNumberField
-        v-model="app.model.args.nMin"
+        v-model="app.model.data.nMin"
         label="Hill coefficient — min"
         :min-value="0"
         :step="0.1"
       />
       <PlNumberField
-        v-model="app.model.args.nMax"
+        v-model="app.model.data.nMax"
         label="Hill coefficient — max"
         :min-value="0"
         :step="0.1"
@@ -151,7 +143,7 @@ const binMode = computed(() => app.model.outputs.binMode === true);
     <PlAccordionSection label="Hook effect">
       <PlNumberField
         v-if="binMode"
-        v-model="app.model.args.hookEffectThresholdBin"
+        v-model="app.model.data.hookEffectThresholdBin"
         label="Signal drop threshold (bin mode)"
         :min-value="0"
         :step="0.05"
@@ -163,13 +155,13 @@ const binMode = computed(() => app.model.outputs.binMode === true);
       </PlNumberField>
       <PlNumberField
         v-else
-        v-model="app.model.args.hookEffectThresholdNoBin"
+        v-model="app.model.data.hookEffectThresholdNoBin"
         label="Signal drop threshold (frequency mode)"
         :min-value="0"
         :step="0.005"
       />
       <PlNumberField
-        v-model="app.model.args.hookEffectMinReads"
+        v-model="app.model.data.hookEffectMinReads"
         label="Min reads for hook check"
         :min-value="0"
         :step="1"
@@ -178,9 +170,9 @@ const binMode = computed(() => app.model.outputs.binMode === true);
 
     <PlAccordionSection label="Block label">
       <PlTextField
-        v-model="app.model.args.customBlockLabel"
+        v-model="app.model.data.customBlockLabel"
         label="Custom label"
-        :placeholder="app.model.args.defaultBlockLabel"
+        :placeholder="app.model.data.defaultBlockLabel"
       />
     </PlAccordionSection>
   </PlSlideModal>
