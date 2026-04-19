@@ -7,16 +7,22 @@
   "files": [],
   "type": "module",
   "scripts": {
-    "test": "vitest --passWithNoTests"
+    "test": "vitest --run --passWithNoTests",
+    "lint": "eslint .",
+    "type-check": "ts-builder type-check --target block-test"
   },
   "dependencies": {
-    "this-block": "workspace:@platforma-open/platforma-open.titeseq-analysis@*"
+    "this-block": "workspace:@platforma-open/platforma-open.titeseq-analysis@*",
+    "@platforma-open/platforma-open.titeseq-analysis.model": "workspace:*",
+    "@platforma-sdk/model": "catalog:"
   },
   "devDependencies": {
-    "@platforma-sdk/test": "catalog:"
-  },
-  "peerDependencies": {
-    "typescript": "*",
-    "vitest": "*"
+    "@milaboratories/ts-builder": "catalog:",
+    "@milaboratories/ts-configs": "catalog:",
+    "@platforma-sdk/eslint-config": "catalog:",
+    "@platforma-sdk/test": "catalog:",
+    "eslint": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }
