@@ -107,8 +107,14 @@ wf.body(func(args) {
 	// Shared axis specs for the output PColumns.
 	clonotypeAxisSpec := abundanceSpec.axesSpec[1]
 
-	// Concentration axis is Float (R14) — required for log-scale rendering in Graph Maker.
-	// Block-scoped domain isolates multi-antigen instances from each other.
+	// R14 deviation (platform limitation): spec says concentration axis is Float.
+	// xsv.importFile rejects Float axes — the SDK validator permits only
+	// Int|Long|String (error: `axes[1].spec.type: value "Float" does not conform
+	// regex "Int|Long|String"` from pframes.xsv-import-pt). We use String keyed on
+	// Python's `concentrationStr` column (canonical scientific-notation) so joins
+	// between meanBin and fittedMeanBin line up on identical label strings and
+	// Graph Maker renders exact tick labels. Revisit if/when xsv-import adds
+	// Float support. Block-scoped domain isolates multi-antigen instances.
 	concAnnotations := { "pl7.app/label": "Concentration" }
 	if unitLabel != "" {
 		concAnnotations["pl7.app/axis/unit"] = unitLabel
@@ -275,8 +281,8 @@ wf.body(func(args) {
 	}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
 
 	// Stage G: import mean_bin.tsv → meanBin (observed signal).
-	// Python writes `concentrationStr, concentration, meanBin`; the Float `concentration`
-	// column is used as the axis key.
+	// Python writes `concentrationStr, concentration, meanBin`; we key the axis on
+	// the String `concentrationStr` column (see R14 deviation comment above).
 	meanBinImported := xsv.importFile(fit.getFile("mean_bin.tsv"), "tsv", {
 		axes: [
 			{ column: "clonotypeKey", spec: clonotypeAxisSpec },
