@@ -24,7 +24,7 @@
       "ui": "@platforma-open/platforma-open.titeseq-analysis.ui/dist"
     },
     "meta": {
-      "title": "Titeseq Analysis — Affinity Profiling",
+      "title": "Titeseq Analysis",
       "logo": "file:../logos/block-logo.png",
       "url": "https://github.com/platforma-open/platforma-open.titeseq-analysis",
       "support": "mailto:support@milaboratories.com",

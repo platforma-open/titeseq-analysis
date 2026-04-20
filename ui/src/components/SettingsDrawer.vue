@@ -39,12 +39,12 @@ const binMode = computed(() => app.model.outputs.binMode === true);
     <PlDropdownRef
       v-model="app.model.data.abundanceRef"
       :options="app.model.outputs.abundanceOptions"
-      label="Clonotype read counts"
+      label="Read count column"
       required
     >
       <template #tooltip>
-        Read count per (sample, clonotype) — the MiXCR clonotyping output. Normalized per-sample
-        inside the block.
+        Per-sample, per-clonotype integer read counts from MiXCR. Selecting this column also anchors
+        the block to that upstream dataset. Normalized per-sample inside the block.
       </template>
     </PlDropdownRef>
     <PlDropdownRef
