@@ -68,7 +68,9 @@ class TestAddDiagnosticPlotColumns:
         frame = add_diagnostic_plot_columns(_per_clonotype(5.0), max_concentration=100.0)
         assert frame["kdPlotPosition"][0] == 5.0
 
-    def test_null_hill_maps_to_one(self):
+    def test_null_hill_maps_to_minus_one(self):
+        # Sentinel is -1.0: non-physical (Hill is strictly positive), so Failed rows
+        # pool visibly below the n>0 cluster instead of mixing with well-fitted n≈1.
         frame = pl.DataFrame(
             [
                 {
@@ -84,7 +86,7 @@ class TestAddDiagnosticPlotColumns:
             schema=PER_CLONOTYPE_SCHEMA,
         )
         out = add_diagnostic_plot_columns(frame, max_concentration=100.0)
-        assert out["hillPlotPosition"][0] == 1.0
+        assert out["hillPlotPosition"][0] == -1.0
 
     def test_finite_hill_passes_through_unchanged(self):
         out = add_diagnostic_plot_columns(_per_clonotype(5.0), max_concentration=100.0)

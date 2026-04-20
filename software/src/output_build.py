@@ -39,8 +39,9 @@ def add_diagnostic_plot_columns(frame: pl.DataFrame, max_concentration: float) -
     """R17: append plot-only positions so Failed rows with null K_D render on the scatter.
 
     kdPlotPosition places null K_D at one decade right of the fitted range on a log axis;
-    hillPlotPosition parks null Hill coefficients at 1.0 (centered in the typical [0.5, 2.0] band).
-    Both columns are diagnostic — not for reporting — and never null.
+    hillPlotPosition parks null Hill coefficients at -1.0, a non-physical sentinel outside
+    the valid (0, ∞) range, so Failed rows pool visually away from well-fitted n≈1
+    clonotypes. Both columns are diagnostic — not for reporting — and never null.
     """
     return frame.with_columns(
         pl.when(pl.col("kd").is_null())
@@ -48,7 +49,7 @@ def add_diagnostic_plot_columns(frame: pl.DataFrame, max_concentration: float) -
         .otherwise(pl.col("kd"))
         .alias("kdPlotPosition"),
         pl.when(pl.col("hillCoefficient").is_null())
-        .then(1.0)
+        .then(-1.0)
         .otherwise(pl.col("hillCoefficient"))
         .alias("hillPlotPosition"),
     )

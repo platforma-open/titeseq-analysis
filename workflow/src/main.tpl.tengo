@@ -272,7 +272,7 @@ wf.body(func(args) {
 					valueType: "Double",
 					domain: { "pl7.app/block": blockId },
 					annotations: {
-						"pl7.app/label": "K_D,app (plot position)",
+						"pl7.app/label": "K_D,app",
 						"pl7.app/isScore": "false",
 						"pl7.app/table/visibility": "hidden"
 					}
@@ -285,7 +285,7 @@ wf.body(func(args) {
 					valueType: "Double",
 					domain: { "pl7.app/block": blockId },
 					annotations: {
-						"pl7.app/label": "Hill coefficient (plot position)",
+						"pl7.app/label": "Hill coefficient",
 						"pl7.app/isScore": "false",
 						"pl7.app/table/visibility": "hidden"
 					}
