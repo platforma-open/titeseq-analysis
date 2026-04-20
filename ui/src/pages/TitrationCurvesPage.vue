@@ -50,7 +50,7 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
 <template>
   <PlBlockPage
     v-model:subtitle="app.model.data.customBlockLabel"
-    :subtitle-placeholder="app.model.outputs.autoSubtitle ?? app.model.data.defaultBlockLabel"
+    :subtitle-placeholder="app.model.data.defaultBlockLabel"
     title="Titration Curves"
   >
     <template #append>

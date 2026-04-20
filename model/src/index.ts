@@ -6,7 +6,6 @@ import type {
   PlDataTableStateV2,
   PlRef,
 } from "@platforma-sdk/model";
-import type { PColumnSelector } from "@platforma-sdk/model";
 import {
   BlockModelV3,
   DataModelBuilder,
@@ -20,34 +19,6 @@ export type ValidationIssue = {
   severity: "warning" | "error";
   message: string;
 };
-
-const ABUNDANCE_FILTERS: PColumnSelector[] = [
-  {
-    axes: [{ name: "pl7.app/sampleId" }, { name: "pl7.app/vdj/clonotypeKey" }],
-    annotations: { "pl7.app/isAnchor": "true" },
-  },
-  {
-    axes: [{ name: "pl7.app/sampleId" }, { name: "pl7.app/vdj/scClonotypeKey" }],
-    annotations: { "pl7.app/isAnchor": "true" },
-  },
-];
-
-// Derive an informative subtitle from the current block configuration.
-// Shared by `.subtitle()` (shelf label) and the `autoSubtitle` output
-// (consumed by PlBlockPage as the in-page subtitle placeholder).
-function deriveAutoSubtitle(
-  data: { abundanceRef?: PlRef; binColumnRef?: PlRef },
-  abundanceOptions: ReadonlyArray<{ ref: PlRef; label: string }>,
-): string {
-  if (!data.abundanceRef) return "Select inputs to begin";
-  const parts: string[] = [];
-  const match = abundanceOptions.find(
-    (o) => o.ref.blockId === data.abundanceRef!.blockId && o.ref.name === data.abundanceRef!.name,
-  );
-  if (match?.label) parts.push(match.label);
-  parts.push(data.binColumnRef !== undefined ? "bin mode" : "frequency mode");
-  return parts.join(" · ");
-}
 
 export type BlockArgs = {
   // Inputs (R1–R4)
@@ -110,7 +81,7 @@ const dataModel = new DataModelBuilder()
     hookEffectThresholdBin: 0.2,
     hookEffectThresholdNoBin: 0.02,
     hookEffectMinReads: 20,
-    defaultBlockLabel: "Titeseq Analysis",
+    defaultBlockLabel: "Tite-Seq Analysis",
     customBlockLabel: "",
     tableState: createPlDataTableStateV2(),
     graphStateTitrationCurves: {
@@ -384,16 +355,7 @@ export const model = BlockModelV3.create(dataModel)
 
   .output("binMode", (ctx) => ctx.data.binColumnRef !== undefined)
 
-  .output("autoSubtitle", (ctx) =>
-    deriveAutoSubtitle(
-      ctx.data,
-      ctx.resultPool.getOptions(ABUNDANCE_FILTERS, { label: { includeNativeLabel: false } }),
-    ),
-  )
-
-  .title((ctx) =>
-    ctx.data.targetAntigen ? `Titeseq Analysis (${ctx.data.targetAntigen})` : "Titeseq Analysis",
-  )
+  .title(() => "Tite-Seq Analysis")
 
   .subtitle((ctx) => ctx.data.customBlockLabel || ctx.data.defaultBlockLabel || "")
 
