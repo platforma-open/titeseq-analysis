@@ -329,11 +329,10 @@ export const model = BlockModelV3.create(dataModel)
   .subtitle((ctx) => ctx.data.customBlockLabel || ctx.data.defaultBlockLabel)
 
   .sections((_ctx) => [
-    { type: "link", href: "/", label: "Overview" },
+    { type: "link", href: "/", label: "Table" },
     { type: "link", href: "/titration-curves", label: "Titration Curves" },
     { type: "link", href: "/kd-distribution", label: "K_D Distribution" },
     { type: "link", href: "/affinity-vs-fit", label: "Affinity vs Fit Quality" },
-    { type: "link", href: "/table", label: "Table" },
   ])
 
   .done();

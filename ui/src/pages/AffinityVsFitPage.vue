@@ -53,7 +53,7 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
       :p-frame="app.model.outputs.summaryPfHandle"
       :default-options="defaultOptions"
       :status-text="{
-        noPframe: { title: 'Configure inputs on the Overview tab and run the block.' },
+        noPframe: { title: 'Open Inputs (top right) to configure the block and run it.' },
       }"
     />
   </PlBlockPage>
