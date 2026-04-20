@@ -361,18 +361,19 @@ class TestHookEffectBinModeTop3:
         result = detect_hook_effect(df, bin_mode=True, params=DEFAULT_PARAMS)
         assert bool(result.filter(pl.col("clonotypeKey") == "A")["hook_flag"][0]) is expected, case
 
-    # Spec R9b: min-reads floor applies to the top-1, top-2, AND top-3 points.
-    # If any of the three is below floor the check is skipped entirely.
+    # Spec R9b: min-reads floor applies to the top-1 and top-2 points ONLY.
+    # top-3 reads are not part of the gate — the top-3 signal still enters the
+    # comparison `(top3_signal - top1_signal) > threshold/2`.
     @pytest.mark.parametrize(
         "top3_reads, top2_reads, top1_reads, expected",
         [
             (100, 100, 100, True),  # all ≥ 20 → evaluate; drop qualifies under both clauses
-            (10, 100, 100, False),  # top-3 below floor → skip
+            (10, 100, 100, True),  # top-3 below floor → still flag (top-3 is not gated)
             (100, 10, 100, False),  # top-2 below floor → skip
             (100, 100, 10, False),  # top-1 below floor → skip
         ],
     )
-    def test_min_reads_gate_extends_to_top3(self, top3_reads, top2_reads, top1_reads, expected):
+    def test_min_reads_gate_covers_top1_top2(self, top3_reads, top2_reads, top1_reads, expected):
         # Signals chosen so both spec conditions are satisfied when the gate allows.
         df = _build_fit_points_3(
             2.8,

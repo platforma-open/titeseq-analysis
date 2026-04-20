@@ -89,9 +89,11 @@ def detect_hook_effect(fit_points: pl.DataFrame, bin_mode: bool, params: FitPara
       1. (top2_signal - top1_signal) > threshold
       2. (top3_signal - top1_signal) > threshold / 2
 
-    All three top-rank points must clear `hook_effect_min_reads`; clonotypes with
-    fewer than three non-zero concentration points (null top-3) are not flagged.
-    Strict `>` is used throughout (boundary values do NOT flag).
+    Read-coverage gate per spec requires only top-1 and top-2 reads to clear
+    `hook_effect_min_reads` — the top-3 signal comparison is still evaluated, and
+    its null (for clonotypes with fewer than three non-zero concentration points)
+    collapses the whole expression to False via `fill_null`. Strict `>` is used
+    throughout so boundary values do NOT flag.
 
     Returns DataFrame: clonotypeKey, hook_flag (bool).
     """
@@ -106,13 +108,11 @@ def detect_hook_effect(fit_points: pl.DataFrame, bin_mode: bool, params: FitPara
         pl.col(SIGNAL).filter(pl.col("rank") == 3).first().alias("top3_signal"),
         pl.col(CLONOTYPE_READS_AT_CONC).filter(pl.col("rank") == 1).first().alias("top1_reads"),
         pl.col(CLONOTYPE_READS_AT_CONC).filter(pl.col("rank") == 2).first().alias("top2_reads"),
-        pl.col(CLONOTYPE_READS_AT_CONC).filter(pl.col("rank") == 3).first().alias("top3_reads"),
     )
 
     hook = (
         (pl.col("top1_reads") >= params.hook_effect_min_reads)
         & (pl.col("top2_reads") >= params.hook_effect_min_reads)
-        & (pl.col("top3_reads") >= params.hook_effect_min_reads)
         & ((pl.col("top2_signal") - pl.col("top1_signal")) > threshold)
         & ((pl.col("top3_signal") - pl.col("top1_signal")) > threshold / 2)
     )
