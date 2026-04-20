@@ -25,7 +25,17 @@ import numpy as np
 import polars as pl
 
 from classify import classify
-from constants import COL_ANTIGEN, COL_BIN, COL_CLONOTYPE, COL_CONC_STR, COL_CONC_VAL, DEFAULT_PARAMS, FitParams
+from constants import (
+    COL_ANTIGEN,
+    COL_BIN,
+    COL_CLONOTYPE,
+    COL_CONC_AM,
+    COL_CONC_STR,
+    COL_CONC_VAL,
+    CONC_AM_SCALE,
+    DEFAULT_PARAMS,
+    FitParams,
+)
 from hill_fit import fit_one_clonotype
 from io_layer import (
     apply_antigen_filter,
@@ -184,11 +194,13 @@ def _fit_all_clonotypes(
     )
 
     if fitted_keys:
+        conc_vals = np.concatenate(fitted_conc_vals)
         fitted = pl.DataFrame(
             {
                 COL_CLONOTYPE: np.concatenate(fitted_keys),
                 COL_CONC_STR: np.concatenate(fitted_conc_strs),
-                COL_CONC_VAL: np.concatenate(fitted_conc_vals),
+                COL_CONC_AM: np.rint(conc_vals * CONC_AM_SCALE).astype(np.int64),
+                COL_CONC_VAL: conc_vals,
                 "fittedMeanBin": np.concatenate(fitted_y_hats),
             },
             schema=FITTED_MEAN_BIN_SCHEMA,

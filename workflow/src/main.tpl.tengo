@@ -107,24 +107,21 @@ wf.body(func(args) {
 	// Shared axis specs for the output PColumns.
 	clonotypeAxisSpec := abundanceSpec.axesSpec[1]
 
-	// R14 deviation (platform limitation): spec says concentration axis is Float.
-	// xsv.importFile rejects Float axes — the SDK validator permits only
-	// Int|Long|String (error: `axes[1].spec.type: value "Float" does not conform
-	// regex "Int|Long|String"` from pframes.xsv-import-pt). We use String keyed on
-	// Python's `concentrationStr` column (fixed-point notation, e.g. "0.000000117000")
-	// so Graph Maker sorts the x-axis numerically — scientific notation ("1.17e-7")
-	// sorts lexicographically and scrambles the titration curve. Joins between
-	// meanBin and fittedMeanBin align because both use the same Python-derived string.
-	// Revisit if/when xsv-import adds Float support.
-	concAnnotations := { "pl7.app/label": "Concentration" }
-	if unitLabel != "" {
-		concAnnotations["pl7.app/axis/unit"] = unitLabel
-	}
+	// R14 deviation (platform limitation): spec says concentration axis is Float,
+	// but xsv.importFile's axis validator permits only Int|Long|String. We key the
+	// axis on `concentrationAM` — the concentration scaled to attomolar as Int64.
+	// A numeric axis is required for Graph Maker's log-scale rendering; attomolar
+	// keeps typical TiteSeq values (1e-13 to 1e-6 M → 1e5 to 1e12 aM) well inside
+	// int64 range. Python's `concentrationStr` column is still emitted for debugging
+	// and internal joins, but the axis key is `concentrationAM`.
 	concAxisSpec := {
 		name: "pl7.app/vdj/concentration",
-		type: "String",
+		type: "Long",
 		domain: { "pl7.app/block": blockId },
-		annotations: concAnnotations
+		annotations: {
+			"pl7.app/label": "Concentration",
+			"pl7.app/axis/unit": "aM"
+		}
 	}
 
 	// R19b: swap "Mean bin" → "Clonotype frequency" in no-bin mode.
@@ -287,7 +284,7 @@ wf.body(func(args) {
 	meanBinImported := xsv.importFile(fit.getFile("mean_bin.tsv"), "tsv", {
 		axes: [
 			{ column: "clonotypeKey", spec: clonotypeAxisSpec },
-			{ column: "concentrationStr", spec: concAxisSpec }
+			{ column: "concentrationAM", spec: concAxisSpec }
 		],
 		columns: [
 			{
@@ -312,7 +309,7 @@ wf.body(func(args) {
 	fittedMeanBinImported := xsv.importFile(fit.getFile("fitted_mean_bin.tsv"), "tsv", {
 		axes: [
 			{ column: "clonotypeKey", spec: clonotypeAxisSpec },
-			{ column: "concentrationStr", spec: concAxisSpec }
+			{ column: "concentrationAM", spec: concAxisSpec }
 		],
 		columns: [
 			{

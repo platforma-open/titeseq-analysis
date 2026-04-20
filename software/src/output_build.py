@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import polars as pl
 
-from constants import COL_CLONOTYPE, COL_CONC_STR, COL_CONC_VAL
+from constants import COL_CLONOTYPE, COL_CONC_AM, COL_CONC_STR, COL_CONC_VAL, CONC_AM_SCALE
 
 PER_CLONOTYPE_SCHEMA: dict[str, pl.DataType] = {
     COL_CLONOTYPE: pl.Utf8,
@@ -58,12 +58,15 @@ def build_mean_bin_frame(signal_frame: pl.DataFrame) -> pl.DataFrame:
     """R14: per-(clonotype, concentration) observed signal (mean_bin or frequency).
 
     c=0 rows are excluded — they are baseline fixers, not output values.
-    Output columns: clonotypeKey, concentrationStr, concentration, meanBin.
+    Output columns: clonotypeKey, concentrationStr, concentrationAM, concentration, meanBin.
+    concentrationAM (attomolar Int64) is the numeric axis key for graph-maker;
+    concentrationStr is retained for debugging and backward compatibility.
     """
     return signal_frame.filter(pl.col(COL_CONC_VAL) != 0).select(
         [
             COL_CLONOTYPE,
             COL_CONC_STR,
+            (pl.col(COL_CONC_VAL) * CONC_AM_SCALE).round().cast(pl.Int64).alias(COL_CONC_AM),
             COL_CONC_VAL,
             pl.col("signal").alias("meanBin"),
         ]
@@ -73,6 +76,7 @@ def build_mean_bin_frame(signal_frame: pl.DataFrame) -> pl.DataFrame:
 FITTED_MEAN_BIN_SCHEMA: dict[str, pl.DataType] = {
     COL_CLONOTYPE: pl.Utf8,
     COL_CONC_STR: pl.Utf8,
+    COL_CONC_AM: pl.Int64,
     COL_CONC_VAL: pl.Float64,
     "fittedMeanBin": pl.Float64,
 }

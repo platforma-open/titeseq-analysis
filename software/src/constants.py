@@ -40,8 +40,10 @@ DEFAULT_PARAMS = FitParams()
 # Column name conventions used inside the pipeline.
 COL_CLONOTYPE = "clonotypeKey"
 COL_SAMPLE = "sampleId"
-COL_CONC_STR = "concentrationStr"  # canonical string key (R14)
-COL_CONC_VAL = "concentration"  # numeric value
+COL_CONC_STR = "concentrationStr"  # canonical string key (R14) — internal joins only
+COL_CONC_VAL = "concentration"  # numeric value (assumed Molar)
+COL_CONC_AM = "concentrationAM"  # attomolar Int64 — axis key in output TSVs
+CONC_AM_SCALE = 1_000_000_000_000_000_000  # 1e18: Molar → attomolar
 COL_BIN = "bin"
 COL_ANTIGEN = "antigen"
 COL_READS = "reads"
