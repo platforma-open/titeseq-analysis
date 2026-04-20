@@ -219,6 +219,14 @@ wf.body(func(args) {
 				}
 			},
 			{
+				// pcolumn-spec specifies Boolean, but xsv.importFile rejects Boolean
+				// valueType — its validator regex permits only Int|Long|Float|Double|String
+				// (see `core/platforma/sdk/workflow-tengo/src/pframes/xsv-import-file.lib.tengo`).
+				// Python emits pl.Boolean which polars serializes to TSV as "true"/"false";
+				// we import those literals as String and expose them through
+				// pl7.app/isDiscreteFilter so the UI still filters it as a two-value enum.
+				// If/when xsv.importFile gains Boolean support, switch valueType back to
+				// Boolean and drop the discrete-filter annotations.
 				column: "kdOutOfRange",
 				spec: {
 					name: "pl7.app/vdj/kdOutOfRange",
@@ -227,6 +235,8 @@ wf.body(func(args) {
 					annotations: {
 						"pl7.app/label": "K_D,app out of range",
 						"pl7.app/isScore": "false",
+						"pl7.app/isDiscreteFilter": "true",
+						"pl7.app/discreteValues": "[\"true\",\"false\"]",
 						"pl7.app/table/visibility": "default",
 						"pl7.app/table/orderPriority": "196"
 					}
