@@ -213,7 +213,7 @@ watch(
       <PlTextField
         v-model="app.model.data.customBlockLabel"
         label="Custom label"
-        :placeholder="app.model.data.defaultBlockLabel"
+        :placeholder="app.model.outputs.autoSubtitle ?? app.model.data.defaultBlockLabel"
       />
     </PlAccordionSection>
   </PlSlideModal>

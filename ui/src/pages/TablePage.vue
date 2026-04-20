@@ -21,7 +21,7 @@ const tableSettings = usePlDataTableSettingsV2({
 <template>
   <PlBlockPage
     v-model:subtitle="app.model.data.customBlockLabel"
-    :subtitle-placeholder="app.model.data.defaultBlockLabel"
+    :subtitle-placeholder="app.model.outputs.autoSubtitle ?? app.model.data.defaultBlockLabel"
     title="Clonotype fit results"
   >
     <template #append>
