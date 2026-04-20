@@ -141,10 +141,19 @@ def fit_one_clonotype(
         def model(x_, log_kd, n, amp):
             return _hill(x_, log_kd, n, amp, baseline_fixed)
     else:
-        base_hi = float(max_bin_label - 1) if bin_mode and max_bin_label else 1.0
-        base0 = min(max(anchor_for_guesses, 0.0), base_hi)
+        # R10 baseline bounds — signal-mode dependent, δ-aware so `top ≥ baseline + δ`
+        # is always feasible within top's upper bound:
+        #   bin:    baseline ∈ [1,   max_bin_label − 0.5]
+        #   no-bin: baseline ∈ [0,   0.95]
+        if bin_mode and max_bin_label:
+            base_lo = 1.0
+            base_hi = float(max_bin_label) - 0.5
+        else:
+            base_lo = 0.0
+            base_hi = 0.95
+        base0 = min(max(anchor_for_guesses, base_lo), base_hi)
         p0 = [log_kd0, n0, amp0, base0]
-        lo = [math.log(KD_LO), N_LO, amp_lo, 0.0]
+        lo = [math.log(KD_LO), N_LO, amp_lo, base_lo]
         hi = [math.log(KD_HI), N_HI, amp_hi, base_hi]
         model = _hill
 
