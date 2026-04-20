@@ -395,14 +395,7 @@ export const model = BlockModelV3.create(dataModel)
     ctx.data.targetAntigen ? `Titeseq Analysis (${ctx.data.targetAntigen})` : "Titeseq Analysis",
   )
 
-  .subtitle((ctx) =>
-    ctx.data.customBlockLabel
-      ? ctx.data.customBlockLabel
-      : deriveAutoSubtitle(
-          ctx.data,
-          ctx.resultPool.getOptions(ABUNDANCE_FILTERS, { label: { includeNativeLabel: false } }),
-        ),
-  )
+  .subtitle((ctx) => ctx.data.customBlockLabel || ctx.data.defaultBlockLabel || "")
 
   .sections((_ctx) => [
     { type: "link", href: "/", label: "Table" },
