@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 import polars as pl
@@ -169,11 +170,29 @@ def validate_bin_concentration_grid(df: pl.DataFrame) -> list[str]:
 
 
 def canonicalize_concentration(df: pl.DataFrame) -> pl.DataFrame:
-    """Ensure both concentration axes present; preserve original string exactly."""
-    if COL_CONC_STR not in df.columns:
-        df = df.with_columns(pl.col(COL_CONC_VAL).cast(pl.Utf8).alias(COL_CONC_STR))
+    """Ensure both concentration axes present; derive concentrationStr as sortable fixed-point.
+
+    Scientific notation strings (e.g. "1.17e-7") sort lexicographically, not numerically —
+    Graph Maker uses string sort on the concentration axis, so the titration x-axis would be
+    scrambled. Fixed-point notation ("0.000000117000") sorts correctly for positive values:
+    lexicographic order equals numeric order when all strings have the same decimal width.
+    The decimal width is derived from the smallest non-zero concentration in the dataset.
+    """
     if COL_CONC_VAL not in df.columns:
         df = df.with_columns(pl.col(COL_CONC_STR).cast(pl.Float64).alias(COL_CONC_VAL))
     if df.schema[COL_CONC_VAL] != pl.Float64:
         df = df.with_columns(pl.col(COL_CONC_VAL).cast(pl.Float64))
+    nonzero = df.filter(pl.col(COL_CONC_VAL) > 0)[COL_CONC_VAL]
+    min_nonzero = nonzero.min() if nonzero.len() > 0 else None
+    if min_nonzero is not None and min_nonzero > 0:
+        decimal_places = max(6, math.ceil(-math.log10(min_nonzero)) + 3)
+    else:
+        decimal_places = 6
+    fmt = f"{{:.{decimal_places}f}}"
+    df = df.with_columns(
+        pl.col(COL_CONC_VAL).map_elements(
+            lambda v: fmt.format(v) if v is not None else None,
+            return_dtype=pl.Utf8,
+        ).alias(COL_CONC_STR)
+    )
     return df

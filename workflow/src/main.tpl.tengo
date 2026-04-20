@@ -111,10 +111,11 @@ wf.body(func(args) {
 	// xsv.importFile rejects Float axes — the SDK validator permits only
 	// Int|Long|String (error: `axes[1].spec.type: value "Float" does not conform
 	// regex "Int|Long|String"` from pframes.xsv-import-pt). We use String keyed on
-	// Python's `concentrationStr` column (canonical scientific-notation) so joins
-	// between meanBin and fittedMeanBin line up on identical label strings and
-	// Graph Maker renders exact tick labels. Revisit if/when xsv-import adds
-	// Float support. Block-scoped domain isolates multi-antigen instances.
+	// Python's `concentrationStr` column (fixed-point notation, e.g. "0.000000117000")
+	// so Graph Maker sorts the x-axis numerically — scientific notation ("1.17e-7")
+	// sorts lexicographically and scrambles the titration curve. Joins between
+	// meanBin and fittedMeanBin align because both use the same Python-derived string.
+	// Revisit if/when xsv-import adds Float support.
 	concAnnotations := { "pl7.app/label": "Concentration" }
 	if unitLabel != "" {
 		concAnnotations["pl7.app/axis/unit"] = unitLabel
