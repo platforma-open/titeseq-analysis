@@ -14,6 +14,10 @@
   "dependencies": {
     "this-block": "workspace:@platforma-open/platforma-open.titeseq-analysis@*",
     "@platforma-open/platforma-open.titeseq-analysis.model": "workspace:*",
+    "@platforma-open/milaboratories.samples-and-data": "catalog:",
+    "@platforma-open/milaboratories.samples-and-data.model": "catalog:",
+    "@platforma-open/milaboratories.import-vdj": "catalog:",
+    "@platforma-open/milaboratories.import-vdj.model": "catalog:",
     "@platforma-sdk/model": "catalog:"
   },
   "devDependencies": {

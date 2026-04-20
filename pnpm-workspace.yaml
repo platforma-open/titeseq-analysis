@@ -29,6 +29,11 @@ catalog:
 
   "@platforma-open/milaboratories.runenv-python-3": 1.7.10
 
+  "@platforma-open/milaboratories.samples-and-data": ^1.10.14
+  "@platforma-open/milaboratories.samples-and-data.model": ^1.11.2
+  "@platforma-open/milaboratories.import-vdj": ^1.6.1
+  "@platforma-open/milaboratories.import-vdj.model": ^1.10.0
+
   "turbo": 2.9.6
 
   "shx": 0.4.0
