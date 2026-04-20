@@ -2,6 +2,7 @@
 import {
   PlAccordionSection,
   PlAlert,
+  PlDropdown,
   PlDropdownRef,
   PlNumberField,
   PlSectionSeparator,
@@ -25,15 +26,22 @@ watch(
 const warnings = computed(() => app.model.outputs.validationWarnings ?? []);
 
 const binMode = computed(() => app.model.outputs.binMode === true);
+
+const targetAntigenOptions = computed(() =>
+  (app.model.outputs.targetAntigenValues ?? []).map((v) => ({ value: v, label: v })),
+);
+
+watch(
+  () => app.model.data.antigenColumnRef,
+  () => {
+    app.model.data.targetAntigen = undefined;
+  },
+);
 </script>
 
 <template>
   <PlSlideModal v-model="open" close-on-outside-click shadow>
     <template #title>Inputs &amp; Parameters</template>
-
-    <PlAlert v-for="(w, i) in warnings" :key="i" :type="w.severity === 'error' ? 'error' : 'warn'">
-      {{ w.message }}
-    </PlAlert>
 
     <PlSectionSeparator>Inputs</PlSectionSeparator>
     <PlDropdownRef
@@ -80,16 +88,22 @@ const binMode = computed(() => app.model.outputs.binMode === true);
         multiple antigens and you want to analyse one of them.
       </template>
     </PlDropdownRef>
-    <PlTextField
+    <PlDropdown
       v-if="app.model.data.antigenColumnRef"
       v-model="app.model.data.targetAntigen"
+      :options="targetAntigenOptions"
       label="Target antigen"
-      :placeholder="'e.g. Spike-RBD'"
+      required
     >
       <template #tooltip>
-        Which antigen value to analyse. Required when an antigen column is selected.
+        Which antigen value to analyse. Required when an antigen column is selected. Values are
+        pulled from the selected antigen column.
       </template>
-    </PlTextField>
+    </PlDropdown>
+
+    <PlAlert v-for="(w, i) in warnings" :key="i" :type="w.severity === 'error' ? 'error' : 'warn'">
+      {{ w.message }}
+    </PlAlert>
 
     <PlAccordionSection label="Read coverage">
       <PlNumberField

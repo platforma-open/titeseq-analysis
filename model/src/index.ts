@@ -221,6 +221,14 @@ export const model = BlockModelV3.create(dataModel)
     ),
   )
 
+  .output("targetAntigenValues", (ctx): string[] | undefined => {
+    if (!ctx.data.antigenColumnRef) return undefined;
+    const data = ctx.resultPool.getDataByRef(ctx.data.antigenColumnRef)?.data;
+    const values = data?.getDataAsJson<Record<string, string>>()?.["data"];
+    if (!values) return undefined;
+    return [...new Set(Object.values(values))].sort();
+  })
+
   .output("concentrationUnitLabel", (ctx) => {
     if (ctx.data.concentrationColumnRef === undefined) return undefined;
     const spec = ctx.resultPool.getPColumnSpecByRef(ctx.data.concentrationColumnRef);
