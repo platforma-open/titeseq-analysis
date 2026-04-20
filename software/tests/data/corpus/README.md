@@ -63,7 +63,7 @@ Each clonotype entry has:
 - `expected_reason` or `expected_reason_in` — single reason or list (for entries where the pipeline can land in more than one Failed branch without the test losing its intent).
 - `kd_range` / `hill_range` — tolerance bands (not exact values) for Good/Partial fits. `null` for Failed clonotypes.
 - `kd_out_of_range` — expected R14b flag, or `null` when not asserted.
-- `hill_plot_position_is_sentinel` — when `true`, R17 must emit `hillPlotPosition == 1.0` and `kdPlotPosition == max_conc * 10`.
+- `hill_plot_position_is_sentinel` — when `true`, R17 must emit `hillPlotPosition == -1.0` and `kdPlotPosition == max_conc * 10`.
 - `notes` — human-readable reason this case exists.
 
 Tolerance bands (not exact values) let scipy version drift without breaking the suite.

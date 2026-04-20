@@ -167,7 +167,7 @@ def test_kd_out_of_range_flag(outputs_by_section, section, key, entry):
     assert row["kdOutOfRange"] == entry["kd_out_of_range"]
 
 
-# R17: null kd → kdPlotPosition = max_conc * 10; null n → hillPlotPosition = 1.0.
+# R17: null kd → kdPlotPosition = max_conc * 10; null n → hillPlotPosition = -1.0.
 @pytest.mark.parametrize(
     "section,key,entry",
     [
@@ -186,7 +186,7 @@ def test_r17_sentinel_values(outputs_by_section, section, key, entry):
     max_conc = MANIFEST["max_non_zero_concentration"]
     assert row["hillCoefficient"] is None
     assert row["kd"] is None
-    assert row["hillPlotPosition"] == pytest.approx(1.0)
+    assert row["hillPlotPosition"] == pytest.approx(-1.0)
     assert row["kdPlotPosition"] == pytest.approx(max_conc * 10.0)
 
 
