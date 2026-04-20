@@ -59,8 +59,9 @@ def build_mean_bin_frame(signal_frame: pl.DataFrame) -> pl.DataFrame:
 
     c=0 rows are excluded — they are baseline fixers, not output values.
     Output columns: clonotypeKey, concentrationStr, concentrationAM, concentration, meanBin.
-    concentrationAM (attomolar Int64) is the numeric axis key for graph-maker;
-    concentrationStr is retained for debugging and backward compatibility.
+    The workflow declares both concentrationStr (String, canonical R14 join key)
+    and concentrationAM (attomolar Int64, numeric sibling for Graph Maker log-scale)
+    as axes of the output PFrame; they are 1:1 correlated.
     """
     return signal_frame.filter(pl.col(COL_CONC_VAL) != 0).select(
         [

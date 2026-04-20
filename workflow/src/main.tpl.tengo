@@ -107,14 +107,26 @@ wf.body(func(args) {
 	// Shared axis specs for the output PColumns.
 	clonotypeAxisSpec := abundanceSpec.axesSpec[1]
 
-	// R14 deviation (platform limitation): spec says concentration axis is Float,
-	// but xsv.importFile's axis validator permits only Int|Long|String. We key the
-	// axis on `concentrationAM` — the concentration scaled to attomolar as Int64.
-	// A numeric axis is required for Graph Maker's log-scale rendering; attomolar
-	// keeps typical TiteSeq values (1e-13 to 1e-6 M → 1e5 to 1e12 aM) well inside
-	// int64 range. Python's `concentrationStr` column is still emitted for debugging
-	// and internal joins, but the axis key is `concentrationAM`.
-	concAxisSpec := {
+	// R14 compliance: concentration is keyed by two parallel axes.
+	//   - concentrationStr (String): the canonical join key, preserved byte-for-byte
+	//     from the upstream metadata string. Prevents float-serialization drift
+	//     between TypeScript/Tengo/Python layers causing silent join failures.
+	//   - concentrationAM (Long, attomolar = Molar * 1e18): numeric sibling used by
+	//     Graph Maker for log-scale X rendering. Attomolar keeps typical TiteSeq
+	//     values (1e-13 to 1e-6 M → 1e5 to 1e12 aM) well inside int64 range.
+	// The two are 1:1 correlated, so row count is unchanged. xsv.importFile's axis
+	// validator permits Int|Long|Float|Double|String; Float is avoided because a
+	// Float axis is itself subject to the serialization drift R14 warns against.
+	concStrAxisSpec := {
+		name: "pl7.app/vdj/concentrationStr",
+		type: "String",
+		domain: { "pl7.app/block": blockId },
+		annotations: {
+			"pl7.app/label": "Concentration (canonical)",
+			"pl7.app/table/visibility": "optional"
+		}
+	}
+	concAMAxisSpec := {
 		name: "pl7.app/vdj/concentration",
 		type: "Long",
 		domain: { "pl7.app/block": blockId },
@@ -279,12 +291,13 @@ wf.body(func(args) {
 	}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
 
 	// Stage G: import mean_bin.tsv → meanBin (observed signal).
-	// Python writes `concentrationStr, concentration, meanBin`; we key the axis on
-	// the String `concentrationStr` column (see R14 deviation comment above).
+	// Python writes `clonotypeKey, concentrationStr, concentrationAM, concentration, meanBin`;
+	// both concentration columns are declared as axes (see R14 compliance comment above).
 	meanBinImported := xsv.importFile(fit.getFile("mean_bin.tsv"), "tsv", {
 		axes: [
 			{ column: "clonotypeKey", spec: clonotypeAxisSpec },
-			{ column: "concentrationAM", spec: concAxisSpec }
+			{ column: "concentrationStr", spec: concStrAxisSpec },
+			{ column: "concentrationAM", spec: concAMAxisSpec }
 		],
 		columns: [
 			{
@@ -309,7 +322,8 @@ wf.body(func(args) {
 	fittedMeanBinImported := xsv.importFile(fit.getFile("fitted_mean_bin.tsv"), "tsv", {
 		axes: [
 			{ column: "clonotypeKey", spec: clonotypeAxisSpec },
-			{ column: "concentrationAM", spec: concAxisSpec }
+			{ column: "concentrationStr", spec: concStrAxisSpec },
+			{ column: "concentrationAM", spec: concAMAxisSpec }
 		],
 		columns: [
 			{

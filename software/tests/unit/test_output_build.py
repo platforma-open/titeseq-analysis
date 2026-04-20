@@ -118,8 +118,23 @@ class TestMeanBinFrame:
     def test_preserves_canonical_string(self):
         signal = pl.DataFrame(
             [
-                {"clonotypeKey": "A", "concentrationStr": "1.000", "concentration": 1.0, "signal": 2.0},
+                {"clonotypeKey": "A", "concentrationStr": "1e-6", "concentration": 1e-6, "signal": 2.0},
             ]
         )
         out = build_mean_bin_frame(signal)
-        assert out["concentrationStr"][0] == "1.000"
+        assert out["concentrationStr"][0] == "1e-6"
+
+    def test_equivalent_strings_share_concentrationAM(self):
+        # R14: two different canonical strings that parse to the same float MUST yield
+        # the same attomolar integer key, so the numeric sibling axis cannot drift away
+        # from the canonical string axis for equal concentrations.
+        signal = pl.DataFrame(
+            [
+                {"clonotypeKey": "A", "concentrationStr": "1e-7", "concentration": 1e-7, "signal": 2.0},
+                {"clonotypeKey": "B", "concentrationStr": "0.0000001", "concentration": 1e-7, "signal": 3.0},
+            ]
+        )
+        out = build_mean_bin_frame(signal)
+        assert out["concentrationAM"].to_list() == [100_000_000_000, 100_000_000_000]
+        # Canonical strings are preserved distinct even though the numeric axis matches.
+        assert out["concentrationStr"].to_list() == ["1e-7", "0.0000001"]
