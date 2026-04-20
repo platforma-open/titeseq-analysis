@@ -25,11 +25,25 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
   );
   if (!concAxis || !clonotypeAxis) return undefined;
 
-  return [
+  const affinityClass = pCols.find(
+    (p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/affinityClass",
+  );
+
+  const options: PredefinedGraphOption<"scatterplot">[] = [
     { inputName: "x", selectedSource: concAxis },
     { inputName: "y", selectedSource: meanBin.spec },
+    { inputName: "facetBy", selectedSource: clonotypeAxis },
     { inputName: "grouping", selectedSource: clonotypeAxis },
   ];
+  if (affinityClass) {
+    options.push({
+      inputName: "filters",
+      selectedSource: affinityClass.spec,
+      filterType: "equals",
+      selectedFilterValues: ["Good"],
+    });
+  }
+  return options;
 });
 </script>
 

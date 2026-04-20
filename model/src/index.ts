@@ -299,15 +299,19 @@ export const model = BlockModelV3.create(dataModel)
   })
 
   .outputWithStatus("titrationCurvesPf", (ctx): PFrameHandle | undefined => {
-    const pCols = ctx.outputs?.resolve("signalPf")?.getPColumns();
-    if (pCols === undefined) return undefined;
-    return createPFrameForGraphs(ctx, pCols);
+    const signalCols = ctx.outputs?.resolve("signalPf")?.getPColumns();
+    if (signalCols === undefined) return undefined;
+    const summaryCols = ctx.outputs?.resolve("summaryPf")?.getPColumns() ?? [];
+    return createPFrameForGraphs(ctx, [...signalCols, ...summaryCols]);
   })
 
   .output("titrationCurvesPfCols", (ctx) => {
-    const pCols = ctx.outputs?.resolve("signalPf")?.getPColumns();
-    if (pCols === undefined) return undefined;
-    return pCols.map((c) => ({ columnId: c.id, spec: c.spec }) satisfies PColumnIdAndSpec);
+    const signalCols = ctx.outputs?.resolve("signalPf")?.getPColumns();
+    if (signalCols === undefined) return undefined;
+    const summaryCols = ctx.outputs?.resolve("summaryPf")?.getPColumns() ?? [];
+    return [...signalCols, ...summaryCols].map(
+      (c) => ({ columnId: c.id, spec: c.spec }) satisfies PColumnIdAndSpec,
+    );
   })
 
   .outputWithStatus("summaryPfHandle", (ctx): PFrameHandle | undefined => {
