@@ -39,37 +39,47 @@ const binMode = computed(() => app.model.outputs.binMode === true);
     <PlDropdownRef
       v-model="app.model.data.abundanceRef"
       :options="app.model.outputs.abundanceOptions"
-      label="Abundance (reads per clonotype)"
-      required
-    />
-    <PlDropdownRef
-      v-model="app.model.data.concentrationColumnRef"
-      :options="app.model.outputs.concentrationOptions"
-      label="Antigen concentration (per sample)"
+      label="Clonotype read counts"
       required
     >
       <template #tooltip>
-        Per-sample numeric column. The column label is copied into the K_D,app unit annotation —
-        prefer a bare unit string (e.g. "nM", "µM") over a phrase.
+        Read count per (sample, clonotype) — the MiXCR clonotyping output. Normalized per-sample
+        inside the block.
+      </template>
+    </PlDropdownRef>
+    <PlDropdownRef
+      v-model="app.model.data.concentrationColumnRef"
+      :options="app.model.outputs.concentrationOptions"
+      label="Antigen concentration"
+      required
+    >
+      <template #tooltip>
+        Per-sample numeric column carrying the antigen concentration used for each FACS sort. The
+        column label becomes the K_D,app unit — prefer a bare unit (e.g. "nM", "µM") over a phrase.
       </template>
     </PlDropdownRef>
     <PlDropdownRef
       v-model="app.model.data.binColumnRef"
       :options="app.model.outputs.binOptions"
-      label="FACS bin (optional)"
+      label="FACS bin"
       clearable
     >
       <template #tooltip>
-        Per-sample positive integer. Leave empty to run in no-bin mode — K_D,app values from that
-        mode are not comparable to bin-derived results.
+        Per-sample positive integer identifying the FACS bin. Leave empty to run in no-bin mode —
+        K_D,app values from that mode are not comparable to bin-derived results.
       </template>
     </PlDropdownRef>
     <PlDropdownRef
       v-model="app.model.data.antigenColumnRef"
       :options="app.model.outputs.antigenOptions"
-      label="Antigen (optional)"
+      label="Antigen label"
       clearable
-    />
+    >
+      <template #tooltip>
+        Optional per-sample antigen name. Select when a dataset contains samples stained against
+        multiple antigens and you want to analyse one of them.
+      </template>
+    </PlDropdownRef>
     <PlTextField
       v-if="app.model.data.antigenColumnRef"
       v-model="app.model.data.targetAntigen"
