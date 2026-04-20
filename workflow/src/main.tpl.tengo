@@ -167,6 +167,7 @@ wf.body(func(args) {
 					annotations: {
 						"pl7.app/label": "Hill coefficient",
 						"pl7.app/isScore": "false",
+						"pl7.app/description": "Hill coefficient n from the Hill fit. n = 1 is the expected Langmuir isotherm value for simple 1:1 monovalent binding; n in roughly [0.7, 1.3] behaves as expected. n > 2 typically reflects heterogeneous yeast display populations rather than genuine cooperativity. n < 1 often indicates a non-functional display fraction (misfolding, non-binding orientation) diluting the signal. Diagnostic only — not a primary ranking criterion.",
 						"pl7.app/table/visibility": "default",
 						"pl7.app/table/orderPriority": "198"
 					}
