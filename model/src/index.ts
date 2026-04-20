@@ -191,25 +191,46 @@ export const model = BlockModelV3.create(dataModel)
     ),
   )
 
-  .output("concentrationOptions", (ctx) =>
-    ctx.resultPool.getOptions(
+  .output("concentrationOptions", (ctx) => {
+    const candidates = ctx.resultPool.getOptions(
       (spec) =>
         isPColumnSpec(spec) &&
         isFloatValueType(spec.valueType) &&
         spec.axesSpec.length === 1 &&
         spec.axesSpec[0].name === "pl7.app/sampleId",
-    ),
-  )
+    );
+    // Hide columns whose values are entirely null — selecting one throws an
+    // "empty column" error inside the Python pipeline, so the option should
+    // not appear in the dropdown in the first place. Data-not-ready is shown
+    // conservatively to avoid options flickering in/out while upstream loads.
+    return candidates.filter((opt) => {
+      const data = ctx.resultPool.getDataByRef(opt.ref)?.data;
+      if (!data) return true;
+      const values = data.getDataAsJson<Record<string, number | null>>()?.["data"];
+      if (!values) return true;
+      return Object.values(values).some((v) => v !== null && v !== undefined);
+    });
+  })
 
-  .output("binOptions", (ctx) =>
-    ctx.resultPool.getOptions(
+  .output("binOptions", (ctx) => {
+    const candidates = ctx.resultPool.getOptions(
       (spec) =>
         isPColumnSpec(spec) &&
         isIntegerValueType(spec.valueType) &&
         spec.axesSpec.length === 1 &&
         spec.axesSpec[0].name === "pl7.app/sampleId",
-    ),
-  )
+    );
+    // Same reasoning as concentrationOptions: an all-null integer column
+    // arrives at the Python side as a String column of empty strings and
+    // fails validation, so hide it here.
+    return candidates.filter((opt) => {
+      const data = ctx.resultPool.getDataByRef(opt.ref)?.data;
+      if (!data) return true;
+      const values = data.getDataAsJson<Record<string, number | null>>()?.["data"];
+      if (!values) return true;
+      return Object.values(values).some((v) => v !== null && v !== undefined);
+    });
+  })
 
   .output("antigenOptions", (ctx) =>
     ctx.resultPool.getOptions(

@@ -145,6 +145,32 @@ class TestBinValidation:
         with pytest.raises(InputValidationError, match="integer"):
             validate_bin_column(df)
 
+    def test_all_empty_bin_raises_friendly_error(self):
+        # An Integer metadata column whose sample values are all null arrives as
+        # a String column of empty strings (TSV null encoding). The user should
+        # see a pick-a-different-column message, not a raw "got String" dtype
+        # error that doesn't hint at the root cause.
+        df = pl.DataFrame(
+            {
+                "clonotypeKey": ["A", "A"],
+                "sampleId": ["s1", "s2"],
+                "concentrationStr": ["1", "1"],
+                "concentration": [1.0, 1.0],
+                "bin": ["", ""],
+                "reads": [5, 5],
+            },
+            schema={
+                "clonotypeKey": pl.Utf8,
+                "sampleId": pl.Utf8,
+                "concentrationStr": pl.Utf8,
+                "concentration": pl.Float64,
+                "bin": pl.Utf8,
+                "reads": pl.Int64,
+            },
+        )
+        with pytest.raises(InputValidationError, match="empty for every sample"):
+            validate_bin_column(df)
+
 
 class TestAntigenFilter:
     def test_ref_without_target_raises(self):

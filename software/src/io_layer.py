@@ -101,6 +101,20 @@ def validate_bin_column(df: pl.DataFrame) -> None:
     Nulls are permitted at concentration 0 (warned separately); `<=0` on null
     yields null which is ignored by `.sum()`, so no intermediate filter needed.
     """
+    # An Integer metadata column whose sample values are all null arrives here as a
+    # string column of empty strings (the TSV builder's null encoding). Surface a
+    # user-actionable message instead of the generic "got String" dtype complaint.
+    if df.schema[COL_BIN] == pl.Utf8:
+        non_empty = df.filter(
+            pl.col(COL_BIN).is_not_null() & (pl.col(COL_BIN).str.len_chars() > 0)
+        ).height
+        if non_empty == 0:
+            raise InputValidationError(
+                "bin column has no integer values — the selected metadata "
+                "column appears to be empty for every sample. Pick a bin "
+                "column that is populated across samples (e.g. a numeric "
+                "FACS bin-label column)."
+            )
     if df[COL_BIN].dtype not in (pl.Int8, pl.Int16, pl.Int32, pl.Int64, pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64):
         raise InputValidationError(f"bin column must be integer type, got {df[COL_BIN].dtype}")
     if df.select((pl.col(COL_BIN) <= 0).sum()).item() > 0:
