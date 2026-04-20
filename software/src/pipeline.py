@@ -37,6 +37,7 @@ from constants import (
     FitParams,
 )
 from hill_fit import fit_one_clonotype
+from log import log
 from io_layer import (
     apply_antigen_filter,
     canonicalize_concentration,
@@ -157,7 +158,18 @@ def _fit_all_clonotypes(
         bin_mode=bin_mode,
         max_bin_label=max_bin,
     )
-    fits = [worker(x, y, w) for x, y, w in zip(xs, ys, ws)]
+    n_survivors = len(xs)
+    gated = n_clon - n_survivors
+    log(f"Fitting {n_survivors} clonotypes ({gated} pre-gated Failed)")
+    # Emit a progress line ~20 times over the fit loop (every 5%), with a floor of 1
+    # so tiny inputs still report. Small overhead; stdout is flushed per line.
+    step = max(1, n_survivors // 20)
+    fits: list = []
+    for idx, (x, y, w) in enumerate(zip(xs, ys, ws)):
+        fits.append(worker(x, y, w))
+        done = idx + 1
+        if done % step == 0 or done == n_survivors:
+            log(f"  fitted {done}/{n_survivors} clonotypes")
 
     # Phase 3 — integrate results.
     fitted_keys: list[np.ndarray] = []
@@ -246,10 +258,13 @@ def run(
     antigen_column_ref: str | None = None,
 ) -> dict[str, pl.DataFrame]:
     """Execute the full pipeline on an in-memory reads frame."""
+    log(f"Pipeline start: {reads.height} reads rows")
     reads = canonicalize_concentration(reads)
     has_bin = COL_BIN in reads.columns
     has_antigen = COL_ANTIGEN in reads.columns
+    log(f"Mode: bin={has_bin}, antigen_column={has_antigen}")
 
+    log("Validating inputs (R1-R5)")
     _validate_inputs(
         reads,
         has_bin=has_bin,
@@ -258,19 +273,27 @@ def run(
         antigen_column_ref=antigen_column_ref,
     )
 
+    if target_antigen is not None:
+        log(f"Applying antigen filter: {target_antigen}")
     reads = apply_antigen_filter(reads, target_antigen)
     mbl = max_bin_label(reads) if has_bin else None
 
+    log("Normalizing signals")
     signal_frame = normalize(reads, bin_mode=has_bin)
+    log("Applying floor and weights")
     floor_frame = apply_floor_and_weights(signal_frame, params)
 
     all_clonotypes = signal_frame[COL_CLONOTYPE].unique().to_list()
+    log(f"Classifying {len(all_clonotypes)} clonotypes for sufficiency")
     insufficient = classify_insufficient(floor_frame, all_clonotypes, params)
     insufficient_map = dict(zip(insufficient[COL_CLONOTYPE].to_list(), insufficient["insufficient_reason"].to_list()))
 
     c0_points, fit_points = split_c0(floor_frame)
     global_b = compute_global_baseline(c0_points)
+    b_str = f"{global_b:.4f}" if global_b is not None else "none"
+    log(f"Global baseline B = {b_str} (c=0 points: {c0_points.height})")
 
+    log("Detecting hook effect")
     hook = detect_hook_effect(fit_points, bin_mode=has_bin, params=params)
     hook_map = dict(zip(hook[COL_CLONOTYPE].to_list(), hook["hook_flag"].to_list()))
 
@@ -285,4 +308,11 @@ def run(
         params=params,
     )
 
-    return _build_outputs(per_clonotype, fitted, signal_frame, reads)
+    log("Assembling output frames")
+    outputs = _build_outputs(per_clonotype, fitted, signal_frame, reads)
+    log(
+        f"Pipeline done: per_clonotype={outputs['per_clonotype'].height}, "
+        f"mean_bin={outputs['mean_bin'].height}, "
+        f"fitted_mean_bin={outputs['fitted_mean_bin'].height}"
+    )
+    return outputs

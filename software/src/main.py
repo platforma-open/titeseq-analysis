@@ -11,6 +11,7 @@ import polars as pl
 
 from constants import DEFAULT_PARAMS, FitParams
 from io_layer import read_reads_table
+from log import log
 from pipeline import run
 
 
@@ -33,11 +34,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--antigen-column-ref", default=None)
     args = parser.parse_args(argv)
 
+    log(f"Reading input table: {args.reads}")
     reads = read_reads_table(args.reads)
+    log(f"Loaded {reads.height} rows, {len(reads.columns)} columns")
     params = DEFAULT_PARAMS
     if args.params:
         with open(args.params) as f:
             params = FitParams(**json.load(f))
+        log(f"Loaded custom params from {args.params}")
 
     outputs = run(
         reads,
@@ -45,9 +49,11 @@ def main(argv: list[str] | None = None) -> int:
         target_antigen=args.target_antigen,
         antigen_column_ref=args.antigen_column_ref,
     )
+    log("Writing output frames")
     _write_frame(outputs["per_clonotype"], args.out_per_clonotype)
     _write_frame(outputs["mean_bin"], args.out_mean_bin)
     _write_frame(outputs["fitted_mean_bin"], args.out_fitted_mean_bin)
+    log("CLI done")
     return 0
 
 
