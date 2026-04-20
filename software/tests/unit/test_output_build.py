@@ -5,6 +5,7 @@ from __future__ import annotations
 import polars as pl
 import pytest
 
+from constants import CONC_AM_SCALE
 from output_build import (
     PER_CLONOTYPE_SCHEMA,
     add_diagnostic_plot_columns,
@@ -138,3 +139,27 @@ class TestMeanBinFrame:
         assert out["concentrationAM"].to_list() == [100_000_000_000, 100_000_000_000]
         # Canonical strings are preserved distinct even though the numeric axis matches.
         assert out["concentrationStr"].to_list() == ["1e-7", "0.0000001"]
+
+    @pytest.mark.parametrize(
+        "conc_str, conc_val",
+        [
+            ("1e-12", 1e-12),
+            ("1e-10", 1e-10),
+            ("1e-9", 1e-9),
+            ("2.5e-9", 2.5e-9),
+            ("5e-8", 5e-8),
+            ("1e-7", 1e-7),
+            ("0.0000001", 1e-7),
+            ("1e-6", 1e-6),
+        ],
+    )
+    def test_concentrationAM_matches_canonical_string(self, conc_str, conc_val):
+        # R14 invariant: concentrationAM == round(float(concentrationStr) * CONC_AM_SCALE)
+        # for every row. If this drifts, a downstream join keying off either axis
+        # loses rows. The cases below span 1 pM to 1 µM in both exponent and decimal
+        # string forms.
+        signal = pl.DataFrame(
+            [{"clonotypeKey": "A", "concentrationStr": conc_str, "concentration": conc_val, "signal": 1.0}]
+        )
+        out = build_mean_bin_frame(signal)
+        assert out["concentrationAM"][0] == round(float(conc_str) * CONC_AM_SCALE)

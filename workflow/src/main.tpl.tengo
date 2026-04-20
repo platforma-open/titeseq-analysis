@@ -113,9 +113,16 @@ wf.body(func(args) {
 	//   - concentrationAM (Long, attomolar = Molar * 1e18): numeric sibling used by
 	//     Graph Maker for log-scale X rendering. Attomolar keeps typical TiteSeq
 	//     values (1e-13 to 1e-6 M → 1e5 to 1e12 aM) well inside int64 range.
-	// The two are 1:1 correlated, so row count is unchanged. xsv.importFile's axis
-	// validator permits Int|Long|Float|Double|String; Float is avoided because a
-	// Float axis is itself subject to the serialization drift R14 warns against.
+	// The two are 1:1 correlated: concentrationAM == round(float(concentrationStr) * 1e18)
+	// for every row (asserted by test_output_build.py:TestMeanBinFrame), so row count
+	// is unchanged. xsv.importFile's axis validator permits Int|Long|Float|Double|String;
+	// Float is avoided because a Float axis is itself subject to the serialization drift
+	// R14 warns against.
+	// Platform gap: the SDK has no axis-level hide annotation, so concentrationStr
+	// still appears in Graph Maker categorical pickers. Continuous-scale pickers are
+	// type-gated to numeric axes by Graph Maker, so users cannot select the String
+	// axis for a log-scale X. Table visibility "optional" keeps it out of default
+	// table views.
 	concStrAxisSpec := {
 		name: "pl7.app/vdj/concentrationStr",
 		type: "String",
