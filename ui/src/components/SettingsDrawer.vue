@@ -31,6 +31,23 @@ const targetAntigenOptions = computed(() =>
   (app.model.outputs.targetAntigenValues ?? []).map((v) => ({ value: v, label: v })),
 );
 
+// Track the selected antigen column's human label so the value-picker label
+// reads as "Target <column>" (e.g. "Target Sample" when the user chose a
+// metadata column labelled "Sample") rather than the fixed "Target antigen".
+const selectedAntigenColumnLabel = computed(() => {
+  const ref = app.model.data.antigenColumnRef;
+  if (!ref) return undefined;
+  const options = app.model.outputs.antigenOptions ?? [];
+  const match = options.find((o) => o.ref.blockId === ref.blockId && o.ref.name === ref.name);
+  return match?.label;
+});
+
+const targetAntigenLabel = computed(() =>
+  selectedAntigenColumnLabel.value
+    ? `Target ${selectedAntigenColumnLabel.value}`
+    : "Target antigen",
+);
+
 watch(
   () => app.model.data.antigenColumnRef,
   () => {
@@ -92,7 +109,7 @@ watch(
       v-if="app.model.data.antigenColumnRef"
       v-model="app.model.data.targetAntigen"
       :options="targetAntigenOptions"
-      label="Target antigen"
+      :label="targetAntigenLabel"
       required
     >
       <template #tooltip>
