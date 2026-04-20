@@ -58,6 +58,25 @@ class TestConcentrationValidation:
         with pytest.raises(InputValidationError, match="negative"):
             validate_concentration_column(df, has_bin=True)
 
+    def test_concentration_over_ceiling_raises_actionable_error(self):
+        # Above the int64 attomolar ceiling (~9.22 M) — any such value almost
+        # certainly indicates a unit-entry mistake. Validation should flag it
+        # with a clear error instead of letting it reach the attomolar cast.
+        df = _mk(
+            [
+                {
+                    "clonotypeKey": "A",
+                    "sampleId": "s1",
+                    "concentrationStr": "10",
+                    "concentration": 10.0,
+                    "bin": 1,
+                    "reads": 5,
+                },
+            ]
+        )
+        with pytest.raises(InputValidationError, match="attomolar-encoding ceiling"):
+            validate_concentration_column(df, has_bin=True)
+
 
 class TestBinValidation:
     def test_non_consecutive_labels_ok(self):
@@ -272,15 +291,17 @@ class TestNarrowConcentrationRangeWarning:
 
     # 0 M (no-antigen control) must be excluded from the max/min ratio — otherwise
     # any dataset with a 0 M point would always be flagged.
+    # Concentrations are in molar; values chosen to stay below the R2 ceiling
+    # (~9.22 M) while preserving the max/min ratios the warning depends on.
     @pytest.mark.parametrize(
         "concs, expect_warning",
         [
-            ([1.0, 2.0, 3.0, 5.0, 7.0], True),    # 7/1 = 7 < 10 → warn
-            ([1.0, 10.0, 100.0], False),          # 100/1 = 100 ≥ 10 → no warn
-            ([1.0, 10.0], False),                 # 10/1 = 10 exactly at boundary → no warn
-            ([1.0, 9.99], True),                  # 9.99/1 = 9.99 < 10 → warn
-            ([0.0, 1.0, 10.0, 100.0], False),     # 0 excluded from ratio → 100/1 ok
-            ([0.0, 1.0, 2.0, 3.0], True),         # 0 excluded → 3/1 < 10 → warn
+            ([1e-9, 2e-9, 3e-9, 5e-9, 7e-9], True),    # 7/1 = 7 < 10 → warn
+            ([1e-9, 1e-8, 1e-7], False),                # 100/1 = 100 ≥ 10 → no warn
+            ([1e-9, 1e-8], False),                      # 10/1 = 10 exactly at boundary → no warn
+            ([1e-9, 9.99e-9], True),                    # 9.99/1 = 9.99 < 10 → warn
+            ([0.0, 1e-9, 1e-8, 1e-7], False),           # 0 excluded from ratio → 100/1 ok
+            ([0.0, 1e-9, 2e-9, 3e-9], True),            # 0 excluded → 3/1 < 10 → warn
         ],
     )
     def test_narrow_range_emits_warning(self, concs, expect_warning):

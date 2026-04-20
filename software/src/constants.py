@@ -44,6 +44,11 @@ COL_CONC_STR = "concentrationStr"  # canonical string key (R14) — internal joi
 COL_CONC_VAL = "concentration"  # numeric value (assumed Molar)
 COL_CONC_AM = "concentrationAM"  # attomolar Int64 — axis key in output TSVs
 CONC_AM_SCALE = 1_000_000_000_000_000_000  # 1e18: Molar → attomolar
+# Attomolar encoding uses Int64; anything above this overflows. TiteSeq is a sub-µM
+# assay, so this ceiling (~9.22 M) is well above any realistic input. A value above
+# the ceiling almost certainly indicates a unit-entry mistake (e.g., molar vs molal,
+# or typed "100" instead of "1e-7").
+MAX_CONCENTRATION_M = (2**63 - 1) / CONC_AM_SCALE
 COL_BIN = "bin"
 COL_ANTIGEN = "antigen"
 COL_READS = "reads"

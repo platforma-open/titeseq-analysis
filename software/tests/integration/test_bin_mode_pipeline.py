@@ -60,7 +60,8 @@ class TestAllFailedDataset:
     # Spec edge case: every clonotype fails → block completes without error.
     def test_all_clonotypes_failed_completes(self):
         # All flat signal (below δ) → all convergence_failure.
-        concs = [0.1, 1.0, 10.0, 100.0, 1000.0]
+        # Sub-µM range (0.1 nM → 1 µM) matching realistic TiteSeq dose grids.
+        concs = [1e-10, 1e-9, 1e-8, 1e-7, 1e-6]
         rows = []
         for k in range(3):
             clonotype = f"C{k}"
@@ -89,10 +90,11 @@ class TestValidatorWarnings:
     # R2: c=0 without a bin is ambiguous — validator emits a warning to stderr
     # (a non-fatal signal; the row is still processed).
     def test_c0_without_bin_emits_stderr_warning(self, capsys):
-        concs = [0.0, 0.1, 1.0, 10.0, 100.0]
+        # Sub-µM grid; K_D placed in the middle of the dose range (10 nM).
+        concs = [0.0, 1e-10, 1e-9, 1e-8, 1e-7]
         rows = _build_bin_reads_for_hill(
             "G1",
-            true_kd=10.0,
+            true_kd=1e-8,
             true_n=1.0,
             baseline=1.0,
             amplitude=math.log(2.0),

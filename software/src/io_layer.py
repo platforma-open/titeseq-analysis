@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
-import math
 from pathlib import Path
 
 import polars as pl
 
-from constants import COL_ANTIGEN, COL_BIN, COL_CLONOTYPE, COL_CONC_STR, COL_CONC_VAL, COL_READS, COL_SAMPLE
+from constants import (
+    COL_ANTIGEN,
+    COL_BIN,
+    COL_CLONOTYPE,
+    COL_CONC_STR,
+    COL_CONC_VAL,
+    COL_READS,
+    COL_SAMPLE,
+    MAX_CONCENTRATION_M,
+)
 
 
 class InputValidationError(ValueError):
@@ -35,19 +43,32 @@ def validate_reads_schema(df: pl.DataFrame, has_bin: bool, has_antigen: bool) ->
 
 
 def validate_concentration_column(df: pl.DataFrame, has_bin: bool) -> list[str]:
-    """R2: concentrations must be non-negative floats.
+    """R2: concentrations must be non-negative floats within the attomolar-encodable range.
 
     Returns list of warning strings (e.g. 0 M control without bin assignment in bin mode;
     R5 narrow-range warning when non-zero max/min spans less than one order of magnitude).
-    Raises InputValidationError on any value < 0.
+    Raises InputValidationError on any value < 0 or above MAX_CONCENTRATION_M (int64
+    ceiling for attomolar encoding; see constants.py).
     """
-    exprs = [(pl.col(COL_CONC_VAL) < 0).sum().alias("neg")]
+    exprs = [
+        (pl.col(COL_CONC_VAL) < 0).sum().alias("neg"),
+        (pl.col(COL_CONC_VAL) > MAX_CONCENTRATION_M).sum().alias("over_max"),
+    ]
     if has_bin:
         exprs.append(((pl.col(COL_CONC_VAL) == 0) & pl.col(COL_BIN).is_null()).sum().alias("null_bin_at_zero"))
     counts = df.select(exprs).row(0, named=True)
 
     if counts["neg"] > 0:
         raise InputValidationError("concentration contains negative values")
+    if counts["over_max"] > 0:
+        offenders = (
+            df.filter(pl.col(COL_CONC_VAL) > MAX_CONCENTRATION_M)[COL_CONC_VAL].unique().sort(descending=True).to_list()
+        )
+        raise InputValidationError(
+            f"concentration exceeds {MAX_CONCENTRATION_M:.3g} M (attomolar-encoding ceiling); "
+            f"offending value(s): {offenders[:5]}. "
+            "TiteSeq concentrations are typically sub-µM — check the unit column and metadata entry."
+        )
 
     warnings: list[str] = []
     if has_bin and counts["null_bin_at_zero"] > 0:
@@ -170,29 +191,18 @@ def validate_bin_concentration_grid(df: pl.DataFrame) -> list[str]:
 
 
 def canonicalize_concentration(df: pl.DataFrame) -> pl.DataFrame:
-    """Ensure both concentration axes present; derive concentrationStr as sortable fixed-point.
+    """Ensure both concentration axes present; preserve original string exactly (R14).
 
-    Scientific notation strings (e.g. "1.17e-7") sort lexicographically, not numerically —
-    Graph Maker uses string sort on the concentration axis, so the titration x-axis would be
-    scrambled. Fixed-point notation ("0.000000117000") sorts correctly for positive values:
-    lexicographic order equals numeric order when all strings have the same decimal width.
-    The decimal width is derived from the smallest non-zero concentration in the dataset.
+    `concentrationStr` is the canonical internal join key — it must compare equal between
+    rows that came from the same upstream metadata value, even when float parsing would
+    introduce drift. Preserving the input string avoids float→string→float roundtrips.
+    The output PColumn axis is `concentrationAM` (Long), so `concentrationStr` is no longer
+    surfaced to Graph Maker and its lexicographic sortability is irrelevant.
     """
+    if COL_CONC_STR not in df.columns:
+        df = df.with_columns(pl.col(COL_CONC_VAL).cast(pl.Utf8).alias(COL_CONC_STR))
     if COL_CONC_VAL not in df.columns:
         df = df.with_columns(pl.col(COL_CONC_STR).cast(pl.Float64).alias(COL_CONC_VAL))
     if df.schema[COL_CONC_VAL] != pl.Float64:
         df = df.with_columns(pl.col(COL_CONC_VAL).cast(pl.Float64))
-    nonzero = df.filter(pl.col(COL_CONC_VAL) > 0)[COL_CONC_VAL]
-    min_nonzero = nonzero.min() if nonzero.len() > 0 else None
-    if min_nonzero is not None and min_nonzero > 0:
-        decimal_places = max(6, math.ceil(-math.log10(min_nonzero)) + 3)
-    else:
-        decimal_places = 6
-    fmt = f"{{:.{decimal_places}f}}"
-    df = df.with_columns(
-        pl.col(COL_CONC_VAL).map_elements(
-            lambda v: fmt.format(v) if v is not None else None,
-            return_dtype=pl.Utf8,
-        ).alias(COL_CONC_STR)
-    )
     return df

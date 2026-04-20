@@ -66,11 +66,12 @@ def build_poisson_reads(cfg: PoissonConfig) -> pl.DataFrame:
 @pytest.mark.slow
 def test_poisson_titeseq_kd_recovery():
     cfg = PoissonConfig(
-        true_kd=10.0,
+        # Sub-µM grid spanning 0.1 nM → 300 nM; K_D placed mid-grid at 10 nM.
+        true_kd=1e-8,
         true_n=1.0,
         baseline=1.0,
         amplitude=math.log(2.5),
-        concs=[0.1, 0.3, 1.0, 3.0, 10.0, 30.0, 100.0, 300.0],
+        concs=[1e-10, 3e-10, 1e-9, 3e-9, 1e-8, 3e-8, 1e-7, 3e-7],
         n_clonotypes=50,
         n_bins=4,
         reads_per_conc=2000,

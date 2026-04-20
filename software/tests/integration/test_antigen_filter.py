@@ -34,15 +34,16 @@ def _good_reads_for(clonotype, antigen, true_kd, baseline, concs, bins, per_conc
 
 
 def test_antigen_filter_keeps_only_target():
-    concs = [0.1, 1.0, 10.0, 100.0, 1000.0]
+    # Sub-µM grid; K_D values scaled to match (5 nM vs 500 nM antibodies).
+    concs = [1e-10, 1e-9, 1e-8, 1e-7, 1e-6]
     bins = [1, 2, 3, 4]
-    rows = _good_reads_for("C1", "X", true_kd=5.0, baseline=1.5, concs=concs, bins=bins)
+    rows = _good_reads_for("C1", "X", true_kd=5e-9, baseline=1.5, concs=concs, bins=bins)
     # Same clonotype under a different antigen with a very different K_D
-    rows += _good_reads_for("C1", "Y", true_kd=500.0, baseline=1.5, concs=concs, bins=bins)
+    rows += _good_reads_for("C1", "Y", true_kd=5e-7, baseline=1.5, concs=concs, bins=bins)
     reads = pl.DataFrame(rows)
 
     out_x = run(reads, target_antigen="X", antigen_column_ref="antigen")
     pc = out_x["per_clonotype"].filter(pl.col("clonotypeKey") == "C1")
-    # With only antigen X present, K_D ≈ 5 (not 500)
+    # With only antigen X present, K_D ≈ 5 nM (not 500 nM)
     assert pc["kd"][0] is not None
-    assert pc["kd"][0] < 50.0
+    assert pc["kd"][0] < 5e-8

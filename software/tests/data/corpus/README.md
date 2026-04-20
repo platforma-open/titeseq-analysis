@@ -26,7 +26,7 @@ Committed reads tables + per-clonotype manifest used by `tests/integration/test_
 | `F_INSUF_P` | Only 3 non-zero concs pass floor → Failed/insufficient_points |
 | `C0_ONLY` | Reads only at c=0 → Failed/insufficient_reads |
 
-`K_HIGH` (upper `kdOutOfRange`) is intentionally omitted: `hill_fit` bounds `kd ∈ [KD_LO, KD_HI] = [1e-15, 1e3]`, and the grid max is 1000 nM = KD_HI. Any fitted kd is therefore ≤ max_conc, making upper-side `kdOutOfRange=true` unreachable. `K_LOW` covers R14b from the lower bound.
+`K_HIGH` (upper `kdOutOfRange`) is intentionally omitted from the bin-mode corpus: the integration/CLI hook tests already cover the upper-side path where a null `kd` from a Failed fit lands at the `kdPlotPosition` sentinel (`max_conc * 10`). `K_LOW` covers R14b from the lower bound.
 
 ## No-bin-mode clonotypes
 

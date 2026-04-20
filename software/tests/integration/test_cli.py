@@ -38,7 +38,7 @@ def _hill_reads(clonotype: str, true_kd: float, concs, bins, per_conc=500):
 
 # Parquet round-trip — verifies argparse wiring, file reader, and parquet writer branch
 def test_cli_parquet_roundtrip(tmp_path):
-    rows = _hill_reads("G1", 10.0, [0.1, 1.0, 10.0, 100.0, 1000.0], [1, 2, 3, 4])
+    rows = _hill_reads("G1", 1e-8, [1e-10, 1e-9, 1e-8, 1e-7, 1e-6], [1, 2, 3, 4])
     reads_path = tmp_path / "reads.parquet"
     pl.DataFrame(rows).write_parquet(reads_path)
 
@@ -68,7 +68,7 @@ def test_cli_parquet_roundtrip(tmp_path):
 
 # TSV branch — exercises the non-parquet writer path
 def test_cli_tsv_output(tmp_path):
-    rows = _hill_reads("G1", 10.0, [0.1, 1.0, 10.0, 100.0, 1000.0], [1, 2, 3, 4])
+    rows = _hill_reads("G1", 1e-8, [1e-10, 1e-9, 1e-8, 1e-7, 1e-6], [1, 2, 3, 4])
     reads_path = tmp_path / "reads.parquet"
     pl.DataFrame(rows).write_parquet(reads_path)
 
@@ -94,7 +94,7 @@ def test_cli_tsv_output(tmp_path):
 
 # --params JSON — ensures FitParams override path is wired through argparse
 def test_cli_with_params_json(tmp_path):
-    rows = _hill_reads("G1", 10.0, [0.1, 1.0, 10.0, 100.0, 1000.0], [1, 2, 3, 4])
+    rows = _hill_reads("G1", 1e-8, [1e-10, 1e-9, 1e-8, 1e-7, 1e-6], [1, 2, 3, 4])
     reads_path = tmp_path / "reads.parquet"
     pl.DataFrame(rows).write_parquet(reads_path)
 
@@ -136,11 +136,12 @@ def test_cli_with_params_json(tmp_path):
 def test_cli_hook_effect_triggers_failure(tmp_path):
     # R9b requires BOTH clauses: (top2-top1 > theta) AND (top3-top1 > theta/2).
     # Signals must stay elevated at top-3 AND top-2 before dropping at top-1.
-    concs = [0.1, 1.0, 10.0, 100.0, 1000.0]
+    # Sub-µM grid spanning 0.1 nM → 1 µM.
+    concs = [1e-10, 1e-9, 1e-8, 1e-7, 1e-6]
     bins = [1, 2, 3, 4]
     rows = []
-    # Top-3 (c=10) and top-2 (c=100) both populate bins {3,4} → signal 3.5;
-    # top-1 (c=1000) populates bins {2,3} → signal 2.5 → drop of 1.0.
+    # Top-3 (c=1e-8) and top-2 (c=1e-7) both populate bins {3,4} → signal 3.5;
+    # top-1 (c=1e-6) populates bins {2,3} → signal 2.5 → drop of 1.0.
     targets = [1.5, 2.0, 3.5, 3.6, 2.5]
     for i, c in enumerate(concs):
         target = targets[i]

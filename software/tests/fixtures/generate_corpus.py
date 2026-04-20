@@ -25,7 +25,9 @@ import polars as pl
 CORPUS_DIR = Path(__file__).resolve().parent.parent / "data" / "corpus"
 MASTER_SEED = 20260417
 
-CONCENTRATIONS: list[float] = [0.0, 0.1, 0.3, 1.0, 3.0, 10.0, 30.0, 100.0, 300.0, 1000.0]
+# Sub-µM dose grid (0.1 nM → 1 µM): realistic TiteSeq molar concentrations that
+# stay below the attomolar-encoding ceiling enforced by R2 validation.
+CONCENTRATIONS: list[float] = [0.0, 1e-10, 3e-10, 1e-9, 3e-9, 1e-8, 3e-8, 1e-7, 3e-7, 1e-6]
 BINS: list[int] = [1, 2, 3, 4]
 
 # Shared Hill params for "nice" sigmoids — matches test_bin_mode_pipeline's noiseless-Hill defaults.
@@ -115,9 +117,9 @@ def _build_bin_mode_table() -> tuple[pl.DataFrame, dict]:
     # G_HIGH uses heavier reads so n converges tighter toward 1 (the decade-point
     # grid gives it fewer saturated points to anchor the plateau).
     for label, kd, per_conc, sig in [
-        ("G_LOW", 1.0, 500, DEFAULT_SIGMA),
-        ("G_MID", 10.0, 500, DEFAULT_SIGMA),
-        ("G_HIGH", 100.0, 3000, 0.25),  # denser + tighter σ; the kd=100 decade has fewer
+        ("G_LOW", 1e-9, 500, DEFAULT_SIGMA),
+        ("G_MID", 1e-8, 500, DEFAULT_SIGMA),
+        ("G_HIGH", 1e-7, 3000, 0.25),  # denser + tighter σ; the kd=100 nM decade has fewer
         # saturated points on the grid so more signal + less noise is needed for a
         # clean Good classification.
     ]:
@@ -138,14 +140,14 @@ def _build_bin_mode_table() -> tuple[pl.DataFrame, dict]:
     # c0_sigma=DEFAULT_SIGMA keeps the c=0 signal near BASELINE so this clonotype doesn't
     # skew the R6 global baseline (arithmetic mean across clonotypes) for every other fit.
     rng = _rng("P_NOISY")
-    targets = _sigmoid_targets(10.0, 1.0)
+    targets = _sigmoid_targets(1e-8, 1.0)
     all_rows += _bin_mode_rows(
         "P_NOISY", targets, [60] * n_conc, 0.85, rng, c0_sigma=DEFAULT_SIGMA
     )
     entries["P_NOISY"] = {
         "expected_class": "Partial",
         "expected_reason": None,
-        "kd_range": [1.0, 100.0],
+        "kd_range": [1e-9, 1e-7],
         "hill_range": [0.3, 10.0],
         "kd_out_of_range": False,
         "hill_plot_position_is_sentinel": False,
@@ -158,7 +160,7 @@ def _build_bin_mode_table() -> tuple[pl.DataFrame, dict]:
     # blowing up per-concentration mean_bin noise, so the fit converges with R²
     # below r2_threshold_failed=0.5.
     rng = _rng("F_LOW_R2")
-    targets = _sigmoid_targets(10.0, 1.0)
+    targets = _sigmoid_targets(1e-8, 1.0)
     all_rows += _bin_mode_rows(
         "F_LOW_R2", targets, [200] * n_conc, 1.0, rng, c0_sigma=DEFAULT_SIGMA
     )
@@ -179,12 +181,12 @@ def _build_bin_mode_table() -> tuple[pl.DataFrame, dict]:
     # ---- P_N_HIGH — steep Hill but high R² → Partial (reason None), n > n_max=2
     # (Truth-table row "r2 >= r2_good AND n out of range → Partial, reason None".)
     rng = _rng("P_N_HIGH")
-    targets = _sigmoid_targets(10.0, 4.0)
+    targets = _sigmoid_targets(1e-8, 4.0)
     all_rows += _bin_mode_rows("P_N_HIGH", targets, [500] * n_conc, DEFAULT_SIGMA, rng)
     entries["P_N_HIGH"] = {
         "expected_class": "Partial",
         "expected_reason": None,
-        "kd_range": [3.0, 30.0],
+        "kd_range": [3e-9, 3e-8],
         "hill_range": [2.0, 10.0],
         "kd_out_of_range": False,
         "hill_plot_position_is_sentinel": False,
@@ -192,20 +194,20 @@ def _build_bin_mode_table() -> tuple[pl.DataFrame, dict]:
     }
 
     # ---- F_HOOK — R9b top-3 pattern, all top-3 reads well above hook_effect_min_reads
-    # Top-1/2/3 concs are 1000/300/100 (indices 9/8/7 in CONCENTRATIONS).
+    # Top-1/2/3 concs are 1e-6/3e-7/1e-7 (indices 9/8/7 in CONCENTRATIONS).
     # Hit indices 7 & 8 with high signal (~3.5), drop index 9 to ~2.5 → top-2-top-1 = 1.0 > θ_bin=0.2.
     rng = _rng("F_HOOK")
     hook_targets = [
         1.5,  # c=0
-        1.5,  # c=0.1
-        1.6,  # c=0.3
-        1.8,  # c=1
-        2.2,  # c=3
-        2.8,  # c=10
-        3.3,  # c=30
-        3.6,  # c=100  (rank-3)
-        3.6,  # c=300  (rank-2)
-        2.5,  # c=1000 (rank-1) ← dropped
+        1.5,  # c=1e-10
+        1.6,  # c=3e-10
+        1.8,  # c=1e-9
+        2.2,  # c=3e-9
+        2.8,  # c=1e-8
+        3.3,  # c=3e-8
+        3.6,  # c=1e-7  (rank-3)
+        3.6,  # c=3e-7  (rank-2)
+        2.5,  # c=1e-6  (rank-1) ← dropped
     ]
     all_rows += _bin_mode_rows("F_HOOK", hook_targets, [500] * n_conc, DEFAULT_SIGMA, rng)
     entries["F_HOOK"] = {
@@ -246,9 +248,9 @@ def _build_bin_mode_table() -> tuple[pl.DataFrame, dict]:
 
     # ---- F_INSUF_P — only 3 non-zero concs pass the floor (< min_concentration_points=5)
     rng = _rng("F_INSUF_P")
-    targets = _sigmoid_targets(10.0, 1.0)
-    # Heavily underfill most non-zero concs; only c=100, 300, 1000 survive the floor (3 < 5).
-    # CONCENTRATIONS = [0, 0.1, 0.3, 1, 3, 10, 30, 100, 300, 1000]
+    targets = _sigmoid_targets(1e-8, 1.0)
+    # Heavily underfill most non-zero concs; only the top-3 concs survive the floor (3 < 5).
+    # CONCENTRATIONS = [0, 1e-10, 3e-10, 1e-9, 3e-9, 1e-8, 3e-8, 1e-7, 3e-7, 1e-6]
     per_conc = [200, 1, 1, 1, 1, 1, 1, 300, 300, 300]
     all_rows += _bin_mode_rows("F_INSUF_P", targets, per_conc, DEFAULT_SIGMA, rng)
     entries["F_INSUF_P"] = {
@@ -285,28 +287,25 @@ def _build_bin_mode_table() -> tuple[pl.DataFrame, dict]:
     }
 
     # ---- K_LOW — Good-or-Partial fit, but kd below min non-zero concentration (0.1 nM)
-    # kd=0.05 is just below the grid minimum — non-zero concs land in the plateau, so the
-    # fit's n-coefficient is poorly constrained and often hits the N_HI rail. We accept
+    # kd=5e-11 (50 pM) is half the grid minimum — non-zero concs land in the plateau, so
+    # the fit's n-coefficient is poorly constrained and often hits the N_HI rail. We accept
     # either Good or Partial; the point of this clonotype is R14b kdOutOfRange=true.
     rng = _rng("K_LOW")
-    targets = _sigmoid_targets(0.05, 1.0)
+    targets = _sigmoid_targets(5e-11, 1.0)
     all_rows += _bin_mode_rows("K_LOW", targets, [1500] * n_conc, DEFAULT_SIGMA, rng)
     entries["K_LOW"] = {
         "expected_class_in": ["Good", "Partial"],
         "expected_reason": None,
-        "kd_range": [0.0, 0.1],
+        "kd_range": [0.0, 1e-10],
         "hill_range": None,
         "kd_out_of_range": True,
         "hill_plot_position_is_sentinel": False,
-        "notes": "Saturated Hill (true kd=0.05) below min conc → kdOutOfRange=true; exact class depends on fit stability",
+        "notes": "Saturated Hill (true kd=5e-11) below min conc → kdOutOfRange=true; exact class depends on fit stability",
     }
 
-    # K_HIGH (kd just above max concentration) was intended to exercise the upper
-    # half of R14b, but hill_fit bounds kd ∈ [KD_LO, KD_HI] = [1e-15, 1e3], and the
-    # global max concentration is 1000 = KD_HI. Any fitted kd is therefore ≤ max_conc,
-    # making kdOutOfRange=true unreachable from the upper side given the current
-    # CONCENTRATIONS grid. K_LOW covers R14b from the lower bound; don't fabricate
-    # a second case that can't hold.
+    # K_HIGH (kd above max concentration) is not included in the corpus. The upper half
+    # of R14b is covered by the integration/CLI hook test where null-kd Failed fits
+    # land at the kdPlotPosition sentinel. K_LOW covers the lower bound of R14b here.
 
     # ---- C0_ONLY — reads only at c=0; no non-zero data points
     # Gaussian-distribute c=0 reads around BASELINE so this clonotype's c=0 signal
@@ -369,7 +368,7 @@ def _build_no_bin_mode_table() -> tuple[pl.DataFrame, dict]:
     non_zero_concs = [c for c in CONCENTRATIONS if c > 0]
     n_nz = len(non_zero_concs)
 
-    # NB_GOOD: clean sigmoid ~0.01 → ~0.27 (kd near c=10)
+    # NB_GOOD: clean sigmoid ~0.01 → ~0.27 (kd near c=1e-8)
     good_freqs = [0.012, 0.018, 0.03, 0.05, 0.09, 0.15, 0.22, 0.25, 0.27]
     # NB_HOOK: rises then drops sharply at top conc → R9b hook flagged
     hook_freqs = [0.012, 0.018, 0.03, 0.05, 0.09, 0.15, 0.22, 0.25, 0.08]
@@ -409,7 +408,7 @@ def _build_no_bin_mode_table() -> tuple[pl.DataFrame, dict]:
     entries["NB_GOOD"] = {
         "expected_class": "Good",
         "expected_reason": None,
-        "kd_range": [1.0, 200.0],
+        "kd_range": [1e-9, 2e-7],
         "hill_range": [0.3, 2.5],
         "kd_out_of_range": False,
         "hill_plot_position_is_sentinel": False,
@@ -457,28 +456,28 @@ def _build_antigen_table() -> tuple[pl.DataFrame, dict]:
             r["antigen"] = antigen
         rows.extend(batch)
 
-    append("ANT_T1", "target", 5.0)
-    append("ANT_T2", "target", 50.0)
-    append("ANT_D1", "other", 5.0)
-    append("ANT_D2", "other", 50.0)
+    append("ANT_T1", "target", 5e-9)
+    append("ANT_T2", "target", 5e-8)
+    append("ANT_D1", "other", 5e-9)
+    append("ANT_D2", "other", 5e-8)
 
     entries["ANT_T1"] = {
         "expected_class": "Good",
         "expected_reason": None,
-        "kd_range": [1.5, 15.0],
+        "kd_range": [1.5e-9, 1.5e-8],
         "hill_range": [0.5, 2.0],
         "kd_out_of_range": False,
         "hill_plot_position_is_sentinel": False,
-        "notes": "antigen=target, kd≈5 — survives R4 filter",
+        "notes": "antigen=target, kd≈5 nM — survives R4 filter",
     }
     entries["ANT_T2"] = {
         "expected_class": "Good",
         "expected_reason": None,
-        "kd_range": [15.0, 150.0],
+        "kd_range": [1.5e-8, 1.5e-7],
         "hill_range": [0.5, 2.0],
         "kd_out_of_range": False,
         "hill_plot_position_is_sentinel": False,
-        "notes": "antigen=target, kd≈50 — survives R4 filter",
+        "notes": "antigen=target, kd≈50 nM — survives R4 filter",
     }
     # Distractors have no manifest entry beyond "must not appear in output".
     return pl.DataFrame(rows), entries

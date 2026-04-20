@@ -11,10 +11,10 @@
         ],
         "kd_out_of_range": false,
         "kd_range": [
-          1.5,
-          15.0
+          1.5e-09,
+          1.5e-08
         ],
-        "notes": "antigen=target, kd\u22485 \u2014 survives R4 filter"
+        "notes": "antigen=target, kd\u22485 nM \u2014 survives R4 filter"
       },
       "ANT_T2": {
         "expected_class": "Good",
@@ -26,10 +26,10 @@
         ],
         "kd_out_of_range": false,
         "kd_range": [
-          15.0,
-          150.0
+          1.5e-08,
+          1.5e-07
         ],
-        "notes": "antigen=target, kd\u224850 \u2014 survives R4 filter"
+        "notes": "antigen=target, kd\u224850 nM \u2014 survives R4 filter"
       }
     },
     "distractor_clonotypes": [
@@ -110,10 +110,10 @@
         ],
         "kd_out_of_range": false,
         "kd_range": [
-          33.333333333333336,
-          300.0
+          3.3333333333333334e-08,
+          3e-07
         ],
-        "notes": "Clean sigmoid, kd \u2248 100.0 \u2014 baseline Good across decades"
+        "notes": "Clean sigmoid, kd \u2248 1e-07 \u2014 baseline Good across decades"
       },
       "G_LOW": {
         "expected_class": "Good",
@@ -125,10 +125,10 @@
         ],
         "kd_out_of_range": false,
         "kd_range": [
-          0.3333333333333333,
-          3.0
+          3.3333333333333337e-10,
+          3.0000000000000004e-09
         ],
-        "notes": "Clean sigmoid, kd \u2248 1.0 \u2014 baseline Good across decades"
+        "notes": "Clean sigmoid, kd \u2248 1e-09 \u2014 baseline Good across decades"
       },
       "G_MID": {
         "expected_class": "Good",
@@ -140,10 +140,10 @@
         ],
         "kd_out_of_range": false,
         "kd_range": [
-          3.3333333333333335,
-          30.0
+          3.3333333333333334e-09,
+          3.0000000000000004e-08
         ],
-        "notes": "Clean sigmoid, kd \u2248 10.0 \u2014 baseline Good across decades"
+        "notes": "Clean sigmoid, kd \u2248 1e-08 \u2014 baseline Good across decades"
       },
       "K_LOW": {
         "expected_class_in": [
@@ -156,9 +156,9 @@
         "kd_out_of_range": true,
         "kd_range": [
           0.0,
-          0.1
+          1e-10
         ],
-        "notes": "Saturated Hill (true kd=0.05) below min conc \u2192 kdOutOfRange=true; exact class depends on fit stability"
+        "notes": "Saturated Hill (true kd=5e-11) below min conc \u2192 kdOutOfRange=true; exact class depends on fit stability"
       },
       "P_NOISY": {
         "expected_class": "Partial",
@@ -170,8 +170,8 @@
         ],
         "kd_out_of_range": false,
         "kd_range": [
-          1.0,
-          100.0
+          1e-09,
+          1e-07
         ],
         "notes": "Wider \u03c3 bin assignment \u2192 weighted R\u00b2 between r2_failed (0.5) and r2_good (0.8)"
       },
@@ -185,8 +185,8 @@
         ],
         "kd_out_of_range": false,
         "kd_range": [
-          3.0,
-          30.0
+          3e-09,
+          3e-08
         ],
         "notes": "Steep Hill (true n=4) + good data \u2192 high R\u00b2, fit n > n_max=2 \u2192 Partial"
       }
@@ -208,19 +208,19 @@
   ],
   "concentrations": [
     0.0,
-    0.1,
-    0.3,
-    1.0,
-    3.0,
-    10.0,
-    30.0,
-    100.0,
-    300.0,
-    1000.0
+    1e-10,
+    3e-10,
+    1e-09,
+    3e-09,
+    1e-08,
+    3e-08,
+    1e-07,
+    3e-07,
+    1e-06
   ],
   "corpus_version": "1.0.0",
   "master_seed": 20260417,
-  "max_non_zero_concentration": 1000.0,
+  "max_non_zero_concentration": 1e-06,
   "no_bin_mode": {
     "clonotypes": {
       "NB_GOOD": {
@@ -233,8 +233,8 @@
         ],
         "kd_out_of_range": false,
         "kd_range": [
-          1.0,
-          200.0
+          1e-09,
+          2e-07
         ],
         "notes": "R7b frequency signal \u2014 clean sigmoid rise to ~27% at max conc"
       },
