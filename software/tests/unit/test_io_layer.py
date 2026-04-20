@@ -280,6 +280,19 @@ class TestCanonicalConcentrationAxis:
         assert "concentrationStr" in result.columns
         assert result["concentrationStr"][0] == "0.001"
 
+    def test_all_empty_concentration_raises_friendly_error(self):
+        # When the selected concentration metadata column is all-null, the TSV builder
+        # emits empty strings and polars types the column as Utf8. Cast-to-Float64 would
+        # surface as an opaque polars error — we raise a friendlier message first.
+        df = pl.DataFrame(
+            [
+                {"clonotypeKey": "A", "sampleId": "s1", "concentration": "", "bin": 1, "reads": 5},
+                {"clonotypeKey": "A", "sampleId": "s2", "concentration": "", "bin": 1, "reads": 5},
+            ]
+        )
+        with pytest.raises(InputValidationError, match="no numeric values"):
+            canonicalize_concentration(df)
+
 
 class TestNarrowConcentrationRangeWarning:
     """R5 design-level guardrail: warn if non-zero concentrations span < 1 order of magnitude.

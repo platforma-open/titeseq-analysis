@@ -127,12 +127,12 @@ const dataModel = new DataModelBuilder()
     settingsOpen: false,
   }));
 
-function isNumericValueType(vt: string | undefined): boolean {
-  return vt === "Int" || vt === "Long" || vt === "Float" || vt === "Double";
-}
-
 function isIntegerValueType(vt: string | undefined): boolean {
   return vt === "Int" || vt === "Long";
+}
+
+function isFloatValueType(vt: string | undefined): boolean {
+  return vt === "Float" || vt === "Double";
 }
 
 export const model = BlockModelV3.create(dataModel)
@@ -195,7 +195,7 @@ export const model = BlockModelV3.create(dataModel)
     ctx.resultPool.getOptions(
       (spec) =>
         isPColumnSpec(spec) &&
-        isNumericValueType(spec.valueType) &&
+        isFloatValueType(spec.valueType) &&
         spec.axesSpec.length === 1 &&
         spec.axesSpec[0].name === "pl7.app/sampleId",
     ),
