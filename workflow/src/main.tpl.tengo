@@ -1,7 +1,6 @@
-// Entry template for titeseq-analysis block (affinity profiling).
-// Assembles long-format reads TSV from the abundance PColumn + per-sample
-// metadata, invokes the Python fit-curves binary, and imports the 3 output
-// TSVs into traced PFrames with annotations from pcolumn-spec.md.
+// Entry template for the Tite-Seq Analysis block.
+// Joins the abundance PColumn with per-sample metadata into one long-format reads TSV,
+// runs the Python fit-curves binary, and imports its three outputs as traced PFrames.
 
 wf := import("@platforma-sdk/workflow-tengo:workflow")
 exec := import("@platforma-sdk/workflow-tengo:exec")
@@ -45,7 +44,7 @@ wf.body(func(args) {
 		unitLabel = concSpec.annotations["pl7.app/label"]
 	}
 
-	// Stage B: build long-format reads.tsv.
+	// Build long-format reads.tsv.
 	// The tsvFileBuilder joins all columns on their shared axes, so adding
 	// abundance ([sampleId][clonotypeKey]) + concentration ([sampleId]) + bin/antigen ([sampleId])
 	// produces one row per (sampleId, clonotypeKey) with aligned metadata.
@@ -64,7 +63,7 @@ wf.body(func(args) {
 	readsBuilder.cpu(1)
 	readsTsv := readsBuilder.build()
 
-	// Stage D: params.json payload. Python auto-detects bin-mode (COL_BIN presence)
+	// params.json payload. Python auto-detects bin-mode (COL_BIN presence)
 	// and baseline-from-zero (c=0 rows), so only tuning params go here.
 	paramsPayload := {
 		min_reads_per_concentration: args.minReadsPerConcentration,
@@ -78,7 +77,7 @@ wf.body(func(args) {
 		hook_effect_min_reads: args.hookEffectMinReads
 	}
 
-	// Stage E: exec Python fit-curves.
+	// Exec Python fit-curves.
 	execBuilder := exec.builder().
 		software(fitCurvesSw).
 		mem("16GiB").
@@ -156,7 +155,7 @@ wf.body(func(args) {
 		kdAnnotations["pl7.app/unit"] = unitLabel
 	}
 
-	// Stage F: import per_clonotype.tsv → summary PColumns.
+	// Import per_clonotype.tsv → summary PColumns.
 	// Python writes column `r2`; the output spec name `pl7.app/vdj/curveFitR2` is
 	// what discovery & the UI see, so the rename is invisible downstream.
 	summaryImported := xsv.importFile(fit.getFile("per_clonotype.tsv"), "tsv", {
@@ -290,7 +289,7 @@ wf.body(func(args) {
 		partitionKeyLength: 0
 	}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
 
-	// Stage G: import mean_bin.tsv → meanBin (observed signal).
+	// Import mean_bin.tsv → meanBin (observed signal).
 	// Python writes `clonotypeKey, concentrationStr, concentrationAM, concentration, meanBin`;
 	// both concentration columns are declared as axes (see R14 compliance comment above).
 	meanBinImported := xsv.importFile(fit.getFile("mean_bin.tsv"), "tsv", {
@@ -318,7 +317,7 @@ wf.body(func(args) {
 		partitionKeyLength: 0
 	}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
 
-	// Stage G2: import fitted_mean_bin.tsv → fittedMeanBin (curve overlay).
+	// Import fitted_mean_bin.tsv → fittedMeanBin (curve overlay).
 	fittedMeanBinImported := xsv.importFile(fit.getFile("fitted_mean_bin.tsv"), "tsv", {
 		axes: [
 			{ column: "clonotypeKey", spec: clonotypeAxisSpec },
@@ -344,7 +343,7 @@ wf.body(func(args) {
 		partitionKeyLength: 0
 	}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
 
-	// Stage H: trace injection. `makeTrace` bundles the upstream abundance provenance
+	// Trace injection. `makeTrace` bundles the upstream abundance provenance
 	// with a self-descriptor; `trace.inject` rewrites only the small spec resources
 	// (data resources are untouched thanks to splitDataAndSpec).
 	traceLabel := args.customBlockLabel
@@ -357,7 +356,7 @@ wf.body(func(args) {
 		label: traceLabel
 	})
 
-	// Stage I: traced PFrames.
+	// Traced PFrames.
 	summaryPfb := pframes.pFrameBuilder()
 	for k, v in summaryImported {
 		summaryPfb.add(k, trace.inject(v.spec), v.data)

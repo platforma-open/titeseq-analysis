@@ -21,14 +21,11 @@ export type ValidationIssue = {
 };
 
 export type BlockArgs = {
-  // Inputs (R1–R4)
   abundanceRef?: PlRef;
   concentrationColumnRef?: PlRef;
   binColumnRef?: PlRef;
   antigenColumnRef?: PlRef;
   targetAntigen?: string;
-
-  // Fitting params
   minReadsPerConcentration: number;
   minConcentrationPoints: number;
   r2ThresholdGood: number;
@@ -38,8 +35,6 @@ export type BlockArgs = {
   hookEffectThresholdBin: number;
   hookEffectThresholdNoBin: number;
   hookEffectMinReads: number;
-
-  // Label
   defaultBlockLabel: string;
   customBlockLabel: string;
 };
@@ -267,9 +262,9 @@ export const model = BlockModelV3.create(dataModel)
         issues.push({
           severity: "warning",
           message:
-            `Concentration column label "${unitLabel}" contains spaces — ` +
-            "the full string becomes the K_D,app unit and renders awkwardly. " +
-            'Prefer a bare unit string like "nM" or "µM".',
+            `Concentration column label "${unitLabel}" contains spaces. ` +
+            `The full label becomes the K_D,app unit, so values render as "K_D,app (${unitLabel})". ` +
+            'Use a bare unit like "nM" or "µM".',
         });
       }
     }

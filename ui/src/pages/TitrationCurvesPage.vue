@@ -11,6 +11,7 @@ const app = useApp();
 
 const binMode = computed(() => app.model.outputs.binMode === true);
 const isEmpty = computed(() => app.model.outputs.isEmpty === true);
+const hasResults = computed(() => app.model.outputs.isEmpty === false);
 
 const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | undefined => {
   const pCols = app.model.outputs.titrationCurvesPfCols;
@@ -57,12 +58,12 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
       <PageHeader />
     </template>
 
-    <PlAlert v-if="!binMode" type="warn">
+    <PlAlert v-if="hasResults && !binMode" type="warn">
       No-bin mode: K_D,app values reflect clonotype frequency shifts, not fluorescence. They are not
       comparable to bin-derived results — do not mix in the same Lead Selection ranking.
     </PlAlert>
     <PlAlert v-if="isEmpty" type="warn">
-      All clonotypes failed to fit. Loosen thresholds via Inputs or inspect the fit log.
+      All clonotypes failed to fit. Loosen thresholds in Inputs or check the Fit log.
     </PlAlert>
 
     <GraphMaker

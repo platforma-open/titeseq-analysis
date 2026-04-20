@@ -79,8 +79,9 @@ watch(
       required
     >
       <template #tooltip>
-        Per-sample numeric column carrying the antigen concentration used for each FACS sort. The
-        column label becomes the K_D,app unit — prefer a bare unit (e.g. "nM", "µM") over a phrase.
+        Per-sample numeric column giving the antigen concentration at which each sample was stained.
+        The column label becomes the K_D,app unit — prefer a bare unit (e.g. "nM", "µM") over a
+        phrase.
       </template>
     </PlDropdownRef>
     <PlDropdownRef
@@ -90,8 +91,8 @@ watch(
       clearable
     >
       <template #tooltip>
-        Per-sample positive integer identifying the FACS bin. Leave empty to run in no-bin mode —
-        K_D,app values from that mode are not comparable to bin-derived results.
+        Per-sample positive integer identifying the FACS bin. Leave empty to run in no-bin mode;
+        resulting K_D,app values are not comparable to bin-derived values.
       </template>
     </PlDropdownRef>
     <PlDropdownRef
@@ -113,8 +114,7 @@ watch(
       required
     >
       <template #tooltip>
-        Which antigen value to analyse. Required when an antigen column is selected. Values are
-        pulled from the selected antigen column.
+        Which antigen to analyse. Required when an antigen column is set.
       </template>
     </PlDropdown>
 
@@ -154,20 +154,35 @@ watch(
         :min-value="0"
         :max-value="1"
         :step="0.05"
-      />
+      >
+        <template #tooltip>
+          Clonotypes with weighted R² at or above this threshold and Hill coefficient in range
+          classify as Good. Default 0.8.
+        </template>
+      </PlNumberField>
       <PlNumberField
         v-model="app.model.data.r2ThresholdFailed"
         label="R² threshold — Failed"
         :min-value="0"
         :max-value="1"
         :step="0.05"
-      />
+      >
+        <template #tooltip>
+          Clonotypes with weighted R² below this threshold classify as Failed regardless of n.
+          Default 0.5.
+        </template>
+      </PlNumberField>
       <PlNumberField
         v-model="app.model.data.nMin"
         label="Hill coefficient — min"
         :min-value="0"
         :step="0.1"
-      />
+      >
+        <template #tooltip>
+          Lower bound on n for Good classification. Values below this downgrade the class by one.
+          Default 0.5.
+        </template>
+      </PlNumberField>
       <PlNumberField
         v-model="app.model.data.nMax"
         label="Hill coefficient — max"
@@ -200,13 +215,23 @@ watch(
         label="Signal drop threshold (frequency mode)"
         :min-value="0"
         :step="0.005"
-      />
+      >
+        <template #tooltip>
+          Flags non-monotonic signals (potentially genuine tight binders showing a hook effect) when
+          the top concentration's clonotype frequency drops by more than this.
+        </template>
+      </PlNumberField>
       <PlNumberField
         v-model="app.model.data.hookEffectMinReads"
         label="Min reads for hook check"
         :min-value="0"
         :step="1"
-      />
+      >
+        <template #tooltip>
+          Skip the hook-effect check when the top two concentration points have fewer reads than
+          this. Below the floor, a signal drop is more likely noise than a real hook. Default 20.
+        </template>
+      </PlNumberField>
     </PlAccordionSection>
 
     <PlAccordionSection label="Block label">
@@ -214,7 +239,11 @@ watch(
         v-model="app.model.data.customBlockLabel"
         label="Custom label"
         :placeholder="app.model.data.defaultBlockLabel"
-      />
+      >
+        <template #tooltip>
+          Override the auto-generated subtitle. Leave blank to use the three-input placeholder.
+        </template>
+      </PlTextField>
     </PlAccordionSection>
   </PlSlideModal>
 </template>

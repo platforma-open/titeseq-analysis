@@ -47,7 +47,6 @@ def classify(
         if n_in_range:
             return Classification("Good", None)
         return Classification("Partial", None)
-    # r2_threshold_failed <= r2 < r2_threshold_good
     if n_in_range:
         return Classification("Partial", None)
     return Classification("Failed", "n_out_of_range")

@@ -218,9 +218,7 @@ def canonicalize_concentration(df: pl.DataFrame) -> pl.DataFrame:
     if COL_CONC_VAL not in df.columns:
         df = df.with_columns(pl.col(COL_CONC_STR).cast(pl.Float64).alias(COL_CONC_VAL))
     if df.schema[COL_CONC_VAL] != pl.Float64:
-        # A Float metadata column whose sample values are all null arrives here as a
-        # string column of empty strings (the TSV builder's null encoding). Detect
-        # this and raise a clear error instead of a raw polars cast traceback.
+        # Same all-null-column pattern handled in `validate_bin_column`.
         if df.schema[COL_CONC_VAL] == pl.Utf8:
             non_empty = df.filter(
                 pl.col(COL_CONC_VAL).is_not_null() & (pl.col(COL_CONC_VAL).str.len_chars() > 0)
