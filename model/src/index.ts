@@ -80,7 +80,7 @@ const dataModel = new DataModelBuilder()
     customBlockLabel: "",
     tableState: createPlDataTableStateV2(),
     graphStateTitrationCurves: {
-      title: "Titration Curves",
+      title: "",
       template: "dots",
       currentTab: null,
       layersSettings: {
@@ -93,7 +93,7 @@ const dataModel = new DataModelBuilder()
       },
     },
     graphStateKDHistogram: {
-      title: "K_D,app Distribution",
+      title: "",
       template: "bins",
       currentTab: null,
       layersSettings: {
@@ -107,7 +107,7 @@ const dataModel = new DataModelBuilder()
       },
     },
     graphStateAffinityVsFit: {
-      title: "Affinity vs Fit Quality",
+      title: "",
       template: "dots",
       currentTab: null,
       layersSettings: {
