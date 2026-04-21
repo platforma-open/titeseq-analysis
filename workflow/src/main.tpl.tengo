@@ -177,9 +177,9 @@ wf.body(func(args) {
 		facsCorrected = "true"
 	}
 
-	// K_D,app unit annotation propagated from the concentration column label (R2).
+	// Kd,app unit annotation propagated from the concentration column label (R2).
 	kdAnnotations := {
-		"pl7.app/label": "K_D,app",
+		"pl7.app/label": "Kd,app",
 		"pl7.app/isScore": "true",
 		"pl7.app/score/rankingOrder": "increasing",
 		"pl7.app/table/visibility": "default",
@@ -283,7 +283,7 @@ wf.body(func(args) {
 					valueType: "String",
 					domain: { "pl7.app/block": blockId },
 					annotations: {
-						"pl7.app/label": "K_D,app out of range",
+						"pl7.app/label": "Kd,app out of range",
 						"pl7.app/isScore": "false",
 						"pl7.app/isDiscreteFilter": "true",
 						"pl7.app/discreteValues": "[\"true\",\"false\"]",
@@ -299,7 +299,7 @@ wf.body(func(args) {
 					valueType: "Double",
 					domain: { "pl7.app/block": blockId },
 					annotations: {
-						"pl7.app/label": "K_D,app",
+						"pl7.app/label": "Kd,app",
 						"pl7.app/isScore": "false",
 						"pl7.app/table/visibility": "hidden"
 					}

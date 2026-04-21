@@ -180,7 +180,7 @@ def test_cli_hook_effect_triggers_failure(tmp_path):
     h1 = pc.filter(pl.col("clonotypeKey") == "H1")
     assert h1["affinityClass"][0] == "Failed"
     assert h1["fitFailureReason"][0] == "non_monotonic_signal"
-    # R17: null-K_D Failed rows must surface at the plot sentinels so the scatter doesn't drop them.
+    # R17: null-Kd Failed rows must surface at the plot sentinels so the scatter doesn't drop them.
     assert h1["kd"][0] is None
     assert h1["kdPlotPosition"][0] == max(concs) * 10.0
     assert h1["hillPlotPosition"][0] == -1.0

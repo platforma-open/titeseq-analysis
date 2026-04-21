@@ -1,7 +1,7 @@
 """R10 Hill fit (reparametrized, weighted NLS) + R11 weighted R².
 
 Hill model:
-    y(x) = baseline + (top - baseline) * x^n / (K_D^n + x^n)
+    y(x) = baseline + (top - baseline) * x^n / (Kd^n + x^n)
 
 Reparametrization for numerical stability:
     amplitude = log(top - baseline)  =>  top = baseline + exp(amplitude)
@@ -72,7 +72,7 @@ def _initial_guesses(x: np.ndarray, y: np.ndarray, baseline: float) -> tuple[flo
     top_guess = max(y_max, baseline + 1e-6)
     amp_guess = math.log(max(top_guess - baseline, 1e-6))
     half = baseline + (top_guess - baseline) / 2.0
-    # Concentration where signal first exceeds the midpoint — coarse K_D estimate.
+    # Concentration where signal first exceeds the midpoint — coarse Kd estimate.
     above = np.where(y >= half)[0]
     if above.size > 0 and x[above[0]] > 0:
         kd_guess = float(x[above[0]])

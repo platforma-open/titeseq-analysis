@@ -1,6 +1,6 @@
-"""Regression: simulate Poisson reads at the bin level, assert K_D recovery on enough clonotypes.
+"""Regression: simulate Poisson reads at the bin level, assert Kd recovery on enough clonotypes.
 
-Spec R-test: synthesize many clonotypes with known K_D, run through the pipeline,
+Spec R-test: synthesize many clonotypes with known Kd, run through the pipeline,
 verify >= 80% recovered within a factor (relaxed below from plan's 10% on bin-level reads).
 """
 
@@ -108,7 +108,7 @@ def build_poisson_reads_with_skewed_sort(
 
 @pytest.mark.slow
 def test_synthetic_titeseq_facs_correction_improves_recovery():
-    """Synthetic skew: uncorrected K_D recovery degrades; corrected recovers it.
+    """Synthetic skew: uncorrected Kd recovery degrades; corrected recovers it.
 
     The skew pattern mirrors a real Tite-Seq sort — low-concentration samples
     pile cells into the bottom bin (weak binders stay unlabeled), high-
@@ -162,7 +162,7 @@ def test_synthetic_titeseq_facs_correction_improves_recovery():
     corrected_rate = _within_factor(out_corrected, factor=5.0)
     uncorrected_rate = _within_factor(out_uncorrected, factor=5.0)
 
-    # Corrected must recover at least 70% of fits within 5x of the injected K_D.
+    # Corrected must recover at least 70% of fits within 5x of the injected Kd.
     # Uncorrected on this skew should be meaningfully worse — assert the gap to
     # catch regressions where the correction silently becomes a no-op.
     assert corrected_rate >= 0.7, (
@@ -177,7 +177,7 @@ def test_synthetic_titeseq_facs_correction_improves_recovery():
 @pytest.mark.slow
 def test_poisson_titeseq_kd_recovery():
     cfg = PoissonConfig(
-        # Sub-µM grid spanning 0.1 nM → 300 nM; K_D placed mid-grid at 10 nM.
+        # Sub-µM grid spanning 0.1 nM → 300 nM; Kd placed mid-grid at 10 nM.
         true_kd=1e-8,
         true_n=1.0,
         baseline=1.0,
@@ -196,7 +196,7 @@ def test_poisson_titeseq_kd_recovery():
     frac = good.height / pc.height
     assert frac >= 0.5, f"only {frac:.0%} non-failed (regression alarm, expected >= 50%)"
 
-    # Of those, 50% should have K_D within a factor of 5
+    # Of those, 50% should have Kd within a factor of 5
     within = good.filter((pl.col("kd") >= cfg.true_kd / 5) & (pl.col("kd") <= cfg.true_kd * 5))
     frac_within = within.height / max(good.height, 1)
     assert frac_within >= 0.5, f"only {frac_within:.0%} within 5x (expected >= 50%)"

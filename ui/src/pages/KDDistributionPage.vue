@@ -34,7 +34,7 @@ const defaultOptions = computed((): PredefinedGraphOption<"histogram">[] | undef
   <PlBlockPage
     v-model:subtitle="app.model.data.customBlockLabel"
     :subtitle-placeholder="app.model.data.defaultBlockLabel"
-    title="K_D Distribution"
+    title="Kd Distribution"
   >
     <template #append>
       <PageHeader />

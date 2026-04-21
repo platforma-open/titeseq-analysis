@@ -84,12 +84,12 @@ def validate_concentration_column(df: pl.DataFrame, has_bin: bool) -> list[str]:
             "ambiguous 0 M control entries (R2)"
         )
 
-    # R5: narrow dose range may not bracket K_D,app; excludes 0 M control.
+    # R5: narrow dose range may not bracket Kd,app; excludes 0 M control.
     nonzero = df.filter(pl.col(COL_CONC_VAL) > 0).select(pl.col(COL_CONC_VAL).unique())
     n_nonzero = nonzero.height
     if n_nonzero == 1:
         warnings.append(
-            "only one non-zero concentration present; narrow dose range may not bracket K_D,app (R5)"
+            "only one non-zero concentration present; narrow dose range may not bracket Kd,app (R5)"
         )
     elif n_nonzero >= 2:
         max_c = float(nonzero.select(pl.col(COL_CONC_VAL).max()).item())
@@ -97,7 +97,7 @@ def validate_concentration_column(df: pl.DataFrame, has_bin: bool) -> list[str]:
         if min_c > 0 and max_c / min_c < 10.0:
             warnings.append(
                 f"non-zero concentrations span {max_c / min_c:.2f}x (less than one order of magnitude); "
-                "narrow dose range may not bracket K_D,app (R5)"
+                "narrow dose range may not bracket Kd,app (R5)"
             )
     return warnings
 

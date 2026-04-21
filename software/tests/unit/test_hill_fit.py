@@ -51,7 +51,7 @@ class TestWeightedR2:
 
 
 class TestHillFitRoundtrip:
-    # Noiseless round-trip: fit must recover true K_D within tight tolerance.
+    # Noiseless round-trip: fit must recover true Kd within tight tolerance.
     # Guards against reparametrization, sign errors, and wrong Hill algebra.
     @pytest.mark.parametrize(
         "true_kd, true_n, abs_err_kd, abs_err_n",

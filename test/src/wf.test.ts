@@ -174,7 +174,7 @@ blockTest(
           axesSettings: { axisX: { scale: 'log' } },
         },
         graphStateKDHistogram: {
-          title: 'K_D,app Distribution',
+          title: 'Kd,app Distribution',
           template: 'bins',
           currentTab: null,
           layersSettings: { bins: {} },
@@ -269,9 +269,9 @@ blockTest(
     expect(affinityCounts.Good, `Good count (distribution: ${JSON.stringify(affinityCounts)})`).toBeGreaterThanOrEqual(1);
     expect(affinityCounts.Failed, `Failed count (distribution: ${JSON.stringify(affinityCounts)})`).toBeGreaterThanOrEqual(1);
 
-    // Tier-2 numeric check: at least one K_D in the expected range for Good
+    // Tier-2 numeric check: at least one Kd in the expected range for Good
     // clonotypes. G_LOW targets [3e-10, 3e-09], G_MID targets [3e-09, 3e-08],
-    // so any finite K_D in [3e-10, 3e-08] is consistent with a Good fit.
+    // so any finite Kd in [3e-10, 3e-08] is consistent with a Good fit.
     const goodKds: number[] = [];
     for (let i = 0; i < affinityValues.length; i += 1) {
       if (affinityValues[i] === 'Good') {
@@ -279,9 +279,9 @@ blockTest(
         if (typeof kd === 'number' && Number.isFinite(kd)) goodKds.push(kd);
       }
     }
-    expect(goodKds.length, 'Good clonotypes with finite K_D').toBeGreaterThanOrEqual(1);
+    expect(goodKds.length, 'Good clonotypes with finite Kd').toBeGreaterThanOrEqual(1);
     const inRange = goodKds.filter((kd) => kd >= 3e-10 && kd <= 3e-08);
-    expect(inRange.length, `K_D in expected range (Good K_Ds: ${goodKds.join(', ')})`).toBeGreaterThanOrEqual(1);
+    expect(inRange.length, `Kd in expected range (Good Kds: ${goodKds.join(', ')})`).toBeGreaterThanOrEqual(1);
 
     // titrationCurvesPf combines summary + signal columns, so it must carry
     // all 6 summary names plus meanBin + fittedMeanBin. Use listColumns here
@@ -408,7 +408,7 @@ blockTest(
           axesSettings: { axisX: { scale: 'log' } },
         },
         graphStateKDHistogram: {
-          title: 'K_D,app Distribution',
+          title: 'Kd,app Distribution',
           template: 'bins',
           currentTab: null,
           layersSettings: { bins: {} },

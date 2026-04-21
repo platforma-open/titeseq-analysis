@@ -28,7 +28,7 @@
       "logo": "file:../logos/block-logo.png",
       "url": "https://github.com/platforma-open/platforma-open.titeseq-analysis",
       "support": "mailto:support@milaboratories.com",
-      "description": "Estimates apparent binding affinity (K_D,app) of antibody variants from Tite-Seq reads by fitting a Hill equation to mean-bin signal across antigen concentrations.",
+      "description": "Estimates apparent binding affinity (Kd,app) of antibody variants from Tite-Seq reads by fitting a Hill equation to mean-bin signal across antigen concentrations.",
       "longDescription": "file:../docs/description.md",
       "changelog": "file:../CHANGELOG.md",
       "tags": ["airr", "downstream", "affinity", "titeseq"],

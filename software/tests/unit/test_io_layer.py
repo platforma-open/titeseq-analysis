@@ -359,7 +359,7 @@ class TestCanonicalConcentrationAxis:
 class TestNarrowConcentrationRangeWarning:
     """R5 design-level guardrail: warn if non-zero concentrations span < 1 order of magnitude.
 
-    A narrow dose range may not bracket K_D,app for any antibody, yielding
+    A narrow dose range may not bracket Kd,app for any antibody, yielding
     kdOutOfRange = true on all clonotypes. This check does not block execution;
     it surfaces as a warning.
     """

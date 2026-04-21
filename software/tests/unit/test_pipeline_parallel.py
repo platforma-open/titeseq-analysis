@@ -27,7 +27,7 @@ def _make_tasks(n_tasks: int, rng: np.random.Generator):
     concs = np.array([0.0, 1e-10, 1e-9, 1e-8, 1e-7, 1e-6])
     xs, ys, ws = [], [], []
     for i in range(n_tasks):
-        # Spread K_D across the grid to keep fits non-degenerate.
+        # Spread Kd across the grid to keep fits non-degenerate.
         kd = 10 ** rng.uniform(-10, -7)
         baseline = 1.0
         amplitude = math.log(rng.uniform(1.0, 3.0))

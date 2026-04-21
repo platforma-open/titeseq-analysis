@@ -59,7 +59,7 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
     </template>
 
     <PlAlert v-if="hasResults && !binMode" type="warn">
-      No-bin mode: K_D,app values reflect clonotype frequency shifts, not fluorescence. They are not
+      No-bin mode: Kd,app values reflect clonotype frequency shifts, not fluorescence. They are not
       comparable to bin-derived results — do not mix in the same Lead Selection ranking.
     </PlAlert>
     <PlAlert v-if="isEmpty" type="warn">

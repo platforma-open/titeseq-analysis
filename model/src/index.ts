@@ -304,7 +304,7 @@ export const model = BlockModelV3.create(dataModel)
           severity: "warning",
           message:
             `Concentration column label "${unitLabel}" contains spaces. ` +
-            `The full label becomes the K_D,app unit, so values render as "K_D,app (${unitLabel})". ` +
+            `The full label becomes the Kd,app unit, so values render as "Kd,app (${unitLabel})". ` +
             'Use a bare unit like "nM" or "µM".',
         });
       }
@@ -408,7 +408,7 @@ export const model = BlockModelV3.create(dataModel)
   .sections((_ctx) => [
     { type: "link", href: "/", label: "Table" },
     { type: "link", href: "/titration-curves", label: "Titration Curves" },
-    { type: "link", href: "/kd-distribution", label: "K_D Distribution" },
+    { type: "link", href: "/kd-distribution", label: "Kd Distribution" },
     { type: "link", href: "/affinity-vs-fit", label: "Affinity vs Fit Quality" },
   ])
 

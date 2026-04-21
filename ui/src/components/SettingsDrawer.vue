@@ -89,7 +89,7 @@ watch(
     >
       <template #tooltip>
         Per-sample numeric column giving the antigen concentration at which each sample was stained.
-        The column label becomes the K_D,app unit — prefer a bare unit (e.g. "nM", "µM") over a
+        The column label becomes the Kd,app unit — prefer a bare unit (e.g. "nM", "µM") over a
         phrase.
       </template>
     </PlDropdownRef>
@@ -101,7 +101,7 @@ watch(
     >
       <template #tooltip>
         Per-sample positive integer identifying the FACS bin. Leave empty to run in no-bin mode;
-        resulting K_D,app values are not comparable to bin-derived values.
+        resulting Kd,app values are not comparable to bin-derived values.
       </template>
     </PlDropdownRef>
     <PlDropdownRef

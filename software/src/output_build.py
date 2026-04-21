@@ -22,10 +22,10 @@ PER_CLONOTYPE_SCHEMA: dict[str, pl.DataType] = {
 
 
 def flag_kd_out_of_range(frame: pl.DataFrame, min_concentration: float, max_concentration: float) -> pl.DataFrame:
-    """R14b: set kdOutOfRange = true when K_D is outside [min_concentration, max_concentration].
+    """R14b: set kdOutOfRange = true when Kd is outside [min_concentration, max_concentration].
 
     Boundary (kd == min or kd == max) is treated as in-range (closed interval).
-    Null K_D rows retain kdOutOfRange = null.
+    Null Kd rows retain kdOutOfRange = null.
     """
     return frame.with_columns(
         pl.when(pl.col("kd").is_null())
@@ -36,9 +36,9 @@ def flag_kd_out_of_range(frame: pl.DataFrame, min_concentration: float, max_conc
 
 
 def add_diagnostic_plot_columns(frame: pl.DataFrame, max_concentration: float) -> pl.DataFrame:
-    """R17: append plot-only positions so Failed rows with null K_D render on the scatter.
+    """R17: append plot-only positions so Failed rows with null Kd render on the scatter.
 
-    kdPlotPosition places null K_D at one decade right of the fitted range on a log axis;
+    kdPlotPosition places null Kd at one decade right of the fitted range on a log axis;
     hillPlotPosition parks null Hill coefficients at -1.0, a non-physical sentinel outside
     the valid (0, ∞) range, so Failed rows pool visually away from well-fitted n≈1
     clonotypes. Both columns are diagnostic — not for reporting — and never null.

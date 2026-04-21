@@ -57,7 +57,7 @@ class TestFlagKdOutOfRange:
 
 
 class TestAddDiagnosticPlotColumns:
-    # R17: Failed clonotypes with null K_D must appear at a sentinel x right of the fitted range
+    # R17: Failed clonotypes with null Kd must appear at a sentinel x right of the fitted range
     # so the Affinity-vs-Fit scatter doesn't silently drop them on a log axis.
 
     def test_null_kd_maps_to_decade_right_of_max(self):
