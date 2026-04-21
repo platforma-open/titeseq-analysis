@@ -274,6 +274,6 @@ class TestNormalizeDispatch:
                 {"clonotypeKey": "B", "sampleId": "s", "concentrationStr": "1", "concentration": 1.0, "reads": 900},
             ]
         )
-        out_without = normalize(reads, bin_mode=False, sort_fraction_col=None)
-        out_with = normalize(reads, bin_mode=False, sort_fraction_col="sort_fraction")
+        out_without = normalize(reads, bin_mode=False, sort_fraction_col=None).sort("clonotypeKey")
+        out_with = normalize(reads, bin_mode=False, sort_fraction_col="sort_fraction").sort("clonotypeKey")
         assert out_without.equals(out_with)
