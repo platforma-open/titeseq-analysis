@@ -53,6 +53,16 @@ watch(
     app.model.data.targetAntigen = undefined;
   },
 );
+
+// Sort-fraction correction only applies in bin mode. Clearing the bin column
+// would leave an orphaned sortFractionColumnRef that the model validator would
+// then reject, so drop it here in lock-step with the bin column.
+watch(
+  () => app.model.data.binColumnRef,
+  (binRef) => {
+    if (binRef === undefined) app.model.data.sortFractionColumnRef = undefined;
+  },
+);
 </script>
 
 <template>
@@ -92,6 +102,19 @@ watch(
       <template #tooltip>
         Per-sample positive integer identifying the FACS bin. Leave empty to run in no-bin mode;
         resulting K_D,app values are not comparable to bin-derived values.
+      </template>
+    </PlDropdownRef>
+    <PlDropdownRef
+      v-if="app.model.data.binColumnRef !== undefined"
+      v-model="app.model.data.sortFractionColumnRef"
+      :options="app.model.outputs.sortFractionOptions"
+      label="FACS sort fraction (optional)"
+      clearable
+    >
+      <template #tooltip>
+        Optional. Per-sample numerical metadata column giving the fraction of cells sorted into that
+        sample's (concentration, bin) — C_bc / C_c in Adams, Mora, Walczak, Kinney 2016. Values must
+        sum to 1 per concentration. When supplied, Mean Bin is corrected for FACS sort yield.
       </template>
     </PlDropdownRef>
     <PlDropdownRef

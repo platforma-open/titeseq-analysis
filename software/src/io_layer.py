@@ -102,6 +102,43 @@ def validate_concentration_column(df: pl.DataFrame, has_bin: bool) -> list[str]:
     return warnings
 
 
+def validate_sort_fraction(reads: pl.DataFrame, col: str) -> None:
+    """FACS sort-fraction column validator (Adams, Mora, Walczak, Kinney 2016 eq. A3).
+
+    Invariants:
+      * Column exists in `reads`.
+      * No nulls (every sample with reads must carry a fraction).
+      * Values in [0, 1].
+      * Per concentration, |Σ_b sort_fraction − 1| < 1e-3 — deduplicated by sample
+        so that repeating a per-sample value across clonotypes does not inflate
+        the per-concentration sum.
+
+    No silent renormalization. Violations raise with a concrete message naming
+    the offending concentration so the user knows which row to fix.
+    """
+    if col not in reads.columns:
+        raise InputValidationError(f"Sort-fraction column '{col}' missing from reads")
+
+    vals = reads[col]
+    if vals.is_null().any():
+        raise InputValidationError(f"Sort-fraction column '{col}' has null values")
+    if (vals < 0).any() or (vals > 1).any():
+        raise InputValidationError(f"Sort-fraction values must be in [0, 1]; column '{col}'")
+
+    # `sort_fraction` is a per-sample metadata column joined across every clonotype
+    # in that sample, so summing over the raw reads frame would count each sample
+    # once per clonotype. Deduplicate by (sampleId, concentrationStr, col) first.
+    per_sample = reads.select([COL_SAMPLE, COL_CONC_STR, col]).unique()
+    sums = per_sample.group_by(COL_CONC_STR).agg(pl.col(col).sum().alias("s"))
+    bad = sums.filter((pl.col("s") - 1.0).abs() > 1e-3)
+    if bad.height > 0:
+        violations = bad.select([COL_CONC_STR, "s"]).to_dicts()
+        raise InputValidationError(
+            f"sort_fraction values must sum to 1.0 per concentration "
+            f"(tolerance 1e-3). Violations: {violations}"
+        )
+
+
 def validate_bin_column(df: pl.DataFrame) -> None:
     """R3: bin must be a positive integer. Non-consecutive labels are allowed.
 

@@ -25,6 +25,9 @@ wf.prepare(func(args) {
 	if !is_undefined(args.antigenColumnRef) {
 		bb.addAnchor("antigen", args.antigenColumnRef)
 	}
+	if !is_undefined(args.sortFractionColumnRef) {
+		bb.addAnchor("sortFraction", args.sortFractionColumnRef)
+	}
 
 	return { columns: bb.build() }
 })
@@ -38,6 +41,10 @@ wf.body(func(args) {
 
 	hasBin := !is_undefined(args.binColumnRef)
 	hasAntigen := !is_undefined(args.antigenColumnRef)
+	// Sort-fraction correction (Adams, Mora, Walczak, Kinney 2016 eq. A3).
+	// The model gates this on hasBin, but we re-check here so the workflow is
+	// safe if called with a sort-fraction ref and no bin ref.
+	hasSortFraction := !is_undefined(args.sortFractionColumnRef) && hasBin
 
 	unitLabel := ""
 	if !is_undefined(concSpec.annotations) && !is_undefined(concSpec.annotations["pl7.app/label"]) {
@@ -59,6 +66,9 @@ wf.body(func(args) {
 	if hasAntigen {
 		readsBuilder.add(columns.getColumn("antigen"), { header: "antigen" })
 	}
+	if hasSortFraction {
+		readsBuilder.add(columns.getColumn("sortFraction"), { header: "sort_fraction" })
+	}
 	readsBuilder.mem("16GiB")
 	readsBuilder.cpu(1)
 	readsTsv := readsBuilder.build()
@@ -76,6 +86,10 @@ wf.body(func(args) {
 		hook_effect_threshold_no_bin: args.hookEffectThresholdNoBin,
 		hook_effect_min_reads: args.hookEffectMinReads
 	}
+	// FACS-correction status flows via the --sort-fraction-column CLI arg; the
+	// Python pipeline logs "Mean-bin correction: ..." unconditionally so stdout
+	// carries the audit trail. Keeping that out of paramsPayload avoids adding
+	// a non-tuning field to FitParams.
 
 	// Exec Python fit-curves.
 	execBuilder := exec.builder().
@@ -99,6 +113,10 @@ wf.body(func(args) {
 		if !is_undefined(args.targetAntigen) && args.targetAntigen != "" {
 			execBuilder.arg("--target-antigen").arg(args.targetAntigen)
 		}
+	}
+
+	if hasSortFraction {
+		execBuilder.arg("--sort-fraction-column").arg("sort_fraction")
 	}
 
 	fit := execBuilder.run()
@@ -148,6 +166,15 @@ wf.body(func(args) {
 	if !hasBin {
 		meanBinLabel = "Clonotype frequency"
 		fittedMeanBinLabel = "Fitted clonotype frequency"
+	}
+
+	// Provenance annotation for the FACS sort-fraction correction. Always emitted
+	// (even when false) so downstream consumers can read a stable key instead of
+	// inferring from annotation presence. Propagates through pSpec.makeTrace like
+	// every other PColumn annotation.
+	facsCorrected := "false"
+	if hasSortFraction {
+		facsCorrected = "true"
 	}
 
 	// K_D,app unit annotation propagated from the concentration column label (R2).
@@ -315,7 +342,8 @@ wf.body(func(args) {
 					annotations: {
 						"pl7.app/label": meanBinLabel,
 						"pl7.app/isScore": "false",
-						"pl7.app/table/visibility": "hidden"
+						"pl7.app/table/visibility": "hidden",
+						"pl7.app/titeseq/facsCorrected": facsCorrected
 					}
 				}
 			}

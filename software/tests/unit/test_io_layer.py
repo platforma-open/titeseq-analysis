@@ -14,6 +14,7 @@ from io_layer import (
     validate_concentration_column,
     validate_reads_schema,
     validate_sample_metadata_uniqueness,
+    validate_sort_fraction,
 )
 
 
@@ -485,3 +486,139 @@ class TestBinConcentrationGrid:
         ]
         warnings = _validate_grid(_mk(rows))
         assert len(warnings) > 0
+
+
+def _mk_reads_with_sort_fraction(
+    concentrations: list[str],
+    sort_fractions_by_conc: dict[str, list[float]],
+    *,
+    clonotypes: list[str] | None = None,
+) -> pl.DataFrame:
+    """Build a reads frame with per-sample sort_fraction metadata.
+
+    One sample per (conc, bin); reads are duplicated across `clonotypes` so the
+    validator's dedupe-by-sample logic has something non-trivial to chew on.
+    """
+    clonotypes = clonotypes or ["A"]
+    rows = []
+    for conc in concentrations:
+        fractions = sort_fractions_by_conc[conc]
+        for j, frac in enumerate(fractions):
+            bin_label = j + 1
+            for clone in clonotypes:
+                rows.append(
+                    {
+                        "clonotypeKey": clone,
+                        "sampleId": f"s_c{conc}_b{bin_label}",
+                        "concentrationStr": conc,
+                        "concentration": float(conc),
+                        "bin": bin_label,
+                        "reads": 10,
+                        "sort_fraction": frac,
+                    }
+                )
+    return pl.DataFrame(rows)
+
+
+class TestValidateSortFraction:
+    """FACS sort-fraction column validator — ingestion gate for the correction path."""
+
+    # Happy path: sum-to-one within tolerance at every concentration, all values in-range.
+    # The dedupe-by-sample is load-bearing here: passing the per-clonotype raw reads
+    # frame would multiply every fraction by the number of clonotypes and falsely
+    # inflate the per-concentration sum.
+    def test_happy_path(self):
+        df = _mk_reads_with_sort_fraction(
+            concentrations=["1", "10"],
+            sort_fractions_by_conc={
+                "1": [0.25, 0.25, 0.25, 0.25],
+                "10": [0.5, 0.1, 0.2, 0.2],
+            },
+            clonotypes=["A", "B", "C"],
+        )
+        validate_sort_fraction(df, "sort_fraction")
+
+    def test_missing_column_raises(self):
+        df = pl.DataFrame(
+            [
+                {
+                    "clonotypeKey": "A",
+                    "sampleId": "s",
+                    "concentrationStr": "1",
+                    "concentration": 1.0,
+                    "bin": 1,
+                    "reads": 5,
+                }
+            ]
+        )
+        with pytest.raises(InputValidationError, match="missing"):
+            validate_sort_fraction(df, "sort_fraction")
+
+    @pytest.mark.parametrize("bad_value", [-0.01, 1.01, 2.0, -5.0])
+    def test_out_of_range_raises(self, bad_value):
+        # In-bounds fractions for every other bin so only the one offender triggers.
+        df = _mk_reads_with_sort_fraction(
+            concentrations=["1"],
+            sort_fractions_by_conc={"1": [bad_value, 1.0 - bad_value]},
+        )
+        with pytest.raises(InputValidationError, match=r"\[0, 1\]"):
+            validate_sort_fraction(df, "sort_fraction")
+
+    # User needs to know WHICH concentration is misconfigured — a generic
+    # "sums don't match" message forces the user to rediscover the offender
+    # themselves across potentially dozens of concentrations.
+    def test_sum_violation_names_offending_concentration(self):
+        df = _mk_reads_with_sort_fraction(
+            concentrations=["1", "10"],
+            sort_fractions_by_conc={
+                "1": [0.25, 0.25, 0.25, 0.25],
+                "10": [0.5, 0.3, 0.1, 0.0],  # sums to 0.9
+            },
+        )
+        with pytest.raises(InputValidationError, match="10"):
+            validate_sort_fraction(df, "sort_fraction")
+
+    # Tolerance boundary: |sum − 1| < 1e-3 passes, ≥ 1e-3 fails. Confirms the
+    # tolerance plane isn't off-by-one or mis-signed.
+    def test_sum_tolerance_just_inside_passes(self):
+        df = _mk_reads_with_sort_fraction(
+            concentrations=["1"],
+            sort_fractions_by_conc={"1": [0.2505, 0.2505, 0.2495, 0.2495]},  # sum=1.0000
+        )
+        validate_sort_fraction(df, "sort_fraction")
+
+    def test_sum_tolerance_just_outside_raises(self):
+        df = _mk_reads_with_sort_fraction(
+            concentrations=["1"],
+            sort_fractions_by_conc={"1": [0.252, 0.252, 0.250, 0.250]},  # sum=1.004 > 1.001
+        )
+        with pytest.raises(InputValidationError, match="sum to 1.0"):
+            validate_sort_fraction(df, "sort_fraction")
+
+    # A join miss produces null; the user must see it at validation, not lose
+    # reads silently through polars' null-skipping group_by aggregation.
+    def test_null_raises(self):
+        df = pl.DataFrame(
+            [
+                {
+                    "clonotypeKey": "A",
+                    "sampleId": "s_c1_b1",
+                    "concentrationStr": "1",
+                    "concentration": 1.0,
+                    "bin": 1,
+                    "reads": 10,
+                    "sort_fraction": None,
+                },
+                {
+                    "clonotypeKey": "A",
+                    "sampleId": "s_c1_b2",
+                    "concentrationStr": "1",
+                    "concentration": 1.0,
+                    "bin": 2,
+                    "reads": 10,
+                    "sort_fraction": 1.0,
+                },
+            ]
+        )
+        with pytest.raises(InputValidationError, match="null"):
+            validate_sort_fraction(df, "sort_fraction")

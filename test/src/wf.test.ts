@@ -4,7 +4,11 @@ import type {
   model,
 } from '@platforma-open/platforma-open.titeseq-analysis.model';
 import type { InferBlockState, PlRef } from '@platforma-sdk/model';
-import { createPlDataTableStateV2, wrapOutputs } from '@platforma-sdk/model';
+import { createPlDataTableStateV2, uniquePlId, wrapOutputs } from '@platforma-sdk/model';
+import type {
+  BlockArgs as SamplesAndDataBlockArgs,
+  PlId,
+} from '@platforma-open/milaboratories.samples-and-data.model';
 import { awaitStableState, blockTest } from '@platforma-sdk/test';
 import { blockSpec as myBlockSpec } from 'this-block';
 import { blockSpec as samplesAndDataBlockSpec } from '@platforma-open/milaboratories.samples-and-data';
@@ -295,6 +299,154 @@ blockTest(
     // isEmpty should be false — we produced at least 5 rows.
     expect(outputs.isEmpty).toBe(false);
     // After the run settles, the block is idle again.
+    expect(outputs.isRunning).toBeFalsy();
+  },
+);
+
+blockTest(
+  'bin_mode + sort_fraction: FACS correction plumbs through and toggles annotation',
+  { timeout: 600000 },
+  async ({ rawPrj: project, helpers, expect }) => {
+    // Goal: exercise the full sort_fraction wiring (model → workflow → Python →
+    // signal annotation → model output → UI badge). Correctness is covered by
+    // Python unit/integration/regression tests; this test is a plumbing guard.
+    // Uniform 0.25 per bin is a mathematical no-op but still verifies the
+    // correction code path runs end-to-end and the annotation round-trips.
+    const sndBlockId = await project.addBlock('Samples & Data', samplesAndDataBlockSpec);
+    const importBlockId = await project.addBlock('Import V(D)J Data', importVdjBlockSpec);
+    const titeseqBlockId = await project.addBlock('Titeseq Analysis', myBlockSpec);
+
+    const { args: baseSndArgs, loaded } = await prepareSamplesAndDataArgs('bin_mode', helpers);
+
+    // Inject a sort_fraction metadata column: 4 bins per concentration, uniform
+    // 0.25 — validator accepts (sums to 1.0 per concentration, in [0,1]).
+    const sortFractionId = uniquePlId() as unknown as PlId;
+    const sortFractionData: Record<PlId, number> = {};
+    for (const name of loaded.raw.sample_ids) {
+      sortFractionData[loaded.sampleIdByName[name]] = 0.25;
+    }
+    const sndArgs: SamplesAndDataBlockArgs = {
+      ...baseSndArgs,
+      metadata: [
+        ...baseSndArgs.metadata,
+        {
+          id: sortFractionId,
+          label: 'sort_fraction',
+          global: true,
+          valueType: 'Double',
+          data: sortFractionData,
+        },
+      ],
+    };
+
+    await project.setBlockArgs(sndBlockId, sndArgs);
+    await project.runBlock(sndBlockId);
+    await helpers.awaitBlockDone(sndBlockId, 60000);
+
+    const importState = await awaitStableState(project.getBlockState(importBlockId), 30000);
+    expect(importState.outputs).toBeDefined();
+    const importOutputs = wrapOutputs(importState.outputs!) as {
+      datasetOptions?: { ref: PlRef; label: string }[];
+    };
+    const datasetRef = importOutputs.datasetOptions![0].ref;
+    await project.setBlockArgs(importBlockId, {
+      defaultBlockLabel: '',
+      customBlockLabel: '',
+      datasetRef,
+      format: 'mixcr',
+      chains: ['IGHeavy'],
+    } satisfies ImportVdjBlockArgs);
+    await project.runBlock(importBlockId);
+    await helpers.awaitBlockDone(importBlockId, 180000);
+
+    const idleState = (await awaitStableState(
+      project.getBlockState(titeseqBlockId),
+      30000,
+    )) as InferBlockState<typeof model>;
+    const idleOutputs = wrapOutputs<BlockOutputs>(idleState.outputs);
+
+    // The sort_fraction column must surface in the dedicated dropdown (Float
+    // [sampleId] filter) — not in the bin dropdown (Long).
+    const sortFractionLabels = idleOutputs.sortFractionOptions?.map((o) => o.label) ?? [];
+    expect(sortFractionLabels).toEqual(expect.arrayContaining(['sort_fraction']));
+
+    const abundanceRef = idleOutputs.abundanceOptions[0].ref;
+    const concentrationRef = idleOutputs.concentrationOptions.find(
+      (o) => o.label === 'antigen_conc_M',
+    )!.ref;
+    const binRef = idleOutputs.binOptions.find((o) => o.label === 'bin_number')!.ref;
+    const sortFractionRef = idleOutputs.sortFractionOptions!.find(
+      (o) => o.label === 'sort_fraction',
+    )!.ref;
+
+    await project.mutateBlockStorage(titeseqBlockId, {
+      operation: 'update-block-data',
+      value: {
+        abundanceRef,
+        concentrationColumnRef: concentrationRef,
+        binColumnRef: binRef,
+        sortFractionColumnRef: sortFractionRef,
+        antigenColumnRef: undefined,
+        targetAntigen: undefined,
+        minReadsPerConcentration: 3,
+        minConcentrationPoints: 5,
+        r2ThresholdGood: 0.8,
+        r2ThresholdFailed: 0.5,
+        nMin: 0.5,
+        nMax: 2.0,
+        hookEffectThresholdBin: 0.2,
+        hookEffectThresholdNoBin: 0.02,
+        hookEffectMinReads: 20,
+        defaultBlockLabel: 'Tite-Seq Analysis',
+        customBlockLabel: '',
+        tableState: createPlDataTableStateV2(),
+        graphStateTitrationCurves: {
+          title: 'Titration Curves',
+          template: 'dots',
+          currentTab: null,
+          layersSettings: { dots: {} },
+          axesSettings: { axisX: { scale: 'log' } },
+        },
+        graphStateKDHistogram: {
+          title: 'K_D,app Distribution',
+          template: 'bins',
+          currentTab: null,
+          layersSettings: { bins: {} },
+          axesSettings: { axisX: { scale: 'log' }, other: { binsCount: 30 } },
+        },
+        graphStateAffinityVsFit: {
+          title: 'Affinity vs Fit Quality',
+          template: 'dots',
+          currentTab: null,
+          layersSettings: { dots: {} },
+          axesSettings: { axisX: { scale: 'log' } },
+        },
+        settingsOpen: false,
+      } satisfies BlockData,
+    });
+
+    await project.runBlock(titeseqBlockId);
+    const doneState = await helpers.awaitBlockDoneAndGetStableBlockState(
+      titeseqBlockId,
+      360000,
+    );
+    const outputs = wrapOutputs<BlockOutputs>(doneState.outputs as unknown as BlockOutputs);
+
+    // Plumbing assertions per plan §12e: the annotation round-trips from
+    // workflow/src/main.tpl.tengo through the signalPf → facsCorrectionActive
+    // output → UI badge.
+    expect(outputs.facsCorrectionActive).toBe(true);
+
+    // meanBin PColumn must be present in titrationCurvesPf (already asserted in
+    // the plain bin_mode test) AND carry the facsCorrected annotation on the
+    // signalPf side that `facsCorrectionActive` reads from.
+    expect(outputs.titrationCurvesPf).toBeDefined();
+
+    // Block completed cleanly — no validation warnings from the sort_fraction
+    // validator. (The validator runs server-side in Python; any malformed
+    // sort-fraction setup would surface as a block error, not a warning here.)
+    expect(outputs.validationWarnings).toEqual([]);
+    expect(outputs.isEmpty).toBe(false);
     expect(outputs.isRunning).toBeFalsy();
   },
 );

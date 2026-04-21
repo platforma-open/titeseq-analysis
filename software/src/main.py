@@ -32,6 +32,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--params", default=None, help="path to params JSON (optional)")
     parser.add_argument("--target-antigen", default=None)
     parser.add_argument("--antigen-column-ref", default=None)
+    parser.add_argument(
+        "--sort-fraction-column",
+        default=None,
+        help="Column name in reads.tsv carrying sort fraction C_bc/C_c per sample. "
+        "Absent ⇒ no FACS correction.",
+    )
     args = parser.parse_args(argv)
 
     log(f"Reading input table: {args.reads}")
@@ -48,6 +54,7 @@ def main(argv: list[str] | None = None) -> int:
         params=params,
         target_antigen=args.target_antigen,
         antigen_column_ref=args.antigen_column_ref,
+        sort_fraction_col=args.sort_fraction_column,
     )
     log("Writing output frames")
     _write_frame(outputs["per_clonotype"], args.out_per_clonotype)

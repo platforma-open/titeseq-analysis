@@ -46,6 +46,13 @@ watchEffect(() => {
 </script>
 
 <template>
+  <span
+    v-if="app.model.outputs.facsCorrectionActive"
+    class="titeseq-facs-badge"
+    title="Mean Bin is corrected by the per-sample FACS sort fraction (Adams, Mora, Walczak, Kinney 2016)."
+  >
+    FACS-corrected
+  </span>
   <PlBtnGhost @click.stop="logOpen = true">
     Logs
     <template #append>
@@ -65,3 +72,18 @@ watchEffect(() => {
     <PlLogView :log-handle="app.model.outputs.logHandle" />
   </PlSlideModal>
 </template>
+
+<style scoped>
+.titeseq-facs-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: var(--color-accent-subtle, rgba(46, 160, 67, 0.15));
+  color: var(--color-accent, #2ea043);
+  margin-right: 8px;
+}
+</style>

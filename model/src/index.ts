@@ -25,6 +25,7 @@ export type BlockArgs = {
   concentrationColumnRef?: PlRef;
   binColumnRef?: PlRef;
   antigenColumnRef?: PlRef;
+  sortFractionColumnRef?: PlRef;
   targetAntigen?: string;
   minReadsPerConcentration: number;
   minConcentrationPoints: number;
@@ -66,6 +67,7 @@ const dataModel = new DataModelBuilder()
     concentrationColumnRef: undefined,
     binColumnRef: undefined,
     antigenColumnRef: undefined,
+    sortFractionColumnRef: undefined,
     targetAntigen: undefined,
     minReadsPerConcentration: 3,
     minConcentrationPoints: 5,
@@ -138,6 +140,10 @@ export const model = BlockModelV3.create(dataModel)
       throw new Error("Concentration column is required");
     if (data.antigenColumnRef !== undefined && !data.targetAntigen)
       throw new Error("Target antigen is required when an antigen column is selected");
+    if (data.sortFractionColumnRef !== undefined && data.binColumnRef === undefined)
+      throw new Error(
+        "FACS sort fraction requires a FACS bin column — the correction only applies in bin mode",
+      );
     if (data.r2ThresholdFailed > data.r2ThresholdGood)
       throw new Error("Failed R² threshold must be ≤ Good R² threshold");
     if (data.nMin >= data.nMax) throw new Error("Hill coefficient nMin must be < nMax");
@@ -153,6 +159,7 @@ export const model = BlockModelV3.create(dataModel)
       concentrationColumnRef: data.concentrationColumnRef,
       binColumnRef: data.binColumnRef,
       antigenColumnRef: data.antigenColumnRef,
+      sortFractionColumnRef: data.sortFractionColumnRef,
       targetAntigen: data.targetAntigen,
       minReadsPerConcentration: data.minReadsPerConcentration,
       minConcentrationPoints: data.minConcentrationPoints,
@@ -218,6 +225,27 @@ export const model = BlockModelV3.create(dataModel)
     // Same reasoning as concentrationOptions: an all-null integer column
     // arrives at the Python side as a String column of empty strings and
     // fails validation, so hide it here.
+    return candidates.filter((opt) => {
+      const data = ctx.resultPool.getDataByRef(opt.ref)?.data;
+      if (!data) return true;
+      const values = data.getDataAsJson<Record<string, number | null>>()?.["data"];
+      if (!values) return true;
+      return Object.values(values).some((v) => v !== null && v !== undefined);
+    });
+  })
+
+  .output("sortFractionOptions", (ctx) => {
+    // Per-sample numerical metadata column giving C_bc/C_c (Adams, Mora,
+    // Walczak, Kinney 2016 eq. A3). Same filter shape as concentrationOptions
+    // — numeric [sampleId] — and the same all-null guard so an empty metadata
+    // column cannot be selected.
+    const candidates = ctx.resultPool.getOptions(
+      (spec) =>
+        isPColumnSpec(spec) &&
+        isFloatValueType(spec.valueType) &&
+        spec.axesSpec.length === 1 &&
+        spec.axesSpec[0].name === "pl7.app/sampleId",
+    );
     return candidates.filter((opt) => {
       const data = ctx.resultPool.getDataByRef(opt.ref)?.data;
       if (!data) return true;
@@ -349,6 +377,16 @@ export const model = BlockModelV3.create(dataModel)
   })
 
   .output("binMode", (ctx) => ctx.data.binColumnRef !== undefined)
+
+  .output("facsCorrectionActive", (ctx) => {
+    // Read the provenance annotation written by workflow/src/main.tpl.tengo on
+    // the meanBin PColumn. The annotation is always emitted (value "true" or
+    // "false") so we can key the UI badge on a stable lookup.
+    const signalCols = ctx.outputs?.resolve("signalPf")?.getPColumns();
+    if (!signalCols) return undefined;
+    const meanBin = signalCols.find((c) => c.spec.name === "pl7.app/vdj/meanBin");
+    return meanBin?.spec.annotations?.["pl7.app/titeseq/facsCorrected"] === "true";
+  })
 
   .title(() => "Tite-Seq Analysis")
 

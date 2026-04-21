@@ -49,6 +49,7 @@ from io_layer import (
     validate_concentration_column,
     validate_reads_schema,
     validate_sample_metadata_uniqueness,
+    validate_sort_fraction,
 )
 from normalization import SIGNAL, normalize
 from output_build import (
@@ -307,8 +308,15 @@ def run(
     params: FitParams = DEFAULT_PARAMS,
     target_antigen: str | None = None,
     antigen_column_ref: str | None = None,
+    sort_fraction_col: str | None = None,
 ) -> dict[str, pl.DataFrame]:
-    """Execute the full pipeline on an in-memory reads frame."""
+    """Execute the full pipeline on an in-memory reads frame.
+
+    `sort_fraction_col`, when set, activates the Adams, Mora, Walczak, Kinney 2016
+    eq. A3 correction inside `compute_mean_bin`. The column must be present in
+    `reads`; validation runs before normalization so a bad upstream join is caught
+    before any downstream computation. Only consulted in bin mode.
+    """
     log(f"Pipeline start: {reads.height} reads rows")
     reads = canonicalize_concentration(reads)
     has_bin = COL_BIN in reads.columns
@@ -324,13 +332,25 @@ def run(
         antigen_column_ref=antigen_column_ref,
     )
 
+    if sort_fraction_col is not None and has_bin:
+        validate_sort_fraction(reads, sort_fraction_col)
+        n_conc = reads.select(COL_CONC_STR).n_unique()
+        log(f"sort_fraction validated: {n_conc} concentrations, all sums within 1e-3 of 1.0")
+        log(f"Mean-bin correction: FACS-weighted (column '{sort_fraction_col}')")
+    elif has_bin:
+        log("Mean-bin correction: uncorrected")
+
     if target_antigen is not None:
         log(f"Applying antigen filter: {target_antigen}")
     reads = apply_antigen_filter(reads, target_antigen)
     mbl = max_bin_label(reads) if has_bin else None
 
     log("Normalizing signals")
-    signal_frame = normalize(reads, bin_mode=has_bin)
+    signal_frame = normalize(
+        reads,
+        bin_mode=has_bin,
+        sort_fraction_col=sort_fraction_col if has_bin else None,
+    )
     log("Applying floor and weights")
     floor_frame = apply_floor_and_weights(signal_frame, params)
 

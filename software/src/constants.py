@@ -52,3 +52,8 @@ MAX_CONCENTRATION_M = (2**63 - 1) / CONC_AM_SCALE
 COL_BIN = "bin"
 COL_ANTIGEN = "antigen"
 COL_READS = "reads"
+# Column name emitted by the Tengo workflow in reads.tsv when
+# sortFractionColumnRef is bound. Must match the string passed to
+# --sort-fraction-column. Do not change without a simultaneous change
+# to workflow/src/main.tpl.tengo.
+COL_SORT_FRACTION = "sort_fraction"
