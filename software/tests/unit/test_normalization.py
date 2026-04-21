@@ -260,8 +260,9 @@ class TestNormalizeDispatch:
 
     def test_legacy_bin_mode_bit_exact(self):
         reads = _build_single_clonotype([10, 20, 5, 5], [1000, 500, 200, 100])
-        legacy = normalize(reads, bin_mode=True, sort_fraction_col=None)
-        direct = compute_mean_bin(reads, sort_fraction_col=None).rename({MEAN_BIN: SIGNAL})
+        sort_keys = ["clonotypeKey", "concentrationStr"]
+        legacy = normalize(reads, bin_mode=True, sort_fraction_col=None).sort(sort_keys)
+        direct = compute_mean_bin(reads, sort_fraction_col=None).rename({MEAN_BIN: SIGNAL}).sort(sort_keys)
         assert legacy.equals(direct)
 
     def test_frequency_mode_ignores_sort_fraction(self):
