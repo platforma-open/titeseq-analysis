@@ -100,12 +100,11 @@ const dataModel = new DataModelBuilder()
       template: "bins",
       currentTab: null,
       layersSettings: {
-        bins: {},
+        bins: { fillColor: "#99E099" },
       },
       axesSettings: {
-        axisX: {
-          scale: "log",
-        },
+        axisX: { scale: "log" },
+        axisY: { scale: "log" },
         other: { binsCount: 30 },
       },
     },
@@ -114,12 +113,26 @@ const dataModel = new DataModelBuilder()
       template: "dots",
       currentTab: null,
       layersSettings: {
-        dots: {},
+        dots: {
+          // Colour dots by affinityClass and shape by fitFailureReason so the
+          // three-way Good/Partial/Failed split and the six failure reasons
+          // are visible without per-block configuration. Values reference the
+          // stable summaryPf output column names, so the binding transfers to
+          // any new block/project.
+          dotFill: {
+            type: "grouping",
+            value:
+              '{"kind":"column","name":"{\\"name\\":\\"affinityClass\\",\\"resolvePath\\":[\\"main\\",\\"summaryPf\\"]}","type":"String"}',
+          },
+          dotShape: {
+            type: "grouping",
+            value:
+              '{"kind":"column","name":"{\\"name\\":\\"fitFailureReason\\",\\"resolvePath\\":[\\"main\\",\\"summaryPf\\"]}","type":"String"}',
+          },
+        },
       },
       axesSettings: {
-        axisX: {
-          scale: "log",
-        },
+        axisX: { scale: "log" },
       },
     },
     settingsOpen: false,
