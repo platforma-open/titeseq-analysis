@@ -29,6 +29,9 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
   const affinityClass = pCols.find(
     (p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/affinityClass",
   );
+  const fittedMeanBin = pCols.find(
+    (p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/fittedMeanBin",
+  );
 
   const options: PredefinedGraphOption<"scatterplot">[] = [
     { inputName: "x", selectedSource: concAxis },
@@ -36,6 +39,9 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
     { inputName: "facetBy", selectedSource: clonotypeAxis },
     { inputName: "grouping", selectedSource: clonotypeAxis },
   ];
+  if (fittedMeanBin) {
+    options.push({ inputName: "additionalCurves", selectedSource: fittedMeanBin.spec });
+  }
   if (affinityClass) {
     options.push({
       inputName: "filters",
