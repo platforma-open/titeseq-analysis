@@ -57,9 +57,8 @@ type LegacyUiState = {
   settingsOpen: boolean;
 };
 
-// Column identifiers stored in optionsState/dataBindAes are JSON strings
-// encoding the p-column path. All summaryPf columns below are block-portable
-// (resolvePath is the stable pipeline alias, not a block-id-specific domain).
+// Bind by resolvePath, not block-id domain, so defaults survive a fresh block
+// or project. The format — double-encoded JSON — is what GraphMaker stores.
 const summaryCol = (name: string, type: "Double" | "String") =>
   `{"kind":"column","name":"{\\"name\\":\\"${name}\\",\\"resolvePath\\":[\\"main\\",\\"summaryPf\\"]}","type":"${type}"}`;
 
@@ -69,11 +68,9 @@ const HILL_COEF_COL = summaryCol("hillCoefficient", "Double");
 const AFFINITY_CLASS_COL = summaryCol("affinityClass", "String");
 const FIT_FAILURE_REASON_COL = summaryCol("fitFailureReason", "String");
 
-// Affinity vs Fit Quality opens filtered to Failed clonotypes with hill
-// coefficient >= 0, grouped/shaped by fit failure reason, and coloured by
-// affinity class. The failure-reason palette pins low_r2 to green and
-// n_out_of_range to purple/dashed so the two most common fit breakdowns
-// stay visually distinct across datasets.
+// Pin colours by colorIdx so low_r2 stays green and n_out_of_range stays
+// purple across datasets. The "light" palette would otherwise assign by
+// category-encounter order, which flips when a dataset has only one reason.
 const AFFINITY_VS_FIT_DEFAULT_STATE: GraphMakerState = {
   title: "",
   template: "dots",
@@ -259,10 +256,8 @@ export const model = BlockModelV3.create(dataModel)
         spec.axesSpec.length === 1 &&
         spec.axesSpec[0].name === "pl7.app/sampleId",
     );
-    // Hide columns whose values are entirely null — selecting one throws an
-    // "empty column" error inside the Python pipeline, so the option should
-    // not appear in the dropdown in the first place. Data-not-ready is shown
-    // conservatively to avoid options flickering in/out while upstream loads.
+    // Hide all-null columns — selecting one fails validation downstream. Show
+    // the option while upstream data is still loading to avoid UI flicker.
     const excludeRef = ctx.data.sortFractionColumnRef;
     return candidates.filter((opt) => {
       if (excludeRef && plRefsEqual(opt.ref, excludeRef)) return false;
@@ -282,9 +277,8 @@ export const model = BlockModelV3.create(dataModel)
         spec.axesSpec.length === 1 &&
         spec.axesSpec[0].name === "pl7.app/sampleId",
     );
-    // Same reasoning as concentrationOptions: an all-null integer column
-    // arrives at the Python side as a String column of empty strings and
-    // fails validation, so hide it here.
+    // Same as concentrationOptions: all-null Int/Long columns arrive in Python
+    // as empty-String columns and fail validation.
     return candidates.filter((opt) => {
       const data = ctx.resultPool.getDataByRef(opt.ref)?.data;
       if (!data) return true;
@@ -295,14 +289,9 @@ export const model = BlockModelV3.create(dataModel)
   })
 
   .output("sortFractionOptions", (ctx) => {
-    // Per-sample numerical metadata column giving C_bc/C_c (Adams, Mora,
-    // Walczak, Kinney 2016 eq. A3). Shape matches concentrationOptions
-    // (numeric [sampleId]), so we lean on two data-driven disambiguators
-    // rather than column names (which differ across projects):
-    //   1. Cross-exclude the already-picked concentration column.
-    //   2. Require every observed value in [0, 1] — sort fractions are
-    //      bounded by definition, so concentrations in nM/µM (values > 1)
-    //      drop out. Molar concentrations (all < 1) still need (1) to clear.
+    // Disambiguate from concentration by data, not column name: cross-exclude
+    // the picked concentration column, then require every value in [0, 1].
+    // Molar concentrations (all < 1) still need the cross-exclude to clear.
     const candidates = ctx.resultPool.getOptions(
       (spec) =>
         isPColumnSpec(spec) &&
@@ -449,9 +438,8 @@ export const model = BlockModelV3.create(dataModel)
   .output("binMode", (ctx) => ctx.data.binColumnRef !== undefined)
 
   .output("facsCorrectionActive", (ctx) => {
-    // Read the provenance annotation written by workflow/src/main.tpl.tengo on
-    // the meanBin PColumn. The annotation is always emitted (value "true" or
-    // "false") so we can key the UI badge on a stable lookup.
+    // The workflow always emits this annotation on meanBin with value "true"
+    // or "false", so the UI badge can key off it without a null branch.
     const signalCols = ctx.outputs?.resolve("signalPf")?.getPColumns();
     if (!signalCols) return undefined;
     const meanBin = signalCols.find((c) => c.spec.name === "pl7.app/vdj/meanBin");
