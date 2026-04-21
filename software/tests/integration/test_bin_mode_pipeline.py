@@ -87,9 +87,9 @@ class TestAllFailedDataset:
 
 
 class TestValidatorWarnings:
-    # R2: c=0 without a bin is ambiguous — validator emits a warning to stderr
-    # (a non-fatal signal; the row is still processed).
-    def test_c0_without_bin_emits_stderr_warning(self, capsys):
+    # R2: c=0 without a bin is ambiguous — validator emits a WARN to stdout so the
+    # Tengo workflow's saveStdoutStream() surfaces it in the Fit Log UI.
+    def test_c0_without_bin_emits_stdout_warning(self, capsys):
         # Sub-µM grid; K_D placed in the middle of the dose range (10 nM).
         concs = [0.0, 1e-10, 1e-9, 1e-8, 1e-7]
         rows = _build_bin_reads_for_hill(
@@ -116,6 +116,8 @@ class TestValidatorWarnings:
         )
         reads = pl.DataFrame(rows, schema_overrides={"bin": pl.Int64})
         run(reads)
-        assert "ambiguous" in capsys.readouterr().err
+        captured = capsys.readouterr()
+        assert "ambiguous" in captured.out
+        assert "ambiguous" not in captured.err
 
 

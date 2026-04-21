@@ -18,7 +18,8 @@ argparse and file I/O.
 
 from __future__ import annotations
 
-import sys
+import os
+from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 
 import numpy as np
@@ -83,8 +84,63 @@ def _validate_inputs(
         warnings += validate_bin_concentration_grid(reads)
     warnings += validate_antigen_filter(reads, antigen_column_ref, target_antigen)
     validate_sample_metadata_uniqueness(reads, has_bin=has_bin, has_antigen=has_antigen)
+    # Warnings go through the same log channel as progress messages. The Tengo workflow
+    # captures the software's stdout via saveStdoutStream() and surfaces it in the block
+    # Fit Log UI (main.tpl.tengo); stderr is not captured, so stderr writes would be invisible.
     for w in warnings:
-        print(f"WARN: {w}", file=sys.stderr)
+        log(f"WARN: {w}")
+
+
+# Pool start-up + pickling overhead dominates for small workloads; serial is faster
+# until roughly this many clonotypes survive the pre-fit gates.
+_PARALLEL_FIT_MIN_SURVIVORS = 50
+
+
+def _execute_fits(
+    worker,
+    xs: list[np.ndarray],
+    ys: list[np.ndarray],
+    ws: list[np.ndarray],
+    *,
+    n_survivors: int,
+    step: int,
+) -> list:
+    """Run worker(x, y, w) over each (x, y, w) triple; in-order results.
+
+    Uses ProcessPoolExecutor when it pays off (worker count > 1 and enough
+    survivors to amortize startup). The serial fallback preserves original
+    semantics for tiny inputs and for environments where fork/spawn is a
+    liability. Progress is logged from the parent as results arrive — `map`
+    yields in input order, so we can count completions deterministically.
+    """
+    if n_survivors == 0:
+        return []
+
+    cpu_count = os.cpu_count() or 1
+    max_workers = min(cpu_count, n_survivors)
+    if max_workers > 1 and n_survivors >= _PARALLEL_FIT_MIN_SURVIVORS:
+        # chunksize trades IPC overhead against load balancing. ~4 chunks per
+        # worker keeps stragglers from stalling at the tail while batching
+        # enough work per round-trip to hide pickle cost.
+        chunksize = max(1, n_survivors // (max_workers * 4))
+        log(f"  parallel fit: {max_workers} workers, chunksize={chunksize}")
+        fits: list = []
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            for done, fit in enumerate(
+                executor.map(worker, xs, ys, ws, chunksize=chunksize), start=1
+            ):
+                fits.append(fit)
+                if done % step == 0 or done == n_survivors:
+                    log(f"  fitted {done}/{n_survivors} clonotypes")
+        return fits
+
+    fits = []
+    for idx, (x, y, w) in enumerate(zip(xs, ys, ws)):
+        fits.append(worker(x, y, w))
+        done = idx + 1
+        if done % step == 0 or done == n_survivors:
+            log(f"  fitted {done}/{n_survivors} clonotypes")
+    return fits
 
 
 def _fit_all_clonotypes(
@@ -164,12 +220,7 @@ def _fit_all_clonotypes(
     # Emit a progress line ~20 times over the fit loop (every 5%), with a floor of 1
     # so tiny inputs still report. Small overhead; stdout is flushed per line.
     step = max(1, n_survivors // 20)
-    fits: list = []
-    for idx, (x, y, w) in enumerate(zip(xs, ys, ws)):
-        fits.append(worker(x, y, w))
-        done = idx + 1
-        if done % step == 0 or done == n_survivors:
-            log(f"  fitted {done}/{n_survivors} clonotypes")
+    fits = _execute_fits(worker, xs, ys, ws, n_survivors=n_survivors, step=step)
 
     # Phase 3 — integrate results.
     fitted_keys: list[np.ndarray] = []
