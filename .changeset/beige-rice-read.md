@@ -9,14 +9,14 @@
 
 Initial public release of the Tite-Seq Analysis block.
 
-Highlights:
+Fits Hill curves per clonotype against MiXCR abundance across concentrations, emits K_D,app with a confidence class (Good / Failed), and renders Titration Curves, K_D Distribution, and Affinity vs Fit Quality tabs.
 
-- Block renamed from "Titeseq Analysis" to "Tite-Seq Analysis" to match the canonical capitalization of the method.
-- Friendly input validation: reject all-empty concentration columns early; hide metadata columns that are empty for every sample from the Antigen concentration and FACS bin dropdowns; the bin validator raises a clear "pick a populated column" message when a saved project still references an empty column.
-- Dropdown typing: the Antigen concentration picker is filtered to Float/Double metadata columns only — integer-typed bin/replicate columns no longer leak in.
-- Dynamic "Target" picker label: the value picker reflects the selected antigen-column's human name (e.g. "Target Sample" when the Antigen Label column is labelled "Sample"). Falls back to "Target antigen" when no column is chosen.
-- Informative subtitle: the block subtitle derives from the first three populated inputs joined by " - " (matching Amplicon Alignment), falling back to "Tite-Seq Analysis" when nothing is selected yet; still editable via the Custom label field in Inputs.
-- Fit-log progress: the Python pipeline streams timestamped stage transitions to stdout, so the Fit Log UI shows live progress (load, validate, normalize, baseline, hook-detect, per-clonotype fit counter every ~5%, output write) instead of appearing stalled.
-- Refreshed block and organization logo assets.
-- R14 compliance: `meanBin` and `fittedMeanBin` PColumns carry both the canonical String axis `concentrationStr` (join key, preserving upstream metadata byte-for-byte) and the numeric Long sibling `concentrationAM` (attomolar, drives Graph Maker log-scale rendering). A parametrized unit test guards the `concentrationAM == round(float(concentrationStr) × 1e18)` invariant so the two axes cannot silently desynchronize.
-- Block-level integration tests: the `test/` package now exercises Samples-and-Data → import-vdj-data → Tite-Seq Analysis end-to-end against synthetic MiXCR-format fixtures (28 bin-mode samples = 5 clonotypes × 4 FACS bins × 7 concentrations). One consolidated `blockTest` covers option-list population, the six summary PColumn specs, affinityClass distribution (≥1 Good, ≥1 Failed), K_D bounds, and `titrationCurvesPf` composition. CI now runs `pnpm test` for the block; the `workflow/` `test` script carries `--passWithNoTests` since the stub was retired.
+- Spec compliance: R5 (sample-metadata uniqueness), R9b (top-1/top-2 hook gate), R10 (Hill baseline bounds), R14 (dual concentration axes), R15 (Titration Curves default layout with affinity filter), R17 (Failed clonotypes park at K_D = -1.0 and render on Affinity vs Fit Quality).
+- R14 invariant: `meanBin`/`fittedMeanBin` carry both `concentrationStr` (String join key) and `concentrationAM` (Long, attomolar, log-scale axis); a parametrized test guards the round-trip.
+- Inputs: reject empty/NaN/Inf concentration columns; hide all-empty metadata columns from pickers; restrict Antigen concentration to Float/Double; Target picker label follows the selected Antigen column.
+- UX: block subtitle derives from the first three populated inputs; each tab shows a single page title; Langmuir tooltip on the Hill coefficient PColumn; input labels and warnings repositioned for clarity.
+- Fit Log streams timestamped stage progress (load → validate → normalize → baseline → hook-detect → per-clonotype fit → write) and surfaces validator warnings.
+- Performance: Hill fits parallelize above 50 clonotypes via `ProcessPoolExecutor`; window functions replace self-joins in normalization; single-pass boundary counters in validators; metadata-uniqueness check scales with n_samples.
+- Robustness: scipy `OptimizeWarning` marks fits Failed; attomolar ceiling guarded; concentration cast defensively to Float64.
+- Architecture: migrated to `BlockModelV3`; concentration/bin/antigen columns anchored; Python runtime pinned to LTS-CPU wheels.
+- Tests: block-level integration exercises Samples-and-Data → import-vdj → Tite-Seq against a 28-sample synthetic fixture (5 clonotypes × 4 bins × 7 concentrations); a deterministic e2e corpus suite bounds numeric drift on per-clonotype columns.
