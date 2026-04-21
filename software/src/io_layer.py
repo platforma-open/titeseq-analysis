@@ -43,15 +43,17 @@ def validate_reads_schema(df: pl.DataFrame, has_bin: bool, has_antigen: bool) ->
 
 
 def validate_concentration_column(df: pl.DataFrame, has_bin: bool) -> list[str]:
-    """R2: concentrations must be non-negative floats within the attomolar-encodable range.
+    """R2: concentrations must be finite non-negative floats within the attomolar-encodable range.
 
     Returns list of warning strings (e.g. 0 M control without bin assignment in bin mode;
     R5 narrow-range warning when non-zero max/min spans less than one order of magnitude).
-    Raises InputValidationError on any value < 0 or above MAX_CONCENTRATION_M (int64
-    ceiling for attomolar encoding; see constants.py).
+    Raises InputValidationError on any value < 0, non-finite (NaN/Inf), or above
+    MAX_CONCENTRATION_M (int64 ceiling for attomolar encoding; see constants.py).
     """
     exprs = [
         (pl.col(COL_CONC_VAL) < 0).sum().alias("neg"),
+        pl.col(COL_CONC_VAL).is_nan().sum().alias("nan"),
+        pl.col(COL_CONC_VAL).is_infinite().sum().alias("inf"),
         (pl.col(COL_CONC_VAL) > MAX_CONCENTRATION_M).sum().alias("over_max"),
     ]
     if has_bin:
@@ -60,6 +62,11 @@ def validate_concentration_column(df: pl.DataFrame, has_bin: bool) -> list[str]:
 
     if counts["neg"] > 0:
         raise InputValidationError("concentration contains negative values")
+    if counts["nan"] > 0 or counts["inf"] > 0:
+        raise InputValidationError(
+            f"concentration contains non-finite values (NaN: {counts['nan']}, Inf: {counts['inf']}); "
+            "downstream curve fitting requires finite concentrations"
+        )
     if counts["over_max"] > 0:
         offenders = (
             df.filter(pl.col(COL_CONC_VAL) > MAX_CONCENTRATION_M)[COL_CONC_VAL].unique().sort(descending=True).to_list()
@@ -115,7 +122,7 @@ def validate_bin_column(df: pl.DataFrame) -> None:
                 "column that is populated across samples (e.g. a numeric "
                 "FACS bin-label column)."
             )
-    if df[COL_BIN].dtype not in (pl.Int8, pl.Int16, pl.Int32, pl.Int64, pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64):
+    if not df[COL_BIN].dtype.is_integer():
         raise InputValidationError(f"bin column must be integer type, got {df[COL_BIN].dtype}")
     if df.select((pl.col(COL_BIN) <= 0).sum()).item() > 0:
         raise InputValidationError("bin column must contain positive integers (>= 1)")
@@ -156,14 +163,22 @@ def apply_antigen_filter(df: pl.DataFrame, target_antigen: str | None) -> pl.Dat
 
 
 def validate_sample_metadata_uniqueness(df: pl.DataFrame, has_bin: bool, has_antigen: bool) -> None:
-    """R5: each sampleId must map to a unique (concentration, bin, antigen) tuple."""
+    """R5: each sampleId must map to a unique (concentration, bin, antigen) tuple.
+
+    Metadata is constant for every clonotype in a sample, so a full-table group_by
+    hashes millions of rows to recover ≤ n_samples unique tuples. Dedupe the key
+    columns first — this keeps the check O(samples) instead of O(rows).
+    """
     key_cols = [COL_CONC_STR]
     if has_bin:
         key_cols.append(COL_BIN)
     if has_antigen:
         key_cols.append(COL_ANTIGEN)
 
-    per_sample_unique = df.group_by(COL_SAMPLE).agg([pl.col(c).n_unique().alias(f"{c}_nunique") for c in key_cols])
+    sample_metadata = df.select([COL_SAMPLE, *key_cols]).unique()
+    per_sample_unique = sample_metadata.group_by(COL_SAMPLE).agg(
+        [pl.col(c).n_unique().alias(f"{c}_nunique") for c in key_cols]
+    )
     for c in key_cols:
         offenders = per_sample_unique.filter(pl.col(f"{c}_nunique") > 1)
         if offenders.height > 0:

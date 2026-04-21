@@ -58,6 +58,41 @@ class TestConcentrationValidation:
         with pytest.raises(InputValidationError, match="negative"):
             validate_concentration_column(df, has_bin=True)
 
+    # Non-finite concentrations reach curve_fit as garbage inputs — downstream failures
+    # are opaque and per-clonotype. Catching here is the only place with enough context
+    # to produce an actionable error.
+    def test_nan_concentration_raises(self):
+        df = _mk(
+            [
+                {
+                    "clonotypeKey": "A",
+                    "sampleId": "s",
+                    "concentrationStr": "nan",
+                    "concentration": float("nan"),
+                    "bin": 1,
+                    "reads": 5,
+                },
+            ]
+        )
+        with pytest.raises(InputValidationError, match="non-finite"):
+            validate_concentration_column(df, has_bin=True)
+
+    def test_inf_concentration_raises(self):
+        df = _mk(
+            [
+                {
+                    "clonotypeKey": "A",
+                    "sampleId": "s",
+                    "concentrationStr": "inf",
+                    "concentration": float("inf"),
+                    "bin": 1,
+                    "reads": 5,
+                },
+            ]
+        )
+        with pytest.raises(InputValidationError, match="non-finite"):
+            validate_concentration_column(df, has_bin=True)
+
     def test_concentration_over_ceiling_raises_actionable_error(self):
         # Above the int64 attomolar ceiling (~9.22 M) — any such value almost
         # certainly indicates a unit-entry mistake. Validation should flag it
