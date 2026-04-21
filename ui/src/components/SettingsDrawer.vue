@@ -7,7 +7,6 @@ import {
   PlNumberField,
   PlSectionSeparator,
   PlSlideModal,
-  PlTextField,
 } from "@platforma-sdk/ui-vue";
 import { computed, watch } from "vue";
 import { useApp } from "../app";
@@ -232,18 +231,6 @@ watch(
           this. Below the floor, a signal drop is more likely noise than a real hook. Default 20.
         </template>
       </PlNumberField>
-    </PlAccordionSection>
-
-    <PlAccordionSection label="Block label">
-      <PlTextField
-        v-model="app.model.data.customBlockLabel"
-        label="Custom label"
-        :placeholder="app.model.data.defaultBlockLabel"
-      >
-        <template #tooltip>
-          Override the auto-generated subtitle. Leave blank to use the three-input placeholder.
-        </template>
-      </PlTextField>
     </PlAccordionSection>
   </PlSlideModal>
 </template>
