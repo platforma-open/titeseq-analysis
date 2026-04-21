@@ -57,6 +57,76 @@ type LegacyUiState = {
   settingsOpen: boolean;
 };
 
+// Column identifiers stored in optionsState/dataBindAes are JSON strings
+// encoding the p-column path. All summaryPf columns below are block-portable
+// (resolvePath is the stable pipeline alias, not a block-id-specific domain).
+const summaryCol = (name: string, type: "Double" | "String") =>
+  `{"kind":"column","name":"{\\"name\\":\\"${name}\\",\\"resolvePath\\":[\\"main\\",\\"summaryPf\\"]}","type":"${type}"}`;
+
+const KD_PLOT_COL = summaryCol("kdPlotPosition", "Double");
+const HILL_PLOT_COL = summaryCol("hillPlotPosition", "Double");
+const HILL_COEF_COL = summaryCol("hillCoefficient", "Double");
+const AFFINITY_CLASS_COL = summaryCol("affinityClass", "String");
+const FIT_FAILURE_REASON_COL = summaryCol("fitFailureReason", "String");
+
+// Affinity vs Fit Quality opens filtered to Failed clonotypes with hill
+// coefficient >= 0, grouped/shaped by fit failure reason, and coloured by
+// affinity class. The failure-reason palette pins low_r2 to green and
+// n_out_of_range to purple/dashed so the two most common fit breakdowns
+// stay visually distinct across datasets.
+const AFFINITY_VS_FIT_DEFAULT_STATE: GraphMakerState = {
+  title: "",
+  template: "dots",
+  currentTab: null,
+  layersSettings: {
+    dots: {
+      dotFill: { type: "grouping", value: FIT_FAILURE_REASON_COL },
+    },
+  },
+  axesSettings: {
+    axisX: { scale: "log" },
+  },
+  optionsState: {
+    type: "scatterplot",
+    components: {
+      x: { type: "simple", selectorStates: [{ selectedSource: KD_PLOT_COL }] },
+      y: { type: "simple", selectorStates: [{ selectedSource: HILL_PLOT_COL }] },
+      filters: {
+        type: "filter",
+        selectorStates: [
+          { selectedSource: HILL_COEF_COL, type: "range", selectedFilterRange: { min: 0 } },
+          {
+            selectedSource: AFFINITY_CLASS_COL,
+            type: "equals",
+            selectedFilterValues: ["Failed"],
+          },
+        ],
+      },
+      grouping: {
+        type: "simple",
+        selectorStates: [{ selectedSource: FIT_FAILURE_REASON_COL }],
+      },
+    },
+    dividedAxes: {},
+  },
+  dataBindAes: {
+    [FIT_FAILURE_REASON_COL]: {
+      type: "categorical",
+      palette: "light",
+      naAes: { color: "#ccc", lineShape: "solid", dotShape: "21" },
+      order: ["low_r2", "n_out_of_range"],
+      hidden: {},
+      mapping: {
+        low_r2: { colorIdx: 0, aes: { color: "#99E099", lineShape: "solid", dotShape: "21" } },
+        n_out_of_range: {
+          colorIdx: 1,
+          aes: { color: "#C1ADFF", lineShape: "solid", dotShape: "21" },
+        },
+      },
+    },
+  },
+} as GraphMakerState;
+
 const dataModel = new DataModelBuilder()
   .from<BlockData>("v1")
   .upgradeLegacy<BlockArgs, LegacyUiState>(({ args, uiState }) => ({
@@ -108,33 +178,7 @@ const dataModel = new DataModelBuilder()
         other: { binsCount: 30 },
       },
     },
-    graphStateAffinityVsFit: {
-      title: "",
-      template: "dots",
-      currentTab: null,
-      layersSettings: {
-        dots: {
-          // Colour dots by affinityClass and shape by fitFailureReason so the
-          // three-way Good/Partial/Failed split and the six failure reasons
-          // are visible without per-block configuration. Values reference the
-          // stable summaryPf output column names, so the binding transfers to
-          // any new block/project.
-          dotFill: {
-            type: "grouping",
-            value:
-              '{"kind":"column","name":"{\\"name\\":\\"affinityClass\\",\\"resolvePath\\":[\\"main\\",\\"summaryPf\\"]}","type":"String"}',
-          },
-          dotShape: {
-            type: "grouping",
-            value:
-              '{"kind":"column","name":"{\\"name\\":\\"fitFailureReason\\",\\"resolvePath\\":[\\"main\\",\\"summaryPf\\"]}","type":"String"}',
-          },
-        },
-      },
-      axesSettings: {
-        axisX: { scale: "log" },
-      },
-    },
+    graphStateAffinityVsFit: AFFINITY_VS_FIT_DEFAULT_STATE,
     settingsOpen: false,
   }));
 

@@ -17,21 +17,37 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
   const hillPlot = pCols.find(
     (p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/hillPlotPosition",
   );
+  const hillCoef = pCols.find(
+    (p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/hillCoefficient",
+  );
   const affinityClass = pCols.find(
     (p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/affinityClass",
   );
   const failureReason = pCols.find(
     (p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/fitFailureReason",
   );
-  if (!kdPlot || !hillPlot || !affinityClass) return undefined;
+  if (!kdPlot || !hillPlot || !failureReason) return undefined;
 
   const options: PredefinedGraphOption<"scatterplot">[] = [
     { inputName: "x", selectedSource: kdPlot.spec },
     { inputName: "y", selectedSource: hillPlot.spec },
-    { inputName: "grouping", selectedSource: affinityClass.spec },
+    { inputName: "grouping", selectedSource: failureReason.spec },
   ];
-  if (failureReason) {
-    options.push({ inputName: "shape", selectedSource: failureReason.spec });
+  if (hillCoef) {
+    options.push({
+      inputName: "filters",
+      selectedSource: hillCoef.spec,
+      filterType: "range",
+      selectedFilterRange: { min: 0 },
+    });
+  }
+  if (affinityClass) {
+    options.push({
+      inputName: "filters",
+      selectedSource: affinityClass.spec,
+      filterType: "equals",
+      selectedFilterValues: ["Failed"],
+    });
   }
   return options;
 });
