@@ -12,6 +12,7 @@ scipy curve_fit uses sigma_j = 1/sqrt(w_j) (equivalent to weighted least-squares
 from __future__ import annotations
 
 import math
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
@@ -158,17 +159,22 @@ def fit_one_clonotype(
         model = _hill
 
     try:
-        popt, _ = curve_fit(
-            model,
-            x,
-            y,
-            p0=p0,
-            sigma=sigma,
-            absolute_sigma=False,
-            bounds=(lo, hi),
-            method="trf",
-            maxfev=10_000,
-        )
+        # Promote OptimizeWarning to an exception. scipy emits it (not raises) when
+        # covariance can't be estimated or when bounds pin the solution — signals that
+        # match the `_failure()` contract even though popt may otherwise be returned.
+        with warnings.catch_warnings():
+            warnings.filterwarnings("error", category=OptimizeWarning)
+            popt, _ = curve_fit(
+                model,
+                x,
+                y,
+                p0=p0,
+                sigma=sigma,
+                absolute_sigma=False,
+                bounds=(lo, hi),
+                method="trf",
+                maxfev=10_000,
+            )
     except (RuntimeError, ValueError, OptimizeWarning):
         return _failure()
 

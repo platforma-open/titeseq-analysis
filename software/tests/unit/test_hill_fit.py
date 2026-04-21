@@ -162,6 +162,43 @@ class TestDeltaDynamicRangeGate:
             assert fit.reason == "convergence_failure"
 
 
+class TestOptimizeWarningBecomesFailure:
+    """Contract: a scipy OptimizeWarning during curve_fit means the fit is unreliable —
+    treat it as convergence_failure rather than returning a point estimate whose
+    covariance couldn't be estimated.
+
+    We mock the external boundary (scipy.optimize.curve_fit inside hill_fit) so the
+    test is deterministic across scipy versions and test machines, where natural
+    triggers (singular Jacobians) vary.
+    """
+
+    def test_optimize_warning_returns_failure(self, monkeypatch):
+        import warnings as _warnings
+
+        from scipy.optimize import OptimizeWarning
+
+        import hill_fit
+
+        def fake_curve_fit(*_args, **_kwargs):
+            _warnings.warn(
+                "Covariance of the parameters could not be estimated",
+                OptimizeWarning,
+                stacklevel=2,
+            )
+            # Realistic popt shape for baseline-fixed mode: [log_kd, n, amplitude].
+            return np.array([math.log(10.0), 1.0, math.log(2.0)]), None
+
+        monkeypatch.setattr(hill_fit, "curve_fit", fake_curve_fit)
+
+        x = np.array([1e-9, 1e-8, 1e-7, 1e-6])
+        y = np.array([1.0, 1.5, 2.5, 3.0])
+        w = np.ones_like(x) * 100.0
+        fit = fit_one_clonotype(x, y, w, baseline_fixed=1.0, bin_mode=True, max_bin_label=8)
+
+        assert fit.converged is False
+        assert fit.reason == "convergence_failure"
+
+
 class TestAmplitudeBoundsRespected:
     """R10 reparametrization: every CONVERGED fit must have top − baseline ≥ δ_mode.
 
