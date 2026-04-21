@@ -13,6 +13,7 @@ import {
   createPlDataTableStateV2,
   createPlDataTableV2,
   isPColumnSpec,
+  plRefsEqual,
 } from "@platforma-sdk/model";
 
 export type ValidationIssue = {
@@ -205,7 +206,9 @@ export const model = BlockModelV3.create(dataModel)
     // "empty column" error inside the Python pipeline, so the option should
     // not appear in the dropdown in the first place. Data-not-ready is shown
     // conservatively to avoid options flickering in/out while upstream loads.
+    const excludeRef = ctx.data.sortFractionColumnRef;
     return candidates.filter((opt) => {
+      if (excludeRef && plRefsEqual(opt.ref, excludeRef)) return false;
       const data = ctx.resultPool.getDataByRef(opt.ref)?.data;
       if (!data) return true;
       const values = data.getDataAsJson<Record<string, number | null>>()?.["data"];
@@ -236,9 +239,13 @@ export const model = BlockModelV3.create(dataModel)
 
   .output("sortFractionOptions", (ctx) => {
     // Per-sample numerical metadata column giving C_bc/C_c (Adams, Mora,
-    // Walczak, Kinney 2016 eq. A3). Same filter shape as concentrationOptions
-    // — numeric [sampleId] — and the same all-null guard so an empty metadata
-    // column cannot be selected.
+    // Walczak, Kinney 2016 eq. A3). Shape matches concentrationOptions
+    // (numeric [sampleId]), so we lean on two data-driven disambiguators
+    // rather than column names (which differ across projects):
+    //   1. Cross-exclude the already-picked concentration column.
+    //   2. Require every observed value in [0, 1] — sort fractions are
+    //      bounded by definition, so concentrations in nM/µM (values > 1)
+    //      drop out. Molar concentrations (all < 1) still need (1) to clear.
     const candidates = ctx.resultPool.getOptions(
       (spec) =>
         isPColumnSpec(spec) &&
@@ -246,12 +253,18 @@ export const model = BlockModelV3.create(dataModel)
         spec.axesSpec.length === 1 &&
         spec.axesSpec[0].name === "pl7.app/sampleId",
     );
+    const excludeRef = ctx.data.concentrationColumnRef;
     return candidates.filter((opt) => {
+      if (excludeRef && plRefsEqual(opt.ref, excludeRef)) return false;
       const data = ctx.resultPool.getDataByRef(opt.ref)?.data;
       if (!data) return true;
       const values = data.getDataAsJson<Record<string, number | null>>()?.["data"];
       if (!values) return true;
-      return Object.values(values).some((v) => v !== null && v !== undefined);
+      const finite = Object.values(values).filter(
+        (v): v is number => v !== null && v !== undefined,
+      );
+      if (finite.length === 0) return false;
+      return finite.every((v) => v >= 0 && v <= 1);
     });
   })
 
