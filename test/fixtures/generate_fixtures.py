@@ -16,8 +16,8 @@ required the update.
 
 Three variants:
 
-- bin_mode: 5 clonotypes (Good / Partial / Failed mix) x 10 concs x 4 bins.
-- no_bin_mode: 3 test clonotypes + 1 filler x 9 non-zero concs x 1 bin.
+- bin_mode: 5 clonotypes (Good / Partial / Failed mix) x 7 concs x 4 bins.
+- no_bin_mode: 3 test clonotypes + 1 filler x 6 non-zero concs x 1 bin.
 - antigen: 2 targets + 2 distractors for R4 filter verification.
 """
 
@@ -34,7 +34,7 @@ FIXTURES_DIR = Path(__file__).resolve().parent
 DATA_DIR = FIXTURES_DIR / "data"
 MASTER_SEED = 20260417
 
-CONCENTRATIONS = [0.0, 1e-10, 3e-10, 1e-9, 3e-9, 1e-8, 3e-8, 1e-7, 3e-7, 1e-6]
+CONCENTRATIONS = [0.0, 1e-10, 1e-9, 3e-9, 1e-8, 1e-7, 1e-6]
 BINS = [1, 2, 3, 4]
 
 BASELINE = 1.5

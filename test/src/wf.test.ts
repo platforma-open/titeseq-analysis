@@ -48,9 +48,13 @@ blockTest('empty inputs', { timeout: 20000 }, async ({ rawPrj: project, expect }
 });
 
 blockTest(
-  'bin_mode fixture populates option lists',
-  { timeout: 240000 },
-  async ({ rawPrj: project, helpers, expect }) => {
+  'bin_mode fixture: option lists + end-to-end summary contract',
+  { timeout: 600000 },
+  async ({ rawPrj: project, ml, helpers, expect }) => {
+    // One S&D ingest powers both the option-list checks and the end-to-end run
+    // below — each blockTest spins up a fresh platforma container, so merging
+    // these tests cuts fixture uploads roughly in half (CI runner disk is the
+    // bottleneck; see samples-and-data/test for the sample-count pattern).
     const sndBlockId = await project.addBlock('Samples & Data', samplesAndDataBlockSpec);
     const importBlockId = await project.addBlock('Import V(D)J Data', importVdjBlockSpec);
     const titeseqBlockId = await project.addBlock('Titeseq Analysis', myBlockSpec);
@@ -84,91 +88,49 @@ blockTest(
     await project.runBlock(importBlockId);
     await helpers.awaitBlockDone(importBlockId, 180000);
 
-    // After import-vdj-data completes, titeseq-analysis's option lists should
-    // see the abundance column (isAnchor) and per-sample metadata columns.
-    const titeseqState = (await awaitStableState(
-      project.getBlockState(titeseqBlockId),
-      30000,
-    )) as InferBlockState<typeof model>;
-    const titeseqOutputs = wrapOutputs<BlockOutputs>(titeseqState.outputs);
-
-    // Abundance: exactly one isAnchor [sampleId, clonotypeKey] PColumn from
-    // import-vdj-data (the read-count column). A second entry here would mean
-    // the filter is matching an unintended column.
-    expect(titeseqOutputs.abundanceOptions.length).toBe(1);
-
-    // Concentration/bin options also include per-sample stats PColumns emitted
-    // by import-vdj-data (clones count, total reads, etc.) — assert the
-    // S&D-sourced metadata column is present rather than pinning the count.
-    const concLabels = titeseqOutputs.concentrationOptions.map((o) => o.label);
-    const binLabels = titeseqOutputs.binOptions.map((o) => o.label);
-    expect(concLabels).toEqual(expect.arrayContaining(['antigen_conc_M']));
-    expect(binLabels).toEqual(expect.arrayContaining(['bin_number']));
-    // No antigen metadata in the bin_mode fixture — the fixture's antigen
-    // label must not appear. (S&D emits a `Sample Name` String column that
-    // matches the antigen filter shape, so we can't assert the list is empty.)
-    const antigenLabels = titeseqOutputs.antigenOptions.map((o) => o.label);
-    expect(antigenLabels).not.toContain('antigen');
-
-    // Filter discrimination: the integer bin column must not leak into the
-    // concentration (Float/Double) dropdown, and vice versa.
-    const binRefs = new Set(titeseqOutputs.binOptions.map((o) => JSON.stringify(o.ref)));
-    for (const concOption of titeseqOutputs.concentrationOptions) {
-      expect(binRefs.has(JSON.stringify(concOption.ref))).toBe(false);
-    }
-
-    // Titeseq block is idle; workflow outputs must not appear yet.
-    expect(titeseqOutputs.validationWarnings).toEqual([]);
-    expect(titeseqOutputs.isRunning).toBeFalsy();
-    expect(titeseqOutputs.summaryPfHandle).toBeUndefined();
-    expect(titeseqOutputs.titrationCurvesPf).toBeUndefined();
-
-    // Cross-reference: the metadata ids we generated in the fixture helper
-    // must be what S&D is serving (sanity check that the plumbing lined up).
-    expect(Object.keys(loaded.sampleIdByName).length).toBeGreaterThan(0);
-    expect(loaded.metadataIds.concentration).toBeDefined();
-    expect(loaded.metadataIds.bin).toBeDefined();
-  },
-);
-
-blockTest(
-  'bin_mode fixture runs end-to-end and produces summary contract',
-  { timeout: 600000 },
-  async ({ rawPrj: project, ml, helpers, expect }) => {
-    // Wire up upstream chain: S&D → import-vdj-data → titeseq-analysis.
-    const sndBlockId = await project.addBlock('Samples & Data', samplesAndDataBlockSpec);
-    const importBlockId = await project.addBlock('Import V(D)J Data', importVdjBlockSpec);
-    const titeseqBlockId = await project.addBlock('Titeseq Analysis', myBlockSpec);
-
-    const { args: sndArgs } = await prepareSamplesAndDataArgs('bin_mode', helpers);
-    await project.setBlockArgs(sndBlockId, sndArgs);
-    await project.runBlock(sndBlockId);
-    await helpers.awaitBlockDone(sndBlockId, 60000);
-
-    const importState1 = await awaitStableState(
-      project.getBlockState(importBlockId),
-      30000,
-    );
-    const datasetRef = (wrapOutputs(importState1.outputs!) as {
-      datasetOptions: { ref: PlRef; label: string }[];
-    }).datasetOptions[0].ref;
-
-    await project.setBlockArgs(importBlockId, {
-      defaultBlockLabel: '',
-      customBlockLabel: '',
-      datasetRef,
-      format: 'mixcr',
-      chains: ['IGHeavy'],
-    } satisfies ImportVdjBlockArgs);
-    await project.runBlock(importBlockId);
-    await helpers.awaitBlockDone(importBlockId, 180000);
-
-    // Resolve abundance/concentration/bin options from the titeseq model.
+    // Tier-1: option lists populate correctly once import-vdj-data emits the
+    // isAnchor abundance column and the per-sample metadata columns propagate.
     const idleState = (await awaitStableState(
       project.getBlockState(titeseqBlockId),
       30000,
     )) as InferBlockState<typeof model>;
     const idleOutputs = wrapOutputs<BlockOutputs>(idleState.outputs);
+
+    // Abundance: exactly one isAnchor [sampleId, clonotypeKey] PColumn from
+    // import-vdj-data. A second entry here would mean the filter is matching
+    // an unintended column.
+    expect(idleOutputs.abundanceOptions.length).toBe(1);
+
+    // Concentration/bin options also include per-sample stats PColumns emitted
+    // by import-vdj-data (clones count, total reads, etc.) — assert the
+    // S&D-sourced metadata column is present rather than pinning the count.
+    const concLabels = idleOutputs.concentrationOptions.map((o) => o.label);
+    const binLabels = idleOutputs.binOptions.map((o) => o.label);
+    expect(concLabels).toEqual(expect.arrayContaining(['antigen_conc_M']));
+    expect(binLabels).toEqual(expect.arrayContaining(['bin_number']));
+    // No antigen metadata in the bin_mode fixture — the fixture's antigen
+    // label must not appear. (S&D emits a `Sample Name` String column that
+    // matches the antigen filter shape, so we can't assert the list is empty.)
+    const antigenLabels = idleOutputs.antigenOptions.map((o) => o.label);
+    expect(antigenLabels).not.toContain('antigen');
+
+    // Filter discrimination: the integer bin column must not leak into the
+    // concentration (Float/Double) dropdown, and vice versa.
+    const binRefs = new Set(idleOutputs.binOptions.map((o) => JSON.stringify(o.ref)));
+    for (const concOption of idleOutputs.concentrationOptions) {
+      expect(binRefs.has(JSON.stringify(concOption.ref))).toBe(false);
+    }
+
+    // Titeseq block is idle before we configure it; workflow outputs must not
+    // appear yet. Cross-reference the metadata ids against the fixture helper
+    // so a plumbing mismatch surfaces before we spend time on the run.
+    expect(idleOutputs.validationWarnings).toEqual([]);
+    expect(idleOutputs.isRunning).toBeFalsy();
+    expect(idleOutputs.summaryPfHandle).toBeUndefined();
+    expect(idleOutputs.titrationCurvesPf).toBeUndefined();
+    expect(Object.keys(loaded.sampleIdByName).length).toBeGreaterThan(0);
+    expect(loaded.metadataIds.concentration).toBeDefined();
+    expect(loaded.metadataIds.bin).toBeDefined();
 
     const abundanceRef = idleOutputs.abundanceOptions[0].ref;
     const concentrationRef = idleOutputs.concentrationOptions.find(
