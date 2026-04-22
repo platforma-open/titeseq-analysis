@@ -1,5 +1,11 @@
 # @platforma-open/platforma-open.titeseq-analysis.ui
 
+## 2.1.1
+
+### Patch Changes
+
+- adacb76: Remove whitespace in graph pages
+
 ## 2.1.0
 
 ### Minor Changes
