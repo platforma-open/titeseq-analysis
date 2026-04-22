@@ -127,8 +127,8 @@ wf.body(func(args) {
 	// R14 compliance: concentration is keyed by two parallel axes, scoped differently
 	// between internal (own-block) and export (downstream) views.
 	//   - concentrationStr (String): the canonical join key, preserved byte-for-byte
-	//     from the upstream metadata string. Prevents float-serialization drift
-	//     between TypeScript/Tengo/Python layers causing silent join failures.
+	//     from the upstream metadata string. Prevents silent join failures from
+	//     float-serialization drift across the TypeScript/Tengo/Python layers.
 	//     Present in BOTH internal and export views.
 	//   - concentrationAM (Long, attomolar = Molar * 1e18): numeric sibling used by
 	//     Graph Maker for log-scale X rendering. Attomolar keeps typical TiteSeq
@@ -145,10 +145,10 @@ wf.body(func(args) {
 	// Int|Long|Float|Double|String; Float is avoided because a Float axis is itself
 	// subject to the serialization drift R14 warns against.
 	// Platform gap: the SDK has no axis-level hide annotation, so concentrationStr
-	// still appears in Graph Maker categorical pickers within this block. Continuous-
-	// scale pickers are type-gated to numeric axes by Graph Maker, so users cannot
-	// select the String axis for a log-scale X. Table visibility "optional" keeps it
-	// out of default table views.
+	// still appears in Graph Maker categorical pickers within this block. Graph
+	// Maker type-gates continuous-scale pickers to numeric axes, so the String
+	// axis stays out of log-scale X. Table visibility "optional" keeps it out of
+	// default table views.
 	concStrAxisSpec := {
 		name: "pl7.app/vdj/concentrationStr",
 		type: "String",
@@ -307,8 +307,8 @@ wf.body(func(args) {
 					valueType: "Double",
 					domain: { "pl7.app/block": blockId },
 					annotations: {
-						// Distinct from "Kd,app" so the plot-rendering sibling (nulls parked at
-						// max_conc*10) is not offered alongside the real Kd in downstream pickers.
+						// Distinct label from "Kd,app" so downstream pickers show this plot-
+						// rendering sibling (nulls parked at max_conc*10) separately from the real Kd.
 						"pl7.app/label": "Kd,app (plot position)",
 						"pl7.app/isScore": "false",
 						"pl7.app/table/visibility": "hidden"
@@ -322,8 +322,8 @@ wf.body(func(args) {
 					valueType: "Double",
 					domain: { "pl7.app/block": blockId },
 					annotations: {
-						// Distinct from "Hill coefficient" so the plot-rendering sibling (nulls
-						// parked at -1.0) is not offered alongside the real coefficient in pickers.
+						// Distinct label from "Hill coefficient" so pickers show this plot-
+						// rendering sibling (nulls parked at -1.0) separately from the real coefficient.
 						"pl7.app/label": "Hill coefficient (plot position)",
 						"pl7.app/isScore": "false",
 						"pl7.app/table/visibility": "hidden"
@@ -350,7 +350,13 @@ wf.body(func(args) {
 		{ column: "concentrationStr", spec: concStrAxisSpec }
 	]
 
-	meanBinColSpec := {
+	// Internal variants feed signalPf (3-axis view for own Graph Maker).
+	// Export variants feed exports.pf (2-axis view for downstream discovery) and
+	// carry pl7.app/hideDataFromGraphs so createPFrameForGraphs excludes them
+	// from this block's own pframe — otherwise both copies share name/valueType/
+	// domain/annotations, and findColumnBy resolves the y-source to the 2-axis
+	// export sibling, silently dropping the numeric-concentration x default.
+	meanBinInternalColSpec := {
 		name: "pl7.app/vdj/meanBin",
 		valueType: "Double",
 		domain: { "pl7.app/block": blockId },
@@ -361,7 +367,19 @@ wf.body(func(args) {
 			"pl7.app/titeseq/facsCorrected": facsCorrected
 		}
 	}
-	fittedMeanBinColSpec := {
+	meanBinExportColSpec := {
+		name: "pl7.app/vdj/meanBin",
+		valueType: "Double",
+		domain: { "pl7.app/block": blockId },
+		annotations: {
+			"pl7.app/label": meanBinLabel,
+			"pl7.app/isScore": "false",
+			"pl7.app/table/visibility": "hidden",
+			"pl7.app/titeseq/facsCorrected": facsCorrected,
+			"pl7.app/hideDataFromGraphs": "true"
+		}
+	}
+	fittedMeanBinInternalColSpec := {
 		name: "pl7.app/vdj/fittedMeanBin",
 		valueType: "Double",
 		domain: { "pl7.app/block": blockId },
@@ -369,6 +387,17 @@ wf.body(func(args) {
 			"pl7.app/label": fittedMeanBinLabel,
 			"pl7.app/isScore": "false",
 			"pl7.app/table/visibility": "hidden"
+		}
+	}
+	fittedMeanBinExportColSpec := {
+		name: "pl7.app/vdj/fittedMeanBin",
+		valueType: "Double",
+		domain: { "pl7.app/block": blockId },
+		annotations: {
+			"pl7.app/label": fittedMeanBinLabel,
+			"pl7.app/isScore": "false",
+			"pl7.app/table/visibility": "hidden",
+			"pl7.app/hideDataFromGraphs": "true"
 		}
 	}
 
@@ -381,10 +410,10 @@ wf.body(func(args) {
 		}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
 	}
 
-	meanBinInternal := importSignal(fit.getFile("mean_bin.tsv"), "meanBin", meanBinColSpec, internalConcAxes)
-	fittedMeanBinInternal := importSignal(fit.getFile("fitted_mean_bin.tsv"), "fittedMeanBin", fittedMeanBinColSpec, internalConcAxes)
-	meanBinExport := importSignal(fit.getFile("mean_bin.tsv"), "meanBin", meanBinColSpec, exportConcAxes)
-	fittedMeanBinExport := importSignal(fit.getFile("fitted_mean_bin.tsv"), "fittedMeanBin", fittedMeanBinColSpec, exportConcAxes)
+	meanBinInternal := importSignal(fit.getFile("mean_bin.tsv"), "meanBin", meanBinInternalColSpec, internalConcAxes)
+	fittedMeanBinInternal := importSignal(fit.getFile("fitted_mean_bin.tsv"), "fittedMeanBin", fittedMeanBinInternalColSpec, internalConcAxes)
+	meanBinExport := importSignal(fit.getFile("mean_bin.tsv"), "meanBin", meanBinExportColSpec, exportConcAxes)
+	fittedMeanBinExport := importSignal(fit.getFile("fitted_mean_bin.tsv"), "fittedMeanBin", fittedMeanBinExportColSpec, exportConcAxes)
 
 	// Trace injection. `makeTrace` bundles the upstream abundance provenance
 	// with a self-descriptor; `trace.inject` rewrites only the small spec resources
@@ -413,7 +442,7 @@ wf.body(func(args) {
 	summaryPf := buildTracedPf([summaryImported], [])
 	signalPf := buildTracedPf([meanBinInternal, fittedMeanBinInternal], [])
 	// Single export bundle for Lead Selection discovery (R20, R21).
-	// Uses *Export variants so concentrationAM is not surfaced downstream.
+	// Uses *Export variants to keep concentrationAM out of downstream views.
 	// kdPlotPosition / hillPlotPosition are internal sentinels for the Affinity vs
 	// Fit Quality scatter (nulls parked at max_conc*10 and -1.0 respectively); they
 	// would appear as spurious "Kd,app" / "Hill coefficient" siblings in downstream
