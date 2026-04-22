@@ -23,7 +23,7 @@ const defaultOptions = computed((): PredefinedGraphOption<"histogram">[] | undef
     {
       inputName: "filters",
       selectedSource: affinityClass.spec,
-      selectedFilterValues: ["Good", "Partial"],
+      selectedFilterValues: ["Good"],
     },
   ];
 });
