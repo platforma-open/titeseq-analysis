@@ -1,5 +1,12 @@
 # @platforma-open/platforma-open.titeseq-analysis
 
+## 2.0.2
+
+### Patch Changes
+
+- Updated dependencies [e9af4e2]
+  - @platforma-open/platforma-open.titeseq-analysis.ui@2.1.0
+
 ## 2.0.1
 
 ### Patch Changes
