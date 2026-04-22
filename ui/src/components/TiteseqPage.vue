@@ -23,8 +23,12 @@ const app = useApp();
 </template>
 
 <style scoped>
-:deep(.graph-maker .chart_header) {
+:deep(.graph-maker .chart_title),
+:deep(.graph-maker .chart_titleEdit) {
   display: none;
+}
+:deep(.graph-maker .chart_header) {
+  margin-bottom: 0;
 }
 :deep(.graph-maker .chart_container) {
   padding-top: 0;
