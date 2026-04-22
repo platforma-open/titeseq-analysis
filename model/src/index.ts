@@ -49,14 +49,6 @@ export type BlockData = BlockArgs & {
   settingsOpen: boolean;
 };
 
-type LegacyUiState = {
-  tableState: PlDataTableStateV2;
-  graphStateTitrationCurves: GraphMakerState;
-  graphStateKDHistogram: GraphMakerState;
-  graphStateAffinityVsFit: GraphMakerState;
-  settingsOpen: boolean;
-};
-
 // Bind by resolvePath, not block-id domain, so defaults survive a fresh block
 // or project. The format — double-encoded JSON — is what GraphMaker stores.
 const summaryCol = (name: string, type: "Double" | "String") =>
@@ -124,60 +116,54 @@ const AFFINITY_VS_FIT_DEFAULT_STATE: GraphMakerState = {
   },
 } as GraphMakerState;
 
-const dataModel = new DataModelBuilder()
-  .from<BlockData>("v1")
-  .upgradeLegacy<BlockArgs, LegacyUiState>(({ args, uiState }) => ({
-    ...args,
-    ...uiState,
-  }))
-  .init(() => ({
-    abundanceRef: undefined,
-    concentrationColumnRef: undefined,
-    binColumnRef: undefined,
-    antigenColumnRef: undefined,
-    sortFractionColumnRef: undefined,
-    targetAntigen: undefined,
-    minReadsPerConcentration: 3,
-    minConcentrationPoints: 5,
-    r2ThresholdGood: 0.8,
-    r2ThresholdFailed: 0.5,
-    nMin: 0.5,
-    nMax: 2.0,
-    hookEffectThresholdBin: 0.2,
-    hookEffectThresholdNoBin: 0.02,
-    hookEffectMinReads: 20,
-    defaultBlockLabel: "Tite-Seq Analysis",
-    customBlockLabel: "",
-    tableState: createPlDataTableStateV2(),
-    graphStateTitrationCurves: {
-      title: "",
-      template: "dots",
-      currentTab: null,
-      layersSettings: {
-        dots: {},
-      },
-      axesSettings: {
-        axisX: {
-          scale: "log",
-        },
+const dataModel = new DataModelBuilder().from<BlockData>("v1").init(() => ({
+  abundanceRef: undefined,
+  concentrationColumnRef: undefined,
+  binColumnRef: undefined,
+  antigenColumnRef: undefined,
+  sortFractionColumnRef: undefined,
+  targetAntigen: undefined,
+  minReadsPerConcentration: 3,
+  minConcentrationPoints: 5,
+  r2ThresholdGood: 0.8,
+  r2ThresholdFailed: 0.5,
+  nMin: 0.5,
+  nMax: 2.0,
+  hookEffectThresholdBin: 0.2,
+  hookEffectThresholdNoBin: 0.02,
+  hookEffectMinReads: 20,
+  defaultBlockLabel: "Tite-Seq Analysis",
+  customBlockLabel: "",
+  tableState: createPlDataTableStateV2(),
+  graphStateTitrationCurves: {
+    title: "",
+    template: "dots",
+    currentTab: null,
+    layersSettings: {
+      dots: {},
+    },
+    axesSettings: {
+      axisX: {
+        scale: "log",
       },
     },
-    graphStateKDHistogram: {
-      title: "",
-      template: "bins",
-      currentTab: null,
-      layersSettings: {
-        bins: { fillColor: "#99E099" },
-      },
-      axesSettings: {
-        axisX: { scale: "log" },
-        axisY: { scale: "log" },
-        other: { binsCount: 30 },
-      },
+  },
+  graphStateKDHistogram: {
+    title: "",
+    template: "bins",
+    currentTab: null,
+    layersSettings: {
+      bins: { fillColor: "#99E099" },
     },
-    graphStateAffinityVsFit: AFFINITY_VS_FIT_DEFAULT_STATE,
-    settingsOpen: false,
-  }));
+    axesSettings: {
+      axisX: { scale: "log" },
+      axisY: { scale: "log" },
+      other: { binsCount: 30 },
+    },
+  },
+  graphStateAffinityVsFit: AFFINITY_VS_FIT_DEFAULT_STATE,
+  settingsOpen: false,
+}));
 
 function isIntegerValueType(vt: string | undefined): boolean {
   return vt === "Int" || vt === "Long";
@@ -185,6 +171,36 @@ function isIntegerValueType(vt: string | undefined): boolean {
 
 function isFloatValueType(vt: string | undefined): boolean {
   return vt === "Float" || vt === "Double";
+}
+
+// Filter per-sample numeric option lists:
+//   - drop candidates matching `excludeRef` (cross-exclusion between pickers);
+//   - drop all-null columns (they arrive in Python as empty-String and fail validation);
+//   - optionally apply `valuePredicate` to the finite values (e.g. [0, 1] range).
+// Generic S/O so TS infers the spec type from `ctx.resultPool.getOptions` (normally
+// PObjectSpec) without this helper taking a hard dependency on SDK internals.
+function filterPopulatedOptions<O extends { ref: PlRef }, S>(
+  ctx: {
+    resultPool: {
+      getOptions: (pred: (spec: S) => boolean) => O[];
+      getDataByRef: (
+        ref: PlRef,
+      ) => { data?: { getDataAsJson: <T>() => T | undefined } } | undefined;
+    };
+  },
+  specPred: (spec: S) => boolean,
+  opts: { excludeRef?: PlRef; valuePredicate?: (finite: number[]) => boolean } = {},
+): O[] {
+  return ctx.resultPool.getOptions(specPred).filter((opt) => {
+    if (opts.excludeRef && plRefsEqual(opt.ref, opts.excludeRef)) return false;
+    const data = ctx.resultPool.getDataByRef(opt.ref)?.data;
+    if (!data) return true;
+    const values = data.getDataAsJson<Record<string, number | null>>()?.["data"];
+    if (!values) return true;
+    const finite = Object.values(values).filter((v): v is number => v !== null && v !== undefined);
+    if (finite.length === 0) return false;
+    return opts.valuePredicate ? opts.valuePredicate(finite) : true;
+  });
 }
 
 export const model = BlockModelV3.create(dataModel)
@@ -248,71 +264,46 @@ export const model = BlockModelV3.create(dataModel)
     ),
   )
 
-  .output("concentrationOptions", (ctx) => {
-    const candidates = ctx.resultPool.getOptions(
+  .output("concentrationOptions", (ctx) =>
+    filterPopulatedOptions(
+      ctx,
       (spec) =>
         isPColumnSpec(spec) &&
         isFloatValueType(spec.valueType) &&
         spec.axesSpec.length === 1 &&
         spec.axesSpec[0].name === "pl7.app/sampleId",
-    );
-    // Hide all-null columns — selecting one fails validation downstream. Show
-    // the option while upstream data is still loading to avoid UI flicker.
-    const excludeRef = ctx.data.sortFractionColumnRef;
-    return candidates.filter((opt) => {
-      if (excludeRef && plRefsEqual(opt.ref, excludeRef)) return false;
-      const data = ctx.resultPool.getDataByRef(opt.ref)?.data;
-      if (!data) return true;
-      const values = data.getDataAsJson<Record<string, number | null>>()?.["data"];
-      if (!values) return true;
-      return Object.values(values).some((v) => v !== null && v !== undefined);
-    });
-  })
+      { excludeRef: ctx.data.sortFractionColumnRef },
+    ),
+  )
 
-  .output("binOptions", (ctx) => {
-    const candidates = ctx.resultPool.getOptions(
+  .output("binOptions", (ctx) =>
+    filterPopulatedOptions(
+      ctx,
       (spec) =>
         isPColumnSpec(spec) &&
         isIntegerValueType(spec.valueType) &&
         spec.axesSpec.length === 1 &&
         spec.axesSpec[0].name === "pl7.app/sampleId",
-    );
-    // Same as concentrationOptions: all-null Int/Long columns arrive in Python
-    // as empty-String columns and fail validation.
-    return candidates.filter((opt) => {
-      const data = ctx.resultPool.getDataByRef(opt.ref)?.data;
-      if (!data) return true;
-      const values = data.getDataAsJson<Record<string, number | null>>()?.["data"];
-      if (!values) return true;
-      return Object.values(values).some((v) => v !== null && v !== undefined);
-    });
-  })
+    ),
+  )
 
-  .output("sortFractionOptions", (ctx) => {
-    // Disambiguate from concentration by data, not column name: cross-exclude
-    // the picked concentration column, then require every value in [0, 1].
-    // Molar concentrations (all < 1) still need the cross-exclude to clear.
-    const candidates = ctx.resultPool.getOptions(
+  // Disambiguate from concentration by data, not column name: cross-exclude
+  // the picked concentration column, then require every value in [0, 1].
+  // Molar concentrations (all < 1) still need the cross-exclude to clear.
+  .output("sortFractionOptions", (ctx) =>
+    filterPopulatedOptions(
+      ctx,
       (spec) =>
         isPColumnSpec(spec) &&
         isFloatValueType(spec.valueType) &&
         spec.axesSpec.length === 1 &&
         spec.axesSpec[0].name === "pl7.app/sampleId",
-    );
-    const excludeRef = ctx.data.concentrationColumnRef;
-    return candidates.filter((opt) => {
-      if (excludeRef && plRefsEqual(opt.ref, excludeRef)) return false;
-      const data = ctx.resultPool.getDataByRef(opt.ref)?.data;
-      if (!data) return true;
-      const values = data.getDataAsJson<Record<string, number | null>>()?.["data"];
-      if (!values) return true;
-      const finite = Object.values(values).filter(
-        (v): v is number => v !== null && v !== undefined,
-      );
-      if (finite.length === 0) return false;
-      return finite.every((v) => v >= 0 && v <= 1);
-    });
-  })
+      {
+        excludeRef: ctx.data.concentrationColumnRef,
+        valuePredicate: (finite) => finite.every((v) => v >= 0 && v <= 1),
+      },
+    ),
+  )
 
   .output("antigenOptions", (ctx) =>
     ctx.resultPool.getOptions(

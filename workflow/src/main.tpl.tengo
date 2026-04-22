@@ -380,45 +380,29 @@ wf.body(func(args) {
 
 	// Trace injection. `makeTrace` bundles the upstream abundance provenance
 	// with a self-descriptor; `trace.inject` rewrites only the small spec resources
-	// (data resources are untouched thanks to splitDataAndSpec).
-	traceLabel := args.customBlockLabel
-	if traceLabel == "" {
-		traceLabel = args.defaultBlockLabel
-	}
+	// (data resources are untouched thanks to splitDataAndSpec). The trace label
+	// uses the auto-derived defaultBlockLabel so provenance is stable across
+	// user edits to the custom subtitle.
 	trace := pSpec.makeTrace(abundanceSpec, {
 		type: "milaboratories.titeseq-analysis",
 		importance: 30,
-		label: traceLabel
+		label: args.defaultBlockLabel
 	})
 
-	// Traced PFrames.
-	summaryPfb := pframes.pFrameBuilder()
-	for k, v in summaryImported {
-		summaryPfb.add(k, trace.inject(v.spec), v.data)
+	buildTracedPf := func(sources) {
+		pfb := pframes.pFrameBuilder()
+		for src in sources {
+			for k, v in src {
+				pfb.add(k, trace.inject(v.spec), v.data)
+			}
+		}
+		return pfb.build()
 	}
-	summaryPf := summaryPfb.build()
 
-	signalPfb := pframes.pFrameBuilder()
-	for k, v in meanBinImported {
-		signalPfb.add(k, trace.inject(v.spec), v.data)
-	}
-	for k, v in fittedMeanBinImported {
-		signalPfb.add(k, trace.inject(v.spec), v.data)
-	}
-	signalPf := signalPfb.build()
-
+	summaryPf := buildTracedPf([summaryImported])
+	signalPf := buildTracedPf([meanBinImported, fittedMeanBinImported])
 	// Single export bundle for Lead Selection discovery (R20, R21).
-	exportPfb := pframes.pFrameBuilder()
-	for k, v in summaryImported {
-		exportPfb.add(k, trace.inject(v.spec), v.data)
-	}
-	for k, v in meanBinImported {
-		exportPfb.add(k, trace.inject(v.spec), v.data)
-	}
-	for k, v in fittedMeanBinImported {
-		exportPfb.add(k, trace.inject(v.spec), v.data)
-	}
-	exportPf := exportPfb.build()
+	exportPf := buildTracedPf([summaryImported, meanBinImported, fittedMeanBinImported])
 
 	return {
 		outputs: {

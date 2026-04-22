@@ -2,10 +2,9 @@
 import type { PredefinedGraphOption } from "@milaboratories/graph-maker";
 import { GraphMaker } from "@milaboratories/graph-maker";
 import type { PColumnIdAndSpec } from "@platforma-sdk/model";
-import { PlBlockPage } from "@platforma-sdk/ui-vue";
 import { computed } from "vue";
 import { useApp } from "../app";
-import PageHeader from "../components/PageHeader.vue";
+import TiteseqPage from "../components/TiteseqPage.vue";
 
 const app = useApp();
 
@@ -31,14 +30,7 @@ const defaultOptions = computed((): PredefinedGraphOption<"histogram">[] | undef
 </script>
 
 <template>
-  <PlBlockPage
-    v-model:subtitle="app.model.data.customBlockLabel"
-    :subtitle-placeholder="app.model.data.defaultBlockLabel"
-    title="Kd Distribution"
-  >
-    <template #append>
-      <PageHeader />
-    </template>
+  <TiteseqPage title="Kd Distribution">
     <GraphMaker
       v-model="app.model.data.graphStateKDHistogram"
       chart-type="histogram"
@@ -49,5 +41,5 @@ const defaultOptions = computed((): PredefinedGraphOption<"histogram">[] | undef
         noPframe: { title: 'Open Inputs (top right) to configure the block and run it.' },
       }"
     />
-  </PlBlockPage>
+  </TiteseqPage>
 </template>
