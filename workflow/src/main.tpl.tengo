@@ -124,23 +124,31 @@ wf.body(func(args) {
 	// Shared axis specs for the output PColumns.
 	clonotypeAxisSpec := abundanceSpec.axesSpec[1]
 
-	// R14 compliance: concentration is keyed by two parallel axes.
+	// R14 compliance: concentration is keyed by two parallel axes, scoped differently
+	// between internal (own-block) and export (downstream) views.
 	//   - concentrationStr (String): the canonical join key, preserved byte-for-byte
 	//     from the upstream metadata string. Prevents float-serialization drift
 	//     between TypeScript/Tengo/Python layers causing silent join failures.
+	//     Present in BOTH internal and export views.
 	//   - concentrationAM (Long, attomolar = Molar * 1e18): numeric sibling used by
 	//     Graph Maker for log-scale X rendering. Attomolar keeps typical TiteSeq
 	//     values (1e-13 to 1e-6 M → 1e5 to 1e12 aM) well inside int64 range.
+	//     Present in the INTERNAL view only (signalPf); omitted from exports so
+	//     downstream blocks (Lead Selection, other blocks' Graph Makers) don't see
+	//     duplicate pickable axes for the same data.
 	// The two are 1:1 correlated: concentrationAM == round(float(concentrationStr) * 1e18)
-	// for every row (asserted by test_output_build.py:TestMeanBinFrame), so row count
-	// is unchanged. xsv.importFile's axis validator permits Int|Long|Float|Double|String;
-	// Float is avoided because a Float axis is itself subject to the serialization drift
-	// R14 warns against.
+	// for every row (asserted by test_output_build.py:TestMeanBinFrame), so dropping
+	// concentrationAM from the export axes still leaves (clonotypeKey, concentrationStr)
+	// as a unique row key — no cardinality change. xsv.importFile silently skips any
+	// TSV column not listed in axes or columns (same mechanism that already skips the
+	// `concentration` float column Python emits). Its axis validator permits
+	// Int|Long|Float|Double|String; Float is avoided because a Float axis is itself
+	// subject to the serialization drift R14 warns against.
 	// Platform gap: the SDK has no axis-level hide annotation, so concentrationStr
-	// still appears in Graph Maker categorical pickers. Continuous-scale pickers are
-	// type-gated to numeric axes by Graph Maker, so users cannot select the String
-	// axis for a log-scale X. Table visibility "optional" keeps it out of default
-	// table views.
+	// still appears in Graph Maker categorical pickers within this block. Continuous-
+	// scale pickers are type-gated to numeric axes by Graph Maker, so users cannot
+	// select the String axis for a log-scale X. Table visibility "optional" keeps it
+	// out of default table views.
 	concStrAxisSpec := {
 		name: "pl7.app/vdj/concentrationStr",
 		type: "String",
@@ -299,7 +307,9 @@ wf.body(func(args) {
 					valueType: "Double",
 					domain: { "pl7.app/block": blockId },
 					annotations: {
-						"pl7.app/label": "Kd,app",
+						// Distinct from "Kd,app" so the plot-rendering sibling (nulls parked at
+						// max_conc*10) is not offered alongside the real Kd in downstream pickers.
+						"pl7.app/label": "Kd,app (plot position)",
 						"pl7.app/isScore": "false",
 						"pl7.app/table/visibility": "hidden"
 					}
@@ -312,7 +322,9 @@ wf.body(func(args) {
 					valueType: "Double",
 					domain: { "pl7.app/block": blockId },
 					annotations: {
-						"pl7.app/label": "Hill coefficient",
+						// Distinct from "Hill coefficient" so the plot-rendering sibling (nulls
+						// parked at -1.0) is not offered alongside the real coefficient in pickers.
+						"pl7.app/label": "Hill coefficient (plot position)",
 						"pl7.app/isScore": "false",
 						"pl7.app/table/visibility": "hidden"
 					}
@@ -323,60 +335,56 @@ wf.body(func(args) {
 		partitionKeyLength: 0
 	}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
 
-	// Import mean_bin.tsv → meanBin (observed signal).
-	// Python writes `clonotypeKey, concentrationStr, concentrationAM, concentration, meanBin`;
-	// both concentration columns are declared as axes (see R14 compliance comment above).
-	meanBinImported := xsv.importFile(fit.getFile("mean_bin.tsv"), "tsv", {
-		axes: [
-			{ column: "clonotypeKey", spec: clonotypeAxisSpec },
-			{ column: "concentrationStr", spec: concStrAxisSpec },
-			{ column: "concentrationAM", spec: concAMAxisSpec }
-		],
-		columns: [
-			{
-				column: "meanBin",
-				spec: {
-					name: "pl7.app/vdj/meanBin",
-					valueType: "Double",
-					domain: { "pl7.app/block": blockId },
-					annotations: {
-						"pl7.app/label": meanBinLabel,
-						"pl7.app/isScore": "false",
-						"pl7.app/table/visibility": "hidden",
-						"pl7.app/titeseq/facsCorrected": facsCorrected
-					}
-				}
-			}
-		],
-		storageFormat: "Parquet",
-		partitionKeyLength: 0
-	}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
+	// Import mean_bin.tsv and fitted_mean_bin.tsv. Python writes
+	// `clonotypeKey, concentrationStr, concentrationAM, concentration, meanBin|fittedMeanBin`.
+	// Each file is imported twice with different axis configs (see R14 comment above):
+	//   - *Internal (3 axes incl. concentrationAM) → signalPf for own Graph Maker
+	//   - *Export  (2 axes, concentrationAM dropped) → exports.pf for downstream
+	internalConcAxes := [
+		{ column: "clonotypeKey", spec: clonotypeAxisSpec },
+		{ column: "concentrationStr", spec: concStrAxisSpec },
+		{ column: "concentrationAM", spec: concAMAxisSpec }
+	]
+	exportConcAxes := [
+		{ column: "clonotypeKey", spec: clonotypeAxisSpec },
+		{ column: "concentrationStr", spec: concStrAxisSpec }
+	]
 
-	// Import fitted_mean_bin.tsv → fittedMeanBin (curve overlay).
-	fittedMeanBinImported := xsv.importFile(fit.getFile("fitted_mean_bin.tsv"), "tsv", {
-		axes: [
-			{ column: "clonotypeKey", spec: clonotypeAxisSpec },
-			{ column: "concentrationStr", spec: concStrAxisSpec },
-			{ column: "concentrationAM", spec: concAMAxisSpec }
-		],
-		columns: [
-			{
-				column: "fittedMeanBin",
-				spec: {
-					name: "pl7.app/vdj/fittedMeanBin",
-					valueType: "Double",
-					domain: { "pl7.app/block": blockId },
-					annotations: {
-						"pl7.app/label": fittedMeanBinLabel,
-						"pl7.app/isScore": "false",
-						"pl7.app/table/visibility": "hidden"
-					}
-				}
-			}
-		],
-		storageFormat: "Parquet",
-		partitionKeyLength: 0
-	}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
+	meanBinColSpec := {
+		name: "pl7.app/vdj/meanBin",
+		valueType: "Double",
+		domain: { "pl7.app/block": blockId },
+		annotations: {
+			"pl7.app/label": meanBinLabel,
+			"pl7.app/isScore": "false",
+			"pl7.app/table/visibility": "hidden",
+			"pl7.app/titeseq/facsCorrected": facsCorrected
+		}
+	}
+	fittedMeanBinColSpec := {
+		name: "pl7.app/vdj/fittedMeanBin",
+		valueType: "Double",
+		domain: { "pl7.app/block": blockId },
+		annotations: {
+			"pl7.app/label": fittedMeanBinLabel,
+			"pl7.app/isScore": "false",
+			"pl7.app/table/visibility": "hidden"
+		}
+	}
+
+	importSignal := func(file, valueColumn, valueSpec, axes) {
+		return xsv.importFile(file, "tsv", {
+			axes: axes,
+			columns: [{ column: valueColumn, spec: valueSpec }],
+			storageFormat: "Parquet",
+			partitionKeyLength: 0
+		}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
+	}
+
+	meanBinInternal := importSignal(fit.getFile("mean_bin.tsv"), "meanBin", meanBinColSpec, internalConcAxes)
+	fittedMeanBinInternal := importSignal(fit.getFile("fitted_mean_bin.tsv"), "fittedMeanBin", fittedMeanBinColSpec, internalConcAxes)
+	meanBinExport := importSignal(fit.getFile("mean_bin.tsv"), "meanBin", meanBinColSpec, exportConcAxes)
+	fittedMeanBinExport := importSignal(fit.getFile("fitted_mean_bin.tsv"), "fittedMeanBin", fittedMeanBinColSpec, exportConcAxes)
 
 	// Trace injection. `makeTrace` bundles the upstream abundance provenance
 	// with a self-descriptor; `trace.inject` rewrites only the small spec resources
@@ -389,20 +397,31 @@ wf.body(func(args) {
 		label: args.defaultBlockLabel
 	})
 
-	buildTracedPf := func(sources) {
+	buildTracedPf := func(sources, excludeKeys) {
+		excluded := {}
+		for k in excludeKeys { excluded[k] = true }
 		pfb := pframes.pFrameBuilder()
 		for src in sources {
 			for k, v in src {
+				if excluded[k] { continue }
 				pfb.add(k, trace.inject(v.spec), v.data)
 			}
 		}
 		return pfb.build()
 	}
 
-	summaryPf := buildTracedPf([summaryImported])
-	signalPf := buildTracedPf([meanBinImported, fittedMeanBinImported])
+	summaryPf := buildTracedPf([summaryImported], [])
+	signalPf := buildTracedPf([meanBinInternal, fittedMeanBinInternal], [])
 	// Single export bundle for Lead Selection discovery (R20, R21).
-	exportPf := buildTracedPf([summaryImported, meanBinImported, fittedMeanBinImported])
+	// Uses *Export variants so concentrationAM is not surfaced downstream.
+	// kdPlotPosition / hillPlotPosition are internal sentinels for the Affinity vs
+	// Fit Quality scatter (nulls parked at max_conc*10 and -1.0 respectively); they
+	// would appear as spurious "Kd,app" / "Hill coefficient" siblings in downstream
+	// block column pickers, so we drop them from the export.
+	exportPf := buildTracedPf(
+		[summaryImported, meanBinExport, fittedMeanBinExport],
+		["kdPlotPosition", "hillPlotPosition"]
+	)
 
 	return {
 		outputs: {
