@@ -13,6 +13,7 @@ const app = useApp();
     v-model:subtitle="app.model.data.customBlockLabel"
     :subtitle-placeholder="app.model.data.defaultBlockLabel"
     :title="title"
+    no-body-gutters
   >
     <template #append>
       <PageHeader />
@@ -20,3 +21,12 @@ const app = useApp();
     <slot />
   </PlBlockPage>
 </template>
+
+<style scoped>
+:deep(.graph-maker .chart_header) {
+  display: none;
+}
+:deep(.graph-maker .chart_container) {
+  padding-top: 0;
+}
+</style>
