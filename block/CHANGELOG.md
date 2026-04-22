@@ -1,5 +1,11 @@
 # @platforma-open/platforma-open.titeseq-analysis
 
+## 2.0.1
+
+### Patch Changes
+
+- b374883: Update block description
+
 ## 2.0.0
 
 ### Major Changes
