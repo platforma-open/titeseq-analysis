@@ -1,0 +1,33 @@
+name: Python Tests
+
+on:
+  merge_group:
+  pull_request:
+    types: [opened, reopened, synchronize]
+    branches:
+      - 'main'
+  push:
+    branches:
+      - 'main'
+  workflow_dispatch: {}
+
+jobs:
+  pytest:
+    if: github.repository != 'milaboratory/platforma-titeseq-analysis'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: software
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: software/uv.lock
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Run pytest
+        run: uv run pytest

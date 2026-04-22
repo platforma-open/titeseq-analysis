@@ -1,25 +1,465 @@
-// "hello world"
+// Entry template for the Tite-Seq Analysis block.
+// Joins the abundance PColumn with per-sample metadata into one long-format reads TSV,
+// runs the Python fit-curves binary, and imports its three outputs as traced PFrames.
+
 wf := import("@platforma-sdk/workflow-tengo:workflow")
 exec := import("@platforma-sdk/workflow-tengo:exec")
-assets:= import("@platforma-sdk/workflow-tengo:assets")
+assets := import("@platforma-sdk/workflow-tengo:assets")
+xsv := import("@platforma-sdk/workflow-tengo:pframes.xsv")
+pframes := import("@platforma-sdk/workflow-tengo:pframes")
+pSpec := import("@platforma-sdk/workflow-tengo:pframes.spec")
+json := import("json")
+
+fitCurvesSw := assets.importSoftware("@platforma-open/platforma-open.titeseq-analysis.software:fit-curves")
+
+wf.prepare(func(args) {
+	bb := wf.createPBundleBuilder()
+	bb.ignoreMissingDomains()
+	bb.addAnchor("abundance", args.abundanceRef)
+
+	bb.addAnchor("concentration", args.concentrationColumnRef)
+
+	if !is_undefined(args.binColumnRef) {
+		bb.addAnchor("bin", args.binColumnRef)
+	}
+	if !is_undefined(args.antigenColumnRef) {
+		bb.addAnchor("antigen", args.antigenColumnRef)
+	}
+	if !is_undefined(args.sortFractionColumnRef) {
+		bb.addAnchor("sortFraction", args.sortFractionColumnRef)
+	}
+
+	return { columns: bb.build() }
+})
 
 wf.body(func(args) {
-	python := exec.builder().
-		software(assets.importSoftware("@platforma-open/platforma-open.titeseq-analysis.software:hello-world-python")).
-		arg(args.name).
-		saveStdoutContent().
-		run()
-	pythonMessage := python.getStdoutContent()
+	blockId := wf.blockId().getDataAsJson()
 
-	tengoMessage := "Hello from Tengo, " + args.name + "!"
+	columns := args.columns
+	abundanceSpec := columns.getSpec("abundance")
+	concSpec := columns.getSpec("concentration")
+
+	hasBin := !is_undefined(args.binColumnRef)
+	hasAntigen := !is_undefined(args.antigenColumnRef)
+	// Sort-fraction correction (Adams, Mora, Walczak, Kinney 2016 eq. A3).
+	// The model gates this on hasBin, but we re-check here so the workflow is
+	// safe if called with a sort-fraction ref and no bin ref.
+	hasSortFraction := !is_undefined(args.sortFractionColumnRef) && hasBin
+
+	unitLabel := ""
+	if !is_undefined(concSpec.annotations) && !is_undefined(concSpec.annotations["pl7.app/label"]) {
+		unitLabel = concSpec.annotations["pl7.app/label"]
+	}
+
+	// Build long-format reads.tsv.
+	// The tsvFileBuilder joins all columns on their shared axes, so adding
+	// abundance ([sampleId][clonotypeKey]) + concentration ([sampleId]) + bin/antigen ([sampleId])
+	// produces one row per (sampleId, clonotypeKey) with aligned metadata.
+	readsBuilder := pframes.tsvFileBuilder()
+	readsBuilder.setAxisHeader(abundanceSpec.axesSpec[0].name, "sampleId")
+	readsBuilder.setAxisHeader(abundanceSpec.axesSpec[1].name, "clonotypeKey")
+	readsBuilder.add(columns.getColumn("abundance"), { header: "reads" })
+	readsBuilder.add(columns.getColumn("concentration"), { header: "concentration" })
+	if hasBin {
+		readsBuilder.add(columns.getColumn("bin"), { header: "bin" })
+	}
+	if hasAntigen {
+		readsBuilder.add(columns.getColumn("antigen"), { header: "antigen" })
+	}
+	if hasSortFraction {
+		readsBuilder.add(columns.getColumn("sortFraction"), { header: "sort_fraction" })
+	}
+	readsBuilder.mem("16GiB")
+	readsBuilder.cpu(1)
+	readsTsv := readsBuilder.build()
+
+	// params.json payload. Python auto-detects bin-mode (COL_BIN presence)
+	// and baseline-from-zero (c=0 rows), so only tuning params go here.
+	paramsPayload := {
+		min_reads_per_concentration: args.minReadsPerConcentration,
+		min_concentration_points: args.minConcentrationPoints,
+		r2_threshold_good: args.r2ThresholdGood,
+		r2_threshold_failed: args.r2ThresholdFailed,
+		n_min: args.nMin,
+		n_max: args.nMax,
+		hook_effect_threshold_bin: args.hookEffectThresholdBin,
+		hook_effect_threshold_no_bin: args.hookEffectThresholdNoBin,
+		hook_effect_min_reads: args.hookEffectMinReads
+	}
+	// FACS-correction status flows via the --sort-fraction-column CLI arg; the
+	// Python pipeline logs "Mean-bin correction: ..." unconditionally so stdout
+	// carries the audit trail. Keeping that out of paramsPayload avoids adding
+	// a non-tuning field to FitParams.
+
+	// Exec Python fit-curves.
+	execBuilder := exec.builder().
+		software(fitCurvesSw).
+		mem("16GiB").
+		cpu(4).
+		writeFile("params.json", json.encode(paramsPayload)).
+		addFile("reads.tsv", readsTsv).
+		arg("--reads").arg("reads.tsv").
+		arg("--params").arg("params.json").
+		arg("--out-per-clonotype").arg("per_clonotype.tsv").
+		arg("--out-mean-bin").arg("mean_bin.tsv").
+		arg("--out-fitted-mean-bin").arg("fitted_mean_bin.tsv").
+		saveFile("per_clonotype.tsv").
+		saveFile("mean_bin.tsv").
+		saveFile("fitted_mean_bin.tsv").
+		saveStdoutStream()
+
+	if hasAntigen {
+		execBuilder.arg("--antigen-column-ref").arg("antigen")
+		if !is_undefined(args.targetAntigen) && args.targetAntigen != "" {
+			execBuilder.arg("--target-antigen").arg(args.targetAntigen)
+		}
+	}
+
+	if hasSortFraction {
+		execBuilder.arg("--sort-fraction-column").arg("sort_fraction")
+	}
+
+	fit := execBuilder.run()
+
+	// Shared axis specs for the output PColumns.
+	clonotypeAxisSpec := abundanceSpec.axesSpec[1]
+
+	// R14 compliance: concentration is keyed by two parallel axes, scoped differently
+	// between internal (own-block) and export (downstream) views.
+	//   - concentrationStr (String): the canonical join key, preserved byte-for-byte
+	//     from the upstream metadata string. Prevents silent join failures from
+	//     float-serialization drift across the TypeScript/Tengo/Python layers.
+	//     Present in BOTH internal and export views.
+	//   - concentrationAM (Long, attomolar = Molar * 1e18): numeric sibling used by
+	//     Graph Maker for log-scale X rendering. Attomolar keeps typical TiteSeq
+	//     values (1e-13 to 1e-6 M → 1e5 to 1e12 aM) well inside int64 range.
+	//     Present in the INTERNAL view only (signalPf); omitted from exports so
+	//     downstream blocks (Lead Selection, other blocks' Graph Makers) don't see
+	//     duplicate pickable axes for the same data.
+	// The two are 1:1 correlated: concentrationAM == round(float(concentrationStr) * 1e18)
+	// for every row (asserted by test_output_build.py:TestMeanBinFrame), so dropping
+	// concentrationAM from the export axes still leaves (clonotypeKey, concentrationStr)
+	// as a unique row key — no cardinality change. xsv.importFile silently skips any
+	// TSV column not listed in axes or columns (same mechanism that already skips the
+	// `concentration` float column Python emits). Its axis validator permits
+	// Int|Long|Float|Double|String; Float is avoided because a Float axis is itself
+	// subject to the serialization drift R14 warns against.
+	// Platform gap: the SDK has no axis-level hide annotation, so concentrationStr
+	// still appears in Graph Maker categorical pickers within this block. Graph
+	// Maker type-gates continuous-scale pickers to numeric axes, so the String
+	// axis stays out of log-scale X. Table visibility "optional" keeps it out of
+	// default table views.
+	concStrAxisSpec := {
+		name: "pl7.app/vdj/concentrationStr",
+		type: "String",
+		domain: { "pl7.app/block": blockId },
+		annotations: {
+			"pl7.app/label": "Concentration (canonical)",
+			"pl7.app/table/visibility": "optional"
+		}
+	}
+	concAMAxisSpec := {
+		name: "pl7.app/vdj/concentration",
+		type: "Long",
+		domain: { "pl7.app/block": blockId },
+		annotations: {
+			"pl7.app/label": "Concentration",
+			"pl7.app/axis/unit": "aM"
+		}
+	}
+
+	// R19b: swap "Mean bin" → "Clonotype frequency" in no-bin mode.
+	meanBinLabel := "Mean bin"
+	fittedMeanBinLabel := "Fitted mean bin"
+	if !hasBin {
+		meanBinLabel = "Clonotype frequency"
+		fittedMeanBinLabel = "Fitted clonotype frequency"
+	}
+
+	// Provenance annotation for the FACS sort-fraction correction. Always emitted
+	// (even when false) so downstream consumers can read a stable key instead of
+	// inferring from annotation presence. Propagates through pSpec.makeTrace like
+	// every other PColumn annotation.
+	facsCorrected := "false"
+	if hasSortFraction {
+		facsCorrected = "true"
+	}
+
+	// Kd,app unit annotation propagated from the concentration column label (R2).
+	kdAnnotations := {
+		"pl7.app/label": "Kd,app",
+		"pl7.app/isScore": "true",
+		"pl7.app/score/rankingOrder": "increasing",
+		"pl7.app/table/visibility": "default",
+		"pl7.app/table/orderPriority": "201"
+	}
+	if unitLabel != "" {
+		kdAnnotations["pl7.app/unit"] = unitLabel
+	}
+
+	// Import per_clonotype.tsv → summary PColumns.
+	// Python writes column `r2`; the output spec name `pl7.app/vdj/curveFitR2` is
+	// what discovery & the UI see, so the rename is invisible downstream.
+	summaryImported := xsv.importFile(fit.getFile("per_clonotype.tsv"), "tsv", {
+		axes: [{
+			column: "clonotypeKey",
+			spec: clonotypeAxisSpec
+		}],
+		columns: [
+			{
+				column: "kd",
+				spec: {
+					name: "pl7.app/vdj/kd",
+					valueType: "Double",
+					domain: { "pl7.app/block": blockId },
+					annotations: kdAnnotations
+				}
+			},
+			{
+				column: "hillCoefficient",
+				spec: {
+					name: "pl7.app/vdj/hillCoefficient",
+					valueType: "Double",
+					domain: { "pl7.app/block": blockId },
+					annotations: {
+						"pl7.app/label": "Hill coefficient",
+						"pl7.app/isScore": "false",
+						"pl7.app/description": "Hill coefficient n from the Hill fit. n = 1 is the expected Langmuir isotherm value for simple 1:1 monovalent binding; n in roughly [0.7, 1.3] behaves as expected. n > 2 typically reflects heterogeneous yeast display populations rather than genuine cooperativity. n < 1 often indicates a non-functional display fraction (misfolding, non-binding orientation) diluting the signal. Diagnostic only — not a primary ranking criterion.",
+						"pl7.app/table/visibility": "default",
+						"pl7.app/table/orderPriority": "198"
+					}
+				}
+			},
+			{
+				column: "r2",
+				spec: {
+					name: "pl7.app/vdj/curveFitR2",
+					valueType: "Double",
+					domain: { "pl7.app/block": blockId },
+					annotations: {
+						"pl7.app/label": "Curve fit R²",
+						"pl7.app/isScore": "false",
+						"pl7.app/table/visibility": "default",
+						"pl7.app/table/orderPriority": "199"
+					}
+				}
+			},
+			{
+				column: "affinityClass",
+				spec: {
+					name: "pl7.app/vdj/affinityClass",
+					valueType: "String",
+					domain: { "pl7.app/block": blockId },
+					annotations: {
+						"pl7.app/label": "Affinity class",
+						"pl7.app/isScore": "true",
+						"pl7.app/isDiscreteFilter": "true",
+						"pl7.app/discreteValues": "[\"Good\",\"Partial\",\"Failed\"]",
+						"pl7.app/score/rankingOrder": "decreasing",
+						"pl7.app/score/defaultCutoff": "[\"Good\",\"Partial\"]",
+						"pl7.app/table/visibility": "default",
+						"pl7.app/table/orderPriority": "202"
+					}
+				}
+			},
+			{
+				column: "fitFailureReason",
+				spec: {
+					name: "pl7.app/vdj/fitFailureReason",
+					valueType: "String",
+					domain: { "pl7.app/block": blockId },
+					annotations: {
+						"pl7.app/label": "Fit failure reason",
+						"pl7.app/isScore": "false",
+						"pl7.app/table/visibility": "hidden",
+						"pl7.app/table/orderPriority": "197"
+					}
+				}
+			},
+			{
+				// pcolumn-spec specifies Boolean, but xsv.importFile rejects Boolean
+				// valueType — its validator regex permits only Int|Long|Float|Double|String
+				// (see `core/platforma/sdk/workflow-tengo/src/pframes/xsv-import-file.lib.tengo`).
+				// Python emits pl.Boolean which polars serializes to TSV as "true"/"false";
+				// we import those literals as String and expose them through
+				// pl7.app/isDiscreteFilter so the UI still filters it as a two-value enum.
+				// If/when xsv.importFile gains Boolean support, switch valueType back to
+				// Boolean and drop the discrete-filter annotations.
+				column: "kdOutOfRange",
+				spec: {
+					name: "pl7.app/vdj/kdOutOfRange",
+					valueType: "String",
+					domain: { "pl7.app/block": blockId },
+					annotations: {
+						"pl7.app/label": "Kd,app out of range",
+						"pl7.app/isScore": "false",
+						"pl7.app/isDiscreteFilter": "true",
+						"pl7.app/discreteValues": "[\"true\",\"false\"]",
+						"pl7.app/table/visibility": "default",
+						"pl7.app/table/orderPriority": "196"
+					}
+				}
+			},
+			{
+				column: "kdPlotPosition",
+				spec: {
+					name: "pl7.app/vdj/kdPlotPosition",
+					valueType: "Double",
+					domain: { "pl7.app/block": blockId },
+					annotations: {
+						// Distinct label from "Kd,app" so downstream pickers show this plot-
+						// rendering sibling (nulls parked at max_conc*10) separately from the real Kd.
+						"pl7.app/label": "Kd,app (plot position)",
+						"pl7.app/isScore": "false",
+						"pl7.app/table/visibility": "hidden"
+					}
+				}
+			},
+			{
+				column: "hillPlotPosition",
+				spec: {
+					name: "pl7.app/vdj/hillPlotPosition",
+					valueType: "Double",
+					domain: { "pl7.app/block": blockId },
+					annotations: {
+						// Distinct label from "Hill coefficient" so pickers show this plot-
+						// rendering sibling (nulls parked at -1.0) separately from the real coefficient.
+						"pl7.app/label": "Hill coefficient (plot position)",
+						"pl7.app/isScore": "false",
+						"pl7.app/table/visibility": "hidden"
+					}
+				}
+			}
+		],
+		storageFormat: "Parquet",
+		partitionKeyLength: 0
+	}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
+
+	// Import mean_bin.tsv and fitted_mean_bin.tsv. Python writes
+	// `clonotypeKey, concentrationStr, concentrationAM, concentration, meanBin|fittedMeanBin`.
+	// Each file is imported twice with different axis configs (see R14 comment above):
+	//   - *Internal (3 axes incl. concentrationAM) → signalPf for own Graph Maker
+	//   - *Export  (2 axes, concentrationAM dropped) → exports.pf for downstream
+	internalConcAxes := [
+		{ column: "clonotypeKey", spec: clonotypeAxisSpec },
+		{ column: "concentrationStr", spec: concStrAxisSpec },
+		{ column: "concentrationAM", spec: concAMAxisSpec }
+	]
+	exportConcAxes := [
+		{ column: "clonotypeKey", spec: clonotypeAxisSpec },
+		{ column: "concentrationStr", spec: concStrAxisSpec }
+	]
+
+	// Internal variants feed signalPf (3-axis view for own Graph Maker).
+	// Export variants feed exports.pf (2-axis view for downstream discovery) and
+	// carry pl7.app/hideDataFromGraphs so createPFrameForGraphs excludes them
+	// from this block's own pframe — otherwise both copies share name/valueType/
+	// domain/annotations, and findColumnBy resolves the y-source to the 2-axis
+	// export sibling, silently dropping the numeric-concentration x default.
+	meanBinInternalColSpec := {
+		name: "pl7.app/vdj/meanBin",
+		valueType: "Double",
+		domain: { "pl7.app/block": blockId },
+		annotations: {
+			"pl7.app/label": meanBinLabel,
+			"pl7.app/isScore": "false",
+			"pl7.app/table/visibility": "hidden",
+			"pl7.app/titeseq/facsCorrected": facsCorrected
+		}
+	}
+	meanBinExportColSpec := {
+		name: "pl7.app/vdj/meanBin",
+		valueType: "Double",
+		domain: { "pl7.app/block": blockId },
+		annotations: {
+			"pl7.app/label": meanBinLabel,
+			"pl7.app/isScore": "false",
+			"pl7.app/table/visibility": "hidden",
+			"pl7.app/titeseq/facsCorrected": facsCorrected,
+			"pl7.app/hideDataFromGraphs": "true"
+		}
+	}
+	fittedMeanBinInternalColSpec := {
+		name: "pl7.app/vdj/fittedMeanBin",
+		valueType: "Double",
+		domain: { "pl7.app/block": blockId },
+		annotations: {
+			"pl7.app/label": fittedMeanBinLabel,
+			"pl7.app/isScore": "false",
+			"pl7.app/table/visibility": "hidden"
+		}
+	}
+	fittedMeanBinExportColSpec := {
+		name: "pl7.app/vdj/fittedMeanBin",
+		valueType: "Double",
+		domain: { "pl7.app/block": blockId },
+		annotations: {
+			"pl7.app/label": fittedMeanBinLabel,
+			"pl7.app/isScore": "false",
+			"pl7.app/table/visibility": "hidden",
+			"pl7.app/hideDataFromGraphs": "true"
+		}
+	}
+
+	importSignal := func(file, valueColumn, valueSpec, axes) {
+		return xsv.importFile(file, "tsv", {
+			axes: axes,
+			columns: [{ column: valueColumn, spec: valueSpec }],
+			storageFormat: "Parquet",
+			partitionKeyLength: 0
+		}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
+	}
+
+	meanBinInternal := importSignal(fit.getFile("mean_bin.tsv"), "meanBin", meanBinInternalColSpec, internalConcAxes)
+	fittedMeanBinInternal := importSignal(fit.getFile("fitted_mean_bin.tsv"), "fittedMeanBin", fittedMeanBinInternalColSpec, internalConcAxes)
+	meanBinExport := importSignal(fit.getFile("mean_bin.tsv"), "meanBin", meanBinExportColSpec, exportConcAxes)
+	fittedMeanBinExport := importSignal(fit.getFile("fitted_mean_bin.tsv"), "fittedMeanBin", fittedMeanBinExportColSpec, exportConcAxes)
+
+	// Trace injection. `makeTrace` bundles the upstream abundance provenance
+	// with a self-descriptor; `trace.inject` rewrites only the small spec resources
+	// (data resources are untouched thanks to splitDataAndSpec). The trace label
+	// uses the auto-derived defaultBlockLabel so provenance is stable across
+	// user edits to the custom subtitle.
+	trace := pSpec.makeTrace(abundanceSpec, {
+		type: "milaboratories.titeseq-analysis",
+		importance: 30,
+		label: args.defaultBlockLabel
+	})
+
+	buildTracedPf := func(sources, excludeKeys) {
+		excluded := {}
+		for k in excludeKeys { excluded[k] = true }
+		pfb := pframes.pFrameBuilder()
+		for src in sources {
+			for k, v in src {
+				if excluded[k] { continue }
+				pfb.add(k, trace.inject(v.spec), v.data)
+			}
+		}
+		return pfb.build()
+	}
+
+	summaryPf := buildTracedPf([summaryImported], [])
+	signalPf := buildTracedPf([meanBinInternal, fittedMeanBinInternal], [])
+	// Single export bundle for Lead Selection discovery (R20, R21).
+	// Uses *Export variants to keep concentrationAM out of downstream views.
+	// kdPlotPosition / hillPlotPosition are internal sentinels for the Affinity vs
+	// Fit Quality scatter (nulls parked at max_conc*10 and -1.0 respectively); they
+	// would appear as spurious "Kd,app" / "Hill coefficient" siblings in downstream
+	// block column pickers, so we drop them from the export.
+	exportPf := buildTracedPf(
+		[summaryImported, meanBinExport, fittedMeanBinExport],
+		["kdPlotPosition", "hillPlotPosition"]
+	)
 
 	return {
 		outputs: {
-			pythonMessage: pythonMessage,
-			tengoMessage: tengoMessage
+			summaryPf: pframes.exportFrame(summaryPf),
+			signalPf: pframes.exportFrame(signalPf),
+			logHandle: fit.getStdoutStream()
 		},
-
-		exports: {}
+		exports: {
+			pf: exportPf
+		}
 	}
 })
-

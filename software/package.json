@@ -1,6 +1,6 @@
 {
   "name": "@platforma-open/platforma-open.titeseq-analysis.software",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "type": "module",
   "description": "Block Software",
   "scripts": {
@@ -20,14 +20,14 @@
           "toolset": "pip",
           "requirements": "requirements.txt"
         },
-        "root": "./src_python"
+        "root": "./src"
       }
     },
     "entrypoints": {
-      "hello-world-python": {
+      "fit-curves": {
         "binary": {
           "artifact": "py-archive",
-          "cmd": [ "python", "{pkg}/hello.py" ]
+          "cmd": [ "python", "{pkg}/main.py" ]
         }
       }
     }

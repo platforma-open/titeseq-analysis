@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "shx rm -rf dist && pl-tengo check && pl-tengo build",
-    "test": "vitest",
+    "test": "vitest --run --passWithNoTests",
     "format": "/usr/bin/env emacs --script ./format.el"
   },
   "dependencies": {

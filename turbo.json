@@ -12,7 +12,7 @@
     "build": {
       "dependsOn": ["^build", "check"],
       "inputs": ["$TURBO_DEFAULT$"],
-      "env": ["PL_PKG_DEV"],
+      "env": ["PL_PKG_DEV", "PL_DOCKER_REGISTRY_PUSH_TO"],
       "outputs": ["./dist/**", "./block-pack/**", "./pkg-*.tgz"]
     },
     "build:dev": {
@@ -21,7 +21,7 @@
     },
     "test": {
       "dependsOn": ["^build:dev", "build"],
-      "passThroughEnv": ["PL_ADDRESS", "PL_TEST_PASSWORD", "PL_TEST_USER", "PL_TEST_PROXY", "DEBUG", "PL_DOCKER_REGISTRY_PUSH_TO"]
+      "passThroughEnv": ["PL_ADDRESS", "PL_TEST_PASSWORD", "PL_TEST_USER", "PL_TEST_PROXY", "DEBUG"]
     },
     "mark-stable": {
       "passThroughEnv": ["PL_REGISTRY", "AWS_*"],
