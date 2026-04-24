@@ -425,92 +425,133 @@ export const model = BlockModelV3.create(dataModel)
       });
     }
 
-    // Float-field validation. `undefined < 0` silently returns false in JS, so
-    // explicit undefined checks come first — otherwise a stored block missing a
-    // field would have a disabled Run button with no visible reason.
-    if (data.r2ThresholdGood === undefined) {
-      issues.push({ severity: "error", message: "R² threshold (Good) is required." });
-    } else if (data.r2ThresholdGood < 0 || data.r2ThresholdGood > 1) {
-      issues.push({
-        severity: "error",
-        message: "R² threshold (Good) must be between 0 and 1.",
-      });
-    }
-
-    if (data.r2ThresholdFailed === undefined) {
-      issues.push({ severity: "error", message: "R² threshold (Failed) is required." });
-    } else if (data.r2ThresholdFailed < 0 || data.r2ThresholdFailed > 1) {
-      issues.push({
-        severity: "error",
-        message: "R² threshold (Failed) must be between 0 and 1.",
-      });
-    }
+    // Numeric-field validation. Each field produces at most one consolidated
+    // issue covering all bound violations — see ui/src/composables/
+    // useFieldValidation.ts for the matching UI implementation. `undefined < 0`
+    // silently returns false in JS, so the missing checks come first.
+    const required = (label: string) => `${label} is required.`;
 
     if (
-      data.r2ThresholdFailed !== undefined &&
-      data.r2ThresholdGood !== undefined &&
-      data.r2ThresholdFailed > data.r2ThresholdGood
+      data.minReadsPerConcentration === undefined ||
+      Number.isNaN(data.minReadsPerConcentration)
+    ) {
+      issues.push({ severity: "error", message: required("Min reads per concentration") });
+    } else if (
+      !Number.isInteger(data.minReadsPerConcentration) ||
+      data.minReadsPerConcentration < 1
     ) {
       issues.push({
         severity: "error",
-        message: "Failed R² threshold must be ≤ Good R² threshold.",
+        message: "Min reads per concentration: Must be a whole number ≥ 1.",
       });
     }
 
-    if (data.nMin === undefined) {
-      issues.push({ severity: "error", message: "Hill coefficient nMin is required." });
-    } else if (data.nMin < 0) {
-      issues.push({ severity: "error", message: "Hill coefficient nMin must be ≥ 0." });
-    }
-
-    if (data.nMax === undefined) {
-      issues.push({ severity: "error", message: "Hill coefficient nMax is required." });
-    } else if (data.nMax < 0) {
-      issues.push({ severity: "error", message: "Hill coefficient nMax must be ≥ 0." });
-    }
-
-    if (data.nMin !== undefined && data.nMax !== undefined && data.nMin >= data.nMax) {
+    if (data.minConcentrationPoints === undefined || Number.isNaN(data.minConcentrationPoints)) {
+      issues.push({ severity: "error", message: required("Min concentration points") });
+    } else if (!Number.isInteger(data.minConcentrationPoints) || data.minConcentrationPoints < 3) {
       issues.push({
         severity: "error",
-        message: "Hill coefficient nMin must be strictly less than nMax.",
+        message: "Min concentration points: Must be a whole number ≥ 3.",
       });
     }
 
-    // Hook-effect threshold required only for the active mode (the other field
-    // is hidden in the UI).
+    // r2 thresholds are mutually constrained — each message describes its own
+    // valid range and the cross-field bound, so r2Failed > r2Good produces an
+    // alert on each field rather than a separate "Failed must be ≤ Good" entry.
+    if (data.r2ThresholdGood === undefined || Number.isNaN(data.r2ThresholdGood)) {
+      issues.push({ severity: "error", message: required("R² threshold (Good)") });
+    } else if (
+      data.r2ThresholdGood < 0 ||
+      data.r2ThresholdGood > 1 ||
+      (data.r2ThresholdFailed !== undefined &&
+        !Number.isNaN(data.r2ThresholdFailed) &&
+        data.r2ThresholdGood < data.r2ThresholdFailed)
+    ) {
+      issues.push({
+        severity: "error",
+        message: "R² threshold (Good): Must be between 0 and 1, and ≥ R² threshold (Failed).",
+      });
+    }
+
+    if (data.r2ThresholdFailed === undefined || Number.isNaN(data.r2ThresholdFailed)) {
+      issues.push({ severity: "error", message: required("R² threshold (Failed)") });
+    } else if (
+      data.r2ThresholdFailed < 0 ||
+      data.r2ThresholdFailed > 1 ||
+      (data.r2ThresholdGood !== undefined &&
+        !Number.isNaN(data.r2ThresholdGood) &&
+        data.r2ThresholdFailed > data.r2ThresholdGood)
+    ) {
+      issues.push({
+        severity: "error",
+        message: "R² threshold (Failed): Must be between 0 and 1, and ≤ R² threshold (Good).",
+      });
+    }
+
+    // nMin/nMax: spec requires nMin < nMax (strict) so the in-range interval
+    // [nMin, nMax] is non-empty.
+    if (data.nMin === undefined || Number.isNaN(data.nMin)) {
+      issues.push({ severity: "error", message: required("Hill coefficient — min") });
+    } else if (
+      data.nMin < 0 ||
+      (data.nMax !== undefined && !Number.isNaN(data.nMax) && data.nMin >= data.nMax)
+    ) {
+      issues.push({
+        severity: "error",
+        message: "Hill coefficient — min: Must be ≥ 0 and < Hill coefficient — max.",
+      });
+    }
+
+    if (data.nMax === undefined || Number.isNaN(data.nMax)) {
+      issues.push({ severity: "error", message: required("Hill coefficient — max") });
+    } else if (
+      data.nMax < 0 ||
+      (data.nMin !== undefined && !Number.isNaN(data.nMin) && data.nMax <= data.nMin)
+    ) {
+      issues.push({
+        severity: "error",
+        message: "Hill coefficient — max: Must be ≥ 0 and > Hill coefficient — min.",
+      });
+    }
+
+    // Hook-effect threshold only for the active mode (the other field is
+    // hidden in the UI).
     const isBinModeForWarn = data.binColumnRef !== undefined;
-    if (isBinModeForWarn && data.hookEffectThresholdBin === undefined) {
-      issues.push({
-        severity: "error",
-        message: "Hook effect signal-drop threshold (bin mode) is required.",
-      });
-    }
-    if (!isBinModeForWarn && data.hookEffectThresholdNoBin === undefined) {
-      issues.push({
-        severity: "error",
-        message: "Hook effect signal-drop threshold (frequency mode) is required.",
-      });
+    if (isBinModeForWarn) {
+      if (data.hookEffectThresholdBin === undefined || Number.isNaN(data.hookEffectThresholdBin)) {
+        issues.push({
+          severity: "error",
+          message: required("Hook effect signal-drop threshold (bin mode)"),
+        });
+      } else if (data.hookEffectThresholdBin < 0) {
+        issues.push({
+          severity: "error",
+          message: "Hook effect signal-drop threshold (bin mode): Must be ≥ 0.",
+        });
+      }
+    } else {
+      if (
+        data.hookEffectThresholdNoBin === undefined ||
+        Number.isNaN(data.hookEffectThresholdNoBin)
+      ) {
+        issues.push({
+          severity: "error",
+          message: required("Hook effect signal-drop threshold (frequency mode)"),
+        });
+      } else if (data.hookEffectThresholdNoBin < 0) {
+        issues.push({
+          severity: "error",
+          message: "Hook effect signal-drop threshold (frequency mode): Must be ≥ 0.",
+        });
+      }
     }
 
-    if (!Number.isInteger(data.minReadsPerConcentration) || data.minReadsPerConcentration < 1) {
+    if (data.hookEffectMinReads === undefined || Number.isNaN(data.hookEffectMinReads)) {
+      issues.push({ severity: "error", message: required("Min reads for hook check") });
+    } else if (!Number.isInteger(data.hookEffectMinReads) || data.hookEffectMinReads < 0) {
       issues.push({
         severity: "error",
-        message: "Min reads per concentration must be an integer ≥ 1.",
-      });
-    }
-
-    if (!Number.isInteger(data.minConcentrationPoints) || data.minConcentrationPoints < 3) {
-      issues.push({
-        severity: "error",
-        message:
-          "Min concentration points must be an integer ≥ 3 (Hill fit needs ≥ 3 free points).",
-      });
-    }
-
-    if (!Number.isInteger(data.hookEffectMinReads) || data.hookEffectMinReads < 0) {
-      issues.push({
-        severity: "error",
-        message: "Min reads for hook check must be a non-negative integer.",
+        message: "Min reads for hook check: Must be a whole number ≥ 0.",
       });
     }
 

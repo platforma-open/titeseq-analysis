@@ -8,24 +8,76 @@ import { useApp } from "../app";
 // mutation→server→patch round-trip, which made the page-level alert appear
 // "stuck" after entering a valid value.
 //
-// The model's validationWarnings is still authoritative for spec-based checks
-// (concentration column label, antigen/target pairing) that need ctx.resultPool;
-// TiteseqPage merges both so the user sees everything.
+// Each field returns at most one consolidated error message describing the
+// full valid range (e.g. "Must be between 0 and 1, and ≥ R² threshold (Failed)"
+// rather than separate "below 0" / "above 1" / "below failed" alerts). For
+// out-of-range numbers PlNumberField will display this message; for typed
+// non-numeric input we leave errorMessage undefined so PlNumberField's own
+// "Value is not a number" parse error surfaces.
+//
+// The model's validationWarnings output is still authoritative for spec-based
+// checks (concentration column label, antigen/target pairing) that need
+// ctx.resultPool; TiteseqPage merges both so the user sees everything.
 
-const validateIntField = (v: number | undefined | null, min: number): string | undefined => {
-  if (v === undefined || v === null || Number.isNaN(v)) return "Value is required";
-  if (!Number.isInteger(v)) return "Must be a whole number";
-  if (v < min) return `Must be ≥ ${min}`;
+const REQUIRED = "Value is required";
+
+const isMissing = (v: number | undefined | null): boolean =>
+  v === undefined || v === null || Number.isNaN(v);
+
+// Integer ≥ min. One message covers non-integer + below-min + (when needed)
+// the user-facing description "whole number ≥ N".
+const validateInteger = (v: number | undefined | null, min: number): string | undefined => {
+  if (isMissing(v)) return REQUIRED;
+  if (!Number.isInteger(v as number) || (v as number) < min) {
+    return `Must be a whole number ≥ ${min}`;
+  }
   return undefined;
 };
 
-const validateFloatField = (
+// Float in [0, 1] with an optional cross-field bound. `relation` is "≥" when
+// the bound is a lower limit (this field must be ≥ bound) and "≤" when the
+// bound is an upper limit. The bound is ignored if not a finite number.
+const validate01WithBound = (
   v: number | undefined | null,
-  opts: { min?: number; max?: number } = {},
+  bound: number | undefined | null,
+  relation: "≥" | "≤",
+  boundLabel: string,
 ): string | undefined => {
-  if (v === undefined || v === null || Number.isNaN(v)) return "Value is required";
-  if (opts.min !== undefined && v < opts.min) return `Must be ≥ ${opts.min}`;
-  if (opts.max !== undefined && v > opts.max) return `Must be ≤ ${opts.max}`;
+  if (isMissing(v)) return REQUIRED;
+  const inRange = (v as number) >= 0 && (v as number) <= 1;
+  const passesBound =
+    isMissing(bound) ||
+    (relation === "≥" ? (v as number) >= (bound as number) : (v as number) <= (bound as number));
+  if (!inRange || !passesBound) {
+    return `Must be between 0 and 1, and ${relation} ${boundLabel}`;
+  }
+  return undefined;
+};
+
+// Float ≥ 0 with an optional strict cross-field bound. Used for nMin/nMax —
+// the spec requires nMin < nMax (strict) to keep the in-range interval
+// non-empty.
+const validateNonNegWithStrict = (
+  v: number | undefined | null,
+  bound: number | undefined | null,
+  relation: "<" | ">",
+  boundLabel: string,
+): string | undefined => {
+  if (isMissing(v)) return REQUIRED;
+  const nonNeg = (v as number) >= 0;
+  const passesBound =
+    isMissing(bound) ||
+    (relation === "<" ? (v as number) < (bound as number) : (v as number) > (bound as number));
+  if (!nonNeg || !passesBound) {
+    return `Must be ≥ 0 and ${relation} ${boundLabel}`;
+  }
+  return undefined;
+};
+
+// Plain non-negative float, no cross-field bound (hookEffectThreshold*).
+const validateNonNeg = (v: number | undefined | null): string | undefined => {
+  if (isMissing(v)) return REQUIRED;
+  if ((v as number) < 0) return "Must be ≥ 0";
   return undefined;
 };
 
@@ -34,45 +86,67 @@ export function useFieldValidation() {
 
   const isBinMode = computed(() => app.model.data.binColumnRef !== undefined);
 
-  // Per-field reactive errors. Pass these to PlNumberField via :error-message
-  // to force the red contour and inline error text on the field itself.
-  const minReadsError = computed(() =>
-    validateIntField(app.model.data.minReadsPerConcentration, 1),
-  );
+  // Per-field reactive errors. Each computed produces at most one message —
+  // either "Value is required" (when undefined/NaN) or a single consolidated
+  // bounds message that covers every range/cross-field violation.
+  const minReadsError = computed(() => validateInteger(app.model.data.minReadsPerConcentration, 1));
   const minConcPointsError = computed(() =>
-    validateIntField(app.model.data.minConcentrationPoints, 3),
+    validateInteger(app.model.data.minConcentrationPoints, 3),
   );
   const r2GoodError = computed(() =>
-    validateFloatField(app.model.data.r2ThresholdGood, { min: 0, max: 1 }),
+    validate01WithBound(
+      app.model.data.r2ThresholdGood,
+      app.model.data.r2ThresholdFailed,
+      "≥",
+      "R² threshold (Failed)",
+    ),
   );
   const r2FailedError = computed(() =>
-    validateFloatField(app.model.data.r2ThresholdFailed, { min: 0, max: 1 }),
+    validate01WithBound(
+      app.model.data.r2ThresholdFailed,
+      app.model.data.r2ThresholdGood,
+      "≤",
+      "R² threshold (Good)",
+    ),
   );
-  const nMinError = computed(() => validateFloatField(app.model.data.nMin, { min: 0 }));
-  const nMaxError = computed(() => validateFloatField(app.model.data.nMax, { min: 0 }));
+  const nMinError = computed(() =>
+    validateNonNegWithStrict(
+      app.model.data.nMin,
+      app.model.data.nMax,
+      "<",
+      "Hill coefficient — max",
+    ),
+  );
+  const nMaxError = computed(() =>
+    validateNonNegWithStrict(
+      app.model.data.nMax,
+      app.model.data.nMin,
+      ">",
+      "Hill coefficient — min",
+    ),
+  );
   const hookThresholdBinError = computed(() =>
-    validateFloatField(app.model.data.hookEffectThresholdBin, { min: 0 }),
+    validateNonNeg(app.model.data.hookEffectThresholdBin),
   );
   const hookThresholdNoBinError = computed(() =>
-    validateFloatField(app.model.data.hookEffectThresholdNoBin, { min: 0 }),
+    validateNonNeg(app.model.data.hookEffectThresholdNoBin),
   );
-  const hookMinReadsError = computed(() => validateIntField(app.model.data.hookEffectMinReads, 0));
+  const hookMinReadsError = computed(() => validateInteger(app.model.data.hookEffectMinReads, 0));
 
-  // Aggregated page-level alerts. Includes per-field errors with their human
-  // label, plus cross-field invariant checks (r2Failed > r2Good; nMin >= nMax).
-  // Conditional fields (hookEffectThreshold*) only contribute the entry for
-  // the active mode — the other field is hidden in the UI.
+  // Aggregated page-level alerts. One issue per field at most — the
+  // consolidated message already includes any cross-field constraint, so
+  // r2Failed > r2Good produces alerts on BOTH r2 fields but no separate
+  // "Failed must be ≤ Good" entry.
   const warnings = computed<ValidationIssue[]>(() => {
     const issues: ValidationIssue[] = [];
-    const data = app.model.data;
 
     const fieldChecks: Array<[string, string | undefined]> = [
       ["Min reads per concentration", minReadsError.value],
       ["Min concentration points", minConcPointsError.value],
       ["R² threshold (Good)", r2GoodError.value],
       ["R² threshold (Failed)", r2FailedError.value],
-      ["Hill coefficient nMin", nMinError.value],
-      ["Hill coefficient nMax", nMaxError.value],
+      ["Hill coefficient — min", nMinError.value],
+      ["Hill coefficient — max", nMaxError.value],
       isBinMode.value
         ? ["Hook effect signal-drop threshold (bin mode)", hookThresholdBinError.value]
         : ["Hook effect signal-drop threshold (frequency mode)", hookThresholdNoBinError.value],
@@ -81,28 +155,9 @@ export function useFieldValidation() {
 
     for (const [label, err] of fieldChecks) {
       if (err) {
-        // "Value is required" → "<label> is required."; otherwise "<label>: <message>."
-        const message = err === "Value is required" ? `${label} is required.` : `${label}: ${err}.`;
+        const message = err === REQUIRED ? `${label} is required.` : `${label}: ${err}.`;
         issues.push({ severity: "error", message });
       }
-    }
-
-    if (
-      data.r2ThresholdFailed !== undefined &&
-      data.r2ThresholdGood !== undefined &&
-      data.r2ThresholdFailed > data.r2ThresholdGood
-    ) {
-      issues.push({
-        severity: "error",
-        message: "Failed R² threshold must be ≤ Good R² threshold.",
-      });
-    }
-
-    if (data.nMin !== undefined && data.nMax !== undefined && data.nMin >= data.nMax) {
-      issues.push({
-        severity: "error",
-        message: "Hill coefficient nMin must be strictly less than nMax.",
-      });
     }
 
     return issues;
