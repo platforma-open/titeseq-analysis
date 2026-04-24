@@ -10,10 +10,24 @@ import {
 } from "@platforma-sdk/ui-vue";
 import { computed, watch } from "vue";
 import { useApp } from "../app";
+import { useFieldValidation } from "../composables/useFieldValidation";
 
 const open = defineModel<boolean>({ required: true });
 
 const app = useApp();
+
+const {
+  minReadsError,
+  minConcPointsError,
+  r2GoodError,
+  r2FailedError,
+  nMinError,
+  nMaxError,
+  hookThresholdBinError,
+  hookThresholdNoBinError,
+  hookMinReadsError,
+  warnings: localWarnings,
+} = useFieldValidation();
 
 watch(
   () => app.model.outputs.isRunning,
@@ -22,7 +36,19 @@ watch(
   },
 );
 
-const warnings = computed(() => app.model.outputs.validationWarnings ?? []);
+// Merge synchronous local-data validation with server-side warnings (e.g.
+// concentration column label spec checks that need ctx.resultPool). Dedupe
+// by message so the same issue doesn't show twice during the brief moment
+// after a mutation when both layers report it.
+const warnings = computed(() => {
+  const serverWarnings = app.model.outputs.validationWarnings ?? [];
+  const seen = new Set<string>();
+  return [...localWarnings.value, ...serverWarnings].filter((w) => {
+    if (seen.has(w.message)) return false;
+    seen.add(w.message);
+    return true;
+  });
+});
 
 const binMode = computed(() => app.model.outputs.binMode === true);
 
@@ -62,54 +88,6 @@ watch(
   (binRef) => {
     if (binRef === undefined) app.model.data.sortFractionColumnRef = undefined;
   },
-);
-
-// Compute a visible error per integer field so the box turns red when the
-// stored value is invalid. PlNumberField's built-in `required` check only
-// looks at the text buffer (displayText) — it misses the common "model is
-// undefined but displayText is stale" case when the value gets cleared
-// externally. Passing an explicit errorMessage forces the red contour
-// whenever the numeric model is actually invalid, regardless of buffer state.
-const validateIntField = (v: number | undefined | null, min: number): string | undefined => {
-  if (v === undefined || v === null || Number.isNaN(v)) return "Value is required";
-  if (!Number.isInteger(v)) return "Must be a whole number";
-  if (v < min) return `Must be ≥ ${min}`;
-  return undefined;
-};
-
-const minReadsError = computed(() => validateIntField(app.model.data.minReadsPerConcentration, 1));
-const minConcPointsError = computed(() =>
-  validateIntField(app.model.data.minConcentrationPoints, 3),
-);
-const hookMinReadsError = computed(() => validateIntField(app.model.data.hookEffectMinReads, 0));
-
-// Same shape, but for the float-typed tuning params. Passing an explicit
-// errorMessage forces the red contour whenever the model is invalid —
-// PlNumberField's built-in min/max checks evaluate `undefined < N` as false,
-// so an undefined float would otherwise render as a normal-looking empty box.
-const validateFloatField = (
-  v: number | undefined | null,
-  opts: { min?: number; max?: number } = {},
-): string | undefined => {
-  if (v === undefined || v === null || Number.isNaN(v)) return "Value is required";
-  if (opts.min !== undefined && v < opts.min) return `Must be ≥ ${opts.min}`;
-  if (opts.max !== undefined && v > opts.max) return `Must be ≤ ${opts.max}`;
-  return undefined;
-};
-
-const r2GoodError = computed(() =>
-  validateFloatField(app.model.data.r2ThresholdGood, { min: 0, max: 1 }),
-);
-const r2FailedError = computed(() =>
-  validateFloatField(app.model.data.r2ThresholdFailed, { min: 0, max: 1 }),
-);
-const nMinError = computed(() => validateFloatField(app.model.data.nMin, { min: 0 }));
-const nMaxError = computed(() => validateFloatField(app.model.data.nMax, { min: 0 }));
-const hookThresholdBinError = computed(() =>
-  validateFloatField(app.model.data.hookEffectThresholdBin, { min: 0 }),
-);
-const hookThresholdNoBinError = computed(() =>
-  validateFloatField(app.model.data.hookEffectThresholdNoBin, { min: 0 }),
 );
 </script>
 

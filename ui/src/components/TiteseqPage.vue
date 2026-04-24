@@ -2,15 +2,30 @@
 import { PlAlert, PlBlockPage } from "@platforma-sdk/ui-vue";
 import { computed } from "vue";
 import { useApp } from "../app";
+import { useFieldValidation } from "../composables/useFieldValidation";
 import PageHeader from "./PageHeader.vue";
 
 defineProps<{ title: string }>();
 
 const app = useApp();
 
-// Surface validation issues on every page (not just the settings drawer) so
-// a disabled Run button always has a visible reason next to the page content.
-const warnings = computed(() => app.model.outputs.validationWarnings ?? []);
+// Local field-level validation runs synchronously against app.model.data, so
+// the page-level alert updates the moment the user types — without waiting on
+// the mutation→server→patch round-trip that drives outputs.validationWarnings.
+const { warnings: localWarnings } = useFieldValidation();
+
+// Server-side validationWarnings still covers spec-based checks (concentration
+// column label, antigen/target pairing) that need ctx.resultPool. Merge both
+// and dedupe by message so the user sees the full picture without duplicates.
+const warnings = computed(() => {
+  const serverWarnings = app.model.outputs.validationWarnings ?? [];
+  const seen = new Set<string>();
+  return [...localWarnings.value, ...serverWarnings].filter((w) => {
+    if (seen.has(w.message)) return false;
+    seen.add(w.message);
+    return true;
+  });
+});
 </script>
 
 <template>
