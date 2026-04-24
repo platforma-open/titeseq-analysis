@@ -8,7 +8,7 @@ assets := import("@platforma-sdk/workflow-tengo:assets")
 xsv := import("@platforma-sdk/workflow-tengo:pframes.xsv")
 pframes := import("@platforma-sdk/workflow-tengo:pframes")
 pSpec := import("@platforma-sdk/workflow-tengo:pframes.spec")
-json := import("json")
+canonical := import("@platforma-sdk/workflow-tengo:canonical")
 
 fitCurvesSw := assets.importSoftware("@platforma-open/platforma-open.titeseq-analysis.software:fit-curves")
 
@@ -96,7 +96,7 @@ wf.body(func(args) {
 		software(fitCurvesSw).
 		mem("16GiB").
 		cpu(4).
-		writeFile("params.json", json.encode(paramsPayload)).
+		writeFile("params.json", canonical.encode(paramsPayload)).
 		addFile("reads.tsv", readsTsv).
 		arg("--reads").arg("reads.tsv").
 		arg("--params").arg("params.json").

@@ -333,6 +333,29 @@ export const model = BlockModelV3.create(dataModel)
     const issues: ValidationIssue[] = [];
     const data = ctx.data;
 
+    // Surface backend field-level errors (CID conflicts, exec failures, spec
+    // validation failures) as severity:"error" ValidationIssues so the user
+    // sees them alongside the UI state. Without this, a CID conflict only
+    // appears in server logs while the block silently shows empty panels.
+    // CIDConflictError is typically transient — the platform's "zebra"
+    // self-recovery retries the write — so we label it as such.
+    const outputKeys = ["summaryPf", "signalPf", "logHandle"] as const;
+    for (const key of outputKeys) {
+      const errorAcc = ctx.outputs?.resolve(key)?.getError();
+      if (!errorAcc) continue;
+      const typeName = errorAcc.resourceType.name;
+      const detail = errorAcc.getDataAsJson<{ message?: string }>()?.message ?? typeName;
+      const isCidConflict = typeName === "CIDConflictError";
+      issues.push({
+        severity: "error",
+        message: isCidConflict
+          ? `Transient result-hash conflict on "${key}": ${detail}. ` +
+            `The platform retries automatically; usually self-recovers. ` +
+            `If this persists across retries, the workflow likely has a non-deterministic step — report it.`
+          : `Workflow output "${key}" failed: ${detail}`,
+      });
+    }
+
     if (data.concentrationColumnRef !== undefined) {
       const spec = ctx.resultPool.getPColumnSpecByRef(data.concentrationColumnRef);
       const unitLabel = spec?.annotations?.["pl7.app/label"];
@@ -365,6 +388,29 @@ export const model = BlockModelV3.create(dataModel)
       });
     }
 
+    if (data.sortFractionColumnRef !== undefined && data.binColumnRef === undefined) {
+      issues.push({
+        severity: "error",
+        message:
+          "FACS sort fraction requires a FACS bin column — " +
+          "the correction only applies in bin mode. Select a FACS bin or clear the sort fraction.",
+      });
+    }
+
+    if (data.r2ThresholdGood < 0 || data.r2ThresholdGood > 1) {
+      issues.push({
+        severity: "error",
+        message: "R² threshold (Good) must be between 0 and 1.",
+      });
+    }
+
+    if (data.r2ThresholdFailed < 0 || data.r2ThresholdFailed > 1) {
+      issues.push({
+        severity: "error",
+        message: "R² threshold (Failed) must be between 0 and 1.",
+      });
+    }
+
     if (data.r2ThresholdFailed > data.r2ThresholdGood) {
       issues.push({
         severity: "error",
@@ -376,6 +422,28 @@ export const model = BlockModelV3.create(dataModel)
       issues.push({
         severity: "error",
         message: "Hill coefficient nMin must be strictly less than nMax.",
+      });
+    }
+
+    if (!Number.isInteger(data.minReadsPerConcentration) || data.minReadsPerConcentration < 1) {
+      issues.push({
+        severity: "error",
+        message: "Min reads per concentration must be an integer ≥ 1.",
+      });
+    }
+
+    if (!Number.isInteger(data.minConcentrationPoints) || data.minConcentrationPoints < 3) {
+      issues.push({
+        severity: "error",
+        message:
+          "Min concentration points must be an integer ≥ 3 (Hill fit needs ≥ 3 free points).",
+      });
+    }
+
+    if (!Number.isInteger(data.hookEffectMinReads) || data.hookEffectMinReads < 0) {
+      issues.push({
+        severity: "error",
+        message: "Min reads for hook check must be a non-negative integer.",
       });
     }
 
