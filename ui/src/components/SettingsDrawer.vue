@@ -63,6 +63,12 @@ watch(
     if (binRef === undefined) app.model.data.sortFractionColumnRef = undefined;
   },
 );
+
+// Reject typed decimals like "3.5" on integer-typed params. The model's
+// validationWarnings output mirrors this so Run is still gated server-side,
+// but the inline red error here tells the user why before they leave the field.
+const requireInteger = (v: number): string | undefined =>
+  Number.isInteger(v) ? undefined : "Must be a whole number";
 </script>
 
 <template>
@@ -150,6 +156,8 @@ watch(
         label="Min reads per concentration"
         :min-value="1"
         :step="1"
+        :validate="requireInteger"
+        required
       >
         <template #tooltip>
           Floor applied per clonotype per concentration. Points below the floor are excluded;
@@ -161,6 +169,8 @@ watch(
         label="Min concentration points"
         :min-value="3"
         :step="1"
+        :validate="requireInteger"
+        required
       >
         <template #tooltip>
           Minimum number of concentration points (after floor filtering) to attempt a fit. Default 5
@@ -248,6 +258,8 @@ watch(
         label="Min reads for hook check"
         :min-value="0"
         :step="1"
+        :validate="requireInteger"
+        required
       >
         <template #tooltip>
           Skip the hook-effect check when the top two concentration points have fewer reads than
