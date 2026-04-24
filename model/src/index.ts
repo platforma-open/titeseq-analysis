@@ -215,6 +215,26 @@ export const model = BlockModelV3.create(dataModel)
       throw new Error(
         "FACS sort fraction requires a FACS bin column — the correction only applies in bin mode",
       );
+
+    // Reject undefined on the numeric tuning params before any range comparisons
+    // run. Without these guards, `undefined < 1` (and friends) silently returns
+    // false, so a stored block missing one of these fields would pass validation
+    // and produce args with undefined values — breaking the Python fit at runtime.
+    if (data.minReadsPerConcentration === undefined)
+      throw new Error("Min reads per concentration is required");
+    if (data.minConcentrationPoints === undefined)
+      throw new Error("Min concentration points is required");
+    if (data.r2ThresholdGood === undefined) throw new Error("R² threshold (Good) is required");
+    if (data.r2ThresholdFailed === undefined) throw new Error("R² threshold (Failed) is required");
+    if (data.nMin === undefined) throw new Error("Hill coefficient nMin is required");
+    if (data.nMax === undefined) throw new Error("Hill coefficient nMax is required");
+    if (data.hookEffectThresholdBin === undefined)
+      throw new Error("Hook effect signal-drop threshold (bin mode) is required");
+    if (data.hookEffectThresholdNoBin === undefined)
+      throw new Error("Hook effect signal-drop threshold (frequency mode) is required");
+    if (data.hookEffectMinReads === undefined)
+      throw new Error("Min reads for hook check is required");
+
     if (data.r2ThresholdFailed > data.r2ThresholdGood)
       throw new Error("Failed R² threshold must be ≤ Good R² threshold");
     if (data.nMin >= data.nMax) throw new Error("Hill coefficient nMin must be < nMax");
@@ -241,8 +261,10 @@ export const model = BlockModelV3.create(dataModel)
       hookEffectThresholdBin: data.hookEffectThresholdBin,
       hookEffectThresholdNoBin: data.hookEffectThresholdNoBin,
       hookEffectMinReads: data.hookEffectMinReads,
-      defaultBlockLabel: data.defaultBlockLabel,
-      customBlockLabel: data.customBlockLabel,
+      // Strings have UI defaults but old stored data may lack them; coerce to
+      // empty/safe values rather than throw — they don't break the workflow.
+      defaultBlockLabel: data.defaultBlockLabel ?? "Tite-Seq Analysis",
+      customBlockLabel: data.customBlockLabel ?? "",
     };
   })
 
