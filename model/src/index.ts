@@ -228,9 +228,13 @@ export const model = BlockModelV3.create(dataModel)
     if (data.r2ThresholdFailed === undefined) throw new Error("R² threshold (Failed) is required");
     if (data.nMin === undefined) throw new Error("Hill coefficient nMin is required");
     if (data.nMax === undefined) throw new Error("Hill coefficient nMax is required");
-    if (data.hookEffectThresholdBin === undefined)
+    // Only require the active mode's hook threshold — the other field is hidden
+    // in the UI (v-if on binMode), so requiring both would block users from
+    // opening Inputs to fix it.
+    const isBinMode = data.binColumnRef !== undefined;
+    if (isBinMode && data.hookEffectThresholdBin === undefined)
       throw new Error("Hook effect signal-drop threshold (bin mode) is required");
-    if (data.hookEffectThresholdNoBin === undefined)
+    if (!isBinMode && data.hookEffectThresholdNoBin === undefined)
       throw new Error("Hook effect signal-drop threshold (frequency mode) is required");
     if (data.hookEffectMinReads === undefined)
       throw new Error("Min reads for hook check is required");
@@ -258,8 +262,10 @@ export const model = BlockModelV3.create(dataModel)
       r2ThresholdFailed: data.r2ThresholdFailed,
       nMin: data.nMin,
       nMax: data.nMax,
-      hookEffectThresholdBin: data.hookEffectThresholdBin,
-      hookEffectThresholdNoBin: data.hookEffectThresholdNoBin,
+      // Default the inactive mode's threshold so the args type is satisfied
+      // — the workflow only reads the field for the active mode.
+      hookEffectThresholdBin: data.hookEffectThresholdBin ?? 0.2,
+      hookEffectThresholdNoBin: data.hookEffectThresholdNoBin ?? 0.02,
       hookEffectMinReads: data.hookEffectMinReads,
       // Strings have UI defaults but old stored data may lack them; coerce to
       // empty/safe values rather than throw — they don't break the workflow.
@@ -419,31 +425,70 @@ export const model = BlockModelV3.create(dataModel)
       });
     }
 
-    if (data.r2ThresholdGood < 0 || data.r2ThresholdGood > 1) {
+    // Float-field validation. `undefined < 0` silently returns false in JS, so
+    // explicit undefined checks come first — otherwise a stored block missing a
+    // field would have a disabled Run button with no visible reason.
+    if (data.r2ThresholdGood === undefined) {
+      issues.push({ severity: "error", message: "R² threshold (Good) is required." });
+    } else if (data.r2ThresholdGood < 0 || data.r2ThresholdGood > 1) {
       issues.push({
         severity: "error",
         message: "R² threshold (Good) must be between 0 and 1.",
       });
     }
 
-    if (data.r2ThresholdFailed < 0 || data.r2ThresholdFailed > 1) {
+    if (data.r2ThresholdFailed === undefined) {
+      issues.push({ severity: "error", message: "R² threshold (Failed) is required." });
+    } else if (data.r2ThresholdFailed < 0 || data.r2ThresholdFailed > 1) {
       issues.push({
         severity: "error",
         message: "R² threshold (Failed) must be between 0 and 1.",
       });
     }
 
-    if (data.r2ThresholdFailed > data.r2ThresholdGood) {
+    if (
+      data.r2ThresholdFailed !== undefined &&
+      data.r2ThresholdGood !== undefined &&
+      data.r2ThresholdFailed > data.r2ThresholdGood
+    ) {
       issues.push({
         severity: "error",
         message: "Failed R² threshold must be ≤ Good R² threshold.",
       });
     }
 
-    if (data.nMin >= data.nMax) {
+    if (data.nMin === undefined) {
+      issues.push({ severity: "error", message: "Hill coefficient nMin is required." });
+    } else if (data.nMin < 0) {
+      issues.push({ severity: "error", message: "Hill coefficient nMin must be ≥ 0." });
+    }
+
+    if (data.nMax === undefined) {
+      issues.push({ severity: "error", message: "Hill coefficient nMax is required." });
+    } else if (data.nMax < 0) {
+      issues.push({ severity: "error", message: "Hill coefficient nMax must be ≥ 0." });
+    }
+
+    if (data.nMin !== undefined && data.nMax !== undefined && data.nMin >= data.nMax) {
       issues.push({
         severity: "error",
         message: "Hill coefficient nMin must be strictly less than nMax.",
+      });
+    }
+
+    // Hook-effect threshold required only for the active mode (the other field
+    // is hidden in the UI).
+    const isBinModeForWarn = data.binColumnRef !== undefined;
+    if (isBinModeForWarn && data.hookEffectThresholdBin === undefined) {
+      issues.push({
+        severity: "error",
+        message: "Hook effect signal-drop threshold (bin mode) is required.",
+      });
+    }
+    if (!isBinModeForWarn && data.hookEffectThresholdNoBin === undefined) {
+      issues.push({
+        severity: "error",
+        message: "Hook effect signal-drop threshold (frequency mode) is required.",
       });
     }
 

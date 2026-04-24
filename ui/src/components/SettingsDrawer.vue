@@ -82,6 +82,35 @@ const minConcPointsError = computed(() =>
   validateIntField(app.model.data.minConcentrationPoints, 3),
 );
 const hookMinReadsError = computed(() => validateIntField(app.model.data.hookEffectMinReads, 0));
+
+// Same shape, but for the float-typed tuning params. Passing an explicit
+// errorMessage forces the red contour whenever the model is invalid —
+// PlNumberField's built-in min/max checks evaluate `undefined < N` as false,
+// so an undefined float would otherwise render as a normal-looking empty box.
+const validateFloatField = (
+  v: number | undefined | null,
+  opts: { min?: number; max?: number } = {},
+): string | undefined => {
+  if (v === undefined || v === null || Number.isNaN(v)) return "Value is required";
+  if (opts.min !== undefined && v < opts.min) return `Must be ≥ ${opts.min}`;
+  if (opts.max !== undefined && v > opts.max) return `Must be ≤ ${opts.max}`;
+  return undefined;
+};
+
+const r2GoodError = computed(() =>
+  validateFloatField(app.model.data.r2ThresholdGood, { min: 0, max: 1 }),
+);
+const r2FailedError = computed(() =>
+  validateFloatField(app.model.data.r2ThresholdFailed, { min: 0, max: 1 }),
+);
+const nMinError = computed(() => validateFloatField(app.model.data.nMin, { min: 0 }));
+const nMaxError = computed(() => validateFloatField(app.model.data.nMax, { min: 0 }));
+const hookThresholdBinError = computed(() =>
+  validateFloatField(app.model.data.hookEffectThresholdBin, { min: 0 }),
+);
+const hookThresholdNoBinError = computed(() =>
+  validateFloatField(app.model.data.hookEffectThresholdNoBin, { min: 0 }),
+);
 </script>
 
 <template>
@@ -199,6 +228,8 @@ const hookMinReadsError = computed(() => validateIntField(app.model.data.hookEff
         :min-value="0"
         :max-value="1"
         :step="0.05"
+        :error-message="r2GoodError"
+        required
       >
         <template #tooltip>
           Clonotypes with weighted R² at or above this threshold and Hill coefficient in range
@@ -211,6 +242,8 @@ const hookMinReadsError = computed(() => validateIntField(app.model.data.hookEff
         :min-value="0"
         :max-value="1"
         :step="0.05"
+        :error-message="r2FailedError"
+        required
       >
         <template #tooltip>
           Clonotypes with weighted R² below this threshold classify as Failed regardless of n.
@@ -222,6 +255,8 @@ const hookMinReadsError = computed(() => validateIntField(app.model.data.hookEff
         label="Hill coefficient — min"
         :min-value="0"
         :step="0.1"
+        :error-message="nMinError"
+        required
       >
         <template #tooltip>
           Lower bound on n for Good classification. Values below this downgrade the class by one.
@@ -233,6 +268,8 @@ const hookMinReadsError = computed(() => validateIntField(app.model.data.hookEff
         label="Hill coefficient — max"
         :min-value="0"
         :step="0.1"
+        :error-message="nMaxError"
+        required
       >
         <template #tooltip>
           For multimeric antigens (trimeric Spike, dimeric receptors), genuine cooperativity can
@@ -248,6 +285,8 @@ const hookMinReadsError = computed(() => validateIntField(app.model.data.hookEff
         label="Signal drop threshold (bin mode)"
         :min-value="0"
         :step="0.05"
+        :error-message="hookThresholdBinError"
+        required
       >
         <template #tooltip>
           Flags non-monotonic signals (potentially genuine tight binders showing a hook effect) when
@@ -260,6 +299,8 @@ const hookMinReadsError = computed(() => validateIntField(app.model.data.hookEff
         label="Signal drop threshold (frequency mode)"
         :min-value="0"
         :step="0.005"
+        :error-message="hookThresholdNoBinError"
+        required
       >
         <template #tooltip>
           Flags non-monotonic signals (potentially genuine tight binders showing a hook effect) when
