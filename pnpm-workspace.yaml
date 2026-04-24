@@ -27,7 +27,7 @@ catalog:
   "@milaboratories/helpers": ^1.14.1
   "@milaboratories/strings": 0.1.2
 
-  "@platforma-open/milaboratories.runenv-python-3": 1.7.10
+  "@platforma-open/milaboratories.runenv-python-3": 1.8.0
 
   "@platforma-open/milaboratories.samples-and-data": ^1.10.14
   "@platforma-open/milaboratories.samples-and-data.model": ^1.11.2
