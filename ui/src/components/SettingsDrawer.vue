@@ -64,11 +64,24 @@ watch(
   },
 );
 
-// Reject typed decimals like "3.5" on integer-typed params. The model's
-// validationWarnings output mirrors this so Run is still gated server-side,
-// but the inline red error here tells the user why before they leave the field.
-const requireInteger = (v: number): string | undefined =>
-  Number.isInteger(v) ? undefined : "Must be a whole number";
+// Compute a visible error per integer field so the box turns red when the
+// stored value is invalid. PlNumberField's built-in `required` check only
+// looks at the text buffer (displayText) — it misses the common "model is
+// undefined but displayText is stale" case when the value gets cleared
+// externally. Passing an explicit errorMessage forces the red contour
+// whenever the numeric model is actually invalid, regardless of buffer state.
+const validateIntField = (v: number | undefined | null, min: number): string | undefined => {
+  if (v === undefined || v === null || Number.isNaN(v)) return "Value is required";
+  if (!Number.isInteger(v)) return "Must be a whole number";
+  if (v < min) return `Must be ≥ ${min}`;
+  return undefined;
+};
+
+const minReadsError = computed(() => validateIntField(app.model.data.minReadsPerConcentration, 1));
+const minConcPointsError = computed(() =>
+  validateIntField(app.model.data.minConcentrationPoints, 3),
+);
+const hookMinReadsError = computed(() => validateIntField(app.model.data.hookEffectMinReads, 0));
 </script>
 
 <template>
@@ -156,7 +169,7 @@ const requireInteger = (v: number): string | undefined =>
         label="Min reads per concentration"
         :min-value="1"
         :step="1"
-        :validate="requireInteger"
+        :error-message="minReadsError"
         required
       >
         <template #tooltip>
@@ -169,7 +182,7 @@ const requireInteger = (v: number): string | undefined =>
         label="Min concentration points"
         :min-value="3"
         :step="1"
-        :validate="requireInteger"
+        :error-message="minConcPointsError"
         required
       >
         <template #tooltip>
@@ -258,7 +271,7 @@ const requireInteger = (v: number): string | undefined =>
         label="Min reads for hook check"
         :min-value="0"
         :step="1"
-        :validate="requireInteger"
+        :error-message="hookMinReadsError"
         required
       >
         <template #tooltip>
