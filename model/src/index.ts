@@ -43,6 +43,7 @@ export type BlockArgs = {
 
 export type BlockData = BlockArgs & {
   tableState: PlDataTableStateV2;
+  meanBinTableState: PlDataTableStateV2;
   graphStateTitrationCurves: GraphMakerState;
   graphStateKDHistogram: GraphMakerState;
   graphStateAffinityVsFit: GraphMakerState;
@@ -135,6 +136,7 @@ const dataModel = new DataModelBuilder().from<BlockData>("v1").init(() => ({
   defaultBlockLabel: "Tite-Seq Analysis",
   customBlockLabel: "",
   tableState: createPlDataTableStateV2(),
+  meanBinTableState: createPlDataTableStateV2(),
   graphStateTitrationCurves: {
     title: "",
     template: "dots",
@@ -568,6 +570,12 @@ export const model = BlockModelV3.create(dataModel)
     return createPlDataTableV2(ctx, pCols, ctx.data.tableState);
   })
 
+  .outputWithStatus("meanBinTable", (ctx) => {
+    const pCols = ctx.outputs?.resolve("signalPf")?.getPColumns();
+    if (pCols === undefined) return undefined;
+    return createPlDataTableV2(ctx, pCols, ctx.data.meanBinTableState);
+  })
+
   .outputWithStatus("titrationCurvesPf", (ctx): PFrameHandle | undefined => {
     const signalCols = ctx.outputs?.resolve("signalPf")?.getPColumns();
     if (signalCols === undefined) return undefined;
@@ -619,6 +627,7 @@ export const model = BlockModelV3.create(dataModel)
 
   .sections((_ctx) => [
     { type: "link", href: "/", label: "Table" },
+    { type: "link", href: "/mean-bin-data", label: "Mean Bin Data" },
     { type: "link", href: "/titration-curves", label: "Titration Curves" },
     { type: "link", href: "/kd-distribution", label: "Kd Distribution" },
     { type: "link", href: "/affinity-vs-fit", label: "Affinity vs Fit Quality" },

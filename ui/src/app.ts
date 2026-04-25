@@ -1,12 +1,15 @@
 import { model } from "@platforma-open/platforma-open.titeseq-analysis.model";
+import { createPlDataTableStateV2 } from "@platforma-sdk/model";
 import { defineAppV3 } from "@platforma-sdk/ui-vue";
 import TitrationCurvesPage from "./pages/TitrationCurvesPage.vue";
 import KDDistributionPage from "./pages/KDDistributionPage.vue";
 import AffinityVsFitPage from "./pages/AffinityVsFitPage.vue";
+import MeanBinPage from "./pages/MeanBinPage.vue";
 import TablePage from "./pages/TablePage.vue";
 
 export const sdkPlugin = defineAppV3(model, (app) => {
   app.model.data.customBlockLabel ??= "";
+  app.model.data.meanBinTableState ??= createPlDataTableStateV2();
 
   return {
     progress: () => app.model.outputs.isRunning,
@@ -15,6 +18,7 @@ export const sdkPlugin = defineAppV3(model, (app) => {
       "/titration-curves": () => TitrationCurvesPage,
       "/kd-distribution": () => KDDistributionPage,
       "/affinity-vs-fit": () => AffinityVsFitPage,
+      "/mean-bin-data": () => MeanBinPage,
     },
   };
 });

@@ -20,3 +20,14 @@
   `minConcentrationPoints`, and `hookEffectMinReads` with inline
   "Must be a whole number" errors, and mark them `required` so the
   red-asterisk styling matches the ref-picker inputs.
+- Enable CSV export on the Clonotype Fit Results table via the
+  SDK-native `show-export-button` prop, and add a new "Mean Bin Data"
+  section that renders `signalPf` as a `PlAgDataTableV2` with the same
+  export button. Together these cover the per-clonotype Hill fit
+  outputs and the per-concentration mean-bin/fitted-mean-bin data the
+  curves are derived from.
+- Rename the numeric concentration axis label from `Concentration` to
+  `Concentration (aM)` so the unit is explicit alongside the
+  byte-canonical `Concentration (canonical)` string axis. The two are
+  the same physical value in molar vs attomolar; the prior label made
+  the table look like the values disagreed.

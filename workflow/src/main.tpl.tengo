@@ -144,18 +144,18 @@ wf.body(func(args) {
 	// `concentration` float column Python emits). Its axis validator permits
 	// Int|Long|Float|Double|String; Float is avoided because a Float axis is itself
 	// subject to the serialization drift R14 warns against.
-	// Platform gap: the SDK has no axis-level hide annotation, so concentrationStr
-	// still appears in Graph Maker categorical pickers within this block. Graph
-	// Maker type-gates continuous-scale pickers to numeric axes, so the String
-	// axis stays out of log-scale X. Table visibility "optional" keeps it out of
-	// default table views.
+	// Platform gap: the SDK has no axis-level hide annotation
+	// (PlAgDataTableV2's selectDisplayableIndices only honors
+	// pl7.app/table/visibility on column specs, not axis specs — see
+	// core/platforma/sdk/ui-vue/src/components/PlAgDataTable/sources/table-source-v2.ts).
+	// So both concentration axes appear in the Mean Bin Data table by default;
+	// the labels themselves are how users tell them apart.
 	concStrAxisSpec := {
 		name: "pl7.app/vdj/concentrationStr",
 		type: "String",
 		domain: { "pl7.app/block": blockId },
 		annotations: {
-			"pl7.app/label": "Concentration (canonical)",
-			"pl7.app/table/visibility": "optional"
+			"pl7.app/label": "Concentration (canonical)"
 		}
 	}
 	concAMAxisSpec := {
@@ -163,7 +163,7 @@ wf.body(func(args) {
 		type: "Long",
 		domain: { "pl7.app/block": blockId },
 		annotations: {
-			"pl7.app/label": "Concentration",
+			"pl7.app/label": "Concentration (aM)",
 			"pl7.app/axis/unit": "aM"
 		}
 	}
