@@ -2,7 +2,7 @@
 import type { PredefinedGraphOption } from "@milaboratories/graph-maker";
 import { GraphMaker } from "@milaboratories/graph-maker";
 import type { PColumnIdAndSpec } from "@platforma-sdk/model";
-import { PlAlert } from "@platforma-sdk/ui-vue";
+import { PlAlert, PlTooltip } from "@platforma-sdk/ui-vue";
 import { computed } from "vue";
 import { useApp } from "../app";
 import TiteseqPage from "../components/TiteseqPage.vue";
@@ -64,6 +64,26 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
       All clonotypes failed to fit. Loosen thresholds in Inputs or check the Fit log.
     </PlAlert>
 
+    <div class="conc-unit-hint">
+      <PlTooltip position="top">
+        <span class="conc-unit-hint__label">
+          X-axis is Concentration in attomolar (aM)
+          <span class="conc-unit-hint__icon">&#9432;</span>
+        </span>
+        <template #tooltip>
+          Concentrations are stored as integers in attomolar (1 aM = 10<sup>-18</sup> M) so the axis
+          is exact across language layers. To read tick values back in molar units:
+          <ul>
+            <li>10<sup>6</sup> aM = 1 pM (10<sup>-12</sup> M)</li>
+            <li>10<sup>9</sup> aM = 1 nM (10<sup>-9</sup> M)</li>
+            <li>10<sup>12</sup> aM = 1 µM (10<sup>-6</sup> M)</li>
+            <li>10<sup>15</sup> aM = 1 mM (10<sup>-3</sup> M)</li>
+          </ul>
+          Kd,app values reported on this block are in molar (M).
+        </template>
+      </PlTooltip>
+    </div>
+
     <GraphMaker
       v-model="app.model.data.graphStateTitrationCurves"
       chart-type="scatterplot"
@@ -76,3 +96,21 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
     />
   </TiteseqPage>
 </template>
+
+<style scoped>
+.conc-unit-hint {
+  margin: 8px 16px 0;
+  font-size: 12px;
+  color: var(--txt-03, #666);
+}
+.conc-unit-hint__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: help;
+}
+.conc-unit-hint__icon {
+  font-size: 14px;
+  opacity: 0.7;
+}
+</style>
