@@ -31,3 +31,7 @@
   byte-canonical `Concentration (canonical)` string axis. The two are
   the same physical value in molar vs attomolar; the prior label made
   the table look like the values disagreed.
+- Document the dual-form concentration convention in `docs/description.md`
+  with conversion factors (1 nM = 10⁹ aM, 1 µM = 10¹² aM, …) so users
+  reading the Titration Curves X-axis (which is in aM) can map the tick
+  values back to molar without guessing.
