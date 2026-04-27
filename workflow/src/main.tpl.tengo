@@ -133,7 +133,6 @@ wf.body(func(args) {
 	// core/platforma/sdk/workflow-tengo/src/pt/util.lib.tengo:352 limits axis
 	// types to Int|Long|String. Numeric X for log-scale rendering comes from
 	// the concentrationValue sidecar PColumn (below), joined on this axis.
-	// See docs/investigations/concentration-axis-spec-realignment.md.
 	concAxisSpec := {
 		name: "pl7.app/vdj/concentration",
 		type: "String",

@@ -42,6 +42,5 @@
   `_Internal`/`_Export` variants), which also closes the dual-import
   CID-conflict pattern as a side effect. Spec calls for
   `concentration:Float` but the SDK gates axis types to
-  `Int|Long|String` — see
-  `docs/investigations/concentration-axis-spec-realignment.md` for the
-  deviation rationale.
+  `Int|Long|String` (see
+  `core/platforma/sdk/workflow-tengo/src/pt/util.lib.tengo:352`).

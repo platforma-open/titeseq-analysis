@@ -27,9 +27,8 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
 
   // X binds to the concentrationValue sidecar (Double) for true log-scale
   // rendering, joined to meanBin / fittedMeanBin on the shared
-  // concentration:String axis. Requires the pf-plots fix that accepts
-  // PColumn-bound X for the additionalCurves slot — see
-  // docs/investigations/concentration-axis-spec-realignment.md.
+  // concentration:String axis. Re-enabling the additionalCurves slot below
+  // requires milaboratory/visualizations#76 to land first.
   const concValue = pCols.find(
     (p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/concentrationValue",
   );

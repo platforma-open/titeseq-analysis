@@ -489,15 +489,6 @@ export const model = BlockModelV3.create(dataModel)
 
   .output("binMode", (ctx) => ctx.data.binColumnRef !== undefined)
 
-  .output("facsCorrectionActive", (ctx) => {
-    // The workflow always emits this annotation on meanBin with value "true"
-    // or "false", so the UI badge can key off it without a null branch.
-    const signalCols = ctx.outputs?.resolve("signalPf")?.getPColumns();
-    if (!signalCols) return undefined;
-    const meanBin = signalCols.find((c) => c.spec.name === "pl7.app/vdj/meanBin");
-    return meanBin?.spec.annotations?.["pl7.app/titeseq/facsCorrected"] === "true";
-  })
-
   .title(() => "Tite-Seq Analysis")
 
   .subtitle((ctx) => ctx.data.customBlockLabel || ctx.data.defaultBlockLabel || "")

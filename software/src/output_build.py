@@ -4,8 +4,9 @@ Output TSVs carry the canonical `concentrationStr` column on the concentration
 axis (R14 parse-once invariant). The Tengo workflow wraps it as a String axis
 on the output PColumns. Log-scale graph rendering reads numeric values from a
 separate `concentrationValue` PColumn (axes `[concentration:String]`, valueType
-Double). Spec calls for a Float axis but the SDK regex limits axis types to
-Int|Long|String — see `docs/investigations/concentration-axis-spec-realignment.md`.
+Double). Spec calls for a Float axis but the SDK regex at
+`core/platforma/sdk/workflow-tengo/src/pt/util.lib.tengo:352` limits axis types
+to `Int|Long|String`.
 """
 
 from __future__ import annotations
