@@ -215,6 +215,30 @@ export const model = BlockModelV3.create(dataModel)
       throw new Error(
         "FACS sort fraction requires a FACS bin column — the correction only applies in bin mode",
       );
+
+    // Reject undefined on the numeric tuning params before any range comparisons
+    // run. Without these guards, `undefined < 1` (and friends) silently returns
+    // false, so a stored block missing one of these fields would pass validation
+    // and produce args with undefined values — breaking the Python fit at runtime.
+    if (data.minReadsPerConcentration === undefined)
+      throw new Error("Min reads per concentration is required");
+    if (data.minConcentrationPoints === undefined)
+      throw new Error("Min concentration points is required");
+    if (data.r2ThresholdGood === undefined) throw new Error("R² threshold (Good) is required");
+    if (data.r2ThresholdFailed === undefined) throw new Error("R² threshold (Failed) is required");
+    if (data.nMin === undefined) throw new Error("Hill coefficient nMin is required");
+    if (data.nMax === undefined) throw new Error("Hill coefficient nMax is required");
+    // Only require the active mode's hook threshold — the other field is hidden
+    // in the UI (v-if on binMode), so requiring both would block users from
+    // opening Inputs to fix it.
+    const isBinMode = data.binColumnRef !== undefined;
+    if (isBinMode && data.hookEffectThresholdBin === undefined)
+      throw new Error("Hook effect signal-drop threshold (bin mode) is required");
+    if (!isBinMode && data.hookEffectThresholdNoBin === undefined)
+      throw new Error("Hook effect signal-drop threshold (frequency mode) is required");
+    if (data.hookEffectMinReads === undefined)
+      throw new Error("Min reads for hook check is required");
+
     if (data.r2ThresholdFailed > data.r2ThresholdGood)
       throw new Error("Failed R² threshold must be ≤ Good R² threshold");
     if (data.nMin >= data.nMax) throw new Error("Hill coefficient nMin must be < nMax");
@@ -238,11 +262,15 @@ export const model = BlockModelV3.create(dataModel)
       r2ThresholdFailed: data.r2ThresholdFailed,
       nMin: data.nMin,
       nMax: data.nMax,
-      hookEffectThresholdBin: data.hookEffectThresholdBin,
-      hookEffectThresholdNoBin: data.hookEffectThresholdNoBin,
+      // Default the inactive mode's threshold so the args type is satisfied
+      // — the workflow only reads the field for the active mode.
+      hookEffectThresholdBin: data.hookEffectThresholdBin ?? 0.2,
+      hookEffectThresholdNoBin: data.hookEffectThresholdNoBin ?? 0.02,
       hookEffectMinReads: data.hookEffectMinReads,
-      defaultBlockLabel: data.defaultBlockLabel,
-      customBlockLabel: data.customBlockLabel,
+      // Strings have UI defaults but old stored data may lack them; coerce to
+      // empty/safe values rather than throw — they don't break the workflow.
+      defaultBlockLabel: data.defaultBlockLabel ?? "Tite-Seq Analysis",
+      customBlockLabel: data.customBlockLabel ?? "",
     };
   })
 
@@ -333,6 +361,29 @@ export const model = BlockModelV3.create(dataModel)
     const issues: ValidationIssue[] = [];
     const data = ctx.data;
 
+    // Surface backend field-level errors (CID conflicts, exec failures, spec
+    // validation failures) as severity:"error" ValidationIssues so the user
+    // sees them alongside the UI state. Without this, a CID conflict only
+    // appears in server logs while the block silently shows empty panels.
+    // CIDConflictError is typically transient — the platform's "zebra"
+    // self-recovery retries the write — so we label it as such.
+    const outputKeys = ["summaryPf", "signalPf", "logHandle"] as const;
+    for (const key of outputKeys) {
+      const errorAcc = ctx.outputs?.resolve(key)?.getError();
+      if (!errorAcc) continue;
+      const typeName = errorAcc.resourceType.name;
+      const detail = errorAcc.getDataAsJson<{ message?: string }>()?.message ?? typeName;
+      const isCidConflict = typeName === "CIDConflictError";
+      issues.push({
+        severity: "error",
+        message: isCidConflict
+          ? `Transient result-hash conflict on "${key}": ${detail}. ` +
+            `The platform retries automatically; usually self-recovers. ` +
+            `If this persists across retries, the workflow likely has a non-deterministic step — report it.`
+          : `Workflow output "${key}" failed: ${detail}`,
+      });
+    }
+
     if (data.concentrationColumnRef !== undefined) {
       const spec = ctx.resultPool.getPColumnSpecByRef(data.concentrationColumnRef);
       const unitLabel = spec?.annotations?.["pl7.app/label"];
@@ -356,28 +407,22 @@ export const model = BlockModelV3.create(dataModel)
       });
     }
 
-    if (data.antigenColumnRef !== undefined && !data.targetAntigen) {
+    // Empty targetAntigen surfaces inline: the dropdown's `:error-status` prop
+    // shows a red border and `required` shows the asterisk. The args() throw
+    // above keeps Run disabled until it's set.
+
+    if (data.sortFractionColumnRef !== undefined && data.binColumnRef === undefined) {
       issues.push({
         severity: "error",
         message:
-          "An antigen column is selected but targetAntigen is empty — " +
-          "choose which antigen to analyse before running.",
+          "FACS sort fraction requires a FACS bin column — " +
+          "the correction only applies in bin mode. Select a FACS bin or clear the sort fraction.",
       });
     }
 
-    if (data.r2ThresholdFailed > data.r2ThresholdGood) {
-      issues.push({
-        severity: "error",
-        message: "Failed R² threshold must be ≤ Good R² threshold.",
-      });
-    }
-
-    if (data.nMin >= data.nMax) {
-      issues.push({
-        severity: "error",
-        message: "Hill coefficient nMin must be strictly less than nMax.",
-      });
-    }
+    // Numeric-field bound violations surface inline on each PlNumberField via
+    // its `:error-message` prop (see ui/src/composables/useFieldValidation.ts).
+    // The args() throw above gates Run.
 
     return issues;
   })
@@ -387,9 +432,28 @@ export const model = BlockModelV3.create(dataModel)
   .output("isRunning", (ctx) => ctx.outputs?.getIsReadyOrError() === false)
 
   .outputWithStatus("summaryTable", (ctx) => {
-    const pCols = ctx.outputs?.resolve("summaryPf")?.getPColumns();
-    if (pCols === undefined) return undefined;
-    return createPlDataTableV2(ctx, pCols, ctx.data.tableState);
+    const summaryCols = ctx.outputs?.resolve("summaryPf")?.getPColumns();
+    if (summaryCols === undefined) return undefined;
+    const signalCols = ctx.outputs?.resolve("signalPf")?.getPColumns() ?? [];
+    // Reveal fitFailureReason and the signal columns in this block's Table so
+    // users see why each clonotype failed and can export the per-concentration
+    // data. Both carry pl7.app/table/visibility: "hidden" to stay out of
+    // downstream pickers — overridden locally only.
+    const reveal = <T extends { spec: { annotations?: Record<string, string> } }>(c: T): T => ({
+      ...c,
+      spec: {
+        ...c.spec,
+        annotations: {
+          ...c.spec.annotations,
+          "pl7.app/table/visibility": "default",
+        },
+      },
+    });
+    const visibleSummary = summaryCols.map((c) =>
+      c.spec.name === "pl7.app/vdj/fitFailureReason" ? reveal(c) : c,
+    );
+    const visibleSignal = signalCols.map(reveal);
+    return createPlDataTableV2(ctx, [...visibleSummary, ...visibleSignal], ctx.data.tableState);
   })
 
   .outputWithStatus("titrationCurvesPf", (ctx): PFrameHandle | undefined => {
@@ -427,15 +491,6 @@ export const model = BlockModelV3.create(dataModel)
   })
 
   .output("binMode", (ctx) => ctx.data.binColumnRef !== undefined)
-
-  .output("facsCorrectionActive", (ctx) => {
-    // The workflow always emits this annotation on meanBin with value "true"
-    // or "false", so the UI badge can key off it without a null branch.
-    const signalCols = ctx.outputs?.resolve("signalPf")?.getPColumns();
-    if (!signalCols) return undefined;
-    const meanBin = signalCols.find((c) => c.spec.name === "pl7.app/vdj/meanBin");
-    return meanBin?.spec.annotations?.["pl7.app/titeseq/facsCorrected"] === "true";
-  })
 
   .title(() => "Tite-Seq Analysis")
 

@@ -148,8 +148,8 @@ class TestSortFractionIntegration:
         # Correction must shift mean_bin away from the uncorrected values at
         # the skewed concentrations — if they're identical we haven't actually
         # wired the correction through.
-        corrected_sorted = out_corrected["mean_bin"].sort("concentration")
-        uncorrected_sorted = out_uncorrected["mean_bin"].sort("concentration")
+        corrected_sorted = out_corrected["mean_bin"].sort("concentrationStr")
+        uncorrected_sorted = out_uncorrected["mean_bin"].sort("concentrationStr")
         diffs = [
             abs(c - u)
             for c, u in zip(corrected_sorted["meanBin"].to_list(), uncorrected_sorted["meanBin"].to_list())

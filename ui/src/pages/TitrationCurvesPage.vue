@@ -20,28 +20,44 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
   const meanBin = pCols.find((p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/meanBin");
   if (!meanBin) return undefined;
 
-  const concAxis = meanBin.spec.axesSpec.find((a) => a.name === "pl7.app/vdj/concentration");
   const clonotypeAxis = meanBin.spec.axesSpec.find(
     (a) => a.name === "pl7.app/vdj/clonotypeKey" || a.name === "pl7.app/vdj/scClonotypeKey",
   );
-  if (!concAxis || !clonotypeAxis) return undefined;
+  if (!clonotypeAxis) return undefined;
+
+  // X binds to the concentrationValue sidecar (Double) for true log-scale
+  // rendering, joined to meanBin / fittedMeanBin on the shared
+  // concentration:String axis. Re-enabling the additionalCurves slot below
+  // requires milaboratory/visualizations#76 to land first.
+  const concValue = pCols.find(
+    (p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/concentrationValue",
+  );
+  if (!concValue) return undefined;
 
   const affinityClass = pCols.find(
     (p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/affinityClass",
   );
-  const fittedMeanBin = pCols.find(
-    (p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/fittedMeanBin",
-  );
+
+  // See TODO below
+  // const fittedMeanBin = pCols.find(
+  //   (p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/fittedMeanBin",
+  // );
 
   const options: PredefinedGraphOption<"scatterplot">[] = [
-    { inputName: "x", selectedSource: concAxis },
+    { inputName: "x", selectedSource: concValue.spec },
     { inputName: "y", selectedSource: meanBin.spec },
     { inputName: "facetBy", selectedSource: clonotypeAxis },
     { inputName: "grouping", selectedSource: clonotypeAxis },
   ];
-  if (fittedMeanBin) {
-    options.push({ inputName: "additionalCurves", selectedSource: fittedMeanBin.spec });
-  }
+
+  // TODO(Paul Newling): with the current version of pl-plot this is unable to render, pl-plot needs to be updated
+  // to allow this to work. Initial PR - https://github.com/milaboratory/visualizations/pull/76 . Once this is merged
+  // Or another change allows it to be fixed, this can be re-enabled to bring back fitted curves overlay
+
+  // if (fittedMeanBin) {
+  //   options.push({ inputName: "additionalCurves", selectedSource: fittedMeanBin.spec });
+  // }
+
   if (affinityClass) {
     options.push({
       inputName: "filters",

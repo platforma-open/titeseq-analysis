@@ -46,13 +46,6 @@ watchEffect(() => {
 </script>
 
 <template>
-  <span
-    v-if="app.model.outputs.facsCorrectionActive"
-    class="titeseq-facs-badge"
-    title="Mean Bin is corrected by the per-sample FACS sort fraction (Adams, Mora, Walczak, Kinney 2016)."
-  >
-    FACS-corrected
-  </span>
   <PlBtnGhost @click.stop="logOpen = true">
     Logs
     <template #append>

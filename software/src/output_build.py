@@ -1,14 +1,19 @@
 """R13/R14/R14b: assemble per-clonotype and per-(clonotype, concentration) output frames.
 
-All axis joins are keyed on canonical concentration strings (R14) to prevent
-float-serialization drift.
+Output TSVs carry the canonical `concentrationStr` column on the concentration
+axis (R14 parse-once invariant). The Tengo workflow wraps it as a String axis
+on the output PColumns. Log-scale graph rendering reads numeric values from a
+separate `concentrationValue` PColumn (axes `[concentration:String]`, valueType
+Double). Spec calls for a Float axis but the SDK regex at
+`core/platforma/sdk/workflow-tengo/src/pt/util.lib.tengo:352` limits axis types
+to `Int|Long|String`.
 """
 
 from __future__ import annotations
 
 import polars as pl
 
-from constants import COL_CLONOTYPE, COL_CONC_AM, COL_CONC_STR, COL_CONC_VAL, CONC_AM_SCALE
+from constants import COL_CLONOTYPE, COL_CONC_STR, COL_CONC_VAL
 
 PER_CLONOTYPE_SCHEMA: dict[str, pl.DataType] = {
     COL_CLONOTYPE: pl.Utf8,
@@ -58,27 +63,45 @@ def add_diagnostic_plot_columns(frame: pl.DataFrame, max_concentration: float) -
 def build_mean_bin_frame(signal_frame: pl.DataFrame) -> pl.DataFrame:
     """R14: per-(clonotype, concentration) observed signal (mean_bin or frequency).
 
-    c=0 rows are excluded — they are baseline fixers, not output values.
-    Output columns: clonotypeKey, concentrationStr, concentrationAM, concentration, meanBin.
-    The workflow declares both concentrationStr (String, canonical R14 join key)
-    and concentrationAM (attomolar Int64, numeric sibling for Graph Maker log-scale)
-    as axes of the output PFrame; they are 1:1 correlated.
+    Excludes c=0 rows — they fix the baseline, not output values, and log(0) =
+    −∞ would break log-scale rendering. Output columns: clonotypeKey,
+    concentrationStr, meanBin. The numeric source for log-scale graphs lives in
+    build_concentration_value_frame.
     """
     return signal_frame.filter(pl.col(COL_CONC_VAL) != 0).select(
         [
             COL_CLONOTYPE,
             COL_CONC_STR,
-            (pl.col(COL_CONC_VAL) * CONC_AM_SCALE).round().cast(pl.Int64).alias(COL_CONC_AM),
-            COL_CONC_VAL,
             pl.col("signal").alias("meanBin"),
         ]
+    )
+
+
+def build_concentration_value_frame(signal_frame: pl.DataFrame) -> pl.DataFrame:
+    """Sidecar PColumn for the Titration Curves X-axis.
+
+    Axes `[concentration:String]`, valueType Double. One row per unique non-zero
+    concentration. Graph Maker reads the Double for log-scale X positions while
+    joining to meanBin / fittedMeanBin on the shared String axis. R14: each
+    concentrationStr maps to the Float64 already parsed by
+    canonicalize_concentration — never re-parsed.
+    """
+    return (
+        signal_frame.filter(pl.col(COL_CONC_VAL) != 0)
+        .select([COL_CONC_STR, COL_CONC_VAL])
+        .unique()
+        .sort(COL_CONC_STR)
     )
 
 
 FITTED_MEAN_BIN_SCHEMA: dict[str, pl.DataType] = {
     COL_CLONOTYPE: pl.Utf8,
     COL_CONC_STR: pl.Utf8,
-    COL_CONC_AM: pl.Int64,
-    COL_CONC_VAL: pl.Float64,
     "fittedMeanBin": pl.Float64,
+}
+
+
+CONCENTRATION_VALUE_SCHEMA: dict[str, pl.DataType] = {
+    COL_CONC_STR: pl.Utf8,
+    COL_CONC_VAL: pl.Float64,
 }

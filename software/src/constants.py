@@ -40,15 +40,15 @@ DEFAULT_PARAMS = FitParams()
 # Column name conventions used inside the pipeline.
 COL_CLONOTYPE = "clonotypeKey"
 COL_SAMPLE = "sampleId"
-COL_CONC_STR = "concentrationStr"  # canonical string key (R14) — internal joins only
-COL_CONC_VAL = "concentration"  # numeric value (assumed Molar)
-COL_CONC_AM = "concentrationAM"  # attomolar Int64 — axis key in output TSVs
-CONC_AM_SCALE = 1_000_000_000_000_000_000  # 1e18: Molar → attomolar
-# Attomolar encoding uses Int64; anything above this overflows. TiteSeq is a sub-µM
-# assay, so this ceiling (~9.22 M) is well above any realistic input. A value above
-# the ceiling almost certainly indicates a unit-entry mistake (e.g., molar vs molal,
-# or typed "100" instead of "1e-7").
-MAX_CONCENTRATION_M = (2**63 - 1) / CONC_AM_SCALE
+# Canonical concentration string preserved byte-for-byte through the pipeline
+# (R14). Acts as the join axis key in output PColumns. The Tengo workflow wraps
+# this column as a `pl7.app/vdj/concentration` axis of type String.
+COL_CONC_STR = "concentrationStr"
+# Internal Float64 used for arithmetic (Hill fit, baseline, weights). Never
+# written into output TSVs as the axis key — output rows carry COL_CONC_STR
+# only, so no float→string→float roundtrip happens between Python and the
+# Tengo xsv.importFile boundary.
+COL_CONC_VAL = "concentration"
 COL_BIN = "bin"
 COL_ANTIGEN = "antigen"
 COL_READS = "reads"
