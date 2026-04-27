@@ -435,12 +435,11 @@ export const model = BlockModelV3.create(dataModel)
     const summaryCols = ctx.outputs?.resolve("summaryPf")?.getPColumns();
     if (summaryCols === undefined) return undefined;
     const signalCols = ctx.outputs?.resolve("signalPf")?.getPColumns() ?? [];
-    // Joining signalCols broadcasts each per-clonotype summary across the
-    // concentration axis, so the Export button dumps Kd / affinityClass / R²
-    // / Hill alongside per-concentration meanBin and fittedMeanBin. signalCols
-    // are annotated `hidden` to keep them out of downstream pickers — override
-    // here so users see (and export) the values.
-    const visibleSignal = signalCols.map((c) => ({
+    // Reveal fitFailureReason and the signal columns in this block's Table so
+    // users see why each clonotype failed and can export the per-concentration
+    // data. Both carry pl7.app/table/visibility: "hidden" to stay out of
+    // downstream pickers — overridden locally only.
+    const reveal = <T extends { spec: { annotations?: Record<string, string> } }>(c: T): T => ({
       ...c,
       spec: {
         ...c.spec,
@@ -449,8 +448,12 @@ export const model = BlockModelV3.create(dataModel)
           "pl7.app/table/visibility": "default",
         },
       },
-    }));
-    return createPlDataTableV2(ctx, [...summaryCols, ...visibleSignal], ctx.data.tableState);
+    });
+    const visibleSummary = summaryCols.map((c) =>
+      c.spec.name === "pl7.app/vdj/fitFailureReason" ? reveal(c) : c,
+    );
+    const visibleSignal = signalCols.map(reveal);
+    return createPlDataTableV2(ctx, [...visibleSummary, ...visibleSignal], ctx.data.tableState);
   })
 
   .outputWithStatus("titrationCurvesPf", (ctx): PFrameHandle | undefined => {
