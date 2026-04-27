@@ -94,24 +94,34 @@ class TestConcentrationValidation:
         with pytest.raises(InputValidationError, match="non-finite"):
             validate_concentration_column(df, has_bin=True)
 
-    def test_concentration_over_ceiling_raises_actionable_error(self):
-        # Above the int64 attomolar ceiling (~9.22 M) — any such value almost
-        # certainly indicates a unit-entry mistake. Validation should flag it
-        # with a clear error instead of letting it reach the attomolar cast.
+    # The block treats concentration as dimensionless (R2). Any reasonable magnitude
+    # passes — the user's column may be in any unit (M, nM, µM, …). The prior
+    # attomolar-encoding ceiling (~9.22 M) was a workaround for the Long-aM axis
+    # that's no longer in use.
+    @pytest.mark.parametrize(
+        "concentrations",
+        [
+            [1.0, 10.0, 100.0, 1000.0],
+            [0.001, 0.01, 0.1, 1.0],
+            [1e-13, 1e-10, 1e-7],
+        ],
+        ids=["nM-shape", "mM-shape", "sub-pM"],
+    )
+    def test_high_magnitude_concentrations_accepted(self, concentrations):
         df = _mk(
             [
                 {
                     "clonotypeKey": "A",
-                    "sampleId": "s1",
-                    "concentrationStr": "10",
-                    "concentration": 10.0,
+                    "sampleId": f"s{i}",
+                    "concentrationStr": str(c),
+                    "concentration": c,
                     "bin": 1,
                     "reads": 5,
-                },
+                }
+                for i, c in enumerate(concentrations)
             ]
         )
-        with pytest.raises(InputValidationError, match="attomolar-encoding ceiling"):
-            validate_concentration_column(df, has_bin=True)
+        validate_concentration_column(df, has_bin=True)  # no exception
 
 
 class TestBinValidation:
@@ -366,8 +376,6 @@ class TestNarrowConcentrationRangeWarning:
 
     # 0 M (no-antigen control) must be excluded from the max/min ratio — otherwise
     # any dataset with a 0 M point would always be flagged.
-    # Concentrations are in molar; values chosen to stay below the R2 ceiling
-    # (~9.22 M) while preserving the max/min ratios the warning depends on.
     @pytest.mark.parametrize(
         "concs, expect_warning",
         [

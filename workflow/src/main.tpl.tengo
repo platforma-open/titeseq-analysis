@@ -124,47 +124,22 @@ wf.body(func(args) {
 	// Shared axis specs for the output PColumns.
 	clonotypeAxisSpec := abundanceSpec.axesSpec[1]
 
-	// R14 compliance: concentration is keyed by two parallel axes, scoped differently
-	// between internal (own-block) and export (downstream) views.
-	//   - concentrationStr (String): the canonical join key, preserved byte-for-byte
-	//     from the upstream metadata string. Prevents silent join failures from
-	//     float-serialization drift across the TypeScript/Tengo/Python layers.
-	//     Present in BOTH internal and export views.
-	//   - concentrationAM (Long, attomolar = Molar * 1e18): numeric sibling used by
-	//     Graph Maker for log-scale X rendering. Attomolar keeps typical TiteSeq
-	//     values (1e-13 to 1e-6 M → 1e5 to 1e12 aM) well inside int64 range.
-	//     Present in the INTERNAL view only (signalPf); omitted from exports so
-	//     downstream blocks (Lead Selection, other blocks' Graph Makers) don't see
-	//     duplicate pickable axes for the same data.
-	// The two are 1:1 correlated: concentrationAM == round(float(concentrationStr) * 1e18)
-	// for every row (asserted by test_output_build.py:TestMeanBinFrame), so dropping
-	// concentrationAM from the export axes still leaves (clonotypeKey, concentrationStr)
-	// as a unique row key — no cardinality change. xsv.importFile silently skips any
-	// TSV column not listed in axes or columns (same mechanism that already skips the
-	// `concentration` float column Python emits). Its axis validator permits
-	// Int|Long|Float|Double|String; Float is avoided because a Float axis is itself
-	// subject to the serialization drift R14 warns against.
-	// Platform gap: the SDK has no axis-level hide annotation
-	// (PlAgDataTableV2's selectDisplayableIndices only honors
-	// pl7.app/table/visibility on column specs, not axis specs — see
-	// core/platforma/sdk/ui-vue/src/components/PlAgDataTable/sources/table-source-v2.ts).
-	// So both concentration axes appear in the Mean Bin Data table by default;
-	// the labels themselves are how users tell them apart.
-	concStrAxisSpec := {
-		name: "pl7.app/vdj/concentrationStr",
+	// Concentration axis: the canonical String. Spec calls for Float
+	// (pcolumn-spec.md:119, R14) but the SDK gates axis types to Int|Long|String
+	// (core/platforma/sdk/workflow-tengo/src/pt/util.lib.tengo:352). Graph Maker's
+	// scatter binds X to this String axis directly — the additionalCurves slot
+	// requires both X and Y to resolve to axis specs (pf-plots checkSourceBySpec),
+	// so we accept categorical X-spacing in exchange for the Hill curve overlay.
+	// See docs/investigations/concentration-axis-spec-realignment.md for the
+	// deviation rationale. R14 canonical-string discipline preserved: this axis IS
+	// the join key, byte-identical across every row from upstream metadata through
+	// Python and back.
+	concAxisSpec := {
+		name: "pl7.app/vdj/concentration",
 		type: "String",
 		domain: { "pl7.app/block": blockId },
 		annotations: {
-			"pl7.app/label": "Concentration (canonical)"
-		}
-	}
-	concAMAxisSpec := {
-		name: "pl7.app/vdj/concentration",
-		type: "Long",
-		domain: { "pl7.app/block": blockId },
-		annotations: {
-			"pl7.app/label": "Concentration (aM)",
-			"pl7.app/axis/unit": "aM"
+			"pl7.app/label": "Concentration"
 		}
 	}
 
@@ -335,28 +310,18 @@ wf.body(func(args) {
 		partitionKeyLength: 0
 	}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
 
-	// Import mean_bin.tsv and fitted_mean_bin.tsv. Python writes
-	// `clonotypeKey, concentrationStr, concentrationAM, concentration, meanBin|fittedMeanBin`.
-	// Each file is imported twice with different axis configs (see R14 comment above):
-	//   - *Internal (3 axes incl. concentrationAM) → signalPf for own Graph Maker
-	//   - *Export  (2 axes, concentrationAM dropped) → exports.pf for downstream
-	internalConcAxes := [
+	// Single import per TSV. Python writes:
+	//   mean_bin.tsv:           (clonotypeKey, concentrationStr, meanBin)
+	//   fitted_mean_bin.tsv:    (clonotypeKey, concentrationStr, fittedMeanBin)
+	// The pcolumn resource resulting from each import is reused in both signalPf
+	// and exportPf — no dual-import, no hideDataFromGraphs hack needed because
+	// there is only one copy of each logical column.
+	concAxes := [
 		{ column: "clonotypeKey", spec: clonotypeAxisSpec },
-		{ column: "concentrationStr", spec: concStrAxisSpec },
-		{ column: "concentrationAM", spec: concAMAxisSpec }
-	]
-	exportConcAxes := [
-		{ column: "clonotypeKey", spec: clonotypeAxisSpec },
-		{ column: "concentrationStr", spec: concStrAxisSpec }
+		{ column: "concentrationStr", spec: concAxisSpec }
 	]
 
-	// Internal variants feed signalPf (3-axis view for own Graph Maker).
-	// Export variants feed exports.pf (2-axis view for downstream discovery) and
-	// carry pl7.app/hideDataFromGraphs so createPFrameForGraphs excludes them
-	// from this block's own pframe — otherwise both copies share name/valueType/
-	// domain/annotations, and findColumnBy resolves the y-source to the 2-axis
-	// export sibling, silently dropping the numeric-concentration x default.
-	meanBinInternalColSpec := {
+	meanBinColSpec := {
 		name: "pl7.app/vdj/meanBin",
 		valueType: "Double",
 		domain: { "pl7.app/block": blockId },
@@ -367,19 +332,7 @@ wf.body(func(args) {
 			"pl7.app/titeseq/facsCorrected": facsCorrected
 		}
 	}
-	meanBinExportColSpec := {
-		name: "pl7.app/vdj/meanBin",
-		valueType: "Double",
-		domain: { "pl7.app/block": blockId },
-		annotations: {
-			"pl7.app/label": meanBinLabel,
-			"pl7.app/isScore": "false",
-			"pl7.app/table/visibility": "hidden",
-			"pl7.app/titeseq/facsCorrected": facsCorrected,
-			"pl7.app/hideDataFromGraphs": "true"
-		}
-	}
-	fittedMeanBinInternalColSpec := {
+	fittedMeanBinColSpec := {
 		name: "pl7.app/vdj/fittedMeanBin",
 		valueType: "Double",
 		domain: { "pl7.app/block": blockId },
@@ -387,17 +340,6 @@ wf.body(func(args) {
 			"pl7.app/label": fittedMeanBinLabel,
 			"pl7.app/isScore": "false",
 			"pl7.app/table/visibility": "hidden"
-		}
-	}
-	fittedMeanBinExportColSpec := {
-		name: "pl7.app/vdj/fittedMeanBin",
-		valueType: "Double",
-		domain: { "pl7.app/block": blockId },
-		annotations: {
-			"pl7.app/label": fittedMeanBinLabel,
-			"pl7.app/isScore": "false",
-			"pl7.app/table/visibility": "hidden",
-			"pl7.app/hideDataFromGraphs": "true"
 		}
 	}
 
@@ -410,10 +352,8 @@ wf.body(func(args) {
 		}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
 	}
 
-	meanBinInternal := importSignal(fit.getFile("mean_bin.tsv"), "meanBin", meanBinInternalColSpec, internalConcAxes)
-	fittedMeanBinInternal := importSignal(fit.getFile("fitted_mean_bin.tsv"), "fittedMeanBin", fittedMeanBinInternalColSpec, internalConcAxes)
-	meanBinExport := importSignal(fit.getFile("mean_bin.tsv"), "meanBin", meanBinExportColSpec, exportConcAxes)
-	fittedMeanBinExport := importSignal(fit.getFile("fitted_mean_bin.tsv"), "fittedMeanBin", fittedMeanBinExportColSpec, exportConcAxes)
+	meanBinImported := importSignal(fit.getFile("mean_bin.tsv"), "meanBin", meanBinColSpec, concAxes)
+	fittedMeanBinImported := importSignal(fit.getFile("fitted_mean_bin.tsv"), "fittedMeanBin", fittedMeanBinColSpec, concAxes)
 
 	// Trace injection. `makeTrace` bundles the upstream abundance provenance
 	// with a self-descriptor; `trace.inject` rewrites only the small spec resources
@@ -440,15 +380,19 @@ wf.body(func(args) {
 	}
 
 	summaryPf := buildTracedPf([summaryImported], [])
-	signalPf := buildTracedPf([meanBinInternal, fittedMeanBinInternal], [])
-	// Single export bundle for Lead Selection discovery (R20, R21).
-	// Uses *Export variants to keep concentrationAM out of downstream views.
-	// kdPlotPosition / hillPlotPosition are internal sentinels for the Affinity vs
-	// Fit Quality scatter (nulls parked at max_conc*10 and -1.0 respectively); they
-	// would appear as spurious "Kd,app" / "Hill coefficient" siblings in downstream
-	// block column pickers, so we drop them from the export.
+	// signalPf carries the two concentration-axis pcolumns for this block's
+	// Titration Curves graph: meanBin (Y) and fittedMeanBin (curve overlay).
+	// X is bound to the shared concentration:String axis directly.
+	signalPf := buildTracedPf([meanBinImported, fittedMeanBinImported], [])
+	// Single export bundle for Lead Selection discovery (R20, R21). Reuses the
+	// same pcolumn resources from signalPf — no re-import, no CID-conflict
+	// risk. kdPlotPosition / hillPlotPosition are internal sentinels for the
+	// Affinity vs Fit Quality scatter (nulls parked at max_conc*10 and -1.0
+	// respectively); they would appear as spurious "Kd,app" / "Hill coefficient"
+	// siblings in downstream block column pickers, so we drop them from the
+	// export.
 	exportPf := buildTracedPf(
-		[summaryImported, meanBinExport, fittedMeanBinExport],
+		[summaryImported, meanBinImported, fittedMeanBinImported],
 		["kdPlotPosition", "hillPlotPosition"]
 	)
 

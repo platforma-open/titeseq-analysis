@@ -14,7 +14,6 @@ from constants import (
     COL_CONC_VAL,
     COL_READS,
     COL_SAMPLE,
-    MAX_CONCENTRATION_M,
 )
 
 
@@ -43,18 +42,20 @@ def validate_reads_schema(df: pl.DataFrame, has_bin: bool, has_antigen: bool) ->
 
 
 def validate_concentration_column(df: pl.DataFrame, has_bin: bool) -> list[str]:
-    """R2: concentrations must be finite non-negative floats within the attomolar-encodable range.
+    """R2: concentrations must be finite non-negative floats. Unit-agnostic.
 
-    Returns list of warning strings (e.g. 0 M control without bin assignment in bin mode;
-    R5 narrow-range warning when non-zero max/min spans less than one order of magnitude).
-    Raises InputValidationError on any value < 0, non-finite (NaN/Inf), or above
-    MAX_CONCENTRATION_M (int64 ceiling for attomolar encoding; see constants.py).
+    Per spec R2 the block treats concentration values as dimensionless floats —
+    no magnitude ceiling. The user's column may be in any unit (M, nM, µM, …).
+
+    Returns list of warning strings (e.g. 0 M control without bin assignment in
+    bin mode; R5 narrow-range warning when non-zero max/min spans less than one
+    order of magnitude). Raises InputValidationError on any value < 0 or
+    non-finite (NaN/Inf).
     """
     exprs = [
         (pl.col(COL_CONC_VAL) < 0).sum().alias("neg"),
         pl.col(COL_CONC_VAL).is_nan().sum().alias("nan"),
         pl.col(COL_CONC_VAL).is_infinite().sum().alias("inf"),
-        (pl.col(COL_CONC_VAL) > MAX_CONCENTRATION_M).sum().alias("over_max"),
     ]
     if has_bin:
         exprs.append(((pl.col(COL_CONC_VAL) == 0) & pl.col(COL_BIN).is_null()).sum().alias("null_bin_at_zero"))
@@ -66,15 +67,6 @@ def validate_concentration_column(df: pl.DataFrame, has_bin: bool) -> list[str]:
         raise InputValidationError(
             f"concentration contains non-finite values (NaN: {counts['nan']}, Inf: {counts['inf']}); "
             "downstream curve fitting requires finite concentrations"
-        )
-    if counts["over_max"] > 0:
-        offenders = (
-            df.filter(pl.col(COL_CONC_VAL) > MAX_CONCENTRATION_M)[COL_CONC_VAL].unique().sort(descending=True).to_list()
-        )
-        raise InputValidationError(
-            f"concentration exceeds {MAX_CONCENTRATION_M:.3g} M (attomolar-encoding ceiling); "
-            f"offending value(s): {offenders[:5]}. "
-            "TiteSeq concentrations are typically sub-µM — check the unit column and metadata entry."
         )
 
     warnings: list[str] = []
@@ -257,13 +249,14 @@ def validate_bin_concentration_grid(df: pl.DataFrame) -> list[str]:
 
 
 def canonicalize_concentration(df: pl.DataFrame) -> pl.DataFrame:
-    """Ensure both concentration axes present; preserve original string exactly (R14).
+    """Ensure both `concentrationStr` (canonical) and `concentration` (Float64) present (R14).
 
-    `concentrationStr` is the canonical internal join key — it must compare equal between
-    rows that came from the same upstream metadata value, even when float parsing would
-    introduce drift. Preserving the input string avoids float→string→float roundtrips.
-    The output PColumn axis is `concentrationAM` (Long), so `concentrationStr` is no longer
-    surfaced to Graph Maker and its lexicographic sortability is irrelevant.
+    `concentrationStr` carries the byte-exact upstream metadata value; it is what
+    becomes the `pl7.app/vdj/concentration` String axis in output PColumns. The
+    Tengo workflow's xsv.importFile wraps this column directly as a String axis
+    (no parse step). `concentration` is the Float64 we use internally for fit
+    arithmetic — never written to output, to avoid a float→string→float
+    roundtrip between Python and the workflow.
     """
     if COL_CONC_STR not in df.columns:
         df = df.with_columns(pl.col(COL_CONC_VAL).cast(pl.Utf8).alias(COL_CONC_STR))

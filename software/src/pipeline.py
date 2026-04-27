@@ -30,10 +30,8 @@ from constants import (
     COL_ANTIGEN,
     COL_BIN,
     COL_CLONOTYPE,
-    COL_CONC_AM,
     COL_CONC_STR,
     COL_CONC_VAL,
-    CONC_AM_SCALE,
     DEFAULT_PARAMS,
     FitParams,
 )
@@ -226,7 +224,6 @@ def _fit_all_clonotypes(
     # Phase 3 — integrate results.
     fitted_keys: list[np.ndarray] = []
     fitted_conc_strs: list[np.ndarray] = []
-    fitted_conc_vals: list[np.ndarray] = []
     fitted_y_hats: list[np.ndarray] = []
 
     for fit, (i, clonotype, cs, x) in zip(fits, contexts):
@@ -241,7 +238,6 @@ def _fit_all_clonotypes(
             k = x.shape[0]
             fitted_keys.append(np.full(k, clonotype, dtype=object))
             fitted_conc_strs.append(cs)
-            fitted_conc_vals.append(x)
             fitted_y_hats.append(fit.y_hat)
 
     per_clonotype = pl.DataFrame(
@@ -258,13 +254,10 @@ def _fit_all_clonotypes(
     )
 
     if fitted_keys:
-        conc_vals = np.concatenate(fitted_conc_vals)
         fitted = pl.DataFrame(
             {
                 COL_CLONOTYPE: np.concatenate(fitted_keys),
                 COL_CONC_STR: np.concatenate(fitted_conc_strs),
-                COL_CONC_AM: np.rint(conc_vals * CONC_AM_SCALE).astype(np.int64),
-                COL_CONC_VAL: conc_vals,
                 "fittedMeanBin": np.concatenate(fitted_y_hats),
             },
             schema=FITTED_MEAN_BIN_SCHEMA,

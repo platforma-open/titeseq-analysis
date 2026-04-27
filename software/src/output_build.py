@@ -1,14 +1,19 @@
 """R13/R14/R14b: assemble per-clonotype and per-(clonotype, concentration) output frames.
 
-All axis joins are keyed on canonical concentration strings (R14) to prevent
-float-serialization drift.
+Output TSVs carry only the canonical `concentrationStr` column for the
+concentration axis (R14: parse-once invariant). The Tengo workflow wraps that
+column directly as a String axis on the output PColumns. See
+`docs/investigations/concentration-axis-spec-realignment.md` for the spec
+deviation rationale (spec calls for Float axis; SDK gates axis types to
+Int|Long|String — Graph Maker renders the String axis categorically, ordered
+by parsed numeric value).
 """
 
 from __future__ import annotations
 
 import polars as pl
 
-from constants import COL_CLONOTYPE, COL_CONC_AM, COL_CONC_STR, COL_CONC_VAL, CONC_AM_SCALE
+from constants import COL_CLONOTYPE, COL_CONC_STR, COL_CONC_VAL
 
 PER_CLONOTYPE_SCHEMA: dict[str, pl.DataType] = {
     COL_CLONOTYPE: pl.Utf8,
@@ -58,18 +63,15 @@ def add_diagnostic_plot_columns(frame: pl.DataFrame, max_concentration: float) -
 def build_mean_bin_frame(signal_frame: pl.DataFrame) -> pl.DataFrame:
     """R14: per-(clonotype, concentration) observed signal (mean_bin or frequency).
 
-    c=0 rows are excluded — they are baseline fixers, not output values.
-    Output columns: clonotypeKey, concentrationStr, concentrationAM, concentration, meanBin.
-    The workflow declares both concentrationStr (String, canonical R14 join key)
-    and concentrationAM (attomolar Int64, numeric sibling for Graph Maker log-scale)
-    as axes of the output PFrame; they are 1:1 correlated.
+    c=0 rows are excluded — they are baseline fixers, not output values, and on a
+    log-scale axis log(0) = −∞ would break Graph Maker rendering anyway.
+    Output columns: clonotypeKey, concentrationStr, meanBin. The workflow wraps
+    concentrationStr as the canonical String axis directly.
     """
     return signal_frame.filter(pl.col(COL_CONC_VAL) != 0).select(
         [
             COL_CLONOTYPE,
             COL_CONC_STR,
-            (pl.col(COL_CONC_VAL) * CONC_AM_SCALE).round().cast(pl.Int64).alias(COL_CONC_AM),
-            COL_CONC_VAL,
             pl.col("signal").alias("meanBin"),
         ]
     )
@@ -78,7 +80,5 @@ def build_mean_bin_frame(signal_frame: pl.DataFrame) -> pl.DataFrame:
 FITTED_MEAN_BIN_SCHEMA: dict[str, pl.DataType] = {
     COL_CLONOTYPE: pl.Utf8,
     COL_CONC_STR: pl.Utf8,
-    COL_CONC_AM: pl.Int64,
-    COL_CONC_VAL: pl.Float64,
     "fittedMeanBin": pl.Float64,
 }

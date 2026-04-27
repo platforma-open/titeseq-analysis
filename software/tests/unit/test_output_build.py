@@ -5,7 +5,6 @@ from __future__ import annotations
 import polars as pl
 import pytest
 
-from constants import CONC_AM_SCALE
 from output_build import (
     PER_CLONOTYPE_SCHEMA,
     add_diagnostic_plot_columns,
@@ -103,10 +102,8 @@ class TestAddDiagnosticPlotColumns:
 
 
 class TestMeanBinFrame:
+    # R14 mandates the c=0 sample is dropped from output (log(0) = -inf breaks the graph).
     def test_c0_excluded(self):
-        # TiteSeq assay range is sub-µM; use 100 nM so the concentration stays
-        # well below the attomolar-encoding ceiling (~9.22 M) enforced by the
-        # output-build Int64 cast and the R2 validation guard.
         signal = pl.DataFrame(
             [
                 {"clonotypeKey": "A", "concentrationStr": "0", "concentration": 0.0, "signal": 1.2},
@@ -118,50 +115,25 @@ class TestMeanBinFrame:
         assert out["concentrationStr"][0] == "1e-7"
         assert out["meanBin"][0] == 2.5
 
-    def test_preserves_canonical_string(self):
+    # Spec-realigned schema — clonotypeKey + concentrationStr (canonical String axis
+    # key) + meanBin. No more concentrationAM, no Float concentration column.
+    def test_output_columns_match_spec(self):
         signal = pl.DataFrame(
-            [
-                {"clonotypeKey": "A", "concentrationStr": "1e-6", "concentration": 1e-6, "signal": 2.0},
-            ]
+            [{"clonotypeKey": "A", "concentrationStr": "1e-7", "concentration": 1e-7, "signal": 2.0}]
         )
         out = build_mean_bin_frame(signal)
-        assert out["concentrationStr"][0] == "1e-6"
+        assert out.columns == ["clonotypeKey", "concentrationStr", "meanBin"]
 
-    def test_equivalent_strings_share_concentrationAM(self):
-        # R14: two different canonical strings that parse to the same float MUST yield
-        # the same attomolar integer key, so the numeric sibling axis cannot drift away
-        # from the canonical string axis for equal concentrations.
-        signal = pl.DataFrame(
-            [
-                {"clonotypeKey": "A", "concentrationStr": "1e-7", "concentration": 1e-7, "signal": 2.0},
-                {"clonotypeKey": "B", "concentrationStr": "0.0000001", "concentration": 1e-7, "signal": 3.0},
-            ]
-        )
-        out = build_mean_bin_frame(signal)
-        assert out["concentrationAM"].to_list() == [100_000_000_000, 100_000_000_000]
-        # Canonical strings are preserved distinct even though the numeric axis matches.
-        assert out["concentrationStr"].to_list() == ["1e-7", "0.0000001"]
-
+    # R14: the canonical string flows through to the output unchanged. The Tengo
+    # workflow wraps it directly as a String axis on the meanBin PColumn; if it
+    # drifts here, the axis keys mismatch downstream.
     @pytest.mark.parametrize(
-        "conc_str, conc_val",
-        [
-            ("1e-12", 1e-12),
-            ("1e-10", 1e-10),
-            ("1e-9", 1e-9),
-            ("2.5e-9", 2.5e-9),
-            ("5e-8", 5e-8),
-            ("1e-7", 1e-7),
-            ("0.0000001", 1e-7),
-            ("1e-6", 1e-6),
-        ],
+        "conc_str",
+        ["1e-12", "1e-10", "1e-9", "2.5e-9", "5e-8", "1e-7", "0.0000001", "1e-6"],
     )
-    def test_concentrationAM_matches_canonical_string(self, conc_str, conc_val):
-        # R14 invariant: concentrationAM == round(float(concentrationStr) * CONC_AM_SCALE)
-        # for every row. If this drifts, a downstream join keying off either axis
-        # loses rows. The cases below span 1 pM to 1 µM in both exponent and decimal
-        # string forms.
+    def test_canonical_string_preserved_byte_for_byte(self, conc_str):
         signal = pl.DataFrame(
-            [{"clonotypeKey": "A", "concentrationStr": conc_str, "concentration": conc_val, "signal": 1.0}]
+            [{"clonotypeKey": "A", "concentrationStr": conc_str, "concentration": float(conc_str), "signal": 1.0}]
         )
         out = build_mean_bin_frame(signal)
-        assert out["concentrationAM"][0] == round(float(conc_str) * CONC_AM_SCALE)
+        assert out["concentrationStr"][0] == conc_str

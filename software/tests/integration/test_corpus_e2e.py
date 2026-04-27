@@ -216,9 +216,11 @@ class TestFrameInvariants:
     """Structural invariants on the output frames."""
 
     # fitted_mean_bin is the Hill-curve frame — defined only for c > 0.
+    # Output schema carries only the canonical concentrationStr column; "0" / "0.0"
+    # are the canonical zero representations.
     def test_fitted_mean_bin_excludes_c0(self, bin_outputs):
         fitted = bin_outputs["fitted_mean_bin"]
-        assert fitted.filter(pl.col("concentration") == 0.0).height == 0
+        assert fitted.filter(pl.col("concentrationStr").is_in(["0", "0.0"])).height == 0
 
     def test_per_clonotype_row_count(self, bin_outputs):
         per = bin_outputs["per_clonotype"]
