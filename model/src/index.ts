@@ -43,7 +43,6 @@ export type BlockArgs = {
 
 export type BlockData = BlockArgs & {
   tableState: PlDataTableStateV2;
-  meanBinTableState: PlDataTableStateV2;
   graphStateTitrationCurves: GraphMakerState;
   graphStateKDHistogram: GraphMakerState;
   graphStateAffinityVsFit: GraphMakerState;
@@ -136,7 +135,6 @@ const dataModel = new DataModelBuilder().from<BlockData>("v1").init(() => ({
   defaultBlockLabel: "Tite-Seq Analysis",
   customBlockLabel: "",
   tableState: createPlDataTableStateV2(),
-  meanBinTableState: createPlDataTableStateV2(),
   graphStateTitrationCurves: {
     title: "",
     template: "dots",
@@ -565,15 +563,27 @@ export const model = BlockModelV3.create(dataModel)
   .output("isRunning", (ctx) => ctx.outputs?.getIsReadyOrError() === false)
 
   .outputWithStatus("summaryTable", (ctx) => {
-    const pCols = ctx.outputs?.resolve("summaryPf")?.getPColumns();
-    if (pCols === undefined) return undefined;
-    return createPlDataTableV2(ctx, pCols, ctx.data.tableState);
-  })
-
-  .outputWithStatus("meanBinTable", (ctx) => {
-    const pCols = ctx.outputs?.resolve("signalPf")?.getPColumns();
-    if (pCols === undefined) return undefined;
-    return createPlDataTableV2(ctx, pCols, ctx.data.meanBinTableState);
+    const summaryCols = ctx.outputs?.resolve("summaryPf")?.getPColumns();
+    if (summaryCols === undefined) return undefined;
+    const signalCols = ctx.outputs?.resolve("signalPf")?.getPColumns() ?? [];
+    // Including signalCols broadcasts each per-clonotype summary row across
+    // the concentration axis (one row per (clonotype, concentration)) so the
+    // Export button on this table dumps all data we have — Kd, affinity
+    // class, R², Hill coefficient, plus per-concentration meanBin and
+    // fittedMeanBin. signalCols carry pl7.app/table/visibility: "hidden" to
+    // keep them out of downstream blocks' pickers; override that here so
+    // users see (and export) the actual values.
+    const visibleSignal = signalCols.map((c) => ({
+      ...c,
+      spec: {
+        ...c.spec,
+        annotations: {
+          ...c.spec.annotations,
+          "pl7.app/table/visibility": "default",
+        },
+      },
+    }));
+    return createPlDataTableV2(ctx, [...summaryCols, ...visibleSignal], ctx.data.tableState);
   })
 
   .outputWithStatus("titrationCurvesPf", (ctx): PFrameHandle | undefined => {
@@ -627,7 +637,6 @@ export const model = BlockModelV3.create(dataModel)
 
   .sections((_ctx) => [
     { type: "link", href: "/", label: "Table" },
-    { type: "link", href: "/mean-bin-data", label: "Mean Bin Data" },
     { type: "link", href: "/titration-curves", label: "Titration Curves" },
     { type: "link", href: "/kd-distribution", label: "Kd Distribution" },
     { type: "link", href: "/affinity-vs-fit", label: "Affinity vs Fit Quality" },
