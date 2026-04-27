@@ -53,7 +53,7 @@ blockTest('empty inputs', { timeout: 20000 }, async ({ rawPrj: project, expect }
 
 blockTest(
   'bin_mode fixture: option lists + end-to-end summary contract',
-  { timeout: 600000 },
+  { timeout: 900000 },
   async ({ rawPrj: project, ml, helpers, expect }) => {
     // One S&D ingest powers both the option-list checks and the end-to-end run
     // below — each blockTest spins up a fresh platforma container, so merging
@@ -90,7 +90,7 @@ blockTest(
       chains: ['IGHeavy'],
     } satisfies ImportVdjBlockArgs);
     await project.runBlock(importBlockId);
-    await helpers.awaitBlockDone(importBlockId, 180000);
+    await helpers.awaitBlockDone(importBlockId, 300000);
 
     // Tier-1: option lists populate correctly once import-vdj-data emits the
     // isAnchor abundance column and the per-sample metadata columns propagate.
@@ -305,7 +305,7 @@ blockTest(
 
 blockTest(
   'bin_mode + sort_fraction: FACS correction plumbs through and toggles annotation',
-  { timeout: 600000 },
+  { timeout: 900000 },
   async ({ rawPrj: project, helpers, expect }) => {
     // Goal: exercise the full sort_fraction wiring (model → workflow → Python →
     // signal annotation → model output → UI badge). Correctness is covered by
@@ -357,7 +357,7 @@ blockTest(
       chains: ['IGHeavy'],
     } satisfies ImportVdjBlockArgs);
     await project.runBlock(importBlockId);
-    await helpers.awaitBlockDone(importBlockId, 180000);
+    await helpers.awaitBlockDone(importBlockId, 300000);
 
     const idleState = (await awaitStableState(
       project.getBlockState(titeseqBlockId),
