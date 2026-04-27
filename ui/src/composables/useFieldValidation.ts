@@ -1,23 +1,19 @@
-import type { ValidationIssue } from "@platforma-open/platforma-open.titeseq-analysis.model";
 import { computed } from "vue";
 import { useApp } from "../app";
 
-// Single source of truth for value-based field validation. Lives in the UI
-// layer so error messages update synchronously as the user types — the model's
-// validationWarnings output also emits these but lags behind the
-// mutation→server→patch round-trip, which made the page-level alert appear
-// "stuck" after entering a valid value.
+// Per-field reactive error messages bound to each PlNumberField's
+// `:error-message` prop. Inline display only — the SDK's PlNumberField
+// renders the message under the input and applies a red border, so we no
+// longer aggregate these into a page-level alert. Spec-based validation
+// (concentration column label, antigen/target pairing, sort fraction without
+// bin) still flows through the model's validationWarnings output and is
+// rendered as a page alert in TiteseqPage.
 //
 // Each field returns at most one consolidated error message describing the
 // full valid range (e.g. "Must be between 0 and 1, and ≥ R² threshold (Failed)"
 // rather than separate "below 0" / "above 1" / "below failed" alerts). For
-// out-of-range numbers PlNumberField will display this message; for typed
-// non-numeric input we leave errorMessage undefined so PlNumberField's own
-// "Value is not a number" parse error surfaces.
-//
-// The model's validationWarnings output is still authoritative for spec-based
-// checks (concentration column label, antigen/target pairing) that need
-// ctx.resultPool; TiteseqPage merges both so the user sees everything.
+// typed non-numeric input we leave errorMessage undefined so PlNumberField's
+// own "Value is not a number" parse error surfaces.
 
 const REQUIRED = "Value is required";
 
@@ -84,8 +80,6 @@ const validateNonNeg = (v: number | undefined | null): string | undefined => {
 export function useFieldValidation() {
   const app = useApp();
 
-  const isBinMode = computed(() => app.model.data.binColumnRef !== undefined);
-
   // Per-field reactive errors. Each computed produces at most one message —
   // either "Value is required" (when undefined/NaN) or a single consolidated
   // bounds message that covers every range/cross-field violation.
@@ -133,36 +127,6 @@ export function useFieldValidation() {
   );
   const hookMinReadsError = computed(() => validateInteger(app.model.data.hookEffectMinReads, 0));
 
-  // Aggregated page-level alerts. One issue per field at most — the
-  // consolidated message already includes any cross-field constraint, so
-  // r2Failed > r2Good produces alerts on BOTH r2 fields but no separate
-  // "Failed must be ≤ Good" entry.
-  const warnings = computed<ValidationIssue[]>(() => {
-    const issues: ValidationIssue[] = [];
-
-    const fieldChecks: Array<[string, string | undefined]> = [
-      ["Min reads per concentration", minReadsError.value],
-      ["Min concentration points", minConcPointsError.value],
-      ["R² threshold (Good)", r2GoodError.value],
-      ["R² threshold (Failed)", r2FailedError.value],
-      ["Hill coefficient — min", nMinError.value],
-      ["Hill coefficient — max", nMaxError.value],
-      isBinMode.value
-        ? ["Hook effect signal-drop threshold (bin mode)", hookThresholdBinError.value]
-        : ["Hook effect signal-drop threshold (frequency mode)", hookThresholdNoBinError.value],
-      ["Min reads for hook check", hookMinReadsError.value],
-    ];
-
-    for (const [label, err] of fieldChecks) {
-      if (err) {
-        const message = err === REQUIRED ? `${label} is required.` : `${label}: ${err}.`;
-        issues.push({ severity: "error", message });
-      }
-    }
-
-    return issues;
-  });
-
   return {
     minReadsError,
     minConcPointsError,
@@ -173,6 +137,5 @@ export function useFieldValidation() {
     hookThresholdBinError,
     hookThresholdNoBinError,
     hookMinReadsError,
-    warnings,
   };
 }

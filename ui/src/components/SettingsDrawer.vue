@@ -26,7 +26,6 @@ const {
   hookThresholdBinError,
   hookThresholdNoBinError,
   hookMinReadsError,
-  warnings: localWarnings,
 } = useFieldValidation();
 
 watch(
@@ -36,19 +35,10 @@ watch(
   },
 );
 
-// Merge synchronous local-data validation with server-side warnings (e.g.
-// concentration column label spec checks that need ctx.resultPool). Dedupe
-// by message so the same issue doesn't show twice during the brief moment
-// after a mutation when both layers report it.
-const warnings = computed(() => {
-  const serverWarnings = app.model.outputs.validationWarnings ?? [];
-  const seen = new Set<string>();
-  return [...localWarnings.value, ...serverWarnings].filter((w) => {
-    if (seen.has(w.message)) return false;
-    seen.add(w.message);
-    return true;
-  });
-});
+// Page-level alerts for spec-based checks only (concentration column label,
+// antigen column without target, sort fraction without bin column).
+// Numeric-field bound violations are shown inline on each PlNumberField.
+const warnings = computed(() => app.model.outputs.validationWarnings ?? []);
 
 const binMode = computed(() => app.model.outputs.binMode === true);
 
