@@ -9,6 +9,7 @@ xsv := import("@platforma-sdk/workflow-tengo:pframes.xsv")
 pframes := import("@platforma-sdk/workflow-tengo:pframes")
 pSpec := import("@platforma-sdk/workflow-tengo:pframes.spec")
 canonical := import("@platforma-sdk/workflow-tengo:canonical")
+maps := import("@platforma-sdk/workflow-tengo:maps")
 
 fitCurvesSw := assets.importSoftware("@platforma-open/platforma-open.titeseq-analysis.software:fit-curves")
 
@@ -400,9 +401,16 @@ wf.body(func(args) {
 		excluded := {}
 		for k in excludeKeys { excluded[k] = true }
 		pfb := pframes.pFrameBuilder()
+		// Sorted iteration: pfb.add() call order propagates into the resulting
+		// PFrame's resource CID. Tengo's `for k, v in map` is non-deterministic,
+		// so two renders of the same workflow produce different CIDs and the
+		// backend rejects with CIDConflictError. maps.getKeys returns sorted
+		// keys. See platforma-open/miltenyi-tcr-bcr-clonotyping#13 for the same
+		// fix applied across that block.
 		for src in sources {
-			for k, v in src {
+			for k in maps.getKeys(src) {
 				if excluded[k] { continue }
+				v := src[k]
 				pfb.add(k, trace.inject(v.spec), v.data)
 			}
 		}
