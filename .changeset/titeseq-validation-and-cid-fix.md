@@ -1,5 +1,6 @@
 ---
 "@platforma-open/platforma-open.titeseq-analysis.workflow": minor
+"@platforma-open/platforma-open.titeseq-analysis.software": minor
 "@platforma-open/platforma-open.titeseq-analysis.model": minor
 "@platforma-open/platforma-open.titeseq-analysis.ui": minor
 "@platforma-open/platforma-open.titeseq-analysis": minor
