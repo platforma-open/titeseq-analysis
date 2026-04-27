@@ -25,14 +25,15 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
   );
   if (!clonotypeAxis) return undefined;
 
-  // X is bound to the concentration:String axis directly. Graph Maker's
-  // additionalCurves slot only un-greys when X and Y both resolve to axis
-  // specs (pf-plots checkSourceBySpec gate). The string axis renders
-  // categorically, ordered by parsed numeric value — see
-  // docs/investigations/concentration-axis-spec-realignment.md for the
-  // log-scale tradeoff.
-  const concAxis = meanBin.spec.axesSpec.find((a) => a.name === "pl7.app/vdj/concentration");
-  if (!concAxis) return undefined;
+  // X is bound to the concentrationValue Double sidecar PColumn so Graph
+  // Maker can render a true log-scale numeric X. Joins to meanBin /
+  // fittedMeanBin on the shared concentration:String axis. Requires the
+  // pf-plots fix that allows PColumn-bound X with the additionalCurves
+  // slot. See docs/investigations/concentration-axis-spec-realignment.md.
+  const concValue = pCols.find(
+    (p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/concentrationValue",
+  );
+  if (!concValue) return undefined;
 
   const affinityClass = pCols.find(
     (p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/affinityClass",
@@ -42,7 +43,7 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
   );
 
   const options: PredefinedGraphOption<"scatterplot">[] = [
-    { inputName: "x", selectedSource: concAxis },
+    { inputName: "x", selectedSource: concValue.spec },
     { inputName: "y", selectedSource: meanBin.spec },
     { inputName: "facetBy", selectedSource: clonotypeAxis },
     { inputName: "grouping", selectedSource: clonotypeAxis },

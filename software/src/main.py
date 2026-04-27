@@ -29,6 +29,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out-per-clonotype", required=True)
     parser.add_argument("--out-mean-bin", required=True)
     parser.add_argument("--out-fitted-mean-bin", required=True)
+    parser.add_argument("--out-concentration-value", required=True)
     parser.add_argument("--params", default=None, help="path to params JSON (optional)")
     parser.add_argument("--target-antigen", default=None)
     parser.add_argument("--antigen-column-ref", default=None)
@@ -60,6 +61,7 @@ def main(argv: list[str] | None = None) -> int:
     _write_frame(outputs["per_clonotype"], args.out_per_clonotype)
     _write_frame(outputs["mean_bin"], args.out_mean_bin)
     _write_frame(outputs["fitted_mean_bin"], args.out_fitted_mean_bin)
+    _write_frame(outputs["concentration_value"], args.out_concentration_value)
     log("CLI done")
     return 0
 

@@ -103,9 +103,11 @@ wf.body(func(args) {
 		arg("--out-per-clonotype").arg("per_clonotype.tsv").
 		arg("--out-mean-bin").arg("mean_bin.tsv").
 		arg("--out-fitted-mean-bin").arg("fitted_mean_bin.tsv").
+		arg("--out-concentration-value").arg("concentration_value.tsv").
 		saveFile("per_clonotype.tsv").
 		saveFile("mean_bin.tsv").
 		saveFile("fitted_mean_bin.tsv").
+		saveFile("concentration_value.tsv").
 		saveStdoutStream()
 
 	if hasAntigen {
@@ -126,14 +128,13 @@ wf.body(func(args) {
 
 	// Concentration axis: the canonical String. Spec calls for Float
 	// (pcolumn-spec.md:119, R14) but the SDK gates axis types to Int|Long|String
-	// (core/platforma/sdk/workflow-tengo/src/pt/util.lib.tengo:352). Graph Maker's
-	// scatter binds X to this String axis directly — the additionalCurves slot
-	// requires both X and Y to resolve to axis specs (pf-plots checkSourceBySpec),
-	// so we accept categorical X-spacing in exchange for the Hill curve overlay.
-	// See docs/investigations/concentration-axis-spec-realignment.md for the
-	// deviation rationale. R14 canonical-string discipline preserved: this axis IS
-	// the join key, byte-identical across every row from upstream metadata through
-	// Python and back.
+	// (core/platforma/sdk/workflow-tengo/src/pt/util.lib.tengo:352). Graph Maker
+	// renders the scatter X from the concentrationValue Double sidecar PColumn
+	// (joined on this shared String axis), so the X axis is true log-scale at
+	// the user's input concentrations. R14 canonical-string discipline preserved:
+	// this axis IS the join key, byte-identical across every row from upstream
+	// metadata through Python and back. See
+	// docs/investigations/concentration-axis-spec-realignment.md.
 	concAxisSpec := {
 		name: "pl7.app/vdj/concentration",
 		type: "String",
@@ -313,6 +314,7 @@ wf.body(func(args) {
 	// Single import per TSV. Python writes:
 	//   mean_bin.tsv:           (clonotypeKey, concentrationStr, meanBin)
 	//   fitted_mean_bin.tsv:    (clonotypeKey, concentrationStr, fittedMeanBin)
+	//   concentration_value.tsv: (concentrationStr, concentration)  ← Double sidecar
 	// The pcolumn resource resulting from each import is reused in both signalPf
 	// and exportPf — no dual-import, no hideDataFromGraphs hack needed because
 	// there is only one copy of each logical column.
@@ -342,6 +344,28 @@ wf.body(func(args) {
 			"pl7.app/table/visibility": "hidden"
 		}
 	}
+	// concentrationValue: numeric source for log-scale graph X-axis. Joins
+	// against meanBin / fittedMeanBin on the shared concentrationStr axis. The
+	// concentration column label propagates the upstream metadata label so the
+	// graph's X-axis title reflects the user's column.
+	concValueLabel := "Concentration"
+	if unitLabel != "" {
+		concValueLabel = unitLabel
+	}
+	concValueAnnotations := {
+		"pl7.app/label": concValueLabel,
+		"pl7.app/isScore": "false",
+		"pl7.app/table/visibility": "hidden"
+	}
+	if unitLabel != "" {
+		concValueAnnotations["pl7.app/unit"] = unitLabel
+	}
+	concValueColSpec := {
+		name: "pl7.app/vdj/concentrationValue",
+		valueType: "Double",
+		domain: { "pl7.app/block": blockId },
+		annotations: concValueAnnotations
+	}
 
 	importSignal := func(file, valueColumn, valueSpec, axes) {
 		return xsv.importFile(file, "tsv", {
@@ -354,6 +378,12 @@ wf.body(func(args) {
 
 	meanBinImported := importSignal(fit.getFile("mean_bin.tsv"), "meanBin", meanBinColSpec, concAxes)
 	fittedMeanBinImported := importSignal(fit.getFile("fitted_mean_bin.tsv"), "fittedMeanBin", fittedMeanBinColSpec, concAxes)
+	concValueImported := importSignal(
+		fit.getFile("concentration_value.tsv"),
+		"concentration",
+		concValueColSpec,
+		[{ column: "concentrationStr", spec: concAxisSpec }]
+	)
 
 	// Trace injection. `makeTrace` bundles the upstream abundance provenance
 	// with a self-descriptor; `trace.inject` rewrites only the small spec resources
@@ -380,10 +410,10 @@ wf.body(func(args) {
 	}
 
 	summaryPf := buildTracedPf([summaryImported], [])
-	// signalPf carries the two concentration-axis pcolumns for this block's
-	// Titration Curves graph: meanBin (Y) and fittedMeanBin (curve overlay).
-	// X is bound to the shared concentration:String axis directly.
-	signalPf := buildTracedPf([meanBinImported, fittedMeanBinImported], [])
+	// signalPf carries the three concentration-axis pcolumns for this block's
+	// Titration Curves graph: meanBin (Y), fittedMeanBin (curve overlay), and
+	// concentrationValue (numeric X source for log-scale rendering).
+	signalPf := buildTracedPf([meanBinImported, fittedMeanBinImported, concValueImported], [])
 	// Single export bundle for Lead Selection discovery (R20, R21). Reuses the
 	// same pcolumn resources from signalPf — no re-import, no CID-conflict
 	// risk. kdPlotPosition / hillPlotPosition are internal sentinels for the
@@ -392,7 +422,7 @@ wf.body(func(args) {
 	// siblings in downstream block column pickers, so we drop them from the
 	// export.
 	exportPf := buildTracedPf(
-		[summaryImported, meanBinImported, fittedMeanBinImported],
+		[summaryImported, meanBinImported, fittedMeanBinImported, concValueImported],
 		["kdPlotPosition", "hillPlotPosition"]
 	)
 

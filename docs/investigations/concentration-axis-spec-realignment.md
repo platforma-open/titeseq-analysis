@@ -86,76 +86,59 @@ this pattern introduced.
 
 ## What this branch ships instead
 
-A **String axis** as the canonical concentration axis:
+A **String axis + Double sidecar PColumn**:
 
 ```
 meanBin            axes: [clonotypeKey, concentration:String]   valueType: Double
 fittedMeanBin      axes: [clonotypeKey, concentration:String]   valueType: Double
+concentrationValue axes: [concentration:String]                 valueType: Double  ← new
 ```
 
 - The String axis IS the canonical join key. R14's parse-once discipline is
   honored at the byte level — the Tengo workflow wraps `concentrationStr`
   directly as a String axis on the output PColumns; no float parse, no
   re-serialization.
-- Graph Maker binds X to the `concentration:String` axis directly. The
-  Titration Curves scatter renders the X-axis categorically, ordered by
-  parsed numeric value (Graph Maker's String-axis sort is numeric-aware).
+- `concentrationValue` is a per-concentration Double PColumn that provides
+  the numeric source for the Titration Curves graph X-axis. Graph Maker plots
+  `y = meanBin` against `x = concentrationValue`, joined on the shared
+  `concentration:String` axis.
 - Single import per TSV. The same pcolumn resource is reused in `signalPf` and
   `exportPf` — no `*Internal`/`*Export` variants, no `hideDataFromGraphs` hack,
   closes the dual-import CID-conflict pattern.
 - No `× 1e18` anywhere. No `MAX_CONCENTRATION_M` ceiling. The pipeline is
   unit-agnostic — any input unit (M, nM, µM, …) works.
 
-### Tradeoff: categorical X-spacing vs. additionalCurves
+### pf-plots `additionalCurves` constraint
 
-An earlier iteration of this branch added a `concentrationValue` Double sidecar
-PColumn so X could be bound to a numeric source and rendered on a true log
-scale. That pattern broke the `additionalCurves` slot in Graph Maker's
-scatter chart: `pf-plots@1.2.0`'s `checkSourceBySpec` gate requires both X and
-Y to resolve to **axis specs**, and silently greys out additional curves when
-either one is bound to a PColumn spec. With X bound to a PColumn, the Hill
-curve overlay was unreachable.
-
-The fix on the block side: bind X to the `concentration:String` axis directly
-and drop the sidecar. We accept categorical (equal-width) X-tick spacing
-instead of true log-scale spacing in exchange for the curve overlay. Tick
-labels still render at the user's input concentration values (`5e-6`, `1e-6`,
-…), so visually a user reads the same x positions — only the spacing between
-them changes.
-
-The proper fix lives in the SDK / pf-plots: see
-`docs/investigations/sdk-pr-additional-curves-pcolumn-x.md` for the planned
-upstream PR. When that ships, this block can re-introduce the sidecar
-PColumn for true log spacing.
+`pf-plots@1.2.0`'s `checkSourceBySpec` gate originally required both X and Y
+to resolve to **axis specs** for the `additionalCurves` slot to un-grey, which
+blocked PColumn-bound X. The follow-up branch on `core/visualizations`
+(`MILAB-6018`-adjacent) widens that gate to accept PColumn sources for X. This
+block targets the fixed pf-plots; with the older 1.2.0 the curve overlay
+greys out (the fallback is binding X to the String axis directly and dropping
+the sidecar — see git history for that variant). See
+`docs/investigations/sdk-pr-additional-curves-pcolumn-x.md` for the upstream
+fix detail.
 
 ## Spec alignment scorecard
 
 | Spec requirement | Prior implementation | This branch |
 |--|--|--|
 | R2: "values are dimensionless floats" | violated (× 1e18 = molar assumption) | honored — no unit assumption |
-| R14: `axes [clonotypeKey][concentration:Float]` | unimplementable in SDK | closest available — `[clonotypeKey][concentration:String]` |
+| R14: `axes [clonotypeKey][concentration:Float]` | unimplementable in SDK | closest available — `[clonotypeKey][concentration:String]` + Double sidecar PColumn |
 | R14: parse-once canonical string preservation | preserved (parallel `concentrationStr` axis) | preserved — String axis IS the canonical key |
-| `pcolumn-spec.md:119` "Float type to support log-scale rendering" | Long aM (workaround) | partial — categorical X-axis ordered by numeric value, not true log spacing (blocked on `additionalCurves` SDK bug; see `sdk-pr-additional-curves-pcolumn-x.md`) |
-| R15: "x = concentration (log scale)" | renders aM ticks (`10⁶…10¹²`) | renders user's input values directly, categorical spacing |
+| `pcolumn-spec.md:119` "Float type to support log-scale rendering" | Long aM (workaround) | Double sidecar PColumn provides numeric source |
+| R15: "x = concentration (log scale)" | renders aM ticks (`10⁶…10¹²`) | renders user's input values directly |
 | R2: Kd's `pl7.app/unit` annotation from concentration column label | works | unchanged |
 | Misleading `MAX_CONCENTRATION_M` rejection | present | gone |
-| Hill curve overlay (`additionalCurves`) | works | works (depends on X binding to axis) |
+| Hill curve overlay (`additionalCurves`) | works | works (requires the pf-plots fix that accepts PColumn-bound X) |
 
 ## Forward path
 
-Two upstream gaps keep this block off the literal spec:
-
-1. **Axis-type regex.** A future SDK PR widening axis types to include
-   `Float | Double` would make the spec literally implementable, at which
-   point this block could put floats on the axis directly and drop the
-   String-axis workaround.
-2. **`additionalCurves` PColumn-X support.** The pf-plots
-   `checkSourceBySpec` gate currently rejects PColumn specs as the X source
-   for the additionalCurves overlay slot, even though Graph Maker handles
-   PColumn-bound X correctly elsewhere. Once the gate accepts PColumn
-   sources, this block can re-introduce a Double sidecar PColumn alongside
-   the String axis to get true log-scale X spacing without losing the Hill
-   curve overlay. See `docs/investigations/sdk-pr-additional-curves-pcolumn-x.md`.
+The remaining upstream gap is the axis-type regex. A future SDK PR widening
+axis types to include `Float | Double` would make the spec literally
+implementable, at which point this block could put floats on the axis
+directly and drop the `concentrationValue` sidecar.
 
 Per the team's spec-doc workflow (memory `feedback_spec_docs.md`: do not edit
 spec docs), the correction lives here — code comments at the deviation site
@@ -163,15 +146,16 @@ spec docs), the correction lives here — code comments at the deviation site
 
 ## References
 
-- Workflow change: `workflow/src/main.tpl.tengo` (`concAxisSpec`, single-import
-  pattern).
-- Python pipeline: `software/src/output_build.py` (`build_mean_bin_frame` —
-  outputs canonical `concentrationStr` only).
-- UI: `ui/src/pages/TitrationCurvesPage.vue` (X bound to the
-  `concentration:String` axis).
-- SDK follow-up: `docs/investigations/sdk-pr-additional-curves-pcolumn-x.md`
-  (proposes the pf-plots fix that would let X bind to a Double sidecar
-  PColumn while keeping the curve overlay — would re-enable true log-scale
-  X spacing here).
+- Workflow change: `workflow/src/main.tpl.tengo` (`concAxisSpec`,
+  single-import pattern, `concValueImported`).
+- Python pipeline: `software/src/output_build.py`
+  (`build_concentration_value_frame`), `software/src/pipeline.py` (output
+  dict includes `concentration_value`), `software/src/main.py`
+  (`--out-concentration-value` CLI arg).
+- UI: `ui/src/pages/TitrationCurvesPage.vue` (X-axis source uses
+  `concentrationValue` PColumn spec).
+- SDK dependency: `docs/investigations/sdk-pr-additional-curves-pcolumn-x.md`
+  (the pf-plots fix that lets X bind to a Double PColumn while keeping the
+  curve overlay).
 - Earlier related fix: `docs/investigations/cid-conflict-investigation.md`
   (params canonical-encoding + dual-import discussion).

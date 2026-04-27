@@ -45,6 +45,7 @@ def test_cli_parquet_roundtrip(tmp_path):
     pc_path = tmp_path / "pc.parquet"
     mb_path = tmp_path / "mb.parquet"
     fmb_path = tmp_path / "fmb.parquet"
+    cv_path = tmp_path / "cv.parquet"
 
     rc = main(
         [
@@ -56,10 +57,12 @@ def test_cli_parquet_roundtrip(tmp_path):
             str(mb_path),
             "--out-fitted-mean-bin",
             str(fmb_path),
+            "--out-concentration-value",
+            str(cv_path),
         ]
     )
     assert rc == 0
-    assert pc_path.exists() and mb_path.exists() and fmb_path.exists()
+    assert pc_path.exists() and mb_path.exists() and fmb_path.exists() and cv_path.exists()
 
     pc = pl.read_parquet(pc_path)
     assert pc.height == 1
@@ -75,6 +78,7 @@ def test_cli_tsv_output(tmp_path):
     pc_path = tmp_path / "pc.tsv"
     mb_path = tmp_path / "mb.tsv"
     fmb_path = tmp_path / "fmb.tsv"
+    cv_path = tmp_path / "cv.tsv"
 
     rc = main(
         [
@@ -86,6 +90,8 @@ def test_cli_tsv_output(tmp_path):
             str(mb_path),
             "--out-fitted-mean-bin",
             str(fmb_path),
+            "--out-concentration-value",
+            str(cv_path),
         ]
     )
     assert rc == 0
@@ -125,6 +131,8 @@ def test_cli_with_params_json(tmp_path):
             str(tmp_path / "mb.parquet"),
             "--out-fitted-mean-bin",
             str(tmp_path / "fmb.parquet"),
+            "--out-concentration-value",
+            str(tmp_path / "cv.parquet"),
             "--params",
             str(params_path),
         ]
@@ -173,6 +181,8 @@ def test_cli_hook_effect_triggers_failure(tmp_path):
             str(tmp_path / "mb.parquet"),
             "--out-fitted-mean-bin",
             str(tmp_path / "fmb.parquet"),
+            "--out-concentration-value",
+            str(tmp_path / "cv.parquet"),
         ]
     )
     assert rc == 0

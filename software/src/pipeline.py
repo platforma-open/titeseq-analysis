@@ -54,6 +54,7 @@ from output_build import (
     FITTED_MEAN_BIN_SCHEMA,
     PER_CLONOTYPE_SCHEMA,
     add_diagnostic_plot_columns,
+    build_concentration_value_frame,
     build_mean_bin_frame,
     flag_kd_out_of_range,
 )
@@ -274,7 +275,7 @@ def _build_outputs(
     signal_frame: pl.DataFrame,
     reads: pl.DataFrame,
 ) -> dict[str, pl.DataFrame]:
-    """Apply R14b kdOutOfRange flag and assemble the three-frame output dict."""
+    """Apply R14b kdOutOfRange flag and assemble the four-frame output dict."""
     min_max = (
         reads.filter(pl.col(COL_CONC_VAL) > 0)
         .select(
@@ -292,6 +293,7 @@ def _build_outputs(
         "per_clonotype": per_clonotype,
         "mean_bin": build_mean_bin_frame(signal_frame),
         "fitted_mean_bin": fitted,
+        "concentration_value": build_concentration_value_frame(signal_frame),
     }
 
 

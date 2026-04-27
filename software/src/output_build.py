@@ -2,11 +2,12 @@
 
 Output TSVs carry only the canonical `concentrationStr` column for the
 concentration axis (R14: parse-once invariant). The Tengo workflow wraps that
-column directly as a String axis on the output PColumns. See
+column directly as a String axis on the output PColumns; the numeric source for
+log-scale graph rendering comes from a separate `concentrationValue` PColumn
+(axes `[concentration:String]`, valueType Double). See
 `docs/investigations/concentration-axis-spec-realignment.md` for the spec
 deviation rationale (spec calls for Float axis; SDK gates axis types to
-Int|Long|String — Graph Maker renders the String axis categorically, ordered
-by parsed numeric value).
+Int|Long|String).
 """
 
 from __future__ import annotations
@@ -66,7 +67,8 @@ def build_mean_bin_frame(signal_frame: pl.DataFrame) -> pl.DataFrame:
     c=0 rows are excluded — they are baseline fixers, not output values, and on a
     log-scale axis log(0) = −∞ would break Graph Maker rendering anyway.
     Output columns: clonotypeKey, concentrationStr, meanBin. The workflow wraps
-    concentrationStr as the canonical String axis directly.
+    concentrationStr as the canonical String axis directly; the numeric source
+    for log-scale graphs lives in build_concentration_value_frame.
     """
     return signal_frame.filter(pl.col(COL_CONC_VAL) != 0).select(
         [
@@ -77,8 +79,31 @@ def build_mean_bin_frame(signal_frame: pl.DataFrame) -> pl.DataFrame:
     )
 
 
+def build_concentration_value_frame(signal_frame: pl.DataFrame) -> pl.DataFrame:
+    """Sidecar PColumn data for the Titration Curves X-axis.
+
+    Axes `[concentration:String]`, valueType Double — one row per unique
+    non-zero concentration. Provides a numeric source Graph Maker can put on a
+    log-scale X axis while joining against meanBin / fittedMeanBin on the
+    shared String axis. R14 invariant: each concentrationStr maps to the
+    Float64 already parsed by canonicalize_concentration; never re-parsed here.
+    """
+    return (
+        signal_frame.filter(pl.col(COL_CONC_VAL) != 0)
+        .select([COL_CONC_STR, COL_CONC_VAL])
+        .unique()
+        .sort(COL_CONC_STR)
+    )
+
+
 FITTED_MEAN_BIN_SCHEMA: dict[str, pl.DataType] = {
     COL_CLONOTYPE: pl.Utf8,
     COL_CONC_STR: pl.Utf8,
     "fittedMeanBin": pl.Float64,
+}
+
+
+CONCENTRATION_VALUE_SCHEMA: dict[str, pl.DataType] = {
+    COL_CONC_STR: pl.Utf8,
+    COL_CONC_VAL: pl.Float64,
 }

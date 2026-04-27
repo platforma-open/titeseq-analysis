@@ -8,6 +8,7 @@ import pytest
 from output_build import (
     PER_CLONOTYPE_SCHEMA,
     add_diagnostic_plot_columns,
+    build_concentration_value_frame,
     build_mean_bin_frame,
     flag_kd_out_of_range,
 )
@@ -137,3 +138,34 @@ class TestMeanBinFrame:
         )
         out = build_mean_bin_frame(signal)
         assert out["concentrationStr"][0] == conc_str
+
+
+class TestConcentrationValueFrame:
+    # The concentrationValue sidecar PColumn provides the numeric source for the
+    # Titration Curves X-axis. Axes [concentration:String]; valueType Double; one
+    # row per unique non-zero concentration.
+    def test_dedup_per_concentration(self):
+        signal = pl.DataFrame(
+            [
+                {"clonotypeKey": "A", "concentrationStr": "1e-7", "concentration": 1e-7, "signal": 2.0},
+                {"clonotypeKey": "B", "concentrationStr": "1e-7", "concentration": 1e-7, "signal": 3.0},
+                {"clonotypeKey": "A", "concentrationStr": "1e-6", "concentration": 1e-6, "signal": 4.0},
+            ]
+        )
+        out = build_concentration_value_frame(signal)
+        assert out.columns == ["concentrationStr", "concentration"]
+        assert sorted(out["concentrationStr"].to_list()) == ["1e-6", "1e-7"]
+        for row in out.iter_rows(named=True):
+            assert row["concentration"] == pytest.approx(float(row["concentrationStr"]))
+
+    def test_c0_excluded(self):
+        # Same rationale as TestMeanBinFrame.test_c0_excluded — log(0) on the
+        # log-scale X-axis is undefined.
+        signal = pl.DataFrame(
+            [
+                {"clonotypeKey": "A", "concentrationStr": "0", "concentration": 0.0, "signal": 1.2},
+                {"clonotypeKey": "A", "concentrationStr": "1e-7", "concentration": 1e-7, "signal": 2.5},
+            ]
+        )
+        out = build_concentration_value_frame(signal)
+        assert "0" not in out["concentrationStr"].to_list()
