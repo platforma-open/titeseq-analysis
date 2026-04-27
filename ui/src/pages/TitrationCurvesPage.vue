@@ -38,9 +38,11 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
   const affinityClass = pCols.find(
     (p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/affinityClass",
   );
-  const fittedMeanBin = pCols.find(
-    (p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/fittedMeanBin",
-  );
+
+  // See TODO below
+  // const fittedMeanBin = pCols.find(
+  //   (p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/fittedMeanBin",
+  // );
 
   const options: PredefinedGraphOption<"scatterplot">[] = [
     { inputName: "x", selectedSource: concValue.spec },
@@ -48,9 +50,15 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
     { inputName: "facetBy", selectedSource: clonotypeAxis },
     { inputName: "grouping", selectedSource: clonotypeAxis },
   ];
-  if (fittedMeanBin) {
-    options.push({ inputName: "additionalCurves", selectedSource: fittedMeanBin.spec });
-  }
+
+  // TODO(Paul Newling): with the current version of pl-plot this is unable to render, pl-plot needs to be updated
+  // to allow this to work. Initial PR - https://github.com/milaboratory/visualizations/pull/76 . Once this is merged
+  // Or another change allows it to be fixed, this can be re-enabled to bring back fitted curves overlay
+
+  // if (fittedMeanBin) {
+  //   options.push({ inputName: "additionalCurves", selectedSource: fittedMeanBin.spec });
+  // }
+
   if (affinityClass) {
     options.push({
       inputName: "filters",
