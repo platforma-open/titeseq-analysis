@@ -1,6 +1,6 @@
 {
   "name": "@platforma-open/platforma-open.titeseq-analysis.ui",
-  "version": "2.1.1",
+  "version": "2.2.0",
   "type": "module",
   "scripts": {
     "fmt": "ts-builder format",

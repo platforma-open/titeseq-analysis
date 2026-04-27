@@ -1,5 +1,12 @@
 # @platforma-open/platforma-open.titeseq-analysis.test
 
+## 2.0.1
+
+### Patch Changes
+
+- Updated dependencies [a3ad300]
+  - @platforma-open/platforma-open.titeseq-analysis.model@2.1.0
+
 ## 2.0.0
 
 ### Major Changes
