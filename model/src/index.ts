@@ -407,10 +407,9 @@ export const model = BlockModelV3.create(dataModel)
       });
     }
 
-    // Empty targetAntigen when an antigen column is selected: indicated
-    // inline by the dropdown's red-border `error` state plus the `required`
-    // asterisk. The args() throw above keeps Run disabled until it's set.
-    // No page-level alert needed.
+    // Empty targetAntigen surfaces inline: the dropdown's `:error-status` prop
+    // shows a red border and `required` shows the asterisk. The args() throw
+    // above keeps Run disabled until it's set.
 
     if (data.sortFractionColumnRef !== undefined && data.binColumnRef === undefined) {
       issues.push({
@@ -421,11 +420,9 @@ export const model = BlockModelV3.create(dataModel)
       });
     }
 
-    // Numeric-field bound violations are signalled inline on each
-    // PlNumberField via its `:error-message` prop (see
-    // ui/src/composables/useFieldValidation.ts) — no page-level alert is
-    // emitted for them. The args() throw above keeps Run disabled until
-    // every required numeric is present and in range.
+    // Numeric-field bound violations surface inline on each PlNumberField via
+    // its `:error-message` prop (see ui/src/composables/useFieldValidation.ts).
+    // The args() throw above gates Run.
 
     return issues;
   })
@@ -438,13 +435,11 @@ export const model = BlockModelV3.create(dataModel)
     const summaryCols = ctx.outputs?.resolve("summaryPf")?.getPColumns();
     if (summaryCols === undefined) return undefined;
     const signalCols = ctx.outputs?.resolve("signalPf")?.getPColumns() ?? [];
-    // Including signalCols broadcasts each per-clonotype summary row across
-    // the concentration axis (one row per (clonotype, concentration)) so the
-    // Export button on this table dumps all data we have — Kd, affinity
-    // class, R², Hill coefficient, plus per-concentration meanBin and
-    // fittedMeanBin. signalCols carry pl7.app/table/visibility: "hidden" to
-    // keep them out of downstream blocks' pickers; override that here so
-    // users see (and export) the actual values.
+    // Joining signalCols broadcasts each per-clonotype summary across the
+    // concentration axis, so the Export button dumps Kd / affinityClass / R²
+    // / Hill alongside per-concentration meanBin and fittedMeanBin. signalCols
+    // are annotated `hidden` to keep them out of downstream pickers — override
+    // here so users see (and export) the values.
     const visibleSignal = signalCols.map((c) => ({
       ...c,
       spec: {

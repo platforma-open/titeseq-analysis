@@ -8,11 +8,10 @@ defineProps<{ title: string }>();
 
 const app = useApp();
 
-// Numeric-field validation surfaces inline on each PlNumberField via its
-// `:error-message` prop (see useFieldValidation). The page-level alert is
-// reserved for spec-based checks that have no field-level home —
-// concentration column label format, sort-fraction without a bin column,
-// etc. — emitted by the model's validationWarnings output.
+// Page-level alerts cover spec-based checks with no field-level home —
+// concentration column label format, sort-fraction without a bin column.
+// Numeric-field violations show inline on each PlNumberField (see
+// useFieldValidation).
 const warnings = computed(() => app.model.outputs.validationWarnings ?? []);
 </script>
 

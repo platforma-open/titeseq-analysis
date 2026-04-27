@@ -25,11 +25,11 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
   );
   if (!clonotypeAxis) return undefined;
 
-  // X is bound to the concentrationValue Double sidecar PColumn so Graph
-  // Maker can render a true log-scale numeric X. Joins to meanBin /
-  // fittedMeanBin on the shared concentration:String axis. Requires the
-  // pf-plots fix that allows PColumn-bound X with the additionalCurves
-  // slot. See docs/investigations/concentration-axis-spec-realignment.md.
+  // X binds to the concentrationValue sidecar (Double) for true log-scale
+  // rendering, joined to meanBin / fittedMeanBin on the shared
+  // concentration:String axis. Requires the pf-plots fix that accepts
+  // PColumn-bound X for the additionalCurves slot — see
+  // docs/investigations/concentration-axis-spec-realignment.md.
   const concValue = pCols.find(
     (p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/concentrationValue",
   );

@@ -35,9 +35,9 @@ watch(
   },
 );
 
-// Page-level alerts for spec-based checks only (concentration column label,
-// antigen column without target, sort fraction without bin column).
-// Numeric-field bound violations are shown inline on each PlNumberField.
+// Page-level alerts cover spec-based checks only — concentration column
+// label format, sort fraction without bin column. Numeric-field bounds show
+// inline on each PlNumberField.
 const warnings = computed(() => app.model.outputs.validationWarnings ?? []);
 
 const binMode = computed(() => app.model.outputs.binMode === true);

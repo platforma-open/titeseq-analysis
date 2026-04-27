@@ -127,15 +127,13 @@ wf.body(func(args) {
 	// Shared axis specs for the output PColumns.
 	clonotypeAxisSpec := abundanceSpec.axesSpec[1]
 
-	// Concentration axis: the canonical String. Spec calls for Float
-	// (pcolumn-spec.md:119, R14) but the SDK gates axis types to Int|Long|String
-	// (core/platforma/sdk/workflow-tengo/src/pt/util.lib.tengo:352). Graph Maker
-	// renders the scatter X from the concentrationValue Double sidecar PColumn
-	// (joined on this shared String axis), so the X axis is true log-scale at
-	// the user's input concentrations. R14 canonical-string discipline preserved:
-	// this axis IS the join key, byte-identical across every row from upstream
-	// metadata through Python and back. See
-	// docs/investigations/concentration-axis-spec-realignment.md.
+	// Canonical String concentration axis — the join key, byte-identical from
+	// upstream metadata through Python (R14). Spec calls for Float
+	// (pcolumn-spec.md:119) but the SDK regex at
+	// core/platforma/sdk/workflow-tengo/src/pt/util.lib.tengo:352 limits axis
+	// types to Int|Long|String. Numeric X for log-scale rendering comes from
+	// the concentrationValue sidecar PColumn (below), joined on this axis.
+	// See docs/investigations/concentration-axis-spec-realignment.md.
 	concAxisSpec := {
 		name: "pl7.app/vdj/concentration",
 		type: "String",
@@ -312,13 +310,9 @@ wf.body(func(args) {
 		partitionKeyLength: 0
 	}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
 
-	// Single import per TSV. Python writes:
-	//   mean_bin.tsv:           (clonotypeKey, concentrationStr, meanBin)
-	//   fitted_mean_bin.tsv:    (clonotypeKey, concentrationStr, fittedMeanBin)
-	//   concentration_value.tsv: (concentrationStr, concentration)  ← Double sidecar
-	// The pcolumn resource resulting from each import is reused in both signalPf
-	// and exportPf — no dual-import, no hideDataFromGraphs hack needed because
-	// there is only one copy of each logical column.
+	// One import per TSV. Each pcolumn resource is reused in both signalPf and
+	// exportPf — one logical column, one resource. Replaces the prior
+	// *Internal/*Export dual-import pattern.
 	concAxes := [
 		{ column: "clonotypeKey", spec: clonotypeAxisSpec },
 		{ column: "concentrationStr", spec: concAxisSpec }
@@ -345,10 +339,9 @@ wf.body(func(args) {
 			"pl7.app/table/visibility": "hidden"
 		}
 	}
-	// concentrationValue: numeric source for log-scale graph X-axis. Joins
-	// against meanBin / fittedMeanBin on the shared concentrationStr axis. The
-	// concentration column label propagates the upstream metadata label so the
-	// graph's X-axis title reflects the user's column.
+	// concentrationValue: Double sidecar PColumn driving log-scale X. Joins to
+	// meanBin / fittedMeanBin on the shared String axis. Label propagates the
+	// upstream metadata column header so the X-axis title reads the user's unit.
 	concValueLabel := "Concentration"
 	if unitLabel != "" {
 		concValueLabel = unitLabel
@@ -401,12 +394,10 @@ wf.body(func(args) {
 		excluded := {}
 		for k in excludeKeys { excluded[k] = true }
 		pfb := pframes.pFrameBuilder()
-		// Sorted iteration: pfb.add() call order propagates into the resulting
-		// PFrame's resource CID. Tengo's `for k, v in map` is non-deterministic,
-		// so two renders of the same workflow produce different CIDs and the
-		// backend rejects with CIDConflictError. maps.getKeys returns sorted
-		// keys. See platforma-open/miltenyi-tcr-bcr-clonotyping#13 for the same
-		// fix applied across that block.
+		// pfb.add() order feeds into the PFrame's resource CID, so iteration
+		// must be deterministic. Tengo's `for k, v in map` is not — re-renders
+		// produced different CIDs and triggered CIDConflictError. maps.getKeys
+		// returns sorted keys. Same fix as miltenyi-tcr-bcr-clonotyping#13.
 		for src in sources {
 			for k in maps.getKeys(src) {
 				if excluded[k] { continue }
@@ -418,17 +409,15 @@ wf.body(func(args) {
 	}
 
 	summaryPf := buildTracedPf([summaryImported], [])
-	// signalPf carries the three concentration-axis pcolumns for this block's
-	// Titration Curves graph: meanBin (Y), fittedMeanBin (curve overlay), and
-	// concentrationValue (numeric X source for log-scale rendering).
+	// signalPf feeds this block's Titration Curves graph: meanBin (Y),
+	// fittedMeanBin (curve overlay), concentrationValue (numeric X).
 	signalPf := buildTracedPf([meanBinImported, fittedMeanBinImported, concValueImported], [])
-	// Single export bundle for Lead Selection discovery (R20, R21). Reuses the
-	// same pcolumn resources from signalPf — no re-import, no CID-conflict
-	// risk. kdPlotPosition / hillPlotPosition are internal sentinels for the
-	// Affinity vs Fit Quality scatter (nulls parked at max_conc*10 and -1.0
-	// respectively); they would appear as spurious "Kd,app" / "Hill coefficient"
-	// siblings in downstream block column pickers, so we drop them from the
-	// export.
+	// exportPf is the single bundle Lead Selection sees (R20, R21). Reuses the
+	// same pcolumn resources — no re-import. Drops kdPlotPosition /
+	// hillPlotPosition: these are visual sentinels for the in-block Affinity
+	// vs Fit Quality scatter (nulls parked at max_conc*10 and -1.0) that would
+	// otherwise appear as spurious Kd,app / Hill coefficient siblings in
+	// downstream pickers.
 	exportPf := buildTracedPf(
 		[summaryImported, meanBinImported, fittedMeanBinImported, concValueImported],
 		["kdPlotPosition", "hillPlotPosition"]

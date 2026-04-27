@@ -1,19 +1,15 @@
 import { computed } from "vue";
 import { useApp } from "../app";
 
-// Per-field reactive error messages bound to each PlNumberField's
-// `:error-message` prop. Inline display only — the SDK's PlNumberField
-// renders the message under the input and applies a red border, so we no
-// longer aggregate these into a page-level alert. Spec-based validation
-// (concentration column label, antigen/target pairing, sort fraction without
-// bin) still flows through the model's validationWarnings output and is
-// rendered as a page alert in TiteseqPage.
+// Per-field error messages bound to each PlNumberField's `:error-message`
+// prop. Inline only — page-level alerts are reserved for spec-based checks
+// (concentration column label, sort-fraction without bin) emitted by the
+// model's validationWarnings output and rendered in TiteseqPage.
 //
-// Each field returns at most one consolidated error message describing the
-// full valid range (e.g. "Must be between 0 and 1, and ≥ R² threshold (Failed)"
-// rather than separate "below 0" / "above 1" / "below failed" alerts). For
-// typed non-numeric input we leave errorMessage undefined so PlNumberField's
-// own "Value is not a number" parse error surfaces.
+// Each field returns one consolidated message covering the full valid range
+// (e.g. "Must be between 0 and 1, and ≥ R² threshold (Failed)") instead of
+// separate alerts per bound. For typed non-numeric input the message stays
+// undefined so PlNumberField's own "Value is not a number" parse error wins.
 
 const REQUIRED = "Value is required";
 
