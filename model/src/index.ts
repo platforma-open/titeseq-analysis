@@ -407,14 +407,10 @@ export const model = BlockModelV3.create(dataModel)
       });
     }
 
-    if (data.antigenColumnRef !== undefined && !data.targetAntigen) {
-      issues.push({
-        severity: "error",
-        message:
-          "An antigen column is selected but targetAntigen is empty — " +
-          "choose which antigen to analyse before running.",
-      });
-    }
+    // Empty targetAntigen when an antigen column is selected: indicated
+    // inline by the dropdown's red-border `error` state plus the `required`
+    // asterisk. The args() throw above keeps Run disabled until it's set.
+    // No page-level alert needed.
 
     if (data.sortFractionColumnRef !== undefined && data.binColumnRef === undefined) {
       issues.push({

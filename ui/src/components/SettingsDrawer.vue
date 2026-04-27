@@ -159,6 +159,7 @@ watch(
       v-model="app.model.data.targetAntigen"
       :options="targetAntigenOptions"
       :label="targetAntigenLabel"
+      :error-status="!app.model.data.targetAntigen"
       required
     >
       <template #tooltip>
