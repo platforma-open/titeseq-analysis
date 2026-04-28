@@ -435,25 +435,49 @@ export const model = BlockModelV3.create(dataModel)
     const summaryCols = ctx.outputs?.resolve("summaryPf")?.getPColumns();
     if (summaryCols === undefined) return undefined;
     const signalCols = ctx.outputs?.resolve("signalPf")?.getPColumns() ?? [];
+
     // Reveal fitFailureReason and the signal columns in this block's Table so
     // users see why each clonotype failed and can export the per-concentration
     // data. Both carry pl7.app/table/visibility: "hidden" to stay out of
     // downstream pickers — overridden locally only.
-    const reveal = <T extends { spec: { annotations?: Record<string, string> } }>(c: T): T => ({
-      ...c,
-      spec: {
-        ...c.spec,
-        annotations: {
-          ...c.spec.annotations,
-          "pl7.app/table/visibility": "default",
+    const withVisibility =
+      (visibility: string) =>
+      <T extends { spec: { annotations?: Record<string, string> } }>(c: T): T => ({
+        ...c,
+        spec: {
+          ...c.spec,
+          annotations: { ...c.spec.annotations, "pl7.app/table/visibility": visibility },
         },
-      },
-    });
+      });
+
     const visibleSummary = summaryCols.map((c) =>
-      c.spec.name === "pl7.app/vdj/fitFailureReason" ? reveal(c) : c,
+      c.spec.name === "pl7.app/vdj/fitFailureReason" ? withVisibility("default")(c) : c,
     );
-    const visibleSignal = signalCols.map(reveal);
-    return createPlDataTableV2(ctx, [...visibleSummary, ...visibleSignal], ctx.data.tableState);
+    const visibleSignal = signalCols.map(withVisibility("default"));
+
+    const kdCol = visibleSummary.find((c) => c.spec.name === "pl7.app/vdj/kd");
+    if (!kdCol) return undefined;
+
+    // Include result pool columns whose axes are a direct subset of the anchor
+    // (kd) axes — equivalent to enrichment mode / maxHops: 0 in V3.
+    // Excludes this block's own outputs (handled above) and File columns.
+    const anchorAxisNames = new Set(kdCol.spec.axesSpec.map((a) => a.name));
+    const resultPoolCols = (
+      ctx.resultPool.getAnchoredPColumns(
+        { main: kdCol.spec },
+        (spec) =>
+          (spec.valueType as string) !== "File" &&
+          !spec.annotations?.["pl7.app/trace"]?.includes("milaboratories.titeseq-analysis") &&
+          spec.axesSpec.every((a) => anchorAxisNames.has(a.name)),
+        { dontWaitAllData: true },
+      ) ?? []
+    ).map(withVisibility("optional"));
+
+    return createPlDataTableV2(
+      ctx,
+      [...visibleSummary, ...visibleSignal, ...resultPoolCols],
+      ctx.data.tableState,
+    );
   })
 
   .outputWithStatus("titrationCurvesPf", (ctx): PFrameHandle | undefined => {

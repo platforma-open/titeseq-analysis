@@ -30,7 +30,7 @@ const defaultOptions = computed((): PredefinedGraphOption<"histogram">[] | undef
 </script>
 
 <template>
-  <TiteseqPage title="Kd Distribution">
+  <TiteseqPage title="Kd Distribution" mode="graph">
     <GraphMaker
       v-model="app.model.data.graphStateKDHistogram"
       chart-type="histogram"
