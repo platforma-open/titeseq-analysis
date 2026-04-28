@@ -48,7 +48,7 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
     { inputName: "facetBy", selectedSource: clonotypeAxis },
     { inputName: "grouping", selectedSource: clonotypeAxis },
   ];
-  
+
   if (fittedMeanBin) {
     options.push({ inputName: "additionalCurves", selectedSource: fittedMeanBin.spec });
   }
