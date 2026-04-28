@@ -1,5 +1,11 @@
 # @platforma-open/platforma-open.titeseq-analysis.workflow
 
+## 2.1.1
+
+### Patch Changes
+
+- 6ac87d0: Reorder table view columns
+
 ## 2.1.0
 
 ### Minor Changes
