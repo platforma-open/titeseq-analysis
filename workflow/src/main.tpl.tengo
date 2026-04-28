@@ -133,12 +133,17 @@ wf.body(func(args) {
 	// core/platforma/sdk/workflow-tengo/src/pt/util.lib.tengo:352 limits axis
 	// types to Int|Long|String. Numeric X for log-scale rendering comes from
 	// the concentrationValue sidecar PColumn (below), joined on this axis.
+	// orderPriority below the value MiXCR PColumns set on their clonotypeKey
+	// axis (110000) so the table renders clonotypeKey first, concentration
+	// second. The annotation propagates through exportPf to Lead Selection,
+	// keeping the same ordering downstream.
 	concAxisSpec := {
 		name: "pl7.app/vdj/concentration",
 		type: "String",
 		domain: { "pl7.app/block": blockId },
 		annotations: {
-			"pl7.app/label": "Concentration"
+			"pl7.app/label": "Concentration",
+			"pl7.app/table/orderPriority": "50000"
 		}
 	}
 
