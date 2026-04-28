@@ -53,7 +53,7 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
 </script>
 
 <template>
-  <TiteseqPage title="Affinity vs Fit Quality">
+  <TiteseqPage title="Affinity vs Fit Quality" mode="graph">
     <GraphMaker
       v-model="app.model.data.graphStateAffinityVsFit"
       chart-type="scatterplot"

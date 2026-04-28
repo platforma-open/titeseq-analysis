@@ -4,7 +4,7 @@ import { computed } from "vue";
 import { useApp } from "../app";
 import PageHeader from "./PageHeader.vue";
 
-defineProps<{ title: string }>();
+defineProps<{ title: string; mode: "graph" | "table" }>();
 
 const app = useApp();
 
@@ -20,7 +20,7 @@ const warnings = computed(() => app.model.outputs.validationWarnings ?? []);
     v-model:subtitle="app.model.data.customBlockLabel"
     :subtitle-placeholder="app.model.data.defaultBlockLabel"
     :title="title"
-    no-body-gutters
+    :no-body-gutters="mode === 'graph'"
   >
     <template #append>
       <PageHeader />

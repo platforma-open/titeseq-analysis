@@ -38,10 +38,9 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
     (p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/affinityClass",
   );
 
-  // See TODO below
-  // const fittedMeanBin = pCols.find(
-  //   (p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/fittedMeanBin",
-  // );
+  const fittedMeanBin = pCols.find(
+    (p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/fittedMeanBin",
+  );
 
   const options: PredefinedGraphOption<"scatterplot">[] = [
     { inputName: "x", selectedSource: concValue.spec },
@@ -49,14 +48,10 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
     { inputName: "facetBy", selectedSource: clonotypeAxis },
     { inputName: "grouping", selectedSource: clonotypeAxis },
   ];
-
-  // TODO(Paul Newling): with the current version of pl-plot this is unable to render, pl-plot needs to be updated
-  // to allow this to work. Initial PR - https://github.com/milaboratory/visualizations/pull/76 . Once this is merged
-  // Or another change allows it to be fixed, this can be re-enabled to bring back fitted curves overlay
-
-  // if (fittedMeanBin) {
-  //   options.push({ inputName: "additionalCurves", selectedSource: fittedMeanBin.spec });
-  // }
+  
+  if (fittedMeanBin) {
+    options.push({ inputName: "additionalCurves", selectedSource: fittedMeanBin.spec });
+  }
 
   if (affinityClass) {
     options.push({
@@ -71,7 +66,7 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
 </script>
 
 <template>
-  <TiteseqPage title="Titration Curves">
+  <TiteseqPage title="Titration Curves" mode="graph">
     <PlAlert v-if="hasResults && !binMode" type="warn">
       No-bin mode: Kd,app values reflect clonotype frequency shifts, not fluorescence. They are not
       comparable to bin-derived results — do not mix in the same Lead Selection ranking.
@@ -83,9 +78,9 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
     <GraphMaker
       v-model="app.model.data.graphStateTitrationCurves"
       chart-type="scatterplot"
-      :data-state-key="app.model.outputs.titrationCurvesPf"
       :p-frame="app.model.outputs.titrationCurvesPf"
       :default-options="defaultOptions"
+      default-palette="bright"
       :status-text="{
         noPframe: { title: 'Open Inputs (top right) to configure the block and run it.' },
       }"
