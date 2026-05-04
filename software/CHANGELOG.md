@@ -1,5 +1,11 @@
 # @platforma-open/platforma-open.titeseq-analysis.software
 
+## 2.1.1
+
+### Patch Changes
+
+- 67db4da: Sort `mean_bin.tsv` rows by (clonotypeKey, concentrationStr) so the output is byte-stable across runs. Polars `group_by` inside `normalize()` returns rows in non-deterministic order, which propagated through `xsv.importFile` to varying Parquet content hashes and triggered CIDConflictError on re-derivation of identical inputs.
+
 ## 2.1.0
 
 ### Minor Changes
