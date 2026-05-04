@@ -67,13 +67,24 @@ def build_mean_bin_frame(signal_frame: pl.DataFrame) -> pl.DataFrame:
     −∞ would break log-scale rendering. Output columns: clonotypeKey,
     concentrationStr, meanBin. The numeric source for log-scale graphs lives in
     build_concentration_value_frame.
+
+    Sorted by (clonotypeKey, concentrationStr) so the TSV is byte-stable across
+    runs. Upstream `signal_frame` comes from `polars.group_by(...).agg(...)` in
+    `normalize()`, which does not guarantee row order — leaving this unsorted
+    let identical inputs produce TSVs whose row order varied run-to-run, which
+    propagated through xsv.importFile to a different Parquet content hash and
+    triggered CIDConflictError on re-derivation.
     """
-    return signal_frame.filter(pl.col(COL_CONC_VAL) != 0).select(
-        [
-            COL_CLONOTYPE,
-            COL_CONC_STR,
-            pl.col("signal").alias("meanBin"),
-        ]
+    return (
+        signal_frame.filter(pl.col(COL_CONC_VAL) != 0)
+        .select(
+            [
+                COL_CLONOTYPE,
+                COL_CONC_STR,
+                pl.col("signal").alias("meanBin"),
+            ]
+        )
+        .sort([COL_CLONOTYPE, COL_CONC_STR])
     )
 
 

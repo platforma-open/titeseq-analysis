@@ -139,6 +139,24 @@ class TestMeanBinFrame:
         out = build_mean_bin_frame(signal)
         assert out["concentrationStr"][0] == conc_str
 
+    # Regression: upstream `polars.group_by` in normalize() does not guarantee
+    # row order, so the output must sort itself to keep the TSV byte-stable
+    # across runs. Without the sort this drove CIDConflictError downstream.
+    def test_output_sorted_by_clonotype_then_concentration(self):
+        # Deliberately shuffled input — clonotypes interleaved, concentrations
+        # not monotonic per clonotype.
+        signal = pl.DataFrame(
+            [
+                {"clonotypeKey": "B", "concentrationStr": "1e-7", "concentration": 1e-7, "signal": 2.0},
+                {"clonotypeKey": "A", "concentrationStr": "1e-9", "concentration": 1e-9, "signal": 1.0},
+                {"clonotypeKey": "B", "concentrationStr": "1e-9", "concentration": 1e-9, "signal": 3.0},
+                {"clonotypeKey": "A", "concentrationStr": "1e-7", "concentration": 1e-7, "signal": 4.0},
+            ]
+        )
+        out = build_mean_bin_frame(signal)
+        keys = list(zip(out["clonotypeKey"].to_list(), out["concentrationStr"].to_list()))
+        assert keys == sorted(keys)
+
 
 class TestConcentrationValueFrame:
     # The concentrationValue sidecar PColumn provides the numeric source for the
