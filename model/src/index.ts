@@ -458,20 +458,28 @@ export const model = BlockModelV3.create(dataModel)
     const kdCol = visibleSummary.find((c) => c.spec.name === "pl7.app/vdj/kd");
     if (!kdCol) return undefined;
 
-    // Include result pool columns whose axes are a direct subset of the anchor
-    // (kd) axes — equivalent to enrichment mode / maxHops: 0 in V3.
-    // Excludes this block's own outputs (handled above) and File columns.
-    const anchorAxisNames = new Set(kdCol.spec.axesSpec.map((a) => a.name));
+    // Include result pool columns keyed by the same clonotype axis as the kd
+    // anchor — i.e., the same cohort of clonotypes. The selector form matches
+    // each axis by full spec (name + domain), not just name, so when the
+    // upstream is a redefine-clonotypes run, columns keyed by the original
+    // (pre-redefine) clonotype axis are correctly excluded — those have the
+    // same axis name but a different domain and a disjoint key space, which
+    // would otherwise fail spec integration with "axes sets are disjoint".
+    const axesSelector = kdCol.spec.axesSpec.map((_, idx) => ({
+      anchor: "main" as const,
+      idx,
+    }));
     const resultPoolCols = (
-      ctx.resultPool.getAnchoredPColumns(
-        { main: kdCol.spec },
-        (spec) =>
-          (spec.valueType as string) !== "File" &&
-          !spec.annotations?.["pl7.app/trace"]?.includes("milaboratories.titeseq-analysis") &&
-          spec.axesSpec.every((a) => anchorAxisNames.has(a.name)),
-        { dontWaitAllData: true },
-      ) ?? []
-    ).map(withVisibility("optional"));
+      ctx.resultPool.getAnchoredPColumns({ main: kdCol.spec }, [{ axes: axesSelector }], {
+        dontWaitAllData: true,
+      }) ?? []
+    )
+      .filter(
+        (c) =>
+          (c.spec.valueType as string) !== "File" &&
+          !c.spec.annotations?.["pl7.app/trace"]?.includes("milaboratories.titeseq-analysis"),
+      )
+      .map(withVisibility("optional"));
 
     return createPlDataTableV2(
       ctx,
