@@ -1,3 +1,4 @@
+//tengo:hash_override B0024E30-15B9-4110-99AD-0999A987AD89
 // Entry template for the Tite-Seq Analysis block.
 // Joins the abundance PColumn with per-sample metadata into one long-format reads TSV,
 // runs the Python fit-curves binary, and imports its three outputs as traced PFrames.

@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import filecmp
 import math
+import subprocess
+import sys
 from pathlib import Path
 
 import numpy as np
 import polars as pl
 
-from main import main
+# Path to main.py — used to spawn the binary in a fresh subprocess so each run
+# gets its own randomized ahash seed (the same condition that production runs
+# meet, since each fit-curves invocation is a separate Python process).
+_MAIN_PY = Path(__file__).resolve().parents[2] / "src" / "main.py"
 
 
 def _hill_reads(clonotype: str, true_kd: float, concs, bins, per_conc=500):
@@ -43,25 +48,27 @@ def _run_cli(reads_path: Path, out_dir: Path) -> dict[str, Path]:
     mb = out_dir / "mean_bin.tsv"
     fmb = out_dir / "fitted_mean_bin.tsv"
     cv = out_dir / "concentration_value.tsv"
-    rc = main(
+    result = subprocess.run(
         [
+            sys.executable, str(_MAIN_PY),
             "--reads", str(reads_path),
             "--out-per-clonotype", str(pc),
             "--out-mean-bin", str(mb),
             "--out-fitted-mean-bin", str(fmb),
             "--out-concentration-value", str(cv),
-        ]
+        ],
+        capture_output=True, text=True, check=False,
     )
-    assert rc == 0
+    assert result.returncode == 0, f"fit-curves failed (rc={result.returncode}): {result.stderr}"
     return {"per_clonotype": pc, "mean_bin": mb, "fitted_mean_bin": fmb, "concentration_value": cv}
 
 
 def test_outputs_are_byte_identical_across_runs(tmp_path):
-    """Run main() twice on the same fixture, byte-compare all four output TSVs.
+    """Spawn fit-curves twice as separate processes and byte-compare every TSV.
 
-    Multiple clonotypes and multiple concentrations make the test sensitive to
-    non-deterministic polars.group_by, dict iteration order, and any other
-    ordering hazard that could surface as a CIDConflict downstream.
+    Each subprocess gets a fresh ahash seed, which is what surfaces hash-order
+    non-determinism in `polars.group_by` — the actual condition under which
+    CIDConflictError fires in production.
     """
     concs = [1e-10, 1e-9, 3e-9, 1e-8, 3e-8, 1e-7, 1e-6]
     bins = [1, 2, 3, 4]
