@@ -1,14 +1,4 @@
-"""Regression test: identical inputs must produce byte-identical outputs.
-
-Two TiteSeq blocks with identical configuration in the same project hit
-CIDConflictError when their Python fit-curves invocations write non-identical
-bytes for the same inputs. The platform's CID layer dedups by content; two
-runs of the same operation that produce different bytes for the same input
-lineage collapse to a shared field and throw.
-
-This test runs `main(argv)` twice on the same fixture (separate output dirs)
-and asserts every output TSV is byte-equal across runs.
-"""
+"""Identical inputs must produce byte-identical outputs across runs."""
 
 from __future__ import annotations
 

@@ -387,9 +387,9 @@ wf.body(func(args) {
 	// with a self-descriptor; `trace.inject` rewrites only the small spec resources
 	// (data resources are untouched thanks to splitDataAndSpec).
 	//
-	// Resolve the trace label. customBlockLabel is the user's PlBlockPage subtitle
-	// override; defaultBlockLabel is the auto-derived placeholder. Model defaults
-	// customBlockLabel to "" (never undefined). Same pattern as clonotype-clustering.
+	// customBlockLabel is the user's PlBlockPage subtitle override; defaultBlockLabel
+	// is the auto-derived placeholder. Model defaults customBlockLabel to "" (never
+	// undefined). Same pattern as clonotype-clustering.
 	traceLabel := args.customBlockLabel
 	if traceLabel == "" {
 		traceLabel = args.defaultBlockLabel
