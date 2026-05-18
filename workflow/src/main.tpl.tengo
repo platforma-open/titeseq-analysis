@@ -385,13 +385,19 @@ wf.body(func(args) {
 
 	// Trace injection. `makeTrace` bundles the upstream abundance provenance
 	// with a self-descriptor; `trace.inject` rewrites only the small spec resources
-	// (data resources are untouched thanks to splitDataAndSpec). The trace label
-	// uses the auto-derived defaultBlockLabel so provenance is stable across
-	// user edits to the custom subtitle.
+	// (data resources are untouched thanks to splitDataAndSpec).
+	//
+	// Resolve the trace label. customBlockLabel is the user's PlBlockPage subtitle
+	// override; defaultBlockLabel is the auto-derived placeholder. Model defaults
+	// customBlockLabel to "" (never undefined). Same pattern as clonotype-clustering.
+	traceLabel := args.customBlockLabel
+	if traceLabel == "" {
+		traceLabel = args.defaultBlockLabel
+	}
 	trace := pSpec.makeTrace(abundanceSpec, {
 		type: "milaboratories.titeseq-analysis",
 		importance: 30,
-		label: args.defaultBlockLabel
+		label: traceLabel
 	})
 
 	buildTracedPf := func(sources, excludeKeys) {
