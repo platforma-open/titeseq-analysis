@@ -38,7 +38,7 @@ def compute_mean_bin(reads: pl.DataFrame, *, sort_fraction_col: str | None = Non
 
     return (
         with_freq.with_columns(weight.alias("w"))
-        .group_by([COL_CLONOTYPE, COL_CONC_STR, COL_CONC_VAL])
+        .group_by([COL_CLONOTYPE, COL_CONC_STR, COL_CONC_VAL], maintain_order=True)
         .agg(
             (pl.col(COL_BIN).cast(pl.Float64) * pl.col("w")).sum().alias("num"),
             pl.col("w").sum().alias("den"),
@@ -54,7 +54,7 @@ def compute_frequency_signal(reads: pl.DataFrame) -> pl.DataFrame:
 
     Returns long frame: clonotypeKey, concentrationStr, concentration, signal, clonotype_reads_at_conc.
     """
-    per_clonotype = reads.group_by([COL_CLONOTYPE, COL_CONC_STR, COL_CONC_VAL]).agg(
+    per_clonotype = reads.group_by([COL_CLONOTYPE, COL_CONC_STR, COL_CONC_VAL], maintain_order=True).agg(
         pl.col(COL_READS).sum().alias(CLONOTYPE_READS_AT_CONC)
     )
     return (

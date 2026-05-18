@@ -45,7 +45,7 @@ def classify_insufficient(
     Returns DataFrame with columns: clonotypeKey, insufficient_reason (nullable).
     """
     non_zero = filtered.filter(pl.col(COL_CONC_VAL) != 0)
-    counts = non_zero.group_by(COL_CLONOTYPE).agg(pl.len().alias("n_points"))
+    counts = non_zero.group_by(COL_CLONOTYPE, maintain_order=True).agg(pl.len().alias("n_points"))
 
     all_df = pl.DataFrame({COL_CLONOTYPE: all_clonotypes})
     joined = all_df.join(counts, on=COL_CLONOTYPE, how="left").with_columns(pl.col("n_points").fill_null(0))
@@ -102,7 +102,7 @@ def detect_hook_effect(fit_points: pl.DataFrame, bin_mode: bool, params: FitPara
         pl.col(COL_CONC_VAL).rank(method="ordinal", descending=True).over(COL_CLONOTYPE).alias("rank")
     ).filter(pl.col("rank") <= 3)
 
-    wide = ranked.group_by(COL_CLONOTYPE).agg(
+    wide = ranked.group_by(COL_CLONOTYPE, maintain_order=True).agg(
         pl.col(SIGNAL).filter(pl.col("rank") == 1).first().alias("top1_signal"),
         pl.col(SIGNAL).filter(pl.col("rank") == 2).first().alias("top2_signal"),
         pl.col(SIGNAL).filter(pl.col("rank") == 3).first().alias("top3_signal"),

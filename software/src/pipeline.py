@@ -289,10 +289,16 @@ def _build_outputs(
     max_c = float(min_max["max"]) if min_max["max"] is not None else 1.0
     per_clonotype = add_diagnostic_plot_columns(per_clonotype, max_c)
 
+    # Defensive sorts on every disk-bound frame. Phase 3 already builds in sorted
+    # clonotype order (per_clonotype from clonotypes_sorted, fitted from contexts
+    # zipped with fits) — but with_columns chains and future refactors can drift.
+    # Pinning the byte layout here is what stops CIDConflictError when two block
+    # instances with byte-identical input run in the same project. Same reason
+    # build_mean_bin_frame sorts.
     return {
-        "per_clonotype": per_clonotype,
+        "per_clonotype": per_clonotype.sort(COL_CLONOTYPE),
         "mean_bin": build_mean_bin_frame(signal_frame),
-        "fitted_mean_bin": fitted,
+        "fitted_mean_bin": fitted.sort([COL_CLONOTYPE, COL_CONC_STR]),
         "concentration_value": build_concentration_value_frame(signal_frame),
     }
 
