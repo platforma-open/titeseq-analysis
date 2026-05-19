@@ -83,9 +83,8 @@ watch(
 
 <template>
   <PlSlideModal v-model="open" close-on-outside-click shadow>
-    <template #title>Inputs &amp; Parameters</template>
+    <template #title>Settings</template>
 
-    <PlSectionSeparator>Inputs</PlSectionSeparator>
     <PlDropdownRef
       v-model="app.model.data.abundanceRef"
       :options="app.model.outputs.abundanceOptions"
