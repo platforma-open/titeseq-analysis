@@ -1,6 +1,6 @@
 {
   "name": "@platforma-open/platforma-open.titeseq-analysis.workflow",
-  "version": "2.1.2",
+  "version": "2.1.3",
   "description": "Block Workflow",
   "type": "module",
   "scripts": {
