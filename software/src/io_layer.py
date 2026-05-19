@@ -121,7 +121,7 @@ def validate_sort_fraction(reads: pl.DataFrame, col: str) -> None:
     # in that sample, so summing over the raw reads frame would count each sample
     # once per clonotype. Deduplicate by (sampleId, concentrationStr, col) first.
     per_sample = reads.select([COL_SAMPLE, COL_CONC_STR, col]).unique()
-    sums = per_sample.group_by(COL_CONC_STR).agg(pl.col(col).sum().alias("s"))
+    sums = per_sample.group_by(COL_CONC_STR, maintain_order=True).agg(pl.col(col).sum().alias("s"))
     bad = sums.filter((pl.col("s") - 1.0).abs() > 1e-3)
     if bad.height > 0:
         violations = bad.select([COL_CONC_STR, "s"]).to_dicts()
@@ -205,7 +205,7 @@ def validate_sample_metadata_uniqueness(df: pl.DataFrame, has_bin: bool, has_ant
         key_cols.append(COL_ANTIGEN)
 
     sample_metadata = df.select([COL_SAMPLE, *key_cols]).unique()
-    per_sample_unique = sample_metadata.group_by(COL_SAMPLE).agg(
+    per_sample_unique = sample_metadata.group_by(COL_SAMPLE, maintain_order=True).agg(
         [pl.col(c).n_unique().alias(f"{c}_nunique") for c in key_cols]
     )
     for c in key_cols:
@@ -235,7 +235,7 @@ def validate_bin_concentration_grid(df: pl.DataFrame) -> list[str]:
     per_clone = (
         df.select([COL_CLONOTYPE, COL_BIN, COL_CONC_STR])
         .unique()
-        .group_by(COL_CLONOTYPE)
+        .group_by(COL_CLONOTYPE, maintain_order=True)
         .agg(pl.len().alias("n_combos"))
     )
     missing = per_clone.filter(pl.col("n_combos") < n_grid)

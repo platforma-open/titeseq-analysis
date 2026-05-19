@@ -289,6 +289,10 @@ def _build_outputs(
     max_c = float(min_max["max"]) if min_max["max"] is not None else 1.0
     per_clonotype = add_diagnostic_plot_columns(per_clonotype, max_c)
 
+    # Don't add a .sort() here. Phase 3 builds both frames in deterministic order
+    # (clonotypes_sorted; contexts iterated in conc_val-numeric order from
+    # sorted_points). Sorting again rewrites the bytes and breaks dedup against
+    # cached resources from earlier runs.
     return {
         "per_clonotype": per_clonotype,
         "mean_bin": build_mean_bin_frame(signal_frame),

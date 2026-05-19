@@ -101,7 +101,7 @@ def build_concentration_value_frame(signal_frame: pl.DataFrame) -> pl.DataFrame:
         signal_frame.filter(pl.col(COL_CONC_VAL) != 0)
         .select([COL_CONC_STR, COL_CONC_VAL])
         .unique()
-        .sort(COL_CONC_STR)
+        .sort([COL_CONC_STR, COL_CONC_VAL])
     )
 
 

@@ -14,34 +14,31 @@ onMounted(() => {
   }
 });
 
-// Derive the block subtitle from the first three populated inputs, joined by
-// " - " (mirroring Amplicon Alignment). Falls back to "Tite-Seq Analysis" when
-// nothing is selected yet so the shelf label is never blank.
+// Auto-derive the subtitle placeholder. Differentiating field first so
+// deriveLabels() downstream has a stable disambiguator:
+//   1. targetAntigen — per-instance selector in multi-antigen studies
+//   2. antigenColumn label — fallback when targetAntigen is unset
+//   3. abundance label — distinguishes datasets / chains
+// Bin and concentration columns are dropped: identical across instances on
+// the same dataset, so they crowd out the differentiator without adding signal.
 watchEffect(() => {
   const parts: string[] = [];
+
+  if (app.model.data.targetAntigen) {
+    parts.push(app.model.data.targetAntigen);
+  } else if (app.model.data.antigenColumnRef) {
+    const antigenLabel = app.model.outputs.antigenOptions?.find(
+      (o) => app.model.data.antigenColumnRef && plRefsEqual(o.ref, app.model.data.antigenColumnRef),
+    )?.label;
+    if (antigenLabel) parts.push(antigenLabel);
+  }
 
   const abundanceLabel = app.model.outputs.abundanceOptions?.find(
     (o) => app.model.data.abundanceRef && plRefsEqual(o.ref, app.model.data.abundanceRef),
   )?.label;
   if (abundanceLabel) parts.push(abundanceLabel);
 
-  const concentrationLabel = app.model.outputs.concentrationOptions?.find(
-    (o) =>
-      app.model.data.concentrationColumnRef &&
-      plRefsEqual(o.ref, app.model.data.concentrationColumnRef),
-  )?.label;
-  if (concentrationLabel) parts.push(concentrationLabel);
-
-  const binLabel = app.model.outputs.binOptions?.find(
-    (o) => app.model.data.binColumnRef && plRefsEqual(o.ref, app.model.data.binColumnRef),
-  )?.label;
-  if (binLabel) parts.push(binLabel);
-
-  if (parts.length < 3 && app.model.data.targetAntigen) {
-    parts.push(app.model.data.targetAntigen);
-  }
-
-  app.model.data.defaultBlockLabel = parts.slice(0, 3).join(" - ") || "Tite-Seq Analysis";
+  app.model.data.defaultBlockLabel = parts.join(" - ") || "Tite-Seq Analysis";
 });
 </script>
 
