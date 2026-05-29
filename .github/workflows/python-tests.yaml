@@ -53,8 +53,8 @@ jobs:
           cache-dependency-glob: software/uv.lock
 
       - name: Regenerate requirements.txt from pyproject.toml
-        # Mirror of the `deps:export` script in software/package.json — keep in sync.
-        run: uv pip compile pyproject.toml --no-deps --no-annotate --custom-compile-command "pnpm deps:export" -o src/requirements.txt
+        # Same script `pnpm deps:export` runs locally — single source of truth.
+        run: bash scripts/deps-export.sh
 
       - name: Verify requirements.txt is in sync with pyproject.toml
         run: |
