@@ -8,6 +8,7 @@
     "changeset": "changeset",
     "version-packages": "changeset version",
     "build": "pl-pkg build",
+    "deps:export": "bash scripts/deps-export.sh",
     "prepublishOnly": "pl-pkg prepublish"
   },
   "block-software": {

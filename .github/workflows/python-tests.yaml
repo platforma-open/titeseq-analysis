@@ -23,6 +23,7 @@ jobs:
 
       - uses: astral-sh/setup-uv@v5
         with:
+          version: "0.11.16"
           enable-cache: true
           cache-dependency-glob: software/uv.lock
 
@@ -31,3 +32,39 @@ jobs:
 
       - name: Run pytest
         run: uv run pytest
+
+  requirements-sync:
+    # src/requirements.txt is generated from pyproject.toml (the single source of
+    # truth) and is what pl-pkg builds from. This job fails if the committed file
+    # has drifted from pyproject — e.g. someone changed a dependency but forgot to
+    # regenerate. Fix locally with `pnpm deps:export` (see software/package.json).
+    if: github.repository != 'milaboratory/platforma-titeseq-analysis'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: software
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.16"
+          enable-cache: true
+          cache-dependency-glob: software/uv.lock
+
+      - name: Regenerate requirements.txt from pyproject.toml
+        # Same script `pnpm deps:export` runs locally — single source of truth.
+        run: bash scripts/deps-export.sh
+
+      - name: Verify requirements.txt is in sync with pyproject.toml
+        run: |
+          if ! git diff --exit-code -- src/requirements.txt; then
+            echo ""
+            echo "::error::src/requirements.txt is out of sync with pyproject.toml"
+            echo "Dependencies are defined in software/pyproject.toml; src/requirements.txt is generated."
+            echo "Resolve locally with:"
+            echo "    cd software && pnpm deps:export"
+            echo "then commit the updated src/requirements.txt."
+            exit 1
+          fi
+          echo "src/requirements.txt is in sync with pyproject.toml."
