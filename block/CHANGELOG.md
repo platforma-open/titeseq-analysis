@@ -1,5 +1,11 @@
 # @platforma-open/platforma-open.titeseq-analysis
 
+## 2.1.6
+
+### Patch Changes
+
+- @platforma-open/platforma-open.titeseq-analysis.workflow@2.1.4
+
 ## 2.1.5
 
 ### Patch Changes
