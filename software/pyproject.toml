@@ -2,15 +2,23 @@
 name = "titeseq-analysis-calc-script"
 version = "0.0.0"
 requires-python = ">=3.12.0, <3.13"
+# Runtime dependencies — single source of truth. These exact pins are exported to
+# src/requirements.txt (top-level only) via `pnpm deps:export`, which is what pl-pkg
+# builds from and what the scientific-slim runenv installs offline. Keep versions
+# aligned with the wheels shipped by the runenv.
+dependencies = [
+    "polars-lts-cpu==1.33.1",
+    "numpy==2.2.6",
+    "scipy==1.15.3",
+    "pyarrow==21.0.0",
+]
 
 [dependency-groups]
+# Dev-only tooling (not shipped). Runtime libs live in [project.dependencies] above.
 dev = [
-    "polars>=1.39.0",
-    "numpy>=2.0.0",
-    "scipy>=1.14.0",
-    "pyarrow>=18.0.0",
     "pytest>=9.0.2",
     "pytest-cov>=6.0.0",
+    "ruff>=0.14",
 ]
 
 [tool.pytest.ini_options]
