@@ -285,13 +285,6 @@ export const model = BlockModelV3.create(dataModel)
           axes: [{ name: "pl7.app/sampleId" }, { name: "pl7.app/vdj/scClonotypeKey" }],
           annotations: { "pl7.app/isAnchor": "true" },
         },
-        // synthetic-repertoire-profiler keys its abundance anchor
-        // (pl7.app/readCount) on [sampleId, variantKey] — structurally the same
-        // 2-axis anchored shape as the MiXCR clonotype cases above. Accepting it
-        // here lets Tite-Seq run on a designed/synthetic variant library. The
-        // workflow is already axis-generic (it reads abundanceSpec.axesSpec[1]
-        // verbatim), so nothing downstream needs the axis name. Mirrors the same
-        // addition in clonotype-clustering and clonotype-space.
         {
           axes: [{ name: "pl7.app/sampleId" }, { name: "pl7.app/variantKey" }],
           annotations: { "pl7.app/isAnchor": "true" },
