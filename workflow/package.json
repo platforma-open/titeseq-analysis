@@ -1,12 +1,13 @@
 {
   "name": "@platforma-open/platforma-open.titeseq-analysis.workflow",
   "version": "2.1.4",
+  "private": true,
   "description": "Block Workflow",
   "type": "module",
   "scripts": {
-    "build": "shx rm -rf dist && pl-tengo check && pl-tengo build",
-    "test": "vitest --run --passWithNoTests",
-    "format": "/usr/bin/env emacs --script ./format.el"
+    "build": "shx rm -rf dist && pl-tengo build",
+    "format": "/usr/bin/env emacs --script ./format.el || echo 'No emacs.'",
+    "check": "pl-tengo check"
   },
   "dependencies": {
     "@platforma-open/platforma-open.titeseq-analysis.software": "workspace:*",
@@ -14,9 +15,8 @@
   },
   "devDependencies": {
     "@platforma-sdk/tengo-builder": "catalog:",
-    "@platforma-sdk/test": "catalog:"
+    "@platforma-sdk/test": "catalog:",
+    "shx": "catalog:"
   },
-  "peerDependencies": {
-    "vitest": "*"
-  }
+  "peerDependencies": {}
 }

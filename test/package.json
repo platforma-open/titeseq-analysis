@@ -7,26 +7,28 @@
   "files": [],
   "type": "module",
   "scripts": {
-    "test": "vitest --run --passWithNoTests",
-    "lint": "eslint .",
-    "type-check": "ts-builder type-check --target block-test"
+    "test": "vitest run --passWithNoTests",
+    "type-check": "ts-builder type-check --target block-test",
+    "fmt": "ts-builder format",
+    "check": "ts-builder check --target block-test"
   },
   "dependencies": {
-    "this-block": "workspace:@platforma-open/platforma-open.titeseq-analysis@*",
-    "@platforma-open/platforma-open.titeseq-analysis.model": "workspace:*",
-    "@platforma-open/milaboratories.samples-and-data": "catalog:",
-    "@platforma-open/milaboratories.samples-and-data.model": "catalog:",
     "@platforma-open/milaboratories.import-vdj": "catalog:",
     "@platforma-open/milaboratories.import-vdj.model": "catalog:",
-    "@platforma-sdk/model": "catalog:"
+    "@platforma-open/milaboratories.samples-and-data": "catalog:",
+    "@platforma-open/milaboratories.samples-and-data.model": "catalog:",
+    "@platforma-open/platforma-open.titeseq-analysis.model": "workspace:*",
+    "@platforma-sdk/model": "catalog:",
+    "this-block": "workspace:@platforma-open/platforma-open.titeseq-analysis@*"
   },
   "devDependencies": {
     "@milaboratories/ts-builder": "catalog:",
     "@milaboratories/ts-configs": "catalog:",
-    "@platforma-sdk/eslint-config": "catalog:",
     "@platforma-sdk/test": "catalog:",
     "eslint": "catalog:",
-    "typescript": "catalog:",
     "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "typescript": "*"
   }
 }

@@ -203,7 +203,7 @@ function filterPopulatedOptions<O extends { ref: PlRef }, S>(
   });
 }
 
-export const model = BlockModelV3.create(dataModel)
+export const platforma = BlockModelV3.create(dataModel)
 
   .args<BlockArgs>((data) => {
     if (data.abundanceRef === undefined) throw new Error("Abundance column is required");
@@ -537,4 +537,4 @@ export const model = BlockModelV3.create(dataModel)
 
   .done();
 
-export type BlockOutputs = InferOutputsType<typeof model>;
+export type BlockOutputs = InferOutputsType<typeof platforma>;
