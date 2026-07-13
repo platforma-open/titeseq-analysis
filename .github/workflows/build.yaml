@@ -29,6 +29,10 @@ jobs:
       app-name-slug: 'block-titeseq-analysis'
 
       node-version: '20.x'
+      # Empty => install pnpm from packageManager (pnpm@9.12.0). The shared
+      # workflow defaults pnpm-version to 'latest', which collides with the
+      # packageManager field and fails pnpm/action-setup (ERR_PNPM_BAD_PM_VERSION).
+      pnpm-version: ''
       build-script-name: 'build'
       pnpm-recursive-build: false
 
