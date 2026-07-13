@@ -285,6 +285,10 @@ export const model = BlockModelV3.create(dataModel)
           axes: [{ name: "pl7.app/sampleId" }, { name: "pl7.app/vdj/scClonotypeKey" }],
           annotations: { "pl7.app/isAnchor": "true" },
         },
+        {
+          axes: [{ name: "pl7.app/sampleId" }, { name: "pl7.app/variantKey" }],
+          annotations: { "pl7.app/isAnchor": "true" },
+        },
       ],
       {
         label: { includeNativeLabel: false },

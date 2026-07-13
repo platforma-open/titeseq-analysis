@@ -20,9 +20,12 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
   const meanBin = pCols.find((p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/meanBin");
   if (!meanBin) return undefined;
 
-  const clonotypeAxis = meanBin.spec.axesSpec.find(
-    (a) => a.name === "pl7.app/vdj/clonotypeKey" || a.name === "pl7.app/vdj/scClonotypeKey",
-  );
+  // The per-item key axis of the signal columns: whichever axis isn't the
+  // concentration axis. Matching by exclusion keeps this working across input
+  // modalities — MiXCR clonotypeKey/scClonotypeKey and
+  // synthetic-repertoire-profiler variantKey all resolve here without
+  // enumerating each axis name.
+  const clonotypeAxis = meanBin.spec.axesSpec.find((a) => a.name !== "pl7.app/vdj/concentration");
   if (!clonotypeAxis) return undefined;
 
   // X binds to the concentrationValue sidecar (Double) for true log-scale
