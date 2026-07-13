@@ -37,6 +37,8 @@ jobs:
       pnpm-recursive-tests: false
       team-id: 'ciplopen'
 
+      pl-docker-tag: '1.34.2'
+
       package-path: 'block'
       publish-to-public: true
       create-tag: true
