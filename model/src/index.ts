@@ -12,6 +12,7 @@ import {
   createPFrameForGraphs,
   createPlDataTableStateV2,
   createPlDataTableV2,
+  isPColumnReady,
   isPColumnSpec,
   plRefsEqual,
 } from "@platforma-sdk/model";
@@ -438,12 +439,16 @@ export const model = BlockModelV3.create(dataModel)
   .outputWithStatus("summaryTable", (ctx) => {
     const summaryCols = ctx.outputs?.resolve("summaryPf")?.getPColumns();
     if (summaryCols === undefined) return undefined;
-    const signalCols = ctx.outputs?.resolve("signalPf")?.getPColumns() ?? [];
 
-    // Reveal fitFailureReason and the signal columns in this block's Table so
-    // users see why each clonotype failed and can export the per-concentration
-    // data. Both carry pl7.app/table/visibility: "hidden" to stay out of
-    // downstream pickers — overridden locally only.
+    // signalPf columns are deliberately NOT joined in here. meanBin /
+    // fittedMeanBin are keyed [clonotypeKey, concentration] and
+    // concentrationValue is keyed [concentration] alone, so every column passed
+    // to createPlDataTableV2 becomes primary in a fullJoin and the table's row
+    // key widens to the union of all axes — producing one row per
+    // (clonotype × concentration) instead of one row per clonotype.
+    // Reveal fitFailureReason in this block's Table so users see why each
+    // clonotype failed. It carries pl7.app/table/visibility: "hidden" to stay
+    // out of downstream pickers — overridden locally only.
     const withVisibility =
       (visibility: string) =>
       <T extends { spec: { annotations?: Record<string, string> } }>(c: T): T => ({
@@ -457,7 +462,6 @@ export const model = BlockModelV3.create(dataModel)
     const visibleSummary = summaryCols.map((c) =>
       c.spec.name === "pl7.app/vdj/fitFailureReason" ? withVisibility("default")(c) : c,
     );
-    const visibleSignal = signalCols.map(withVisibility("default"));
 
     const kdCol = visibleSummary.find((c) => c.spec.name === "pl7.app/vdj/kd");
     if (!kdCol) return undefined;
@@ -483,13 +487,10 @@ export const model = BlockModelV3.create(dataModel)
           (c.spec.valueType as string) !== "File" &&
           !c.spec.annotations?.["pl7.app/trace"]?.includes("milaboratories.titeseq-analysis"),
       )
+      .filter(isPColumnReady)
       .map(withVisibility("optional"));
 
-    return createPlDataTableV2(
-      ctx,
-      [...visibleSummary, ...visibleSignal, ...resultPoolCols],
-      ctx.data.tableState,
-    );
+    return createPlDataTableV2(ctx, [...visibleSummary, ...resultPoolCols], ctx.data.tableState);
   })
 
   .outputWithStatus("titrationCurvesPf", (ctx): PFrameHandle | undefined => {
