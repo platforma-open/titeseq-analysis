@@ -1,9 +1,11 @@
 {
   "name": "@platforma-open/platforma-open.titeseq-analysis.model",
   "version": "2.2.0",
+  "private": true,
   "description": "Block model",
   "type": "module",
-  "main": "dist/index.js",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
@@ -22,6 +24,7 @@
   "dependencies": {
     "@milaboratories/graph-maker": "catalog:",
     "@milaboratories/helpers": "catalog:",
+    "@platforma-open/platforma-open.titeseq-analysis.kind": "workspace:*",
     "@platforma-sdk/model": "catalog:"
   },
   "devDependencies": {
