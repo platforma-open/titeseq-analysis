@@ -1,11 +1,19 @@
 import type { GraphMakerState } from "@milaboratories/graph-maker";
 import type {
   InferOutputsType,
+  PColumn,
+  PColumnDataUniversal,
   PColumnIdAndSpec,
   PFrameHandle,
   PlDataTableStateV2,
   PlRef,
 } from "@platforma-sdk/model";
+import type { BlockParams } from "@platforma-open/platforma-open.titeseq-analysis.kind";
+import { kind } from "@platforma-open/platforma-open.titeseq-analysis.kind";
+import { deriveTemplateParams } from "./templateParams";
+
+export type { BlockParams } from "@platforma-open/platforma-open.titeseq-analysis.kind";
+export { deriveTemplateParams };
 import {
   BlockModelV3,
   DataModelBuilder,
@@ -116,24 +124,29 @@ const AFFINITY_VS_FIT_DEFAULT_STATE: GraphMakerState = {
   },
 } as GraphMakerState;
 
-const dataModel = new DataModelBuilder().from<BlockData>("v1").init(() => ({
-  abundanceRef: undefined,
-  concentrationColumnRef: undefined,
-  binColumnRef: undefined,
-  antigenColumnRef: undefined,
-  sortFractionColumnRef: undefined,
-  targetAntigen: undefined,
-  minReadsPerConcentration: 3,
-  minConcentrationPoints: 5,
-  r2ThresholdGood: 0.8,
-  r2ThresholdFailed: 0.5,
-  nMin: 0.5,
-  nMax: 2.0,
-  hookEffectThresholdBin: 0.2,
-  hookEffectThresholdNoBin: 0.02,
-  hookEffectMinReads: 20,
+/**
+ * A fresh block's data, seeded by whatever the creator or template supplied. Every param the
+ * contract carries is honoured here, and every field it does not carry falls back to the
+ * block's own default — so a block created without params is exactly the block this returns.
+ */
+export const initBlockData = (params?: BlockParams): BlockData => ({
+  abundanceRef: params?.abundanceRef,
+  concentrationColumnRef: params?.concentrationColumnRef,
+  binColumnRef: params?.binColumnRef,
+  antigenColumnRef: params?.antigenColumnRef,
+  sortFractionColumnRef: params?.sortFractionColumnRef,
+  targetAntigen: params?.targetAntigen,
+  minReadsPerConcentration: params?.minReadsPerConcentration ?? 3,
+  minConcentrationPoints: params?.minConcentrationPoints ?? 5,
+  r2ThresholdGood: params?.r2ThresholdGood ?? 0.8,
+  r2ThresholdFailed: params?.r2ThresholdFailed ?? 0.5,
+  nMin: params?.nMin ?? 0.5,
+  nMax: params?.nMax ?? 2.0,
+  hookEffectThresholdBin: params?.hookEffectThresholdBin ?? 0.2,
+  hookEffectThresholdNoBin: params?.hookEffectThresholdNoBin ?? 0.02,
+  hookEffectMinReads: params?.hookEffectMinReads ?? 20,
   defaultBlockLabel: "Tite-Seq Analysis",
-  customBlockLabel: "",
+  customBlockLabel: params?.customBlockLabel ?? "",
   tableState: createPlDataTableStateV2(),
   graphStateTitrationCurves: {
     title: "",
@@ -163,7 +176,11 @@ const dataModel = new DataModelBuilder().from<BlockData>("v1").init(() => ({
   },
   graphStateAffinityVsFit: AFFINITY_VS_FIT_DEFAULT_STATE,
   settingsOpen: false,
-}));
+});
+
+const dataModel = new DataModelBuilder({ kind })
+  .from<BlockData>("v1")
+  .init(({ params }) => initBlockData(params));
 
 function isIntegerValueType(vt: string | undefined): boolean {
   return vt === "Int" || vt === "Long";
@@ -203,7 +220,9 @@ function filterPopulatedOptions<O extends { ref: PlRef }, S>(
   });
 }
 
-export const model = BlockModelV3.create(dataModel)
+export const platforma = BlockModelV3.create({ dataModel, kind })
+
+  .templateParams(deriveTemplateParams)
 
   .args<BlockArgs>((data) => {
     if (data.abundanceRef === undefined) throw new Error("Abundance column is required");
@@ -483,6 +502,10 @@ export const model = BlockModelV3.create(dataModel)
           (c.spec.valueType as string) !== "File" &&
           !c.spec.annotations?.["pl7.app/trace"]?.includes("milaboratories.titeseq-analysis"),
       )
+      // `dontWaitAllData` hands back a column as soon as its spec is known, so one whose data has
+      // not arrived yet carries `undefined`. The table cannot render such a column; it reappears
+      // on the next recompute, once the data lands.
+      .filter((c): c is PColumn<PColumnDataUniversal> => c.data !== undefined)
       .map(withVisibility("optional"));
 
     return createPlDataTableV2(
@@ -541,4 +564,4 @@ export const model = BlockModelV3.create(dataModel)
 
   .done();
 
-export type BlockOutputs = InferOutputsType<typeof model>;
+export type BlockOutputs = InferOutputsType<typeof platforma>;

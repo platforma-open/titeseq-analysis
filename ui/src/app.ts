@@ -1,11 +1,11 @@
-import { model } from "@platforma-open/platforma-open.titeseq-analysis.model";
+import { platforma } from "@platforma-open/platforma-open.titeseq-analysis.model";
 import { defineAppV3 } from "@platforma-sdk/ui-vue";
 import TitrationCurvesPage from "./pages/TitrationCurvesPage.vue";
 import KDDistributionPage from "./pages/KDDistributionPage.vue";
 import AffinityVsFitPage from "./pages/AffinityVsFitPage.vue";
 import TablePage from "./pages/TablePage.vue";
 
-export const sdkPlugin = defineAppV3(model, (app) => {
+export const sdkPlugin = defineAppV3(platforma, (app) => {
   app.model.data.customBlockLabel ??= "";
 
   return {

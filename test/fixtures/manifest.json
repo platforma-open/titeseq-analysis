@@ -1,29 +1,10 @@
 {
-  "bins": [
-    1,
-    2,
-    3,
-    4
-  ],
-  "concentrations_m": [
-    0.0,
-    1e-10,
-    1e-09,
-    3e-09,
-    1e-08,
-    1e-07,
-    1e-06
-  ],
+  "bins": [1, 2, 3, 4],
+  "concentrations_m": [0.0, 1e-10, 1e-9, 3e-9, 1e-8, 1e-7, 1e-6],
   "fixture_version": "1.0.0",
   "j_gene": "IGHJ4*00",
   "master_seed": 20260417,
-  "mixcr_tsv_headers": [
-    "readCount",
-    "nSeqCDR3",
-    "aaSeqCDR3",
-    "bestVGene",
-    "bestJGene"
-  ],
+  "mixcr_tsv_headers": ["readCount", "nSeqCDR3", "aaSeqCDR3", "bestVGene", "bestJGene"],
   "v_gene": "IGHV3-23*00",
   "variants": {
     "antigen": {
@@ -153,28 +134,16 @@
         "ANT_T1": {
           "antigen": "target",
           "expected_class": "Good",
-          "hill_range": [
-            0.5,
-            2.0
-          ],
+          "hill_range": [0.5, 2.0],
           "kd_out_of_range": false,
-          "kd_range": [
-            1.5e-09,
-            1.5e-08
-          ]
+          "kd_range": [1.5e-9, 1.5e-8]
         },
         "ANT_T2": {
           "antigen": "target",
           "expected_class": "Good",
-          "hill_range": [
-            0.5,
-            2.0
-          ],
+          "hill_range": [0.5, 2.0],
           "kd_out_of_range": false,
-          "kd_range": [
-            1.5e-08,
-            1.5e-07
-          ]
+          "kd_range": [1.5e-8, 1.5e-7]
         }
       },
       "concentration": {
@@ -186,26 +155,26 @@
         "ant_other_c1_b2": 1e-10,
         "ant_other_c1_b3": 1e-10,
         "ant_other_c1_b4": 1e-10,
-        "ant_other_c2_b1": 1e-09,
-        "ant_other_c2_b2": 1e-09,
-        "ant_other_c2_b3": 1e-09,
-        "ant_other_c2_b4": 1e-09,
-        "ant_other_c3_b1": 3e-09,
-        "ant_other_c3_b2": 3e-09,
-        "ant_other_c3_b3": 3e-09,
-        "ant_other_c3_b4": 3e-09,
-        "ant_other_c4_b1": 1e-08,
-        "ant_other_c4_b2": 1e-08,
-        "ant_other_c4_b3": 1e-08,
-        "ant_other_c4_b4": 1e-08,
-        "ant_other_c5_b1": 1e-07,
-        "ant_other_c5_b2": 1e-07,
-        "ant_other_c5_b3": 1e-07,
-        "ant_other_c5_b4": 1e-07,
-        "ant_other_c6_b1": 1e-06,
-        "ant_other_c6_b2": 1e-06,
-        "ant_other_c6_b3": 1e-06,
-        "ant_other_c6_b4": 1e-06,
+        "ant_other_c2_b1": 1e-9,
+        "ant_other_c2_b2": 1e-9,
+        "ant_other_c2_b3": 1e-9,
+        "ant_other_c2_b4": 1e-9,
+        "ant_other_c3_b1": 3e-9,
+        "ant_other_c3_b2": 3e-9,
+        "ant_other_c3_b3": 3e-9,
+        "ant_other_c3_b4": 3e-9,
+        "ant_other_c4_b1": 1e-8,
+        "ant_other_c4_b2": 1e-8,
+        "ant_other_c4_b3": 1e-8,
+        "ant_other_c4_b4": 1e-8,
+        "ant_other_c5_b1": 1e-7,
+        "ant_other_c5_b2": 1e-7,
+        "ant_other_c5_b3": 1e-7,
+        "ant_other_c5_b4": 1e-7,
+        "ant_other_c6_b1": 1e-6,
+        "ant_other_c6_b2": 1e-6,
+        "ant_other_c6_b3": 1e-6,
+        "ant_other_c6_b4": 1e-6,
         "ant_target_c0_b1": 0.0,
         "ant_target_c0_b2": 0.0,
         "ant_target_c0_b3": 0.0,
@@ -214,31 +183,28 @@
         "ant_target_c1_b2": 1e-10,
         "ant_target_c1_b3": 1e-10,
         "ant_target_c1_b4": 1e-10,
-        "ant_target_c2_b1": 1e-09,
-        "ant_target_c2_b2": 1e-09,
-        "ant_target_c2_b3": 1e-09,
-        "ant_target_c2_b4": 1e-09,
-        "ant_target_c3_b1": 3e-09,
-        "ant_target_c3_b2": 3e-09,
-        "ant_target_c3_b3": 3e-09,
-        "ant_target_c3_b4": 3e-09,
-        "ant_target_c4_b1": 1e-08,
-        "ant_target_c4_b2": 1e-08,
-        "ant_target_c4_b3": 1e-08,
-        "ant_target_c4_b4": 1e-08,
-        "ant_target_c5_b1": 1e-07,
-        "ant_target_c5_b2": 1e-07,
-        "ant_target_c5_b3": 1e-07,
-        "ant_target_c5_b4": 1e-07,
-        "ant_target_c6_b1": 1e-06,
-        "ant_target_c6_b2": 1e-06,
-        "ant_target_c6_b3": 1e-06,
-        "ant_target_c6_b4": 1e-06
+        "ant_target_c2_b1": 1e-9,
+        "ant_target_c2_b2": 1e-9,
+        "ant_target_c2_b3": 1e-9,
+        "ant_target_c2_b4": 1e-9,
+        "ant_target_c3_b1": 3e-9,
+        "ant_target_c3_b2": 3e-9,
+        "ant_target_c3_b3": 3e-9,
+        "ant_target_c3_b4": 3e-9,
+        "ant_target_c4_b1": 1e-8,
+        "ant_target_c4_b2": 1e-8,
+        "ant_target_c4_b3": 1e-8,
+        "ant_target_c4_b4": 1e-8,
+        "ant_target_c5_b1": 1e-7,
+        "ant_target_c5_b2": 1e-7,
+        "ant_target_c5_b3": 1e-7,
+        "ant_target_c5_b4": 1e-7,
+        "ant_target_c6_b1": 1e-6,
+        "ant_target_c6_b2": 1e-6,
+        "ant_target_c6_b3": 1e-6,
+        "ant_target_c6_b4": 1e-6
       },
-      "distractor_clonotypes": [
-        "ANT_D1",
-        "ANT_D2"
-      ],
+      "distractor_clonotypes": ["ANT_D1", "ANT_D2"],
       "sample_ids": [
         "ant_other_c0_b1",
         "ant_other_c0_b2",
@@ -356,41 +322,23 @@
         "G_LOW": {
           "expected_class": "Good",
           "expected_reason": null,
-          "hill_range": [
-            0.5,
-            2.0
-          ],
+          "hill_range": [0.5, 2.0],
           "kd_out_of_range": false,
-          "kd_range": [
-            3e-10,
-            3e-09
-          ]
+          "kd_range": [3e-10, 3e-9]
         },
         "G_MID": {
           "expected_class": "Good",
           "expected_reason": null,
-          "hill_range": [
-            0.5,
-            2.0
-          ],
+          "hill_range": [0.5, 2.0],
           "kd_out_of_range": false,
-          "kd_range": [
-            3e-09,
-            3e-08
-          ]
+          "kd_range": [3e-9, 3e-8]
         },
         "P_NOISY": {
           "expected_class": "Partial",
           "expected_reason": null,
-          "hill_range": [
-            0.3,
-            10.0
-          ],
+          "hill_range": [0.3, 10.0],
           "kd_out_of_range": false,
-          "kd_range": [
-            1e-09,
-            1e-07
-          ]
+          "kd_range": [1e-9, 1e-7]
         }
       },
       "concentration": {
@@ -402,26 +350,26 @@
         "c1_b2": 1e-10,
         "c1_b3": 1e-10,
         "c1_b4": 1e-10,
-        "c2_b1": 1e-09,
-        "c2_b2": 1e-09,
-        "c2_b3": 1e-09,
-        "c2_b4": 1e-09,
-        "c3_b1": 3e-09,
-        "c3_b2": 3e-09,
-        "c3_b3": 3e-09,
-        "c3_b4": 3e-09,
-        "c4_b1": 1e-08,
-        "c4_b2": 1e-08,
-        "c4_b3": 1e-08,
-        "c4_b4": 1e-08,
-        "c5_b1": 1e-07,
-        "c5_b2": 1e-07,
-        "c5_b3": 1e-07,
-        "c5_b4": 1e-07,
-        "c6_b1": 1e-06,
-        "c6_b2": 1e-06,
-        "c6_b3": 1e-06,
-        "c6_b4": 1e-06
+        "c2_b1": 1e-9,
+        "c2_b2": 1e-9,
+        "c2_b3": 1e-9,
+        "c2_b4": 1e-9,
+        "c3_b1": 3e-9,
+        "c3_b2": 3e-9,
+        "c3_b3": 3e-9,
+        "c3_b4": 3e-9,
+        "c4_b1": 1e-8,
+        "c4_b2": 1e-8,
+        "c4_b3": 1e-8,
+        "c4_b4": 1e-8,
+        "c5_b1": 1e-7,
+        "c5_b2": 1e-7,
+        "c5_b3": 1e-7,
+        "c5_b4": 1e-7,
+        "c6_b1": 1e-6,
+        "c6_b2": 1e-6,
+        "c6_b3": 1e-6,
+        "c6_b4": 1e-6
       },
       "sample_ids": [
         "c0_b1",
@@ -465,15 +413,9 @@
       "clonotypes": {
         "NB_GOOD": {
           "expected_class": "Good",
-          "hill_range": [
-            0.3,
-            2.5
-          ],
+          "hill_range": [0.3, 2.5],
           "kd_out_of_range": false,
-          "kd_range": [
-            1e-09,
-            2e-07
-          ]
+          "kd_range": [1e-9, 2e-7]
         },
         "NB_HOOK": {
           "expected_class": "Failed",
@@ -481,28 +423,18 @@
         },
         "NB_LOW_R2": {
           "expected_class": "Failed",
-          "expected_reason_in": [
-            "low_r2",
-            "convergence_failure"
-          ]
+          "expected_reason_in": ["low_r2", "convergence_failure"]
         }
       },
       "concentration": {
         "nb_c1": 1e-10,
-        "nb_c2": 1e-09,
-        "nb_c3": 3e-09,
-        "nb_c4": 1e-08,
-        "nb_c5": 1e-07,
-        "nb_c6": 1e-06
+        "nb_c2": 1e-9,
+        "nb_c3": 3e-9,
+        "nb_c4": 1e-8,
+        "nb_c5": 1e-7,
+        "nb_c6": 1e-6
       },
-      "sample_ids": [
-        "nb_c1",
-        "nb_c2",
-        "nb_c3",
-        "nb_c4",
-        "nb_c5",
-        "nb_c6"
-      ],
+      "sample_ids": ["nb_c1", "nb_c2", "nb_c3", "nb_c4", "nb_c5", "nb_c6"],
       "variant": "no_bin_mode"
     }
   }
