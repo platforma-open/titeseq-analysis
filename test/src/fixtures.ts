@@ -1,14 +1,14 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
-import { uniquePlId } from '@platforma-sdk/model';
-import type { ImportFileHandle } from '@platforma-sdk/model';
+import { uniquePlId } from "@platforma-sdk/model";
+import type { ImportFileHandle } from "@platforma-sdk/model";
 import type {
   BlockArgs as SamplesAndDataBlockArgs,
   PlId,
-} from '@platforma-open/milaboratories.samples-and-data.model';
+} from "@platforma-open/milaboratories.samples-and-data.model";
 
-export type FixtureVariantName = 'bin_mode' | 'no_bin_mode' | 'antigen';
+export type FixtureVariantName = "bin_mode" | "no_bin_mode" | "antigen";
 
 type RawVariant = {
   variant: FixtureVariantName;
@@ -51,14 +51,14 @@ export type LoadedVariant = {
   raw: RawVariant;
 };
 
-const MANIFEST_PATH = resolve(__dirname, '..', 'fixtures', 'manifest.json');
+const MANIFEST_PATH = resolve(__dirname, "..", "fixtures", "manifest.json");
 
 export function loadManifest(): FixtureManifest {
-  return JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')) as FixtureManifest;
+  return JSON.parse(readFileSync(MANIFEST_PATH, "utf8")) as FixtureManifest;
 }
 
 export function fixtureTsvPath(variant: FixtureVariantName, sampleName: string): string {
-  return resolve(__dirname, '..', 'fixtures', 'data', variant, `sample_${sampleName}.tsv`);
+  return resolve(__dirname, "..", "fixtures", "data", variant, `sample_${sampleName}.tsv`);
 }
 
 export type Helpers = {
@@ -97,14 +97,14 @@ export async function prepareSamplesAndDataArgs(
   }
 
   const concentrationId = uniquePlId() as unknown as PlId;
-  const metadataIds: LoadedVariant['metadataIds'] = { concentration: concentrationId };
+  const metadataIds: LoadedVariant["metadataIds"] = { concentration: concentrationId };
 
-  const metadata: SamplesAndDataBlockArgs['metadata'] = [
+  const metadata: SamplesAndDataBlockArgs["metadata"] = [
     {
       id: concentrationId,
-      label: 'antigen_conc_M',
+      label: "antigen_conc_M",
       global: true,
-      valueType: 'Double',
+      valueType: "Double",
       data: Object.fromEntries(
         raw.sample_ids.map((n) => [sampleIdByName[n], raw.concentration[n]]),
       ),
@@ -116,12 +116,10 @@ export async function prepareSamplesAndDataArgs(
     metadataIds.bin = binId;
     metadata.push({
       id: binId,
-      label: 'bin_number',
+      label: "bin_number",
       global: true,
-      valueType: 'Long',
-      data: Object.fromEntries(
-        raw.sample_ids.map((n) => [sampleIdByName[n], raw.bin![n]]),
-      ),
+      valueType: "Long",
+      data: Object.fromEntries(raw.sample_ids.map((n) => [sampleIdByName[n], raw.bin![n]])),
     });
   }
 
@@ -130,12 +128,10 @@ export async function prepareSamplesAndDataArgs(
     metadataIds.antigen = antigenId;
     metadata.push({
       id: antigenId,
-      label: 'antigen',
+      label: "antigen",
       global: true,
-      valueType: 'String',
-      data: Object.fromEntries(
-        raw.sample_ids.map((n) => [sampleIdByName[n], raw.antigen![n]]),
-      ),
+      valueType: "String",
+      data: Object.fromEntries(raw.sample_ids.map((n) => [sampleIdByName[n], raw.antigen![n]])),
     });
   }
 
@@ -144,15 +140,15 @@ export async function prepareSamplesAndDataArgs(
   const args: SamplesAndDataBlockArgs = {
     metadata,
     sampleIds: raw.sample_ids.map((n) => sampleIdByName[n]),
-    sampleLabelColumnLabel: 'Sample Name',
+    sampleLabelColumnLabel: "Sample Name",
     sampleLabels,
     datasets: [
       {
         id: datasetId,
         label: `Titeseq ${variant} fixture`,
         content: {
-          type: 'Xsv',
-          xsvType: 'tsv',
+          type: "Xsv",
+          xsvType: "tsv",
           gzipped: false,
           data: datasetData,
         },
