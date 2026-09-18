@@ -10,7 +10,7 @@ packages:
 catalog:
   "@milaboratories/ts-builder": 1.7.2
   "@milaboratories/ts-configs": 1.4.0
-  "@platforma-sdk/workflow-tengo": 6.10.0
+  "@platforma-sdk/workflow-tengo": 6.10.5
   "@platforma-sdk/block-tools": 2.15.1
   "@platforma-sdk/model": 1.83.9
   "@platforma-sdk/ui-vue": 1.83.13
