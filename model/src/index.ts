@@ -1,8 +1,6 @@
 import type { GraphMakerState } from "@milaboratories/graph-maker";
 import type {
   InferOutputsType,
-  PColumn,
-  PColumnDataUniversal,
   PColumnIdAndSpec,
   PFrameHandle,
   PlDataTableStateV2,
@@ -16,10 +14,12 @@ export type { BlockParams } from "@platforma-open/platforma-open.titeseq-analysi
 export { deriveTemplateParams };
 import {
   BlockModelV3,
+  ColumnsCollection,
+  DataColumn,
   DataModelBuilder,
   createPFrameForGraphs,
   createPlDataTableStateV2,
-  createPlDataTableV2,
+  createPlDataTableV3,
   isPColumnSpec,
   plRefsEqual,
 } from "@platforma-sdk/model";
@@ -188,6 +188,12 @@ function isIntegerValueType(vt: string | undefined): boolean {
 
 function isFloatValueType(vt: string | undefined): boolean {
   return vt === "Float" || vt === "Double";
+}
+
+// Column selectors read a bare string as a regex, so literal names and domain
+// values go through an explicit exact matcher.
+function exactly(value: string) {
+  return { type: "exact" as const, value };
 }
 
 // Filter per-sample numeric option lists:
@@ -459,60 +465,63 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     if (summaryCols === undefined) return undefined;
     const signalCols = ctx.outputs?.resolve("signalPf")?.getPColumns() ?? [];
 
-    // Reveal fitFailureReason and the signal columns in this block's Table so
-    // users see why each clonotype failed and can export the per-concentration
-    // data. Both carry pl7.app/table/visibility: "hidden" to stay out of
-    // downstream pickers — overridden locally only.
-    const withVisibility =
-      (visibility: string) =>
-      <T extends { spec: { annotations?: Record<string, string> } }>(c: T): T => ({
-        ...c,
-        spec: {
-          ...c.spec,
-          annotations: { ...c.spec.annotations, "pl7.app/table/visibility": visibility },
-        },
-      });
-
-    const visibleSummary = summaryCols.map((c) =>
-      c.spec.name === "pl7.app/vdj/fitFailureReason" ? withVisibility("default")(c) : c,
-    );
-    const visibleSignal = signalCols.map(withVisibility("default"));
-
-    const kdCol = visibleSummary.find((c) => c.spec.name === "pl7.app/vdj/kd");
+    const kdCol = summaryCols.find((c) => c.spec.name === "pl7.app/vdj/kd");
     if (!kdCol) return undefined;
 
     // Include result pool columns keyed by the same clonotype axis as the kd
-    // anchor — i.e., the same cohort of clonotypes. The selector form matches
-    // each axis by full spec (name + domain), not just name, so when the
-    // upstream is a redefine-clonotypes run, columns keyed by the original
-    // (pre-redefine) clonotype axis are correctly excluded — those have the
-    // same axis name but a different domain and a disjoint key space, which
-    // would otherwise fail spec integration with "axes sets are disjoint".
-    const axesSelector = kdCol.spec.axesSpec.map((_, idx) => ({
-      anchor: "main" as const,
-      idx,
-    }));
-    const resultPoolCols = (
-      ctx.resultPool.getAnchoredPColumns({ main: kdCol.spec }, [{ axes: axesSelector }], {
-        dontWaitAllData: true,
-      }) ?? []
-    )
-      .filter(
-        (c) =>
-          (c.spec.valueType as string) !== "File" &&
-          !c.spec.annotations?.["pl7.app/trace"]?.includes("milaboratories.titeseq-analysis"),
-      )
-      // `dontWaitAllData` hands back a column as soon as its spec is known, so one whose data has
-      // not arrived yet carries `undefined`. The table cannot render such a column; it reappears
-      // on the next recompute, once the data lands.
-      .filter((c): c is PColumn<PColumnDataUniversal> => c.data !== undefined)
-      .map(withVisibility("optional"));
+    // column — i.e., the same cohort of clonotypes. Each axis is matched by
+    // full spec (name + domain), not just name, so when the upstream is a
+    // redefine-clonotypes run, columns keyed by the original (pre-redefine)
+    // clonotype axis are correctly excluded — those have the same axis name but
+    // a different domain and a disjoint key space, which would otherwise fail
+    // spec integration with "axes sets are disjoint".
+    const resultPoolCols = ColumnsCollection(["result_pool"], { ctx: ctx.ctx })
+      .filter({
+        include: {
+          axes: kdCol.spec.axesSpec.map((axis) => ({
+            name: [exactly(axis.name)],
+            domain: Object.fromEntries(
+              Object.entries(axis.domain ?? {}).map(([key, value]) => [key, [exactly(value)]]),
+            ),
+          })),
+          partialAxesMatch: false,
+        },
+        // The table attaches axis labels itself; a copy re-annotated below
+        // would get its own id and show up as a second label column.
+        exclude: { name: [exactly("pl7.app/label")] },
+      })
+      .getColumns()
+      .filter((c) => {
+        const spec = c.getSpec();
+        return (
+          (spec.valueType as string) !== "File" &&
+          !spec.annotations?.["pl7.app/trace"]?.includes("milaboratories.titeseq-analysis")
+        );
+      })
+      .map((c) => c.withSpecs({ annotations: { "pl7.app/table/visibility": "optional" } }));
 
-    return createPlDataTableV2(
-      ctx,
-      [...visibleSummary, ...visibleSignal, ...resultPoolCols],
-      ctx.data.tableState,
-    );
+    return createPlDataTableV3(ctx, {
+      primaryColumns: [...summaryCols, ...signalCols].map((c) => DataColumn.fromColumn(c)),
+      columns: resultPoolCols,
+      tableState: ctx.data.tableState,
+      displayOptions: {
+        // Reveal fitFailureReason and the signal columns in this block's Table
+        // so users see why each clonotype failed and can export the
+        // per-concentration data. Both carry pl7.app/table/visibility: "hidden"
+        // to stay out of downstream pickers.
+        visibility: [
+          {
+            match: {
+              name: [
+                exactly("pl7.app/vdj/fitFailureReason"),
+                ...signalCols.map((c) => exactly(c.spec.name)),
+              ],
+            },
+            visibility: "default",
+          },
+        ],
+      },
+    });
   })
 
   .outputWithStatus("titrationCurvesPf", (ctx): PFrameHandle | undefined => {
