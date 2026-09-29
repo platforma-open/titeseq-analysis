@@ -1,5 +1,19 @@
 # @platforma-open/platforma-open.titeseq-analysis
 
+## 2.3.0
+
+### Minor Changes
+
+- dc8e65a: Adopt the block-kind contract and the current SDK. The block now declares its
+  init params, so a project template can create it pre-configured with the
+  titration columns, the target antigen and the fit's tuning.
+
+### Patch Changes
+
+- 114b984: Update SDK: PlAgDataTable no longer recreates its grid in an endless loop
+
+  Fix the Table failing to render when the result pool offers columns on the clonotype axis
+
 ## 2.2.0
 
 ### Minor Changes

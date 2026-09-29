@@ -1,5 +1,12 @@
 # @platforma-open/platforma-open.titeseq-analysis.workflow
 
+## 2.1.5
+
+### Patch Changes
+
+- Updated dependencies [dc8e65a]
+  - @platforma-open/platforma-open.titeseq-analysis.software@2.1.3
+
 ## 2.1.4
 
 ### Patch Changes

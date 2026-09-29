@@ -1,5 +1,13 @@
 # @platforma-open/platforma-open.titeseq-analysis.software
 
+## 2.1.3
+
+### Patch Changes
+
+- dc8e65a: Adopt the block-kind contract and the current SDK. The block now declares its
+  init params, so a project template can create it pre-configured with the
+  titration columns, the target antigen and the fit's tuning.
+
 ## 2.1.2
 
 ### Patch Changes
