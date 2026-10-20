@@ -1,6 +1,6 @@
 {
   "name": "@platforma-open/platforma-open.titeseq-analysis",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "files": [
     "dist",
     "block-pack"

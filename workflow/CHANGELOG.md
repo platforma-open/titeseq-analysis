@@ -1,5 +1,13 @@
 # @platforma-open/platforma-open.titeseq-analysis.workflow
 
+## 2.1.6
+
+### Patch Changes
+
+- e4569e0: Release every package through npm trusted publishing (OIDC) so each package's trusted publisher is used before it expires.
+- Updated dependencies [e4569e0]
+  - @platforma-open/platforma-open.titeseq-analysis.software@2.1.4
+
 ## 2.1.5
 
 ### Patch Changes
