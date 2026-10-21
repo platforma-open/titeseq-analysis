@@ -172,7 +172,11 @@ def _one_empty_bin(R, ka, L, m, filled, z):
     for _ in range(_BISECTION_STEPS):  # g decreases in nu
         mid = 0.5 * (lo + hi)
         up = g(mid) > 0
-        lo, hi = np.where(up, mid, lo), np.where(up, hi, mid)
+        new_lo, new_hi = np.where(up, mid, lo), np.where(up, hi, mid)
+        # Unchanged brackets repeat on every later step: stop once none moves.
+        if not ((new_lo != lo) | (new_hi != hi)).any():
+            break
+        lo, hi = new_lo, new_hi
     nu = 0.5 * (lo + hi)
     slack = c + nu[..., None] * d
     q = np.where(filled, R / np.where(filled & (slack > 0), slack, np.inf), 0.0)
@@ -244,7 +248,7 @@ def fit_titration(
     baseline_fluorescence: float,
     amplitude_bounds: tuple[float, float],
     *,
-    chunk: int = 200,
+    chunk: int = 25,
 ) -> GridFit:
     """Grid maximum likelihood of (K, A) for every clonotype.
 
