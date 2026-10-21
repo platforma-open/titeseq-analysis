@@ -13,7 +13,12 @@ import numpy as np
 import polars as pl
 import pytest
 
+from constants import FitParams
 from pipeline import run
+
+# Fixtures are built on the linear Hill model over mean bin, without cell counts or a 0 M control,
+# so they exercise the opt-in hill_free_n model.
+LINEAR_HILL = FitParams(fit_model="hill_free_n")
 
 
 @dataclass
@@ -156,8 +161,8 @@ def test_synthetic_titeseq_facs_correction_improves_recovery():
         )
         return within.height / good.height
 
-    out_corrected = run(reads, sort_fraction_col="sort_fraction")
-    out_uncorrected = run(reads)
+    out_corrected = run(reads, params=LINEAR_HILL, sort_fraction_col="sort_fraction")
+    out_uncorrected = run(reads, params=LINEAR_HILL)
 
     corrected_rate = _within_factor(out_corrected, factor=5.0)
     uncorrected_rate = _within_factor(out_uncorrected, factor=5.0)
@@ -189,7 +194,7 @@ def test_poisson_titeseq_kd_recovery():
         seed=42,
     )
     reads = build_poisson_reads(cfg)
-    out = run(reads)
+    out = run(reads, params=LINEAR_HILL)
     pc = out["per_clonotype"]
     good = pc.filter(pl.col("affinityClass").is_in(["Good", "Partial"]))
     # Fraction recovered (not Failed) — deep regression alarm, not a calibration bound.

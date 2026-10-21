@@ -31,14 +31,20 @@ def _hill_reads(clonotype: str, true_kd: float, concs, bins, per_conc=500):
                     "concentration": float(c),
                     "bin": int(b),
                     "reads": int(counts[j]),
+                    "cells": 1000.0,
                 }
             )
     return rows
 
 
+# Default model: needs a 0 M control and the cells sorted per sample.
+_DEFAULT_MODEL_CONCS = [0.0, 1e-10, 1e-9, 1e-8, 1e-7, 1e-6]
+_CELLS_ARGS = ["--cell-count-column", "cells"]
+
+
 # Parquet round-trip — verifies argparse wiring, file reader, and parquet writer branch
 def test_cli_parquet_roundtrip(tmp_path):
-    rows = _hill_reads("G1", 1e-8, [1e-10, 1e-9, 1e-8, 1e-7, 1e-6], [1, 2, 3, 4])
+    rows = _hill_reads("G1", 1e-8, _DEFAULT_MODEL_CONCS, [1, 2, 3, 4])
     reads_path = tmp_path / "reads.parquet"
     pl.DataFrame(rows).write_parquet(reads_path)
 
@@ -59,6 +65,7 @@ def test_cli_parquet_roundtrip(tmp_path):
             str(fmb_path),
             "--out-concentration-value",
             str(cv_path),
+            *_CELLS_ARGS,
         ]
     )
     assert rc == 0
@@ -71,7 +78,7 @@ def test_cli_parquet_roundtrip(tmp_path):
 
 # TSV branch — exercises the non-parquet writer path
 def test_cli_tsv_output(tmp_path):
-    rows = _hill_reads("G1", 1e-8, [1e-10, 1e-9, 1e-8, 1e-7, 1e-6], [1, 2, 3, 4])
+    rows = _hill_reads("G1", 1e-8, _DEFAULT_MODEL_CONCS, [1, 2, 3, 4])
     reads_path = tmp_path / "reads.parquet"
     pl.DataFrame(rows).write_parquet(reads_path)
 
@@ -92,6 +99,7 @@ def test_cli_tsv_output(tmp_path):
             str(fmb_path),
             "--out-concentration-value",
             str(cv_path),
+            *_CELLS_ARGS,
         ]
     )
     assert rc == 0
@@ -117,6 +125,7 @@ def test_cli_with_params_json(tmp_path):
                 "hook_effect_threshold_bin": 0.2,
                 "hook_effect_threshold_no_bin": 0.02,
                 "hook_effect_min_reads": 20,
+                "fit_model": "hill_free_n",
             }
         )
     )
@@ -171,8 +180,13 @@ def test_cli_hook_effect_triggers_failure(tmp_path):
     pl.DataFrame(rows).write_parquet(reads_path)
 
     pc_path = tmp_path / "pc.parquet"
+    # The hook gate belongs to the opt-in linear Hill model; the default model does not fail on it.
+    params_path = tmp_path / "params.json"
+    params_path.write_text(json.dumps({"fit_model": "hill_free_n"}))
     rc = main(
         [
+            "--params",
+            str(params_path),
             "--reads",
             str(reads_path),
             "--out-per-clonotype",

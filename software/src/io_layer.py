@@ -131,6 +131,31 @@ def validate_sort_fraction(reads: pl.DataFrame, col: str) -> None:
         )
 
 
+def validate_cell_count(reads: pl.DataFrame, col: str) -> None:
+    """Cells sorted into each sample (Adams, Mora, Walczak, Kinney 2016 eq. E4, C_bc).
+
+    Invariants: column present, no nulls, finite, >= 0, one value per sample, and at least one
+    sample with cells at every concentration.
+    """
+    if col not in reads.columns:
+        raise InputValidationError(f"Cell-count column '{col}' missing from reads")
+    vals = reads[col].cast(pl.Float64)
+    if vals.is_null().any():
+        raise InputValidationError(f"Cell-count column '{col}' has null values")
+    if (~vals.is_finite()).any() or (vals < 0).any():
+        raise InputValidationError(f"Cell counts must be finite and >= 0; column '{col}'")
+    per_sample = reads.select([COL_SAMPLE, col]).unique()
+    dup = per_sample.group_by(COL_SAMPLE).len().filter(pl.col("len") > 1)
+    if dup.height > 0:
+        raise InputValidationError(
+            f"Cell count must be one value per sample; samples with several: {dup[COL_SAMPLE].to_list()[:5]}"
+        )
+    per_conc = reads.select([COL_SAMPLE, COL_CONC_STR, col]).unique().group_by(COL_CONC_STR).agg(pl.col(col).sum())
+    empty = per_conc.filter(pl.col(col) <= 0)
+    if empty.height > 0:
+        raise InputValidationError(f"No cells sorted at concentration(s) {empty[COL_CONC_STR].to_list()}")
+
+
 def validate_bin_column(df: pl.DataFrame) -> None:
     """R3: bin must be a positive integer. Non-consecutive labels are allowed.
 
