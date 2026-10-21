@@ -7,7 +7,6 @@ the per-clonotype and fitted-mean-bin frames in the same schemas as the hill_fre
 from __future__ import annotations
 
 import math
-import os
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 
@@ -15,6 +14,7 @@ import numpy as np
 import polars as pl
 
 from constants import COL_BIN, COL_CLONOTYPE, COL_CONC_STR, COL_CONC_VAL, COL_READS, COL_SAMPLE, FitParams
+from cpus import available_cpus
 from hill_fit import weighted_r2
 from io_layer import InputValidationError
 from log import log
@@ -70,7 +70,7 @@ def _fit_chunk(args) -> GridFit:
 
 def _fit_parallel(R, a, conc, log_values, B, bounds) -> GridFit:
     V = R.shape[0]
-    workers = min(os.cpu_count() or 1, math.ceil(V / _CHUNK))
+    workers = min(available_cpus(), math.ceil(V / _CHUNK))
     if workers <= 1 or V < _PARALLEL_MIN_CLONOTYPES:
         return fit_titration(R, a, conc, log_values, B, bounds)
     tasks = [(R[s : s + _CHUNK], a[s : s + _CHUNK], conc, log_values, B, bounds) for s in range(0, V, _CHUNK)]

@@ -18,7 +18,6 @@ argparse and file I/O.
 
 from __future__ import annotations
 
-import os
 from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 
@@ -36,6 +35,7 @@ from constants import (
     DEFAULT_PARAMS,
     FitParams,
 )
+from cpus import available_cpus
 from hill_fit import fit_one_clonotype
 from io_layer import (
     InputValidationError,
@@ -124,8 +124,7 @@ def _execute_fits(
     if n_survivors == 0:
         return []
 
-    cpu_count = os.cpu_count() or 1
-    max_workers = min(cpu_count, n_survivors)
+    max_workers = min(available_cpus(), n_survivors)
     if max_workers > 1 and n_survivors >= _PARALLEL_FIT_MIN_SURVIVORS:
         # chunksize trades IPC overhead against load balancing. ~4 chunks per
         # worker keeps stragglers from stalling at the tail while batching

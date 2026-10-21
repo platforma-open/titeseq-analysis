@@ -63,9 +63,9 @@ class TestExecuteFitsParity:
         monkeypatch.setattr(pipeline, "_PARALLEL_FIT_MIN_SURVIVORS", 10_000)
         serial_fits = pipeline._execute_fits(worker, xs, ys, ws, n_survivors=80, step=20)
 
-        # Force parallel: threshold low, and ensure cpu_count > 1 for the branch to trigger.
+        # Force parallel: threshold low, and ensure available_cpus > 1 for the branch to trigger.
         monkeypatch.setattr(pipeline, "_PARALLEL_FIT_MIN_SURVIVORS", 1)
-        monkeypatch.setattr(pipeline.os, "cpu_count", lambda: 4)
+        monkeypatch.setattr(pipeline, "available_cpus", lambda: 4)
         parallel_fits = pipeline._execute_fits(worker, xs, ys, ws, n_survivors=80, step=20)
 
         assert len(serial_fits) == len(parallel_fits) == 80
