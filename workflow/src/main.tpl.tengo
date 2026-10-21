@@ -1,4 +1,4 @@
-//tengo:hash_override B0024E30-15B9-4110-99AD-0999A987AD89
+//tengo:hash_override F310EBAA-21EC-494E-8975-EA2251B7D12C
 // Entry template for the Tite-Seq Analysis block.
 // Joins the abundance PColumn with per-sample metadata into one long-format reads TSV,
 // runs the Python fit-curves binary, and imports its three outputs as traced PFrames.
@@ -30,6 +30,9 @@ wf.prepare(func(args) {
 	if !is_undefined(args.sortFractionColumnRef) {
 		bb.addAnchor("sortFraction", args.sortFractionColumnRef)
 	}
+	if !is_undefined(args.cellCountColumnRef) {
+		bb.addAnchor("cellCount", args.cellCountColumnRef)
+	}
 
 	return { columns: bb.build() }
 })
@@ -47,6 +50,8 @@ wf.body(func(args) {
 	// The model gates this on hasBin, but we re-check here so the workflow is
 	// safe if called with a sort-fraction ref and no bin ref.
 	hasSortFraction := !is_undefined(args.sortFractionColumnRef) && hasBin
+	// Cells sorted per sample (Adams 2016 eq. E4, C_bc). Supersedes sort fractions when both are set.
+	hasCellCount := !is_undefined(args.cellCountColumnRef) && hasBin
 
 	unitLabel := ""
 	if !is_undefined(concSpec.annotations) && !is_undefined(concSpec.annotations["pl7.app/label"]) {
@@ -71,6 +76,9 @@ wf.body(func(args) {
 	if hasSortFraction {
 		readsBuilder.add(columns.getColumn("sortFraction"), { header: "sort_fraction" })
 	}
+	if hasCellCount {
+		readsBuilder.add(columns.getColumn("cellCount"), { header: "cell_count" })
+	}
 	readsBuilder.mem("16GiB")
 	readsBuilder.cpu(1)
 	readsTsv := readsBuilder.build()
@@ -86,7 +94,15 @@ wf.body(func(args) {
 		n_max: args.nMax,
 		hook_effect_threshold_bin: args.hookEffectThresholdBin,
 		hook_effect_threshold_no_bin: args.hookEffectThresholdNoBin,
-		hook_effect_min_reads: args.hookEffectMinReads
+		hook_effect_min_reads: args.hookEffectMinReads,
+		fit_model: args.fitModel,
+		bin_width_decades: args.binWidthDecades,
+		min_plateau_fraction: args.minPlateauFraction,
+		allow_uncorrected: args.allowUncorrected,
+		kd_sd_good: args.kdSdGood
+	}
+	if !is_undefined(args.baselineFluorescence) {
+		paramsPayload.baseline_fluorescence = args.baselineFluorescence
 	}
 	// FACS-correction status flows via the --sort-fraction-column CLI arg; the
 	// Python pipeline logs "Mean-bin correction: ..." unconditionally so stdout
@@ -119,7 +135,9 @@ wf.body(func(args) {
 		}
 	}
 
-	if hasSortFraction {
+	if hasCellCount {
+		execBuilder.arg("--cell-count-column").arg("cell_count")
+	} else if hasSortFraction {
 		execBuilder.arg("--sort-fraction-column").arg("sort_fraction")
 	}
 
@@ -161,7 +179,7 @@ wf.body(func(args) {
 	// inferring from annotation presence. Propagates through pSpec.makeTrace like
 	// every other PColumn annotation.
 	facsCorrected := "false"
-	if hasSortFraction {
+	if hasSortFraction || hasCellCount {
 		facsCorrected = "true"
 	}
 
@@ -204,7 +222,7 @@ wf.body(func(args) {
 					annotations: {
 						"pl7.app/label": "Hill coefficient",
 						"pl7.app/isScore": "false",
-						"pl7.app/description": "Hill coefficient n from the Hill fit. n = 1 is the expected Langmuir isotherm value for simple 1:1 monovalent binding; n in roughly [0.7, 1.3] behaves as expected. n > 2 typically reflects heterogeneous yeast display populations rather than genuine cooperativity. n < 1 often indicates a non-functional display fraction (misfolding, non-binding orientation) diluting the signal. Diagnostic only — not a primary ranking criterion.",
+						"pl7.app/description": "Hill coefficient n. Fixed at 1 under the Adams 2016 model (the default in bin mode). Under the linear Hill model it is fitted: n = 1 is the Langmuir value for 1:1 monovalent binding, n > 2 typically reflects heterogeneous yeast display rather than cooperativity, and n < 1 often a non-functional display fraction diluting the signal. Diagnostic only — not a primary ranking criterion.",
 						"pl7.app/table/visibility": "default",
 						"pl7.app/table/orderPriority": "198"
 					}
@@ -277,6 +295,39 @@ wf.body(func(args) {
 						"pl7.app/discreteValues": "[\"true\",\"false\"]",
 						"pl7.app/table/visibility": "default",
 						"pl7.app/table/orderPriority": "196"
+					}
+				}
+			},
+			{
+				column: "kdLog10Sd",
+				spec: {
+					name: "pl7.app/vdj/kdUncertainty",
+					valueType: "Double",
+					domain: { "pl7.app/block": blockId },
+					annotations: {
+						"pl7.app/label": "Kd,app uncertainty (decades)",
+						"pl7.app/description": "Posterior standard deviation of log10 Kd,app from the Adams 2016 likelihood (decades). Empty under the linear Hill model.",
+						"pl7.app/isScore": "false",
+						"pl7.app/format": ".2f",
+						"pl7.app/table/visibility": "default",
+						"pl7.app/table/orderPriority": "200"
+					}
+				}
+			},
+			{
+				column: "kdCensor",
+				spec: {
+					name: "pl7.app/vdj/kdCensor",
+					valueType: "String",
+					domain: { "pl7.app/block": blockId },
+					annotations: {
+						"pl7.app/label": "Kd,app bound",
+						"pl7.app/description": "\"below\" or \"above\" when Kd,app lies outside the titrated concentrations: the value shown is then the limit, a bound rather than a measurement. Empty for measured values.",
+						"pl7.app/isScore": "false",
+						"pl7.app/isDiscreteFilter": "true",
+						"pl7.app/discreteValues": "[\"below\",\"above\"]",
+						"pl7.app/table/visibility": "default",
+						"pl7.app/table/orderPriority": "195"
 					}
 				}
 			},

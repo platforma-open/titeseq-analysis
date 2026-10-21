@@ -73,6 +73,20 @@ const validateNonNeg = (v: number | undefined | null): string | undefined => {
   return undefined;
 };
 
+// Number strictly above 0; optional when `optional` (an empty field means "not set").
+const validatePositive = (v: number | undefined | null, optional = false): string | undefined => {
+  if (isMissing(v)) return optional ? undefined : REQUIRED;
+  if (!((v as number) > 0)) return "Must be above 0";
+  return undefined;
+};
+
+// Number strictly between 0 and 1.
+const validateOpenFraction = (v: number | undefined | null): string | undefined => {
+  if (isMissing(v)) return REQUIRED;
+  if (!((v as number) > 0 && (v as number) < 1)) return "Must be between 0 and 1, exclusive";
+  return undefined;
+};
+
 export function useFieldValidation() {
   const app = useApp();
 
@@ -122,6 +136,10 @@ export function useFieldValidation() {
     validateNonNeg(app.model.data.hookEffectThresholdNoBin),
   );
   const hookMinReadsError = computed(() => validateInteger(app.model.data.hookEffectMinReads, 0));
+  const binWidthError = computed(() => validatePositive(app.model.data.binWidthDecades));
+  const plateauError = computed(() => validateOpenFraction(app.model.data.minPlateauFraction));
+  const kdSdGoodError = computed(() => validatePositive(app.model.data.kdSdGood));
+  const baselineError = computed(() => validatePositive(app.model.data.baselineFluorescence, true));
 
   return {
     minReadsError,
@@ -133,5 +151,9 @@ export function useFieldValidation() {
     hookThresholdBinError,
     hookThresholdNoBinError,
     hookMinReadsError,
+    binWidthError,
+    plateauError,
+    kdSdGoodError,
+    baselineError,
   };
 }

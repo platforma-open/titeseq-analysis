@@ -6,11 +6,11 @@ import type {
   PlDataTableStateV2,
   PlRef,
 } from "@platforma-sdk/model";
-import type { BlockParams } from "@platforma-open/platforma-open.titeseq-analysis.kind";
+import type { BlockParams, FitModel } from "@platforma-open/platforma-open.titeseq-analysis.kind";
 import { kind } from "@platforma-open/platforma-open.titeseq-analysis.kind";
 import { deriveTemplateParams } from "./templateParams";
 
-export type { BlockParams } from "@platforma-open/platforma-open.titeseq-analysis.kind";
+export type { BlockParams, FitModel } from "@platforma-open/platforma-open.titeseq-analysis.kind";
 export { deriveTemplateParams };
 import {
   BlockModelV3,
@@ -35,7 +35,16 @@ export type BlockArgs = {
   binColumnRef?: PlRef;
   antigenColumnRef?: PlRef;
   sortFractionColumnRef?: PlRef;
+  // Cells sorted into each sample (C_bc in Adams 2016 eq. E4). Preferred over sort fractions: it
+  // also lets the fit cap a bin's reads at its cell count.
+  cellCountColumnRef?: PlRef;
   targetAntigen?: string;
+  fitModel: FitModel;
+  binWidthDecades: number;
+  minPlateauFraction: number;
+  baselineFluorescence?: number;
+  allowUncorrected: boolean;
+  kdSdGood: number;
   minReadsPerConcentration: number;
   minConcentrationPoints: number;
   r2ThresholdGood: number;
@@ -124,6 +133,23 @@ const AFFINITY_VS_FIT_DEFAULT_STATE: GraphMakerState = {
   },
 } as GraphMakerState;
 
+// Adams 2016 used gate widths of 0.61-0.71 decades and plateau fractions of 0.63-0.70.
+const DEFAULT_BIN_WIDTH_DECADES = 0.65;
+const DEFAULT_MIN_PLATEAU_FRACTION = 0.65;
+const DEFAULT_KD_SD_GOOD = 0.5;
+
+/** Block data before the Adams 2016 model: no cell counts, no model choice. */
+export type BlockDataV1 = Omit<
+  BlockData,
+  | "cellCountColumnRef"
+  | "fitModel"
+  | "binWidthDecades"
+  | "minPlateauFraction"
+  | "baselineFluorescence"
+  | "allowUncorrected"
+  | "kdSdGood"
+>;
+
 /**
  * A fresh block's data, seeded by whatever the creator or template supplied. Every param the
  * contract carries is honoured here, and every field it does not carry falls back to the
@@ -135,7 +161,14 @@ export const initBlockData = (params?: BlockParams): BlockData => ({
   binColumnRef: params?.binColumnRef,
   antigenColumnRef: params?.antigenColumnRef,
   sortFractionColumnRef: params?.sortFractionColumnRef,
+  cellCountColumnRef: params?.cellCountColumnRef,
   targetAntigen: params?.targetAntigen,
+  fitModel: params?.fitModel ?? "poisson_log",
+  binWidthDecades: params?.binWidthDecades ?? DEFAULT_BIN_WIDTH_DECADES,
+  minPlateauFraction: params?.minPlateauFraction ?? DEFAULT_MIN_PLATEAU_FRACTION,
+  baselineFluorescence: params?.baselineFluorescence,
+  allowUncorrected: params?.allowUncorrected ?? false,
+  kdSdGood: params?.kdSdGood ?? DEFAULT_KD_SD_GOOD,
   minReadsPerConcentration: params?.minReadsPerConcentration ?? 3,
   minConcentrationPoints: params?.minConcentrationPoints ?? 5,
   r2ThresholdGood: params?.r2ThresholdGood ?? 0.8,
@@ -178,8 +211,24 @@ export const initBlockData = (params?: BlockParams): BlockData => ({
   settingsOpen: false,
 });
 
+/**
+ * v1 -> v2. A project configured before v2 has no cell counts; it stays on the linear Hill it ran
+ * with, so a rerun reproduces its results instead of failing. New blocks start on poisson_log.
+ */
+export const migrateV1ToV2 = (v1: BlockDataV1): BlockData => ({
+  ...v1,
+  cellCountColumnRef: undefined,
+  fitModel: "hill_free_n",
+  binWidthDecades: DEFAULT_BIN_WIDTH_DECADES,
+  minPlateauFraction: DEFAULT_MIN_PLATEAU_FRACTION,
+  baselineFluorescence: undefined,
+  allowUncorrected: false,
+  kdSdGood: DEFAULT_KD_SD_GOOD,
+});
+
 const dataModel = new DataModelBuilder({ kind })
-  .from<BlockData>("v1")
+  .from<BlockDataV1>("v1")
+  .migrate<BlockData>("v2", migrateV1ToV2)
   .init(({ params }) => initBlockData(params));
 
 function isIntegerValueType(vt: string | undefined): boolean {
@@ -240,6 +289,25 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
       throw new Error(
         "FACS sort fraction requires a FACS bin column — the correction only applies in bin mode",
       );
+    if (data.cellCountColumnRef !== undefined && data.binColumnRef === undefined)
+      throw new Error("Sorted cell counts require a FACS bin column — they only apply in bin mode");
+    if (
+      data.binColumnRef !== undefined &&
+      data.fitModel === "poisson_log" &&
+      data.cellCountColumnRef === undefined &&
+      data.sortFractionColumnRef === undefined &&
+      !data.allowUncorrected
+    )
+      throw new Error(
+        "Sorted cell counts (or sort fractions) are required for the Adams 2016 model — " +
+          "without them every bin is assumed to hold the same number of cells",
+      );
+    if (!(data.binWidthDecades > 0)) throw new Error("Bin width must be above 0 decades");
+    if (!(data.minPlateauFraction > 0 && data.minPlateauFraction < 1))
+      throw new Error("Minimum plateau must be between 0 and 1, exclusive");
+    if (!(data.kdSdGood > 0)) throw new Error("Good-class Kd,app uncertainty must be above 0");
+    if (data.baselineFluorescence !== undefined && !(data.baselineFluorescence > 0))
+      throw new Error("0 M baseline fluorescence must be above 0");
 
     // Reject undefined on the numeric tuning params before any range comparisons
     // run. Without these guards, `undefined < 1` (and friends) silently returns
@@ -280,7 +348,14 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
       binColumnRef: data.binColumnRef,
       antigenColumnRef: data.antigenColumnRef,
       sortFractionColumnRef: data.sortFractionColumnRef,
+      cellCountColumnRef: data.cellCountColumnRef,
       targetAntigen: data.targetAntigen,
+      fitModel: data.fitModel,
+      binWidthDecades: data.binWidthDecades,
+      minPlateauFraction: data.minPlateauFraction,
+      baselineFluorescence: data.baselineFluorescence,
+      allowUncorrected: data.allowUncorrected,
+      kdSdGood: data.kdSdGood,
       minReadsPerConcentration: data.minReadsPerConcentration,
       minConcentrationPoints: data.minConcentrationPoints,
       r2ThresholdGood: data.r2ThresholdGood,
@@ -362,6 +437,27 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     ),
   )
 
+  // Cells sorted per sample: any non-negative per-sample number other than the columns already
+  // picked as concentration, bin or sort fraction.
+  .output("cellCountOptions", (ctx) =>
+    filterPopulatedOptions(
+      ctx,
+      (spec) =>
+        isPColumnSpec(spec) &&
+        (isFloatValueType(spec.valueType) || isIntegerValueType(spec.valueType)) &&
+        spec.axesSpec.length === 1 &&
+        spec.axesSpec[0].name === "pl7.app/sampleId",
+      { valuePredicate: (finite) => finite.every((v) => v >= 0) },
+    ).filter(
+      (opt) =>
+        ![
+          ctx.data.concentrationColumnRef,
+          ctx.data.binColumnRef,
+          ctx.data.sortFractionColumnRef,
+        ].some((ref) => ref !== undefined && plRefsEqual(opt.ref, ref)),
+    ),
+  )
+
   .output("antigenOptions", (ctx) =>
     ctx.resultPool.getOptions(
       (spec) =>
@@ -423,6 +519,27 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
             `Concentration column label "${unitLabel}" contains spaces. ` +
             `The full label becomes the Kd,app unit, so values render as "Kd,app (${unitLabel})". ` +
             'Use a bare unit like "nM" or "µM".',
+        });
+      }
+    }
+
+    // poisson_log anchors the baseline on the 0 M control (Adams 2016 App. E). Without one the
+    // fit fails unless the operator supplies the baseline fluorescence.
+    if (
+      data.binColumnRef !== undefined &&
+      data.fitModel === "poisson_log" &&
+      data.baselineFluorescence === undefined &&
+      data.concentrationColumnRef !== undefined
+    ) {
+      const conc = ctx.resultPool
+        .getDataByRef(data.concentrationColumnRef)
+        ?.data?.getDataAsJson<Record<string, Record<string, number | null>>>()?.["data"];
+      if (conc && !Object.values(conc).some((v) => v === 0)) {
+        issues.push({
+          severity: "error",
+          message:
+            "No 0 M (no-antigen) sample: the Adams 2016 model needs it to set the background " +
+            "fluorescence. Add a 0 M control or enter the 0 M baseline fluorescence under Curve model.",
         });
       }
     }
