@@ -27,3 +27,5 @@ New outputs:
 - `kdCensor`: `below` or `above` when K_D is a bound at the titration limit.
 
 K_D is reported within the titration range. The previous linear Hill model with free n stays available as `fit_model: hill_free_n`.
+
+The linear Hill model (hill_free_n) now reports a flat signal as Failed (convergence_failure) instead of Partial with an out-of-range K_D.
