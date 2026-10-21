@@ -12,6 +12,7 @@ import type { BlockData } from "./index";
 export function deriveTemplateParams(data: BlockData): BlockParams {
   return {
     abundanceRef: data.abundanceRef,
+    filterRef: data.filterRef,
     concentrationColumnRef: data.concentrationColumnRef,
     binColumnRef: data.binColumnRef,
     antigenColumnRef: data.antigenColumnRef,

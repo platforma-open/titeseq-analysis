@@ -1,5 +1,6 @@
 import type { GraphMakerState } from "@milaboratories/graph-maker";
 import type {
+  DatasetOption,
   InferOutputsType,
   PColumnIdAndSpec,
   PFrameHandle,
@@ -17,6 +18,8 @@ import {
   ColumnsCollection,
   DataColumn,
   DataModelBuilder,
+  buildDatasetOptions,
+  createGlobalPObjectId,
   createPFrameForGraphs,
   createPlDataTableStateV2,
   createPlDataTableV3,
@@ -47,9 +50,12 @@ export type BlockArgs = {
   hookEffectMinReads: number;
   defaultBlockLabel: string;
   customBlockLabel: string;
+  inputFilter?: string;
 };
 
-export type BlockData = BlockArgs & {
+export type BlockData = Omit<BlockArgs, "inputFilter"> & {
+  /** Subset column picked with the abundance in PlDatasetSelector (e.g. a Repertoire Labeling label). */
+  filterRef?: PlRef;
   tableState: PlDataTableStateV2;
   graphStateTitrationCurves: GraphMakerState;
   graphStateKDHistogram: GraphMakerState;
@@ -131,6 +137,7 @@ const AFFINITY_VS_FIT_DEFAULT_STATE: GraphMakerState = {
  */
 export const initBlockData = (params?: BlockParams): BlockData => ({
   abundanceRef: params?.abundanceRef,
+  filterRef: params?.filterRef,
   concentrationColumnRef: params?.concentrationColumnRef,
   binColumnRef: params?.binColumnRef,
   antigenColumnRef: params?.antigenColumnRef,
@@ -226,6 +233,13 @@ function filterPopulatedOptions<O extends { ref: PlRef }, S>(
   });
 }
 
+// Key axes of the datasets this block accepts: bulk and single-cell clonotypes, and variants.
+const DATASET_KEY_AXES: ReadonlySet<string> = new Set([
+  "pl7.app/vdj/clonotypeKey",
+  "pl7.app/vdj/scClonotypeKey",
+  "pl7.app/variantKey",
+]);
+
 export const platforma = BlockModelV3.create({ dataModel, kind })
 
   .templateParams(deriveTemplateParams)
@@ -296,29 +310,32 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
       // empty/safe values rather than throw — they don't break the workflow.
       defaultBlockLabel: data.defaultBlockLabel ?? "Tite-Seq Analysis",
       customBlockLabel: data.customBlockLabel ?? "",
+      // The subset's canonical column id, which the workflow stamps as the outputs'
+      // `pl7.app/inputSubset`. Absent without a filter, so unfiltered args are unchanged.
+      ...(data.filterRef !== undefined && {
+        inputFilter: createGlobalPObjectId(data.filterRef.blockId, data.filterRef.name),
+      }),
     };
   })
 
-  .output("abundanceOptions", (ctx) =>
-    ctx.resultPool.getOptions(
-      [
-        {
-          axes: [{ name: "pl7.app/sampleId" }, { name: "pl7.app/vdj/clonotypeKey" }],
-          annotations: { "pl7.app/isAnchor": "true" },
-        },
-        {
-          axes: [{ name: "pl7.app/sampleId" }, { name: "pl7.app/vdj/scClonotypeKey" }],
-          annotations: { "pl7.app/isAnchor": "true" },
-        },
-        {
-          axes: [{ name: "pl7.app/sampleId" }, { name: "pl7.app/variantKey" }],
-          annotations: { "pl7.app/isAnchor": "true" },
-        },
-      ],
-      {
-        label: { includeNativeLabel: false },
-      },
-    ),
+  // Datasets, each with its subset columns (e.g. Repertoire Labeling labels) as filters.
+  .output(
+    "abundanceOptions",
+    (ctx): DatasetOption[] =>
+      buildDatasetOptions(ctx, {
+        primary: (spec) =>
+          isPColumnSpec(spec) &&
+          spec.annotations?.["pl7.app/isAnchor"] === "true" &&
+          spec.axesSpec.length === 2 &&
+          spec.axesSpec[0].name === "pl7.app/sampleId" &&
+          DATASET_KEY_AXES.has(spec.axesSpec[1].name),
+        // Only subsets keyed by the clonotype axis alone: the fit is per clonotype.
+        filter: (spec) =>
+          isPColumnSpec(spec) &&
+          spec.axesSpec.length === 1 &&
+          DATASET_KEY_AXES.has(spec.axesSpec[0].name),
+        requireEnrichments: false,
+      }) ?? [],
   )
 
   .output("concentrationOptions", (ctx) =>

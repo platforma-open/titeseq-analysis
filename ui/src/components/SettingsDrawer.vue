@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import type { DatasetSelection } from "@platforma-sdk/model";
+import { createDatasetSelection, createPrimaryRef } from "@platforma-sdk/model";
 import {
   PlAccordionSection,
   PlAlert,
+  PlDatasetSelector,
   PlDropdown,
   PlDropdownRef,
   PlNumberField,
@@ -15,6 +18,20 @@ import { useFieldValidation } from "../composables/useFieldValidation";
 const open = defineModel<boolean>({ required: true });
 
 const app = useApp();
+
+// The selector picks an abundance, or an abundance narrowed by one of its subset columns.
+// Stored as two refs so blocks saved before filters existed keep their `abundanceRef`.
+const abundanceSelection = computed<DatasetSelection | undefined>({
+  get: () => {
+    const { abundanceRef, filterRef } = app.model.data;
+    if (abundanceRef === undefined) return undefined;
+    return createDatasetSelection(createPrimaryRef(abundanceRef, filterRef));
+  },
+  set: (selection) => {
+    app.model.data.abundanceRef = selection?.primary.column;
+    app.model.data.filterRef = selection?.primary.filter;
+  },
+});
 
 const {
   minReadsError,
@@ -85,8 +102,8 @@ watch(
   <PlSlideModal v-model="open" close-on-outside-click shadow>
     <template #title>Settings</template>
 
-    <PlDropdownRef
-      v-model="app.model.data.abundanceRef"
+    <PlDatasetSelector
+      v-model="abundanceSelection"
       :options="app.model.outputs.abundanceOptions"
       label="Read count column"
       required
@@ -95,7 +112,7 @@ watch(
         Per-sample, per-clonotype integer read counts from MiXCR. Selecting this column also anchors
         the block to that upstream dataset. Normalized per-sample inside the block.
       </template>
-    </PlDropdownRef>
+    </PlDatasetSelector>
     <PlDropdownRef
       v-model="app.model.data.concentrationColumnRef"
       :options="app.model.outputs.concentrationOptions"
