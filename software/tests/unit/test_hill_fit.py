@@ -222,3 +222,13 @@ class TestAmplitudeBoundsRespected:
         assert (fit.top - fit.baseline) >= delta_expected - 1e-9, (
             f"top − baseline = {fit.top - fit.baseline:.4f} violates δ = {delta_expected}"
         )
+
+
+def test_flat_signal_is_a_convergence_failure():
+    # Equal reads in every bin give the same mean bin at every concentration: nothing to fit, and
+    # the optimiser would otherwise park K_D far outside the data with an undefined R².
+    x = np.array([1e-10, 1e-9, 1e-8, 1e-7, 1e-6])
+    res = fit_one_clonotype(x, np.full(5, 2.5), np.full(5, 100.0), None, bin_mode=True, max_bin_label=4)
+    assert not res.converged
+    assert res.reason == "convergence_failure"
+    assert res.kd is None
