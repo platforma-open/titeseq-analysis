@@ -160,6 +160,14 @@ def _one_empty_bin(R, ka, L, m, filled, z):
         bound = -c / d
     lo = np.where(filled & (d > 0), bound, -np.inf).max(-1)
     hi = np.where(filled & (d < 0), bound, np.inf).min(-1)
+    # Each term R_b d_b / (c_b + nu d_b) is at most R_b / (nu - lo) above the pole lo, and at least
+    # -R_b / (hi - nu) below the pole hi, so the root lies within sum(R) / |rhs| of the one finite
+    # end. Twice that leaves room for rounding.
+    with np.errstate(divide="ignore", invalid="ignore"):
+        reach = 2.0 * R.sum(-1) / np.abs(rhs)
+    one_sided_hi = np.isfinite(lo) & ~np.isfinite(hi) & (rhs > 0)
+    one_sided_lo = np.isfinite(hi) & ~np.isfinite(lo) & (rhs < 0)
+    lo, hi = np.where(one_sided_lo, hi - reach, lo), np.where(one_sided_hi, lo + reach, hi)
     span = 1e15 * (1.0 + np.abs(ka).max(-1) + R.sum(-1))
     lo = np.where(np.isfinite(lo), lo, np.minimum(hi, 0.0) - span)
     hi = np.where(np.isfinite(hi), hi, np.maximum(lo, 0.0) + span)
