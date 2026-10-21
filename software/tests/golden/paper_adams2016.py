@@ -56,12 +56,15 @@ class Replicate:
     # the bin range: log10(B + min fit_saturation) / bin_width / 3, with B the replicate's `basal`.
     # The paper does not state how the authors chose it.
     min_plateau_fraction: float
+    # B, the 0 M mean fluorescence in bin-1 units: the `basal` column of replicate_N.csv. The block
+    # computes it from the 0 M reads (golden test); the fast tier passes it to skip the full library.
+    baseline_fluorescence: float
 
 
 REPLICATES = [
-    Replicate(1, "sort_counts_16.4.15.txt", 0.71017, 0.6427),
-    Replicate(2, "sort_counts_16.4.19.txt", 0.60686, 0.6318),
-    Replicate(3, "sort_counts_16.4.21.txt", 0.62900, 0.6950),
+    Replicate(1, "sort_counts_16.4.15.txt", 0.71017, 0.6427, 2.59256067),
+    Replicate(2, "sort_counts_16.4.19.txt", 0.60686, 0.6318, 4.23348966),
+    Replicate(3, "sort_counts_16.4.21.txt", 0.62900, 0.6950, 2.69899748),
 ]
 
 

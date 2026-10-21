@@ -92,48 +92,63 @@ def _loglik(R: np.ndarray, x: np.ndarray) -> np.ndarray:
 
 
 def _interior(R, ka, L, m, filled):
-    """No empty bin carries mass: damped Newton on the dual over the bins with reads."""
-    shape = m.shape
-    lam = R.sum(-1) + 1.0
-    nu = np.zeros(shape)
+    """No empty bin carries mass: damped Newton on the dual over the bins with reads.
 
-    def dual(lam_, nu_):
-        s_ = ka + lam_[..., None] + nu_[..., None] * L
-        bad = (filled & (s_ <= 0)).any(-1)
-        val = -np.where(filled, R * np.log(np.where(s_ > 0, s_, 1.0)), 0.0).sum(-1) + lam_ + nu_ * m
+    Only points whose m lies strictly inside the range of the filled bins can be interior; the rest
+    are skipped. Converged points leave the working set, so the cost follows the hard points only.
+    """
+    shape, B = m.shape, R.shape[-1]
+    Rf, kaf, Lf, ff = R.reshape(-1, B), ka.reshape(-1, B), L.reshape(-1, B), filled.reshape(-1, B)
+    mf = m.reshape(-1)
+    lo = np.where(ff, Lf, np.inf).min(-1)
+    hi = np.where(ff, Lf, -np.inf).max(-1)
+    lam = Rf.sum(-1) + 1.0
+    nu = np.zeros_like(mf)
+    act = np.flatnonzero((lo < mf) & (mf < hi))
+
+    def dual(i, lam_, nu_):
+        s_ = kaf[i] + lam_[:, None] + nu_[:, None] * Lf[i]
+        bad = (ff[i] & (s_ <= 0)).any(-1)
+        val = -np.where(ff[i], Rf[i] * np.log(np.where(s_ > 0, s_, 1.0)), 0.0).sum(-1) + lam_ + nu_ * mf[i]
         return np.where(bad, np.inf, val), s_
 
-    D, s = dual(lam, nu)
     for _ in range(_NEWTON_STEPS):
-        w = np.where(filled, R / s, 0.0)
-        g1 = 1.0 - w.sum(-1)
-        g2 = m - (w * L).sum(-1)
-        if max(np.abs(g1).max(), np.abs(g2).max()) < 1e-13:
+        if act.size == 0:
             break
-        w2 = np.where(filled, R / s**2, 0.0)
-        h11, h12, h22 = w2.sum(-1), (w2 * L).sum(-1), (w2 * L * L).sum(-1)
+        la, na = lam[act], nu[act]
+        D, s = dual(act, la, na)
+        w = np.where(ff[act], Rf[act] / s, 0.0)
+        g1 = 1.0 - w.sum(-1)
+        g2 = mf[act] - (w * Lf[act]).sum(-1)
+        conv = (np.abs(g1) < 1e-13) & (np.abs(g2) < 1e-13)
+        w2 = np.where(ff[act], w / s, 0.0)
+        h11, h12, h22 = w2.sum(-1), (w2 * Lf[act]).sum(-1), (w2 * Lf[act] ** 2).sum(-1)
         det = h11 * h22 - h12**2
         det = np.where(det > 0, det, np.inf)
         d1 = -(h22 * g1 - h12 * g2) / det
         d2 = -(-h12 * g1 + h11 * g2) / det
-        t = np.ones(shape)
-        done = np.zeros(shape, dtype=bool)
-        new_lam, new_nu, new_D = lam.copy(), nu.copy(), D.copy()
+        t = np.ones(act.size)
+        done = conv.copy()
+        moved = np.zeros(act.size, dtype=bool)
         for _ in range(_BACKTRACK_STEPS):
-            cl, cn = lam + t * d1, nu + t * d2
-            cD, _ = dual(cl, cn)
+            cl, cn = la + t * d1, na + t * d2
+            cD, _ = dual(act, cl, cn)
             ok = (~done) & (cD <= D + 1e-12 * np.abs(D))  # near the optimum D is flat to rounding
-            new_lam, new_nu, new_D = np.where(ok, cl, new_lam), np.where(ok, cn, new_nu), np.where(ok, cD, new_D)
+            la, na = np.where(ok, cl, la), np.where(ok, cn, na)
             done |= ok
+            moved |= ok
             if done.all():
                 break
             t = np.where(done, t, 0.5 * t)
-        lam, nu, D = new_lam, new_nu, new_D
-        D, s = dual(lam, nu)
-    q = np.where(filled, R / np.where(s > 0, s, 1.0), 0.0)
-    feasible = (np.abs(q.sum(-1) - 1.0) < _TOL) & (np.abs((q * L).sum(-1) - m) < _TOL)
-    feasible &= np.where(filled, True, s >= -_TOL * np.abs(ka)).all(-1)
-    return q, feasible
+        lam[act], nu[act] = la, na
+        act = act[~conv & moved]
+
+    s = kaf + lam[:, None] + nu[:, None] * Lf
+    q = np.where(ff, Rf / np.where(s > 0, s, 1.0), 0.0)
+    feasible = (lo < mf) & (mf < hi)
+    feasible &= (np.abs(q.sum(-1) - 1.0) < _TOL) & (np.abs((q * Lf).sum(-1) - mf) < _TOL)
+    feasible &= np.where(ff, s > 0, s >= -_TOL * np.abs(kaf)).all(-1)
+    return q.reshape(R.shape), feasible.reshape(shape)
 
 
 def _one_empty_bin(R, ka, L, m, filled, z):
@@ -203,24 +218,22 @@ def profile_loglik(
     L = np.broadcast_to(log_values, shape + (B,))
     m = np.broadcast_to(m_grid[None, None, :], shape)
     filled = R > 0
-    best = np.full(shape, -np.inf)
-
-    def keep(q, ok):
-        nonlocal best
-        best = np.where(ok, np.maximum(best, _loglik(R, ka * q)), best)
-
-    keep(*_interior(R, ka, L, m, filled))
+    q, ok = _interior(R, ka, L, m, filled)
+    flat = np.where(ok, _loglik(R, ka * q), -np.inf).reshape(-1)
+    # Empty-bin cases only where those bins are empty: solve on the flattened subset, scatter back.
+    Rf, kaf, Lf, ff, mf = R.reshape(-1, B), ka.reshape(-1, B), L.reshape(-1, B), filled.reshape(-1, B), m.reshape(-1)
     for z in range(B):
-        if (~filled[..., z]).any():
-            q, ok = _one_empty_bin(R, ka, L, m, filled, z)
-            keep(q, ok & ~filled[..., z])
+        idx = np.flatnonzero(~ff[:, z])
+        if idx.size:
+            q, ok = _one_empty_bin(Rf[idx], kaf[idx], Lf[idx], mf[idx], ff[idx], z)
+            flat[idx] = np.where(ok, np.maximum(flat[idx], _loglik(Rf[idx], kaf[idx] * q)), flat[idx])
     for z1 in range(B):
         for z2 in range(z1 + 1, B):
-            both = ~filled[..., z1] & ~filled[..., z2]
-            if both.any():
-                q, ok = _two_empty_bins(R, ka, L, m, filled, z1, z2)
-                keep(q, ok & both)
-    return np.where(reads.sum(-1)[:, :, None] > 0, best, 0.0)
+            idx = np.flatnonzero(~ff[:, z1] & ~ff[:, z2])
+            if idx.size:
+                q, ok = _two_empty_bins(Rf[idx], kaf[idx], Lf[idx], mf[idx], ff[idx], z1, z2)
+                flat[idx] = np.where(ok, np.maximum(flat[idx], _loglik(Rf[idx], kaf[idx] * q)), flat[idx])
+    return np.where(reads.sum(-1)[:, :, None] > 0, flat.reshape(shape), 0.0)
 
 
 def fit_titration(

@@ -3,16 +3,21 @@
 Each replicate runs through `pipeline.run` with the experiment's bin width and the authors' amplitude
 prior, as an operator would set them. Assertions compare to the paper (Table I, WT K_D, Fig 4C) and to
 the authors' published per-variant K_D. Downloads the data on first run (see conftest.py).
+
+Two tiers run the same assertions:
+  fast  ~250 variants per replicate (Table I clones, WT synonyms, a stratified sample); the rest of
+        the library is pooled so read totals stay exact, and B is the authors' value.
+        `uv run pytest -m "golden and not slow"`
+  full  every variant, B computed by the block. `uv run pytest -m golden`
+Fits are cached on disk, keyed by the source code and settings, so unchanged code reruns in seconds.
 """
 
 from __future__ import annotations
 
-import io
-from contextlib import redirect_stdout
-
 import numpy as np
 import polars as pl
 import pytest
+from golden_data import fast_subset, fit_golden
 from paper_adams2016 import (
     FIG4C_R2,
     LOG10_KD_LOWER_LIMIT,
@@ -24,38 +29,45 @@ from paper_adams2016 import (
 )
 
 from constants import FitParams
-from pipeline import run
+from poisson_fit import baseline, exposure
+from poisson_pipeline import build_tensors
 
-pytestmark = [pytest.mark.golden, pytest.mark.slow]
+pytestmark = pytest.mark.golden
+
+TIERS = [pytest.param("fast", id="fast"), pytest.param("full", id="full", marks=pytest.mark.slow)]
 
 
-def _fit(rep, **settings) -> pl.DataFrame:
-    params = FitParams(bin_width_decades=rep.bin_width_decades, **settings)
-    with redirect_stdout(io.StringIO()):
-        out = run(rep.reads, params=params, cell_count_col="cell_count")
-    pc = out["per_clonotype"].with_columns(pl.col("kd").log10().alias("log10_kd"))
-    return rep.published.join(pc, on="clonotypeKey", how="left")
+def _paper_params(rep, **extra) -> FitParams:
+    """The authors' settings: their amplitude prior, and every variant fitted (no read gate)."""
+    return FitParams(
+        bin_width_decades=rep.bin_width_decades,
+        min_plateau_fraction=rep.min_plateau_fraction,
+        min_reads_per_concentration=1,
+        min_concentration_points=1,
+        **extra,
+    )
 
 
 @pytest.fixture(scope="module")
-def paper_settings(adams_replicates):
-    """The reproduction proper: the authors' amplitude prior, and every variant fitted (no read gate),
-    as Appendix E does."""
+def fits_full(adams_replicates):
+    return {rep.number: fit_golden(rep, _paper_params(rep)) for rep in adams_replicates}
+
+
+@pytest.fixture(scope="module")
+def fits_fast(adams_replicates, adams_clone_keys):
     return {
-        rep.number: _fit(
+        rep.number: fit_golden(
             rep,
-            min_plateau_fraction=rep.min_plateau_fraction,
-            min_reads_per_concentration=1,
-            min_concentration_points=1,
+            _paper_params(rep, baseline_fluorescence=rep.baseline_fluorescence),
+            fast_subset(rep, adams_clone_keys),
         )
         for rep in adams_replicates
     }
 
 
-@pytest.fixture(scope="module")
-def default_settings(adams_replicates):
-    """Block defaults throughout; only the bin width comes from the experiment."""
-    return {rep.number: _fit(rep) for rep in adams_replicates}
+@pytest.fixture(params=TIERS)
+def fits(request):
+    return request.getfixturevalue(f"fits_{request.param}")
 
 
 def _clone_means(fits: dict[int, pl.DataFrame], keys: dict[str, str]) -> dict[str, float]:
@@ -75,33 +87,40 @@ def _r2(pred: dict[str, float]) -> float:
     return float(np.corrcoef(est, flow)[0, 1] ** 2)
 
 
+# (r, share within 0.25 decades, median abs difference). The fast sample holds equal counts per
+# published-K_D stratum, so it over-weights the mid-range variants where the authors' own replicates
+# disagree most; the same fits score r 0.93-0.99 there and 0.95-0.99 over the whole library.
+AGREEMENT = {"full": (0.95, 0.92, 0.02), "fast": (0.92, 0.80, 0.05)}
+
+
 @pytest.mark.parametrize("number", [1, 2, 3])
-def test_per_variant_kd_matches_published(paper_settings, number):
+def test_per_variant_kd_matches_published(fits, number, request):
     # Replicates of the same experiment agree with each other at r ~ 0.88; matching the authors' table
     # well above that means the same method, not a similar one. The residual is the authors'
     # Nelder-Mead profile and grid interpolation, which this implementation solves exactly.
-    j = paper_settings[number].filter(pl.col("published_log10_kd").is_not_nan() & pl.col("log10_kd").is_not_null())
+    min_r, min_close, max_median = AGREEMENT[request.node.callspec.params["fits"]]
+    f = fits[number]
+    j = f.filter(pl.col("published_log10_kd").is_not_nan() & pl.col("log10_kd").is_not_null())
     ours, pub = j["log10_kd"].to_numpy(), j["published_log10_kd"].to_numpy()
     diff = np.abs(ours - pub)
-    assert j.height >= 0.99 * paper_settings[number].height
-    assert np.corrcoef(ours, pub)[0, 1] >= 0.95
-    assert np.mean(diff < 0.25) >= 0.92
-    assert np.median(diff) <= 0.02
+    assert j.height >= 0.99 * f.filter(pl.col("published_log10_kd").is_not_nan()).height
+    assert np.corrcoef(ours, pub)[0, 1] >= min_r
+    assert np.mean(diff < 0.25) >= min_close
+    assert np.median(diff) <= max_median
 
 
-def test_wt_kd_matches_paper(paper_settings):
+def test_wt_kd_matches_paper(fits):
     # Results D: WT averaged over its synonymous variants and the three replicates is 10^-8.87.
     wt = pl.concat(
-        f.filter((pl.col("cdr1h_aa") == WT_CDR1H_AA) & (pl.col("cdr3h_aa") == WT_CDR3H_AA))
-        for f in paper_settings.values()
+        f.filter((pl.col("cdr1h_aa") == WT_CDR1H_AA) & (pl.col("cdr3h_aa") == WT_CDR3H_AA)) for f in fits.values()
     )
     assert wt.height >= 90
     assert wt["log10_kd"].mean() == pytest.approx(WT_LOG10_KD, abs=0.1)
 
 
-def test_table_i_clones_match_paper(paper_settings, adams_clone_keys):
+def test_table_i_clones_match_paper(fits, adams_clone_keys):
     # Table I Tite-Seq column: each clone's replicate mean, within 0.3 decades or two standard errors.
-    means = _clone_means(paper_settings, adams_clone_keys)
+    means = _clone_means(fits, adams_clone_keys)
     misses = [
         (c.name, round(means[c.name], 2), c.tite_seq_log10_kd)
         for c in TABLE_I
@@ -110,30 +129,44 @@ def test_table_i_clones_match_paper(paper_settings, adams_clone_keys):
     assert misses == []
 
 
-def test_table_i_agrees_with_flow_like_fig_4c(paper_settings, adams_clone_keys):
+def test_table_i_agrees_with_flow_like_fig_4c(fits, adams_clone_keys):
     # Fig 4C: R^2 = 0.89 between Tite-Seq and flow K_D over the Table I clones, bounds at the limits.
     # The 0.04 allowance is clone C93, replicate 2: the authors report 10^-5.9 where their other two
     # replicates and this fit give 10^-8.3 to 10^-8.5, the source of Table I's +-0.70 for C93.
-    assert _r2(_clone_means(paper_settings, adams_clone_keys)) >= FIG4C_R2 - 0.04
+    assert _r2(_clone_means(fits, adams_clone_keys)) >= FIG4C_R2 - 0.04
 
 
-def test_non_binders_are_reported_as_upper_bounds(paper_settings):
+def test_non_binders_are_reported_as_upper_bounds(fits):
     # Variants the authors put at >= 10^-5 M are bounds, not measurements; the block must say so.
-    for fits in paper_settings.values():
-        nb = fits.filter(pl.col("published_log10_kd") >= LOG10_KD_UPPER_LIMIT)
+    for f in fits.values():
+        nb = f.filter(pl.col("published_log10_kd") >= LOG10_KD_UPPER_LIMIT)
         assert (nb["kdCensor"] == "above").mean() >= 0.95
 
 
-def test_reported_kd_stays_within_titration_range(paper_settings):
-    for fits in paper_settings.values():
-        kd = fits["log10_kd"].drop_nulls()
+def test_reported_kd_stays_within_titration_range(fits):
+    for f in fits.values():
+        kd = f["log10_kd"].drop_nulls()
         assert kd.min() >= LOG10_KD_LOWER_LIMIT - 1e-9
         assert kd.max() <= LOG10_KD_UPPER_LIMIT + 1e-9
 
 
-def test_default_settings_still_track_flow(default_settings, adams_clone_keys):
+@pytest.mark.parametrize("number", [1, 2, 3])
+def test_baseline_from_zero_m_reads_matches_the_authors(adams_replicates, number):
+    # Appendix E: B is the mean fluorescence of cells at 0 M. The block's estimate from the 0 M reads
+    # must equal the authors' value, which the fast tier passes in directly.
+    rep = adams_replicates[number - 1]
+    t = build_tensors(rep.reads, "cell_count")
+    a, h = exposure(t.reads.sum(0), t.sample_cells)
+    log_values = rep.bin_width_decades * (t.bin_labels - 1.0)
+    b = baseline((t.reads * h[None])[:, 0, :], a[0], log_values)
+    assert b == pytest.approx(rep.baseline_fluorescence, abs=2e-3)
+
+
+@pytest.mark.slow
+def test_default_settings_still_track_flow(adams_replicates, adams_clone_keys):
     # Block defaults (q = 0.65 instead of the authors' 0.63-0.70; read gate on): Table I must still
     # agree with flow, and every clone must get a K_D or a bound.
-    means = _clone_means(default_settings, adams_clone_keys)
+    fits = {rep.number: fit_golden(rep, FitParams(bin_width_decades=rep.bin_width_decades)) for rep in adams_replicates}
+    means = _clone_means(fits, adams_clone_keys)
     assert all(np.isfinite(v) for v in means.values())
     assert _r2(means) >= 0.80
