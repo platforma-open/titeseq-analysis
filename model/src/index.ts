@@ -275,104 +275,136 @@ function filterPopulatedOptions<O extends { ref: PlRef }, S>(
   });
 }
 
+type HillSettings = Pick<
+  BlockArgs,
+  | "r2ThresholdGood"
+  | "r2ThresholdFailed"
+  | "nMin"
+  | "nMax"
+  | "hookEffectThresholdBin"
+  | "hookEffectThresholdNoBin"
+  | "hookEffectMinReads"
+>;
+
+const hillSettingsOf = (data: HillSettings): HillSettings => ({
+  r2ThresholdGood: data.r2ThresholdGood,
+  r2ThresholdFailed: data.r2ThresholdFailed,
+  nMin: data.nMin,
+  nMax: data.nMax,
+  hookEffectThresholdBin: data.hookEffectThresholdBin,
+  hookEffectThresholdNoBin: data.hookEffectThresholdNoBin,
+  hookEffectMinReads: data.hookEffectMinReads,
+});
+
+const HILL_SETTINGS_UNUSED: HillSettings = hillSettingsOf(initBlockData());
+
+const validHillSettings = (data: BlockData, isBinMode: boolean): HillSettings => {
+  if (data.r2ThresholdGood === undefined) throw new Error("R² threshold (Good) is required");
+  if (data.r2ThresholdFailed === undefined) throw new Error("R² threshold (Failed) is required");
+  if (data.nMin === undefined) throw new Error("Hill coefficient nMin is required");
+  if (data.nMax === undefined) throw new Error("Hill coefficient nMax is required");
+  // Only require the active mode's hook threshold — the other field is hidden
+  // in the UI (v-if on binMode), so requiring both would block users from
+  // opening Inputs to fix it.
+  if (isBinMode && data.hookEffectThresholdBin === undefined)
+    throw new Error("Hook effect signal-drop threshold (bin mode) is required");
+  if (!isBinMode && data.hookEffectThresholdNoBin === undefined)
+    throw new Error("Hook effect signal-drop threshold (frequency mode) is required");
+  if (data.hookEffectMinReads === undefined)
+    throw new Error("Min reads for hook check is required");
+
+  if (data.r2ThresholdFailed > data.r2ThresholdGood)
+    throw new Error("Failed R² threshold must be ≤ Good R² threshold");
+  if (data.nMin >= data.nMax) throw new Error("Hill coefficient nMin must be < nMax");
+  if (data.r2ThresholdGood < 0 || data.r2ThresholdGood > 1)
+    throw new Error("R² threshold (Good) out of range");
+  if (data.r2ThresholdFailed < 0 || data.r2ThresholdFailed > 1)
+    throw new Error("R² threshold (Failed) out of range");
+  return {
+    ...hillSettingsOf(data),
+    // Default the inactive mode's threshold so the args type is satisfied
+    // — the workflow only reads the field for the active mode.
+    hookEffectThresholdBin: data.hookEffectThresholdBin ?? 0.2,
+    hookEffectThresholdNoBin: data.hookEffectThresholdNoBin ?? 0.02,
+  };
+};
+
+export const deriveArgs = (data: BlockData): BlockArgs => {
+  if (data.abundanceRef === undefined) throw new Error("Abundance column is required");
+  if (data.concentrationColumnRef === undefined)
+    throw new Error("Concentration column is required");
+  if (data.antigenColumnRef !== undefined && !data.targetAntigen)
+    throw new Error("Target antigen is required when an antigen column is selected");
+  if (data.sortFractionColumnRef !== undefined && data.binColumnRef === undefined)
+    throw new Error(
+      "FACS sort fraction requires a FACS bin column — the correction only applies in bin mode",
+    );
+  if (data.cellCountColumnRef !== undefined && data.binColumnRef === undefined)
+    throw new Error("Sorted cell counts require a FACS bin column — they only apply in bin mode");
+  if (
+    data.binColumnRef !== undefined &&
+    data.fitModel === "poisson_log" &&
+    data.cellCountColumnRef === undefined &&
+    data.sortFractionColumnRef === undefined &&
+    !data.allowUncorrected
+  )
+    throw new Error(
+      "Sorted cell counts (or sort fractions) are required for the Adams 2016 model — " +
+        "without them every bin is assumed to hold the same number of cells",
+    );
+  if (!(data.binWidthDecades > 0)) throw new Error("Bin width must be above 0 decades");
+  if (!(data.minPlateauFraction > 0 && data.minPlateauFraction < 1))
+    throw new Error("Minimum plateau must be between 0 and 1, exclusive");
+  if (!(data.kdSdGood > 0)) throw new Error("Good-class Kd,app uncertainty must be above 0");
+  if (data.baselineFluorescence !== undefined && !(data.baselineFluorescence > 0))
+    throw new Error("0 M baseline fluorescence must be above 0");
+
+  // Reject undefined on the numeric tuning params before any range comparisons
+  // run. Without these guards, `undefined < 1` (and friends) silently returns
+  // false, so a stored block missing one of these fields would pass validation
+  // and produce args with undefined values — breaking the Python fit at runtime.
+  if (data.minReadsPerConcentration === undefined)
+    throw new Error("Min reads per concentration is required");
+  if (data.minConcentrationPoints === undefined)
+    throw new Error("Min concentration points is required");
+  if (data.minReadsPerConcentration < 1) throw new Error("Min reads per concentration must be ≥ 1");
+  if (data.minConcentrationPoints < 3) throw new Error("Min concentration points must be ≥ 3");
+
+  // Only the linear Hill fit reads the R², Hill n and hook settings, and the UI hides them under
+  // the Adams model. They are validated only when used and sent as fixed values otherwise, so a
+  // hidden setting can neither block a run nor mark the block stale.
+  const isBinMode = data.binColumnRef !== undefined;
+  const usesHill = !isBinMode || data.fitModel === "hill_free_n";
+  const hill = usesHill ? validHillSettings(data, isBinMode) : HILL_SETTINGS_UNUSED;
+  return {
+    abundanceRef: data.abundanceRef,
+    concentrationColumnRef: data.concentrationColumnRef,
+    binColumnRef: data.binColumnRef,
+    antigenColumnRef: data.antigenColumnRef,
+    sortFractionColumnRef: data.sortFractionColumnRef,
+    cellCountColumnRef: data.cellCountColumnRef,
+    targetAntigen: data.targetAntigen,
+    fitModel: data.fitModel,
+    binWidthDecades: data.binWidthDecades,
+    minPlateauFraction: data.minPlateauFraction,
+    baselineFluorescence: data.baselineFluorescence,
+    allowUncorrected: data.allowUncorrected,
+    kdSdGood: data.kdSdGood,
+    minReadsPerConcentration: data.minReadsPerConcentration,
+    minConcentrationPoints: data.minConcentrationPoints,
+    ...hill,
+    // Strings have UI defaults but old stored data may lack them; coerce to
+    // empty/safe values rather than throw — they don't break the workflow.
+    defaultBlockLabel: data.defaultBlockLabel ?? "Tite-Seq Analysis",
+    customBlockLabel: data.customBlockLabel ?? "",
+  };
+};
+
 export const platforma = BlockModelV3.create({ dataModel, kind })
 
   .templateParams(deriveTemplateParams)
 
-  .args<BlockArgs>((data) => {
-    if (data.abundanceRef === undefined) throw new Error("Abundance column is required");
-    if (data.concentrationColumnRef === undefined)
-      throw new Error("Concentration column is required");
-    if (data.antigenColumnRef !== undefined && !data.targetAntigen)
-      throw new Error("Target antigen is required when an antigen column is selected");
-    if (data.sortFractionColumnRef !== undefined && data.binColumnRef === undefined)
-      throw new Error(
-        "FACS sort fraction requires a FACS bin column — the correction only applies in bin mode",
-      );
-    if (data.cellCountColumnRef !== undefined && data.binColumnRef === undefined)
-      throw new Error("Sorted cell counts require a FACS bin column — they only apply in bin mode");
-    if (
-      data.binColumnRef !== undefined &&
-      data.fitModel === "poisson_log" &&
-      data.cellCountColumnRef === undefined &&
-      data.sortFractionColumnRef === undefined &&
-      !data.allowUncorrected
-    )
-      throw new Error(
-        "Sorted cell counts (or sort fractions) are required for the Adams 2016 model — " +
-          "without them every bin is assumed to hold the same number of cells",
-      );
-    if (!(data.binWidthDecades > 0)) throw new Error("Bin width must be above 0 decades");
-    if (!(data.minPlateauFraction > 0 && data.minPlateauFraction < 1))
-      throw new Error("Minimum plateau must be between 0 and 1, exclusive");
-    if (!(data.kdSdGood > 0)) throw new Error("Good-class Kd,app uncertainty must be above 0");
-    if (data.baselineFluorescence !== undefined && !(data.baselineFluorescence > 0))
-      throw new Error("0 M baseline fluorescence must be above 0");
-
-    // Reject undefined on the numeric tuning params before any range comparisons
-    // run. Without these guards, `undefined < 1` (and friends) silently returns
-    // false, so a stored block missing one of these fields would pass validation
-    // and produce args with undefined values — breaking the Python fit at runtime.
-    if (data.minReadsPerConcentration === undefined)
-      throw new Error("Min reads per concentration is required");
-    if (data.minConcentrationPoints === undefined)
-      throw new Error("Min concentration points is required");
-    if (data.r2ThresholdGood === undefined) throw new Error("R² threshold (Good) is required");
-    if (data.r2ThresholdFailed === undefined) throw new Error("R² threshold (Failed) is required");
-    if (data.nMin === undefined) throw new Error("Hill coefficient nMin is required");
-    if (data.nMax === undefined) throw new Error("Hill coefficient nMax is required");
-    // Only require the active mode's hook threshold — the other field is hidden
-    // in the UI (v-if on binMode), so requiring both would block users from
-    // opening Inputs to fix it.
-    const isBinMode = data.binColumnRef !== undefined;
-    if (isBinMode && data.hookEffectThresholdBin === undefined)
-      throw new Error("Hook effect signal-drop threshold (bin mode) is required");
-    if (!isBinMode && data.hookEffectThresholdNoBin === undefined)
-      throw new Error("Hook effect signal-drop threshold (frequency mode) is required");
-    if (data.hookEffectMinReads === undefined)
-      throw new Error("Min reads for hook check is required");
-
-    if (data.r2ThresholdFailed > data.r2ThresholdGood)
-      throw new Error("Failed R² threshold must be ≤ Good R² threshold");
-    if (data.nMin >= data.nMax) throw new Error("Hill coefficient nMin must be < nMax");
-    if (data.r2ThresholdGood < 0 || data.r2ThresholdGood > 1)
-      throw new Error("R² threshold (Good) out of range");
-    if (data.r2ThresholdFailed < 0 || data.r2ThresholdFailed > 1)
-      throw new Error("R² threshold (Failed) out of range");
-    if (data.minReadsPerConcentration < 1)
-      throw new Error("Min reads per concentration must be ≥ 1");
-    if (data.minConcentrationPoints < 3) throw new Error("Min concentration points must be ≥ 3");
-    return {
-      abundanceRef: data.abundanceRef,
-      concentrationColumnRef: data.concentrationColumnRef,
-      binColumnRef: data.binColumnRef,
-      antigenColumnRef: data.antigenColumnRef,
-      sortFractionColumnRef: data.sortFractionColumnRef,
-      cellCountColumnRef: data.cellCountColumnRef,
-      targetAntigen: data.targetAntigen,
-      fitModel: data.fitModel,
-      binWidthDecades: data.binWidthDecades,
-      minPlateauFraction: data.minPlateauFraction,
-      baselineFluorescence: data.baselineFluorescence,
-      allowUncorrected: data.allowUncorrected,
-      kdSdGood: data.kdSdGood,
-      minReadsPerConcentration: data.minReadsPerConcentration,
-      minConcentrationPoints: data.minConcentrationPoints,
-      r2ThresholdGood: data.r2ThresholdGood,
-      r2ThresholdFailed: data.r2ThresholdFailed,
-      nMin: data.nMin,
-      nMax: data.nMax,
-      // Default the inactive mode's threshold so the args type is satisfied
-      // — the workflow only reads the field for the active mode.
-      hookEffectThresholdBin: data.hookEffectThresholdBin ?? 0.2,
-      hookEffectThresholdNoBin: data.hookEffectThresholdNoBin ?? 0.02,
-      hookEffectMinReads: data.hookEffectMinReads,
-      // Strings have UI defaults but old stored data may lack them; coerce to
-      // empty/safe values rather than throw — they don't break the workflow.
-      defaultBlockLabel: data.defaultBlockLabel ?? "Tite-Seq Analysis",
-      customBlockLabel: data.customBlockLabel ?? "",
-    };
-  })
+  .args<BlockArgs>(deriveArgs)
 
   .output("abundanceOptions", (ctx) =>
     ctx.resultPool.getOptions(
