@@ -38,6 +38,8 @@ class CountTensors:
 
 def build_tensors(reads: pl.DataFrame, cell_count_col: str | None) -> CountTensors:
     clonotypes = sorted(reads[COL_CLONOTYPE].unique().to_list())
+    # Rows without a bin (an unsorted 0 M control) carry no bin information; the model counts sorted bins only.
+    reads = reads.filter(pl.col(COL_BIN).is_not_null())
     concs = reads.select(COL_CONC_STR, COL_CONC_VAL).unique().sort(COL_CONC_VAL)
     bins = np.array(sorted(reads[COL_BIN].unique().to_list()))
     ci = {c: i for i, c in enumerate(concs[COL_CONC_STR].to_list())}
@@ -128,11 +130,19 @@ def fit_poisson(
         f"poisson_log: B = {B:.4f}, bin width = {params.bin_width_decades} decades, "
         f"amplitude in [{amp_lo:.3g}, {top:.3g}]"
     )
-    log(f"Fitting {R.shape[0]} clonotypes")
-    fit = _fit_parallel(R, a, t.concentrations, log_values, B, (amp_lo, top))
-
     pos = t.concentrations[t.concentrations > 0]
-    lo, hi = math.log10(pos.min()), math.log10(pos.max())
+    # Clonotypes the sufficiency gate rejected are reported Failed without a fit. Exposure and B above
+    # still use the whole library.
+    survivors = np.array([insufficient_map.get(key) is None for key in t.clonotypes]) & (pos.size > 0)
+    n_fit = int(survivors.sum())
+    log(f"Fitting {n_fit} clonotypes ({survivors.size - n_fit} pre-gated Failed)")
+    fit = GridFit(*(np.full(survivors.size, np.nan) for _ in range(3)), np.empty(0))
+    if n_fit:
+        part = _fit_parallel(R[survivors], a[survivors], t.concentrations, log_values, B, (amp_lo, top))
+        fit.log10_kd[survivors] = part.log10_kd
+        fit.amplitude[survivors] = part.amplitude
+        fit.log10_kd_sd[survivors] = part.log10_kd_sd
+    lo, hi = (math.log10(pos.min()), math.log10(pos.max())) if pos.size else (math.nan, math.nan)
     signal = signal_frame.filter(pl.col(COL_CONC_VAL) > 0).sort([COL_CLONOTYPE, COL_CONC_VAL])
     by_clonotype = signal.partition_by(COL_CLONOTYPE, as_dict=True)
 
@@ -140,6 +150,8 @@ def fit_poisson(
     fitted_parts = []
     for i, key in enumerate(t.clonotypes):
         reason = insufficient_map.get(key)
+        if not survivors[i] and reason is None:
+            reason = "insufficient_points"  # no non-zero concentration to fit
         lk = float(fit.log10_kd[i])
         censor = "below" if lk <= lo else "above" if lk >= hi else None
         sub = by_clonotype.get((key,))

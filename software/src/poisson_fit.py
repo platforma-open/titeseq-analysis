@@ -35,7 +35,7 @@ M_GRID_POINTS = 120
 class GridFit:
     log10_kd: np.ndarray  # (V,) best K on the grid, unclipped
     amplitude: np.ndarray  # (V,) best A, in units of bin-1 fluorescence
-    log10_kd_sd: np.ndarray  # (V,) posterior SD of log10 K under a flat prior on the grid
+    log10_kd_sd: np.ndarray  # (V,) posterior RMS distance of log10 K from the best fit, flat prior on the grid
     log10_kd_grid: np.ndarray
 
 
@@ -294,6 +294,7 @@ def fit_titration(
             pk = post.sum(1) / post.sum()
             best_k[s0 + j] = logk[ik]
             best_a[s0 + j] = A[ia]
+            # Spread about the best fit, not the posterior mean: the authors' KD_sigma.
             sd[s0 + j] = float(np.sqrt((pk * (logk - logk[ik]) ** 2).sum()))
     return GridFit(best_k, best_a, sd, logk)
 

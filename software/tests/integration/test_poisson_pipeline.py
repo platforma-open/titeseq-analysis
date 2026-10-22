@@ -172,3 +172,27 @@ def test_clonotype_seen_at_too_few_concentrations_is_not_fitted(simulate):
     assert (a["affinityClass"][0], a["fitFailureReason"][0]) == ("Failed", "insufficient_points")
     assert a["kd"][0] is None and a["kdCensor"][0] is None
     assert "A" not in set(out["fitted_mean_bin"]["clonotypeKey"].to_list())
+
+
+def test_unsorted_zero_control_does_not_change_the_fit(simulate):
+    # A 0 M sample with no bin assignment (an unsorted control) is allowed in; it carries no bin
+    # information, so the fit must ignore it rather than crash.
+    reads = simulate({"A": (-8.0, 60.0), "N": (-2.0, 60.0)}, seed=11).reads
+    unsorted = reads.filter(pl.col("sampleId") == "c0_b1").with_columns(
+        pl.lit("c0_unsorted").alias("sampleId"), pl.lit(None, dtype=pl.Int64).alias("bin")
+    )
+    params = FitParams(bin_width_decades=0.7)
+    plain = _run(reads, params=params, cell_count_col="cells")["per_clonotype"].sort("clonotypeKey")
+    with_unsorted = _run(pl.concat([reads, unsorted]), params=params, cell_count_col="cells")
+    assert with_unsorted["per_clonotype"].sort("clonotypeKey").equals(plain)
+
+
+def test_control_only_data_reports_every_clonotype_failed(simulate):
+    # Only 0 M samples: nothing to titrate, so every clonotype is Failed with a reason, not a crash.
+    reads = simulate({"A": (-8.0, 60.0), "N": (-2.0, 60.0)}, seed=13).reads.filter(pl.col("concentration") == 0)
+    out = _run(reads, params=FitParams(bin_width_decades=0.7), cell_count_col="cells")
+    pc = out["per_clonotype"]
+    assert set(pc["clonotypeKey"].to_list()) == {"A", "N"}
+    assert (pc["affinityClass"] == "Failed").all()
+    assert pc["fitFailureReason"].is_not_null().all() and pc["kd"].is_null().all()
+    assert out["fitted_mean_bin"].height == 0
