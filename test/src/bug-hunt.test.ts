@@ -1,6 +1,5 @@
 // Reproductions from the 2026-10-20 bug hunt. Each test asserts the correct
-// behaviour and is marked `.fails` while the defect is open; once fixed, the
-// test passes, `.fails` reports it, and the marker must be removed.
+// behaviour; a test marked `.fails` pins a defect that is still open.
 import type {
   BlockData,
   BlockOutputs,
@@ -30,7 +29,15 @@ function blockData(over: Partial<BlockData>): BlockData {
     binColumnRef: undefined,
     antigenColumnRef: undefined,
     sortFractionColumnRef: undefined,
+    cellCountColumnRef: undefined,
     targetAntigen: undefined,
+    // The fixtures were built on the linear Hill model.
+    fitModel: "hill_free_n",
+    binWidthDecades: 0.65,
+    minPlateauFraction: 0.65,
+    baselineFluorescence: undefined,
+    allowUncorrected: false,
+    kdSdGood: 0.5,
     minReadsPerConcentration: 3,
     minConcentrationPoints: 5,
     r2ThresholdGood: 0.8,
@@ -150,7 +157,7 @@ async function setupAntigenChain(project: Project, helpers: Helpers) {
   };
 }
 
-blockTest.fails(
+blockTest(
   "bug-hunt H4: sort fraction plus antigen column fails the run (sums checked across antigens)",
   { timeout: 900000 },
   async ({ rawPrj: project, helpers, expect }) => {
@@ -172,7 +179,7 @@ blockTest.fails(
   },
 );
 
-blockTest.fails(
+blockTest(
   "bug-hunt M5: validationWarnings itself errors when the run fails, so the in-block alert never shows",
   { timeout: 900000 },
   async ({ rawPrj: project, helpers, expect }) => {
@@ -186,6 +193,9 @@ blockTest.fails(
         antigenColumnRef: refs.antigen,
         targetAntigen: "target",
         sortFractionColumnRef: refs.sortFraction,
+        // A 0 M baseline above the plateau prior: the Adams fit rejects the run in Python.
+        fitModel: "poisson_log",
+        baselineFluorescence: 1000,
       }),
     });
     await project.runBlock(titeseqBlockId);
@@ -196,10 +206,12 @@ blockTest.fails(
     )) as InferBlockState<typeof platforma>;
     const warnings = state.outputs?.validationWarnings;
     expect(warnings?.ok).toBe(true);
+    const messages = warnings?.ok ? warnings.value.map((w) => w.message) : [];
+    expect(messages.some((m) => m.includes("plateau"))).toBe(true);
   },
 );
 
-blockTest.fails(
+blockTest(
   "bug-hunt M6: isEmpty stays false when every clonotype is Failed, so the 'All clonotypes failed' alert never shows",
   { timeout: 900000 },
   async ({ rawPrj: project, helpers, expect }) => {
@@ -224,7 +236,7 @@ blockTest.fails(
   },
 );
 
-blockTest.fails(
+blockTest(
   "bug-hunt M7: binMode follows unsaved settings, not the results on screen",
   { timeout: 900000 },
   async ({ rawPrj: project, helpers, expect }) => {
@@ -260,6 +272,9 @@ blockTest.fails(
   },
 );
 
+// Open: concentration options take Float/Double only, which is also what keeps the integer FACS
+// bin column out of that list (see the guard in wf.test.ts). Accepting Int/Long fixes this but
+// lists bin and read-count columns as concentrations; needs a narrower rule.
 blockTest.fails(
   "bug-hunt M4: an integer (Long) concentration column is not offered as a concentration",
   { timeout: 900000 },

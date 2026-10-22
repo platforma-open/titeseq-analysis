@@ -235,6 +235,15 @@ function isIntegerValueType(vt: string | undefined): boolean {
   return vt === "Int" || vt === "Long";
 }
 
+// The Python cause of a failed run, from the error chain an errored output throws.
+function runFailureCause(e: unknown): string {
+  const text = e instanceof Error ? e.message : String(e);
+  const cause = text.match(/InputValidationError: ([^\n]+)/);
+  if (cause) return cause[1].trim();
+  const lines = text.split("\n").filter((l) => l.trim() !== "");
+  return (lines[lines.length - 1] ?? "unknown error").trim().slice(0, 500);
+}
+
 function isFloatValueType(vt: string | undefined): boolean {
   return vt === "Float" || vt === "Double";
 }
@@ -525,8 +534,15 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     // CIDConflictError is typically transient — the platform's "zebra"
     // self-recovery retries the write — so we label it as such.
     const outputKeys = ["summaryPf", "signalPf", "logHandle"] as const;
+    // Resolving a field that holds an error and no value throws; the throw carries the cause.
     for (const key of outputKeys) {
-      const errorAcc = ctx.outputs?.resolve(key)?.getError();
+      let errorAcc;
+      try {
+        errorAcc = ctx.outputs?.resolve(key)?.getError();
+      } catch (e) {
+        issues.push({ severity: "error", message: `The run failed: ${runFailureCause(e)}` });
+        break;
+      }
       if (!errorAcc) continue;
       const typeName = errorAcc.resourceType.name;
       const detail = errorAcc.getDataAsJson<{ message?: string }>()?.message ?? typeName;
@@ -701,13 +717,19 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     return pCols.map((c) => ({ columnId: c.id, spec: c.spec }) satisfies PColumnIdAndSpec);
   })
 
+  // True when the run produced no clonotype that is not Failed; undefined before results exist.
   .output("isEmpty", (ctx) => {
-    const pCols = ctx.outputs?.resolve("summaryPf")?.getPColumns();
-    if (pCols === undefined) return undefined;
-    return pCols.length === 0;
+    const summary = ctx.outputs
+      ?.resolve("fitSummary")
+      ?.getDataAsJson<{ clonotypes: number; failed: number }>();
+    if (summary === undefined) return undefined;
+    return summary.failed === summary.clonotypes;
   })
 
-  .output("binMode", (ctx) => ctx.data.binColumnRef !== undefined)
+  // The mode of the results on screen: the args of the last successful run, not unsaved settings.
+  .output("binMode", (ctx) =>
+    ctx.activeArgs === undefined ? undefined : ctx.activeArgs.binColumnRef !== undefined,
+  )
 
   .title(() => "Tite-Seq Analysis")
 
