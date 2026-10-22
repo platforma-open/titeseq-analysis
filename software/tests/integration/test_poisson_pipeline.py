@@ -196,3 +196,19 @@ def test_control_only_data_reports_every_clonotype_failed(simulate):
     assert (pc["affinityClass"] == "Failed").all()
     assert pc["fitFailureReason"].is_not_null().all() and pc["kd"].is_null().all()
     assert out["fitted_mean_bin"].height == 0
+
+
+def test_presort_library_sample_without_cell_count_does_not_change_the_fit(simulate):
+    # A pre-sort library sample has no concentration, bin or cell count; the fit does not use it.
+    reads = simulate({"A": (-8.0, 60.0), "N": (-2.0, 60.0)}, seed=17).reads
+    presort = reads.filter(pl.col("sampleId") == "c0_b1").with_columns(
+        pl.lit("presort").alias("sampleId"),
+        pl.lit(None, dtype=pl.Utf8).alias("concentrationStr"),
+        pl.lit(None, dtype=pl.Float64).alias("concentration"),
+        pl.lit(None, dtype=pl.Int64).alias("bin"),
+        pl.lit(None, dtype=pl.Float64).alias("cells"),
+    )
+    params = FitParams(bin_width_decades=0.7)
+    plain = _run(reads, params=params, cell_count_col="cells")["per_clonotype"].sort("clonotypeKey")
+    with_presort = _run(pl.concat([reads, presort]), params=params, cell_count_col="cells")
+    assert with_presort["per_clonotype"].sort("clonotypeKey").equals(plain)
