@@ -12,6 +12,7 @@ const COLUMN_REFS = [
   "binColumnRef",
   "antigenColumnRef",
   "sortFractionColumnRef",
+  "cellCountColumnRef",
 ];
 
 describe("the envelope", () => {
@@ -69,6 +70,37 @@ describe("the bounded settings", () => {
 
   it.each(["r2ThresholdGood", "r2ThresholdFailed"])("refuses a value outside 0..1 for %s", (f) => {
     for (const v of [-0.01, 1.01, 2]) expect(() => parse({ [f]: v })).toThrow(`'${f}' must be`);
+  });
+});
+
+describe("the curve-model settings", () => {
+  it.each(["poisson_log", "hill_free_n"])("accepts %s as the model", (v) => {
+    expect(parse({ fitModel: v })).toEqual({ fitModel: v });
+  });
+
+  it.each(["poisson", "hill", 1, null])("refuses %o as the model", (v) => {
+    expect(() => parse({ fitModel: v })).toThrow("'fitModel' must be");
+  });
+
+  it.each(["binWidthDecades", "baselineFluorescence", "kdSdGood"])(
+    "needs a value above 0 for %s",
+    (f) => {
+      expect(parse({ [f]: 0.5 })).toEqual({ [f]: 0.5 });
+      for (const v of [0, -1, Number.NaN])
+        expect(() => parse({ [f]: v })).toThrow(`'${f}' must be`);
+    },
+  );
+
+  it("needs the plateau fraction strictly between 0 and 1", () => {
+    expect(parse({ minPlateauFraction: 0.65 })).toEqual({ minPlateauFraction: 0.65 });
+    for (const v of [0, 1, 1.2]) {
+      expect(() => parse({ minPlateauFraction: v })).toThrow("'minPlateauFraction' must be");
+    }
+  });
+
+  it("takes allowUncorrected as a boolean only", () => {
+    expect(parse({ allowUncorrected: false })).toEqual({ allowUncorrected: false });
+    expect(() => parse({ allowUncorrected: "true" })).toThrow("'allowUncorrected' must be");
   });
 });
 

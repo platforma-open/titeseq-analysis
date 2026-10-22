@@ -38,6 +38,7 @@ def _hill_reads(clonotype: str, true_kd: float, concs, bins, per_conc=500):
                     "concentration": float(c),
                     "bin": int(b),
                     "reads": int(counts[j]),
+                    "cells": 1000.0 + 100.0 * b,
                 }
             )
     return rows
@@ -56,6 +57,7 @@ def _run_cli(reads_path: Path, out_dir: Path) -> dict[str, Path]:
             "--out-mean-bin", str(mb),
             "--out-fitted-mean-bin", str(fmb),
             "--out-concentration-value", str(cv),
+            "--cell-count-column", "cells",
         ],
         capture_output=True, text=True, check=False,
     )
@@ -70,11 +72,13 @@ def test_outputs_are_byte_identical_across_runs(tmp_path):
     non-determinism in `polars.group_by` — the actual condition under which
     CIDConflictError fires in production.
     """
-    concs = [1e-10, 1e-9, 3e-9, 1e-8, 3e-8, 1e-7, 1e-6]
+    # Default model (needs a 0 M control). 410 clonotypes so the fit runs in parallel chunks, whose
+    # reassembly order must not depend on which worker finishes first.
+    concs = [0.0, 1e-10, 1e-9, 3e-9, 1e-8, 3e-8, 1e-7, 1e-6]
     bins = [1, 2, 3, 4]
     rows: list[dict] = []
-    for clonotype, kd in [("CLONE_A", 1e-8), ("CLONE_B", 3e-9), ("CLONE_C", 5e-9), ("CLONE_D", 1e-7)]:
-        rows.extend(_hill_reads(clonotype, kd, concs, bins))
+    for i, kd in enumerate(np.logspace(-10, -6, 410)):
+        rows.extend(_hill_reads(f"CLONE_{i:03d}", float(kd), concs, bins))
 
     reads_path = tmp_path / "reads.parquet"
     pl.DataFrame(rows).write_parquet(reads_path)

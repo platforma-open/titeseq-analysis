@@ -7,7 +7,11 @@ import math
 import numpy as np
 import polars as pl
 
+from constants import FitParams
 from pipeline import run
+
+# These tests cover the opt-in linear Hill model: fixtures are built on mean bin, without cell counts.
+LINEAR_HILL = FitParams(fit_model="hill_free_n")
 
 
 def _build_bin_reads_for_hill(
@@ -78,7 +82,7 @@ class TestAllFailedDataset:
                         }
                     )
         reads = pl.DataFrame(rows)
-        out = run(reads)
+        out = run(reads, params=LINEAR_HILL)
         pc = out["per_clonotype"]
         assert pc.height == 3
         assert (pc["affinityClass"] == "Failed").all()
@@ -132,8 +136,8 @@ class TestSortFractionIntegration:
     def test_pipeline_with_sort_fraction(self):
         reads_plain, reads_with_sort = self._build_skewed_reads()
 
-        out_uncorrected = run(reads_plain)
-        out_corrected = run(reads_with_sort, sort_fraction_col="sort_fraction")
+        out_uncorrected = run(reads_plain, params=LINEAR_HILL)
+        out_corrected = run(reads_with_sort, params=LINEAR_HILL, sort_fraction_col="sort_fraction")
 
         # Schema must match the uncorrected run — the correction stays on the
         # existing meanBin column, no new columns or rows.
@@ -187,7 +191,7 @@ class TestValidatorWarnings:
             }
         )
         reads = pl.DataFrame(rows, schema_overrides={"bin": pl.Int64})
-        run(reads)
+        run(reads, params=LINEAR_HILL)
         captured = capsys.readouterr()
         assert "ambiguous" in captured.out
         assert "ambiguous" not in captured.err

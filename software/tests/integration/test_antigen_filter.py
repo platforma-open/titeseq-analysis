@@ -7,7 +7,12 @@ import math
 import numpy as np
 import polars as pl
 
+from constants import FitParams
 from pipeline import run
+
+# Fixtures are built on the linear Hill model over mean bin, without cell counts or a 0 M control,
+# so they exercise the opt-in hill_free_n model.
+LINEAR_HILL = FitParams(fit_model="hill_free_n")
 
 
 def _good_reads_for(clonotype, antigen, true_kd, baseline, concs, bins, per_conc=500):
@@ -42,7 +47,7 @@ def test_antigen_filter_keeps_only_target():
     rows += _good_reads_for("C1", "Y", true_kd=5e-7, baseline=1.5, concs=concs, bins=bins)
     reads = pl.DataFrame(rows)
 
-    out_x = run(reads, target_antigen="X", antigen_column_ref="antigen")
+    out_x = run(reads, params=LINEAR_HILL, target_antigen="X", antigen_column_ref="antigen")
     pc = out_x["per_clonotype"].filter(pl.col("clonotypeKey") == "C1")
     # With only antigen X present, Kd ≈ 5 nM (not 500 nM)
     assert pc["kd"][0] is not None

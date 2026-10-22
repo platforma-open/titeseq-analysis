@@ -16,6 +16,7 @@ dependencies = [
 [dependency-groups]
 # Dev-only tooling (not shipped). Runtime libs live in [project.dependencies] above.
 dev = [
+    "hypothesis>=6.170.5",
     "pytest>=9.0.2",
     "pytest-cov>=6.0.0",
     "ruff>=0.14",
@@ -28,6 +29,7 @@ addopts = "-ra --strict-markers"
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "hot_path: perf smoke tests",
+    "golden: reproduces Adams et al. 2016 from the authors' data (downloads it on first run)",
 ]
 
 [tool.coverage.run]

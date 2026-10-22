@@ -151,6 +151,12 @@ blockTest(
         binColumnRef: binRef,
         antigenColumnRef: undefined,
         targetAntigen: undefined,
+        // The manifest's expected classes come from the linear Hill model the fixtures were built on.
+        fitModel: "hill_free_n",
+        binWidthDecades: 0.65,
+        minPlateauFraction: 0.65,
+        allowUncorrected: false,
+        kdSdGood: 0.5,
         minReadsPerConcentration: 3,
         minConcentrationPoints: 5,
         r2ThresholdGood: 0.8,
@@ -204,6 +210,8 @@ blockTest(
       ["pl7.app/vdj/affinityClass", "String"],
       ["pl7.app/vdj/fitFailureReason", "String"],
       ["pl7.app/vdj/kdOutOfRange", "String"],
+      ["pl7.app/vdj/kdUncertainty", "Double"],
+      ["pl7.app/vdj/kdCensor", "String"],
     ];
     for (const [name, valueType] of expectedCols) {
       const spec = specByName.get(name);
@@ -308,14 +316,13 @@ blockTest(
 );
 
 blockTest(
-  "bin_mode + sort_fraction: FACS correction plumbs through and toggles annotation",
+  "bin_mode + cell counts: the Adams 2016 model plumbs through end to end",
   { timeout: 900000 },
   async ({ rawPrj: project, helpers, expect }) => {
-    // Goal: exercise the full sort_fraction wiring (model → workflow → Python →
-    // signal annotation → model output → UI badge). Correctness is covered by
-    // Python unit/integration/regression tests; this test is a plumbing guard.
-    // Uniform 0.25 per bin is a mathematical no-op but still verifies the
-    // correction code path runs end-to-end and the annotation round-trips.
+    // Goal: exercise the default bin-mode path — sorted cell counts through model → workflow →
+    // Python (poisson_log) → outputs. Numbers are covered by the Python golden and behavioral
+    // tests; this is a plumbing guard. Equal counts per bin keep the fixture's mean bins as built.
+    // A sort_fraction column is injected too, to check each lands in its own dropdown.
     const sndBlockId = await project.addBlock("Samples & Data", samplesAndDataBlockSpec);
     const importBlockId = await project.addBlock("Import V(D)J Data", importVdjBlockSpec);
     const titeseqBlockId = await project.addBlock("Titeseq Analysis", myBlockSpec);
@@ -329,6 +336,11 @@ blockTest(
     for (const name of loaded.raw.sample_ids) {
       sortFractionData[loaded.sampleIdByName[name]] = 0.25;
     }
+    const cellCountId = uniquePlId() as unknown as PlId;
+    const cellCountData: Record<PlId, number> = {};
+    for (const name of loaded.raw.sample_ids) {
+      cellCountData[loaded.sampleIdByName[name]] = 250000;
+    }
     const sndArgs: SamplesAndDataBlockArgs = {
       ...baseSndArgs,
       metadata: [
@@ -339,6 +351,13 @@ blockTest(
           global: true,
           valueType: "Double",
           data: sortFractionData,
+        },
+        {
+          id: cellCountId,
+          label: "cells_sorted",
+          global: true,
+          valueType: "Double",
+          data: cellCountData,
         },
       ],
     };
@@ -379,9 +398,9 @@ blockTest(
       (o) => o.label === "antigen_conc_M",
     )!.ref;
     const binRef = idleOutputs.binOptions.find((o) => o.label === "bin_number")!.ref;
-    const sortFractionRef = idleOutputs.sortFractionOptions!.find(
-      (o) => o.label === "sort_fraction",
-    )!.ref;
+    const cellCountLabels = idleOutputs.cellCountOptions?.map((o) => o.label) ?? [];
+    expect(cellCountLabels).toEqual(expect.arrayContaining(["cells_sorted"]));
+    const cellCountRef = idleOutputs.cellCountOptions!.find((o) => o.label === "cells_sorted")!.ref;
 
     await project.mutateBlockStorage(titeseqBlockId, {
       operation: "update-block-data",
@@ -389,9 +408,15 @@ blockTest(
         abundanceRef,
         concentrationColumnRef: concentrationRef,
         binColumnRef: binRef,
-        sortFractionColumnRef: sortFractionRef,
+        sortFractionColumnRef: undefined,
         antigenColumnRef: undefined,
         targetAntigen: undefined,
+        cellCountColumnRef: cellCountRef,
+        fitModel: "poisson_log",
+        binWidthDecades: 0.65,
+        minPlateauFraction: 0.65,
+        allowUncorrected: false,
+        kdSdGood: 0.5,
         minReadsPerConcentration: 3,
         minConcentrationPoints: 5,
         r2ThresholdGood: 0.8,
@@ -433,10 +458,16 @@ blockTest(
     const doneState = await helpers.awaitBlockDoneAndGetStableBlockState(titeseqBlockId, 360000);
     const outputs = wrapOutputs<BlockOutputs>(doneState.outputs as unknown as BlockOutputs);
 
-    // Plumbing guard: a valid sort-fraction column flows through model →
-    // workflow → Python and the block completes without validation errors.
-    // (Numeric correctness is covered by Python unit/integration tests.)
+    // Plumbing guard: cell counts flow through model → workflow → Python and the block completes
+    // without validation errors, emitting the Adams-model columns.
     expect(outputs.titrationCurvesPf).toBeDefined();
+    // Once picked, the concentration and bin columns are no longer offered as cell counts.
+    const pickedLabels = outputs.cellCountOptions?.map((o) => o.label) ?? [];
+    expect(pickedLabels).not.toContain("antigen_conc_M");
+    expect(pickedLabels).not.toContain("bin_number");
+    const names = new Set(outputs.summaryPfCols!.map((c) => c.spec.name));
+    expect(names.has("pl7.app/vdj/kdUncertainty")).toBe(true);
+    expect(names.has("pl7.app/vdj/kdCensor")).toBe(true);
     expect(outputs.validationWarnings).toEqual([]);
     expect(outputs.isEmpty).toBe(false);
     expect(outputs.isRunning).toBeFalsy();

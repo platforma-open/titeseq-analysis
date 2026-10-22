@@ -19,7 +19,12 @@ from pathlib import Path
 import polars as pl
 import pytest
 
+from constants import FitParams
 from pipeline import run
+
+# The corpus was generated from the linear Hill model on mean bin (no cell counts, no 0 M baseline
+# in fluorescence space), so it exercises the opt-in hill_free_n model.
+LINEAR_HILL = FitParams(fit_model="hill_free_n")
 
 CORPUS_DIR = Path(__file__).resolve().parent.parent / "data" / "corpus"
 MANIFEST = json.loads((CORPUS_DIR / "manifest.json").read_text())
@@ -43,13 +48,13 @@ ALL_ENTRIES = (
 @pytest.fixture(scope="module")
 def bin_outputs() -> dict[str, pl.DataFrame]:
     reads = pl.read_parquet(CORPUS_DIR / "reads_bin_mode.parquet")
-    return run(reads)
+    return run(reads, params=LINEAR_HILL)
 
 
 @pytest.fixture(scope="module")
 def no_bin_outputs() -> dict[str, pl.DataFrame]:
     reads = pl.read_parquet(CORPUS_DIR / "reads_no_bin_mode.parquet")
-    return run(reads)
+    return run(reads, params=LINEAR_HILL)
 
 
 @pytest.fixture(scope="module")
@@ -57,6 +62,7 @@ def antigen_outputs() -> dict[str, pl.DataFrame]:
     reads = pl.read_parquet(CORPUS_DIR / "reads_antigen.parquet")
     return run(
         reads,
+        params=LINEAR_HILL,
         target_antigen=MANIFEST["antigen"]["target_antigen"],
         antigen_column_ref="antigen",
     )
@@ -270,16 +276,16 @@ class TestDeterminism:
 
     def test_bin_mode_classification_repeatable(self):
         reads = pl.read_parquet(CORPUS_DIR / "reads_bin_mode.parquet")
-        a = run(reads)["per_clonotype"].sort("clonotypeKey")
-        b = run(reads)["per_clonotype"].sort("clonotypeKey")
+        a = run(reads, params=LINEAR_HILL)["per_clonotype"].sort("clonotypeKey")
+        b = run(reads, params=LINEAR_HILL)["per_clonotype"].sort("clonotypeKey")
 
         for col in ("clonotypeKey", "affinityClass", "fitFailureReason", "kdOutOfRange"):
             assert a[col].to_list() == b[col].to_list(), f"column {col} differs"
 
     def test_bin_mode_numeric_drift_bounded(self):
         reads = pl.read_parquet(CORPUS_DIR / "reads_bin_mode.parquet")
-        a = run(reads)["per_clonotype"].sort("clonotypeKey")
-        b = run(reads)["per_clonotype"].sort("clonotypeKey")
+        a = run(reads, params=LINEAR_HILL)["per_clonotype"].sort("clonotypeKey")
+        b = run(reads, params=LINEAR_HILL)["per_clonotype"].sort("clonotypeKey")
         keys = a["clonotypeKey"].to_list()
 
         # (column, rel, abs) — plot-position columns track their source values

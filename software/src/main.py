@@ -39,6 +39,12 @@ def main(argv: list[str] | None = None) -> int:
         help="Column name in reads.tsv carrying sort fraction C_bc/C_c per sample. "
         "Absent ⇒ no FACS correction.",
     )
+    parser.add_argument(
+        "--cell-count-column",
+        default=None,
+        help="Column name in reads.tsv carrying the cells sorted into each sample (C_bc). "
+        "Preferred over --sort-fraction-column: also allows rescaling bins with more reads than cells.",
+    )
     args = parser.parse_args(argv)
 
     log(f"Reading input table: {args.reads}")
@@ -56,6 +62,7 @@ def main(argv: list[str] | None = None) -> int:
         target_antigen=args.target_antigen,
         antigen_column_ref=args.antigen_column_ref,
         sort_fraction_col=args.sort_fraction_column,
+        cell_count_col=args.cell_count_column,
     )
     log("Writing output frames")
     _write_frame(outputs["per_clonotype"], args.out_per_clonotype)

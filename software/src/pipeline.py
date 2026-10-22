@@ -18,7 +18,6 @@ argparse and file I/O.
 
 from __future__ import annotations
 
-import os
 from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 
@@ -32,23 +31,27 @@ from constants import (
     COL_CLONOTYPE,
     COL_CONC_STR,
     COL_CONC_VAL,
+    COL_SAMPLE,
     DEFAULT_PARAMS,
     FitParams,
 )
+from cpus import available_cpus
 from hill_fit import fit_one_clonotype
-from log import log
 from io_layer import (
+    InputValidationError,
     apply_antigen_filter,
     canonicalize_concentration,
     max_bin_label,
     validate_antigen_filter,
     validate_bin_column,
     validate_bin_concentration_grid,
+    validate_cell_count,
     validate_concentration_column,
     validate_reads_schema,
     validate_sample_metadata_uniqueness,
     validate_sort_fraction,
 )
+from log import log
 from normalization import SIGNAL, normalize
 from output_build import (
     FITTED_MEAN_BIN_SCHEMA,
@@ -58,6 +61,7 @@ from output_build import (
     build_mean_bin_frame,
     flag_kd_out_of_range,
 )
+from poisson_pipeline import fit_poisson
 from pre_fit import (
     WEIGHT,
     apply_floor_and_weights,
@@ -66,6 +70,10 @@ from pre_fit import (
     detect_hook_effect,
     split_c0,
 )
+
+# Sort fraction derived from cell counts, consumed by the mean-bin normalization.
+_DERIVED_SORT_FRACTION = "_sort_fraction_from_cells"
+
 
 def _validate_inputs(
     reads: pl.DataFrame,
@@ -116,8 +124,7 @@ def _execute_fits(
     if n_survivors == 0:
         return []
 
-    cpu_count = os.cpu_count() or 1
-    max_workers = min(cpu_count, n_survivors)
+    max_workers = min(available_cpus(), n_survivors)
     if max_workers > 1 and n_survivors >= _PARALLEL_FIT_MIN_SURVIVORS:
         # chunksize trades IPC overhead against load balancing. ~4 chunks per
         # worker keeps stragglers from stalling at the tail while batching
@@ -250,6 +257,8 @@ def _fit_all_clonotypes(
             "affinityClass": affinity_col,
             "fitFailureReason": reason_col,
             "kdOutOfRange": [None] * n_clon,
+            "kdLog10Sd": [None] * n_clon,
+            "kdCensor": [None] * n_clon,
         },
         schema=PER_CLONOTYPE_SCHEMA,
     )
@@ -274,6 +283,8 @@ def _build_outputs(
     fitted: pl.DataFrame,
     signal_frame: pl.DataFrame,
     reads: pl.DataFrame,
+    *,
+    flag_range: bool = True,
 ) -> dict[str, pl.DataFrame]:
     """Apply R14b kdOutOfRange flag and assemble the four-frame output dict."""
     min_max = (
@@ -284,7 +295,7 @@ def _build_outputs(
         )
         .row(0, named=True)
     )
-    if min_max["min"] is not None:
+    if flag_range and min_max["min"] is not None:
         per_clonotype = flag_kd_out_of_range(per_clonotype, float(min_max["min"]), float(min_max["max"]))
     max_c = float(min_max["max"]) if min_max["max"] is not None else 1.0
     per_clonotype = add_diagnostic_plot_columns(per_clonotype, max_c)
@@ -308,8 +319,13 @@ def run(
     target_antigen: str | None = None,
     antigen_column_ref: str | None = None,
     sort_fraction_col: str | None = None,
+    cell_count_col: str | None = None,
 ) -> dict[str, pl.DataFrame]:
     """Execute the full pipeline on an in-memory reads frame.
+
+    `cell_count_col` names the cells sorted into each sample (C_bc in Adams 2016 eq. E4). In bin mode
+    with the default poisson_log model it is required (or `sort_fraction_col`, which loses the
+    reads-exceed-cells rescale), unless `params.allow_uncorrected` is set.
 
     `sort_fraction_col`, when set, activates the Adams, Mora, Walczak, Kinney 2016
     eq. A3 correction inside `compute_mean_bin`. The column must be present in
@@ -331,13 +347,29 @@ def run(
         antigen_column_ref=antigen_column_ref,
     )
 
-    if sort_fraction_col is not None and has_bin:
+    poisson = has_bin and params.fit_model == "poisson_log"
+    if cell_count_col is not None and has_bin:
+        validate_cell_count(reads, cell_count_col)
+        # Fraction of the concentration's cells in each sample, from one row per sample.
+        per_sample = reads.select(COL_SAMPLE, COL_CONC_STR, cell_count_col).unique()
+        per_sample = per_sample.with_columns(
+            (pl.col(cell_count_col) / pl.col(cell_count_col).sum().over(COL_CONC_STR)).alias(_DERIVED_SORT_FRACTION)
+        )
+        reads = reads.join(per_sample.select(COL_SAMPLE, _DERIVED_SORT_FRACTION), on=COL_SAMPLE, how="left")
+        sort_fraction_col = _DERIVED_SORT_FRACTION
+        log(f"Mean-bin correction: cell counts (column '{cell_count_col}')")
+    elif sort_fraction_col is not None and has_bin:
         validate_sort_fraction(reads, sort_fraction_col)
         n_conc = reads.select(COL_CONC_STR).n_unique()
         log(f"sort_fraction validated: {n_conc} concentrations, all sums within 1e-3 of 1.0")
         log(f"Mean-bin correction: FACS-weighted (column '{sort_fraction_col}')")
     elif has_bin:
-        log("Mean-bin correction: uncorrected")
+        if poisson and not params.allow_uncorrected:
+            raise InputValidationError(
+                "bin mode needs the cells sorted into each sample (cell counts or sort fractions); "
+                "without them every bin is assumed to hold the same number of cells"
+            )
+        log("WARN: Mean-bin correction: uncorrected — assumes equal cells per bin")
 
     if target_antigen is not None:
         log(f"Applying antigen filter: {target_antigen}")
@@ -357,6 +389,16 @@ def run(
     log(f"Classifying {len(all_clonotypes)} clonotypes for sufficiency")
     insufficient = classify_insufficient(floor_frame, all_clonotypes, params)
     insufficient_map = dict(zip(insufficient[COL_CLONOTYPE].to_list(), insufficient["insufficient_reason"].to_list()))
+
+    if poisson:
+        cell_col = cell_count_col if cell_count_col is not None else sort_fraction_col
+        per_clonotype, fitted = fit_poisson(
+            reads, signal_frame, insufficient_map, params, cell_col, cells_absolute=cell_count_col is not None
+        )
+        log("Assembling output frames")
+        outputs = _build_outputs(per_clonotype, fitted, signal_frame, reads, flag_range=False)
+        log(f"Pipeline done: per_clonotype={outputs['per_clonotype'].height}")
+        return outputs
 
     c0_points, fit_points = split_c0(floor_frame)
     global_b = compute_global_baseline(c0_points)

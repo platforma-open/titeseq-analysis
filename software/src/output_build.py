@@ -23,6 +23,10 @@ PER_CLONOTYPE_SCHEMA: dict[str, pl.DataType] = {
     "affinityClass": pl.Utf8,
     "fitFailureReason": pl.Utf8,
     "kdOutOfRange": pl.Boolean,
+    # Posterior SD of log10 K_D (poisson_log model); null for the hill_free_n model.
+    "kdLog10Sd": pl.Float64,
+    # "below" / "above" when K_D sits at the titration limit and is a bound, not a measurement.
+    "kdCensor": pl.Utf8,
 }
 
 

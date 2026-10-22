@@ -1,7 +1,7 @@
 import { assertParamsObject, defineBlockKind } from "@platforma-sdk/block-kind";
 import type { PlRef } from "@platforma-sdk/model";
 import { isPlRef } from "@platforma-sdk/model";
-import { isString } from "es-toolkit";
+import { isBoolean, isString } from "es-toolkit";
 import { isNumber } from "es-toolkit/compat";
 import { name, version } from "../package.json" with { type: "json" };
 
@@ -21,12 +21,26 @@ import { name, version } from "../package.json" with { type: "json" };
  * Every field is optional: a block may be created without a template, and a template need not
  * set all of them.
  */
+/**
+ * Bin-mode curve model. `poisson_log` is Adams, Mora, Walczak, Kinney 2016 Appendix E (Poisson
+ * likelihood on reads, log-fluorescence Hill with n = 1); `hill_free_n` is the linear Hill with a
+ * free coefficient fitted to mean bin. No-bin mode always uses the linear Hill.
+ */
+export type FitModel = "poisson_log" | "hill_free_n";
+
 export type BlockParams = {
   abundanceRef?: PlRef;
   concentrationColumnRef?: PlRef;
   binColumnRef?: PlRef;
   antigenColumnRef?: PlRef;
   sortFractionColumnRef?: PlRef;
+  cellCountColumnRef?: PlRef;
+  fitModel?: FitModel;
+  binWidthDecades?: number;
+  minPlateauFraction?: number;
+  baselineFluorescence?: number;
+  allowUncorrected?: boolean;
+  kdSdGood?: number;
   targetAntigen?: string;
   minReadsPerConcentration?: number;
   minConcentrationPoints?: number;
@@ -48,7 +62,8 @@ export type BlockParams = {
  *
  * Rules that span two fields are not checked here: that `nMin` is below `nMax`, that the failed
  * R² threshold is at or below the good one, that a target antigen is named once an antigen column
- * is picked, that a FACS sort fraction needs a bin column. Every one of those is a state the
+ * is picked, that a FACS sort fraction or cell count needs a bin column, that `poisson_log` needs
+ * cell counts or sort fractions. Every one of those is a state the
  * settings drawer leaves behind mid-edit, and `.args()` already refuses them when the block tries
  * to run. Refusing them here would mean a block the scientist can reach by hand cannot be carried
  * by a template.
@@ -98,6 +113,13 @@ function isNumberFrom(min: number): Guard<number> {
 
 const isFraction: Guard<number> = (v): v is number => isFiniteNumber(v) && v >= 0 && v <= 1;
 
+const isPositive: Guard<number> = (v): v is number => isFiniteNumber(v) && v > 0;
+
+const isOpenFraction: Guard<number> = (v): v is number => isFiniteNumber(v) && v > 0 && v < 1;
+
+const isFitModel: Guard<FitModel> = (v): v is FitModel =>
+  v === "poisson_log" || v === "hill_free_n";
+
 /**
  * The runtime half of the contract. The `satisfies` clause is what stops it drifting: every
  * field `BlockParams` declares must appear here, and each guard must narrow to that field's own
@@ -114,6 +136,13 @@ const CONTRACT = {
   binColumnRef: check(isPlRef, "a reference to a FACS bin column"),
   antigenColumnRef: check(isPlRef, "a reference to an antigen column"),
   sortFractionColumnRef: check(isPlRef, "a reference to a FACS sort fraction column"),
+  cellCountColumnRef: check(isPlRef, "a reference to a sorted-cell-count column"),
+  fitModel: check(isFitModel, '"poisson_log" or "hill_free_n"'),
+  binWidthDecades: check(isPositive, "a number above 0"),
+  minPlateauFraction: check(isOpenFraction, "a number between 0 and 1, exclusive"),
+  baselineFluorescence: check(isPositive, "a number above 0"),
+  allowUncorrected: check(isBoolean, "true or false"),
+  kdSdGood: check(isPositive, "a number above 0"),
   targetAntigen: check(isString, "a string"),
   minReadsPerConcentration: check(isNumberFrom(1), "a number of 1 or more"),
   minConcentrationPoints: check(isNumberFrom(3), "a number of 3 or more"),

@@ -115,6 +115,7 @@ def fit_one_clonotype(
     Returns FitResult with `converged=False, reason="convergence_failure"` on:
       - scipy.curve_fit raising
       - top − baseline < mode-specific δ after fit (bin: 0.5, no-bin: 0.05)
+      - a flat signal (weighted R² undefined)
     """
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=float)
@@ -190,13 +191,17 @@ def fit_one_clonotype(
     if amp <= amp_lo + 1e-6:
         return _failure()
     top_minus_base = math.exp(amp)
+    r2 = weighted_r2(y, y_hat, w)
+    # A flat signal has no variance to explain: R² is 0/0 and K_D is unconstrained.
+    if math.isnan(r2):
+        return _failure()
 
     return FitResult(
         kd=math.exp(log_kd),
         n=float(n),
         top=float(baseline_out) + top_minus_base,
         baseline=float(baseline_out),
-        r2_w=weighted_r2(y, y_hat, w),
+        r2_w=r2,
         y_hat=y_hat,
         converged=True,
         reason=None,
