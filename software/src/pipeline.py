@@ -19,6 +19,7 @@ argparse and file I/O.
 from __future__ import annotations
 
 from concurrent.futures import ProcessPoolExecutor
+from dataclasses import replace
 from functools import partial
 
 import numpy as np
@@ -347,6 +348,12 @@ def run(
         antigen_column_ref=antigen_column_ref,
     )
 
+    # Filter to the target antigen first: sort fractions and cell counts sum per concentration
+    # within one antigen's samples.
+    if target_antigen is not None:
+        log(f"Applying antigen filter: {target_antigen}")
+    reads = apply_antigen_filter(reads, target_antigen)
+
     poisson = has_bin and params.fit_model == "poisson_log"
     if cell_count_col is not None and has_bin:
         validate_cell_count(reads, cell_count_col)
@@ -371,9 +378,6 @@ def run(
             )
         log("WARN: Mean-bin correction: uncorrected — assumes equal cells per bin")
 
-    if target_antigen is not None:
-        log(f"Applying antigen filter: {target_antigen}")
-    reads = apply_antigen_filter(reads, target_antigen)
     mbl = max_bin_label(reads) if has_bin else None
 
     log("Normalizing signals")
@@ -404,6 +408,16 @@ def run(
     global_b = compute_global_baseline(c0_points)
     b_str = f"{global_b:.4f}" if global_b is not None else "none"
     log(f"Global baseline B = {b_str} (c=0 points: {c0_points.height})")
+
+    # The Hill fit has 3 free parameters with a fixed baseline and 4 without; it needs one point
+    # more than that, whatever min_concentration_points allows.
+    fit_min_points = (3 if global_b is not None else 4) + 1
+    if fit_min_points > params.min_concentration_points:
+        gate = replace(params, min_concentration_points=fit_min_points)
+        insufficient = classify_insufficient(floor_frame, all_clonotypes, gate)
+        insufficient_map = dict(
+            zip(insufficient[COL_CLONOTYPE].to_list(), insufficient["insufficient_reason"].to_list())
+        )
 
     log("Detecting hook effect")
     hook = detect_hook_effect(fit_points, bin_mode=has_bin, params=params)

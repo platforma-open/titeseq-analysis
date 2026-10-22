@@ -30,7 +30,7 @@ blockTest("empty inputs", { timeout: 20000 }, async ({ rawPrj: project, expect }
     binOptions: { ok: true, value: [] },
     antigenOptions: { ok: true, value: [] },
     validationWarnings: { ok: true, value: [] },
-    binMode: { ok: true, value: false },
+    binMode: { ok: true, value: undefined },
   });
 
   const outputs = wrapOutputs<BlockOutputs>(stableState.outputs);
@@ -39,7 +39,8 @@ blockTest("empty inputs", { timeout: 20000 }, async ({ rawPrj: project, expect }
   expect(outputs.binOptions).toEqual([]);
   expect(outputs.antigenOptions).toEqual([]);
   expect(outputs.validationWarnings).toEqual([]);
-  expect(outputs.binMode).toEqual(false);
+  // binMode describes the results on screen; there are none before a run.
+  expect(outputs.binMode).toBeUndefined();
 
   // Optional workflow outputs appear as slots with value: undefined before
   // the block is runnable (argsValid === false).
