@@ -17,7 +17,7 @@ import polars as pl
 _MAIN_PY = Path(__file__).resolve().parents[2] / "src" / "main.py"
 
 
-def _hill_reads(clonotype: str, true_kd: float, concs, bins, per_conc=500):
+def _hill_reads(clonotype: str, true_kd: float, concs: list[float], bins: list[int], per_conc: int = 500) -> list[dict]:
     """Synthetic per-clonotype Hill-binding reads — mirrors test_cli helper."""
     baseline = 1.5
     top = baseline + math.exp(math.log(2.0))

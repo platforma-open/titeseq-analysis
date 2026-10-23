@@ -10,7 +10,7 @@ import pytest
 from hill_fit import fit_one_clonotype, weighted_r2
 
 
-def hill_truth(x, baseline, amplitude, kd, n):
+def hill_truth(x: np.ndarray, baseline: float, amplitude: float, kd: float, n: float) -> np.ndarray:
     top = baseline + math.exp(amplitude)
     return baseline + (top - baseline) * (x**n) / (kd**n + x**n)
 
@@ -177,7 +177,7 @@ class TestOptimizeWarningBecomesFailure:
 
         import hill_fit
 
-        def fake_curve_fit(*_args, **_kwargs):
+        def fake_curve_fit(*_args: object, **_kwargs: object) -> tuple[np.ndarray, None]:
             _warnings.warn(
                 "Covariance of the parameters could not be estimated",
                 OptimizeWarning,
@@ -215,6 +215,7 @@ class TestAmplitudeBoundsRespected:
 
         fit = fit_one_clonotype(x, y, w, baseline_fixed=baseline, bin_mode=bin_mode, max_bin_label=max_bin_label)
         assert fit.converged is True
+        assert fit.top is not None and fit.baseline is not None
         assert (fit.top - fit.baseline) >= delta_expected - 1e-9, (
             f"top − baseline = {fit.top - fit.baseline:.4f} violates δ = {delta_expected}"
         )

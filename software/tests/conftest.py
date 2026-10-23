@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -20,7 +21,7 @@ class SimulatedExperiment:
 def simulate_titeseq(
     clonotypes: dict[str, tuple[float, float]],
     *,
-    concentrations=(0.0,) + tuple(10 ** (-10 + 0.5 * i) for i in range(10)),
+    concentrations: Sequence[float] = (0.0,) + tuple(10 ** (-10 + 0.5 * i) for i in range(10)),
     n_bins: int = 4,
     bin_width: float = 0.7,
     baseline: float = 2.5,
@@ -69,7 +70,7 @@ def simulate_titeseq(
 
 
 @pytest.fixture(scope="session")
-def simulate():
+def simulate() -> Callable[..., SimulatedExperiment]:
     """The read-level simulator, for tests that need their own clonotype set."""
     return simulate_titeseq
 

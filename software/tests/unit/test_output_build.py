@@ -14,7 +14,7 @@ from output_build import (
 )
 
 
-def _per_clonotype(kd):
+def _per_clonotype(kd: float | None) -> pl.DataFrame:
     """Minimal per-clonotype frame with one row for flag_kd_out_of_range tests."""
     return pl.DataFrame(
         [

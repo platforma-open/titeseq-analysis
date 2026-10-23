@@ -69,7 +69,11 @@ def antigen_outputs() -> dict[str, pl.DataFrame]:
 
 
 @pytest.fixture(scope="module")
-def outputs_by_section(bin_outputs, no_bin_outputs, antigen_outputs) -> dict[str, dict[str, pl.DataFrame]]:
+def outputs_by_section(
+    bin_outputs: dict[str, pl.DataFrame],
+    no_bin_outputs: dict[str, pl.DataFrame],
+    antigen_outputs: dict[str, pl.DataFrame],
+) -> dict[str, dict[str, pl.DataFrame]]:
     return {
         "bin_mode": bin_outputs,
         "no_bin_mode": no_bin_outputs,

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import io
 from contextlib import redirect_stdout
+from typing import Any
 
 import numpy as np
 import polars as pl
@@ -15,13 +16,13 @@ from io_layer import InputValidationError
 from pipeline import run
 
 
-def _run(reads, **kw):
+def _run(reads: pl.DataFrame, **kw: Any) -> dict[str, pl.DataFrame]:
     with redirect_stdout(io.StringIO()):
         return run(reads, **kw)
 
 
 @pytest.fixture(scope="module")
-def fitted(simulated_library):
+def fitted(simulated_library) -> tuple[dict[str, pl.DataFrame], dict[str, dict]]:
     out = _run(simulated_library.reads, params=FitParams(bin_width_decades=0.7), cell_count_col="cells")
     pc = out["per_clonotype"].with_columns(pl.col("kd").log10().alias("log10_kd"))
     return out, {row["clonotypeKey"]: row for row in pc.iter_rows(named=True)}
@@ -93,7 +94,7 @@ def test_sort_fractions_give_the_same_kd_when_reads_do_not_exceed_cells(simulate
 
 class TestInputsTheModelNeeds:
     @pytest.fixture(scope="class")
-    def small(self, simulate):
+    def small(self, simulate) -> pl.DataFrame:
         return simulate({"A": (-8.0, 60.0), "N": (-2.0, 60.0)}, seed=5).reads
 
     def test_bin_mode_without_cell_counts_is_rejected(self, small):

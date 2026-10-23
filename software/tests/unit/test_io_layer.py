@@ -19,7 +19,7 @@ from io_layer import (
 from io_layer import validate_bin_concentration_grid as _validate_grid
 
 
-def _mk(rows, has_bin=True, has_antigen=False):
+def _mk(rows: list[dict], has_bin: bool = True, has_antigen: bool = False) -> pl.DataFrame:
     return pl.DataFrame(rows)
 
 

@@ -7,6 +7,8 @@ so the marker must be removed together with the fix.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import numpy as np
 import polars as pl
 import pytest
@@ -22,7 +24,17 @@ CONCS_M = [1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5]
 HILL = FitParams(fit_model="hill_free_n")
 
 
-def _bin_rows(concs, kds, rng, *, reads=400, sigma=0.4, prefix="K", extra=None, all_bins=False):
+def _bin_rows(
+    concs: list[float],
+    kds: list[float],
+    rng: np.random.Generator,
+    *,
+    reads: int = 400,
+    sigma: float = 0.4,
+    prefix: str = "K",
+    extra: Callable[[int, float, int], dict] | None = None,
+    all_bins: bool = False,
+) -> list[dict]:
     rows = []
     for k, kd in enumerate(kds):
         for i, c in enumerate(concs):
@@ -82,7 +94,7 @@ def test_unbinned_zero_control_does_not_shift_kd():
         out.select("clonotypeKey", "kd"), on="clonotypeKey"
     )
     ratio = joined.drop_nulls().select((pl.col("kd") / pl.col("kd_ref")).alias("r"))["r"]
-    assert ratio.min() > 0.5
+    assert ratio.min() > 0.5  # ty: ignore[unsupported-operator]  polars types Series.min() as any scalar
 
 
 def test_kd_not_capped_when_concentrations_are_nanomolar():

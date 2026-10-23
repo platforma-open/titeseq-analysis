@@ -8,21 +8,22 @@ both paths and compare outputs.
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from functools import partial
 
 import numpy as np
 import pytest
 
 import pipeline
-from hill_fit import fit_one_clonotype
+from hill_fit import FitResult, fit_one_clonotype
 
 
-def _hill_truth(x, baseline, amplitude, kd, n):
+def _hill_truth(x: np.ndarray, baseline: float, amplitude: float, kd: float, n: float) -> np.ndarray:
     top = baseline + math.exp(amplitude)
     return baseline + (top - baseline) * (x**n) / (kd**n + x**n)
 
 
-def _make_tasks(n_tasks: int, rng: np.random.Generator):
+def _make_tasks(n_tasks: int, rng: np.random.Generator) -> tuple[list[np.ndarray], list[np.ndarray], list[np.ndarray]]:
     """Generate n_tasks realistic (x, y, w) triples for the Hill fitter."""
     concs = np.array([0.0, 1e-10, 1e-9, 1e-8, 1e-7, 1e-6])
     xs, ys, ws = [], [], []
@@ -40,7 +41,7 @@ def _make_tasks(n_tasks: int, rng: np.random.Generator):
     return xs, ys, ws
 
 
-def _worker():
+def _worker() -> Callable[[np.ndarray, np.ndarray, np.ndarray], FitResult]:
     return partial(
         fit_one_clonotype,
         baseline_fixed=1.0,
@@ -88,7 +89,7 @@ class TestExecuteFitsParity:
         # Default threshold (50) with 5 tasks — parallel branch must not activate.
         # We detect the serial path by patching ProcessPoolExecutor to explode if used.
         class _ShouldNotRun:
-            def __init__(self, *a, **k):
+            def __init__(self, *a: object, **k: object) -> None:
                 raise AssertionError("ProcessPoolExecutor must not be used below threshold")
 
         monkeypatch.setattr(pipeline, "ProcessPoolExecutor", _ShouldNotRun)

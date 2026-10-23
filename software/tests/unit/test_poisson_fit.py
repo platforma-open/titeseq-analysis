@@ -13,10 +13,10 @@ from poisson_fit import baseline, exposure, library_fraction, predicted_mean_bin
 LOG_VALUES = 0.7 * np.arange(4)
 
 
-def _brute_force_profile(R, a, k, ell, m):
+def _brute_force_profile(R: np.ndarray, a: np.ndarray, k: float, ell: np.ndarray, m: float) -> float:
     """Oracle: max_q sum R log(k a q) - k a q, q on the simplex with sum q l = m, by SLSQP from many starts."""
 
-    def nll(q):
+    def nll(q: np.ndarray) -> float:
         x = k * a * np.maximum(q, 1e-300)
         return -(np.where(R > 0, R * np.log(x), 0.0) - x).sum()
 

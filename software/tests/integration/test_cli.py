@@ -11,7 +11,7 @@ import polars as pl
 from main import main
 
 
-def _hill_reads(clonotype: str, true_kd: float, concs, bins, per_conc=500):
+def _hill_reads(clonotype: str, true_kd: float, concs: list[float], bins: list[int], per_conc: int = 500) -> list[dict]:
     baseline = 1.5
     top = baseline + math.exp(math.log(2.0))
     rows = []

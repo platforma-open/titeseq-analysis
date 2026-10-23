@@ -15,7 +15,15 @@ from pipeline import run
 LINEAR_HILL = FitParams(fit_model="hill_free_n")
 
 
-def _good_reads_for(clonotype, antigen, true_kd, baseline, concs, bins, per_conc=500):
+def _good_reads_for(
+    clonotype: str,
+    antigen: str,
+    true_kd: float,
+    baseline: float,
+    concs: list[float],
+    bins: list[int],
+    per_conc: int = 500,
+) -> list[dict]:
     rows = []
     top = baseline + math.exp(math.log(2.0))
     for i, c in enumerate(concs):

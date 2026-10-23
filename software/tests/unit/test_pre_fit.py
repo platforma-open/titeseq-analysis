@@ -16,7 +16,7 @@ from pre_fit import (
 )
 
 
-def _c0(signals):
+def _c0(signals: list[float]) -> pl.DataFrame:
     return pl.DataFrame(
         {
             "clonotypeKey": [f"C{i}" for i in range(len(signals))],
@@ -53,7 +53,7 @@ class TestGlobalBaseline:
         assert compute_global_baseline(df) == pytest.approx(1.5)
 
 
-def _sig_frame(rows):
+def _sig_frame(rows: list[dict]) -> pl.DataFrame:
     """Signal-frame shape: clonotypeKey, concentrationStr, concentration, signal, clonotype_reads_at_conc."""
     return pl.DataFrame(rows)
 
@@ -217,7 +217,7 @@ class TestSplitC0:
         assert non_c0.height == 1
 
 
-def _build_fit_points(top2_signal, top1_signal, top2_reads, top1_reads):
+def _build_fit_points(top2_signal: float, top1_signal: float, top2_reads: int, top1_reads: int) -> pl.DataFrame:
     """Three concentration points (1 / 10 / 100 = top-3 / top-2 / top-1).
 
     The top-3 filler mirrors top-2 so the R9b second-clause (top3 - top1 > δ/2)
@@ -297,13 +297,13 @@ class TestHookEffectNoBinMode:
 
 
 def _build_fit_points_3(
-    top3_signal,
-    top2_signal,
-    top1_signal,
-    top3_reads=100,
-    top2_reads=100,
-    top1_reads=100,
-):
+    top3_signal: float,
+    top2_signal: float,
+    top1_signal: float,
+    top3_reads: int = 100,
+    top2_reads: int = 100,
+    top1_reads: int = 100,
+) -> pl.DataFrame:
     """One clonotype with three concentration points at 1 / 10 / 100 (top-3 / top-2 / top-1)."""
     return pl.DataFrame(
         [

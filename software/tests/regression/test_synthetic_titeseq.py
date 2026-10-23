@@ -34,7 +34,7 @@ class PoissonConfig:
     seed: int
 
 
-def _hill(x, baseline, amplitude, kd, n):
+def _hill(x: float, baseline: float, amplitude: float, kd: float, n: float) -> float:
     top = baseline + math.exp(amplitude)
     return baseline + (top - baseline) * (x**n) / (kd**n + x**n)
 
