@@ -30,6 +30,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked
 
+      - name: Type-check with ty
+        run: uv run ty check
+
       - name: Run pytest
         run: uv run pytest
 
