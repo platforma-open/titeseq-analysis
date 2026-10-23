@@ -19,80 +19,38 @@ from io_layer import (
 from io_layer import validate_bin_concentration_grid as _validate_grid
 
 
-def _mk(rows: list[dict], has_bin: bool = True, has_antigen: bool = False) -> pl.DataFrame:
-    return pl.DataFrame(rows)
+def _row(**overrides: str | float) -> dict:
+    """One valid reads row; overrides replace or add fields."""
+    return {
+        "clonotypeKey": "A",
+        "sampleId": "s",
+        "concentrationStr": "1",
+        "concentration": 1.0,
+        "bin": 1,
+        "reads": 5,
+    } | overrides
 
 
 class TestSchema:
-    def test_missing_clonotype_col_raises(self):
-        df = _mk(
-            [
-                {"sampleId": "s1", "concentrationStr": "1", "concentration": 1.0, "bin": 1, "reads": 5},
-            ]
-        )
-        with pytest.raises(InputValidationError, match="clonotypeKey"):
-            validate_reads_schema(df, has_bin=True, has_antigen=False)
-
-    def test_missing_sample_col_raises(self):
-        df = _mk(
-            [
-                {"clonotypeKey": "A", "concentrationStr": "1", "concentration": 1.0, "bin": 1, "reads": 5},
-            ]
-        )
-        with pytest.raises(InputValidationError, match="sampleId"):
-            validate_reads_schema(df, has_bin=True, has_antigen=False)
+    @pytest.mark.parametrize("missing", ["clonotypeKey", "sampleId"])
+    def test_missing_required_column_raises(self, missing):
+        row = _row()
+        del row[missing]
+        with pytest.raises(InputValidationError, match=missing):
+            validate_reads_schema(pl.DataFrame([row]), has_bin=True, has_antigen=False)
 
 
 class TestConcentrationValidation:
-    def test_negative_raises(self):
-        df = _mk(
-            [
-                {
-                    "clonotypeKey": "A",
-                    "sampleId": "s",
-                    "concentrationStr": "-1",
-                    "concentration": -1.0,
-                    "bin": 1,
-                    "reads": 5,
-                },
-            ]
-        )
-        with pytest.raises(InputValidationError, match="negative"):
-            validate_concentration_column(df, has_bin=True)
-
     # Non-finite concentrations reach curve_fit as garbage inputs — downstream failures
     # are opaque and per-clonotype. Catching here is the only place with enough context
     # to produce an actionable error.
-    def test_nan_concentration_raises(self):
-        df = _mk(
-            [
-                {
-                    "clonotypeKey": "A",
-                    "sampleId": "s",
-                    "concentrationStr": "nan",
-                    "concentration": float("nan"),
-                    "bin": 1,
-                    "reads": 5,
-                },
-            ]
-        )
-        with pytest.raises(InputValidationError, match="non-finite"):
-            validate_concentration_column(df, has_bin=True)
-
-    def test_inf_concentration_raises(self):
-        df = _mk(
-            [
-                {
-                    "clonotypeKey": "A",
-                    "sampleId": "s",
-                    "concentrationStr": "inf",
-                    "concentration": float("inf"),
-                    "bin": 1,
-                    "reads": 5,
-                },
-            ]
-        )
-        with pytest.raises(InputValidationError, match="non-finite"):
+    @pytest.mark.parametrize(
+        "conc_str, conc, message",
+        [("-1", -1.0, "negative"), ("nan", float("nan"), "non-finite"), ("inf", float("inf"), "non-finite")],
+    )
+    def test_invalid_concentration_raises(self, conc_str, conc, message):
+        df = pl.DataFrame([_row(concentrationStr=conc_str, concentration=conc)])
+        with pytest.raises(InputValidationError, match=message):
             validate_concentration_column(df, has_bin=True)
 
     # The block treats concentration as dimensionless (R2). Any reasonable magnitude
@@ -109,7 +67,7 @@ class TestConcentrationValidation:
         ids=["nM-shape", "mM-shape", "sub-pM"],
     )
     def test_high_magnitude_concentrations_accepted(self, concentrations):
-        df = _mk(
+        df = pl.DataFrame(
             [
                 {
                     "clonotypeKey": "A",
@@ -128,7 +86,7 @@ class TestConcentrationValidation:
 class TestBinValidation:
     def test_non_consecutive_labels_ok(self):
         # Spec: labels may be non-consecutive; max_bin_label is actual max, not count.
-        df = _mk(
+        df = pl.DataFrame(
             [
                 {
                     "clonotypeKey": "A",
@@ -144,53 +102,10 @@ class TestBinValidation:
         validate_bin_column(df)
         assert max_bin_label(df) == 8  # label, not count
 
-    def test_zero_bin_raises(self):
-        df = _mk(
-            [
-                {
-                    "clonotypeKey": "A",
-                    "sampleId": "s",
-                    "concentrationStr": "1",
-                    "concentration": 1.0,
-                    "bin": 0,
-                    "reads": 5,
-                },
-            ]
-        )
-        with pytest.raises(InputValidationError, match="positive"):
-            validate_bin_column(df)
-
-    def test_negative_bin_raises(self):
-        df = _mk(
-            [
-                {
-                    "clonotypeKey": "A",
-                    "sampleId": "s",
-                    "concentrationStr": "1",
-                    "concentration": 1.0,
-                    "bin": -1,
-                    "reads": 5,
-                },
-            ]
-        )
-        with pytest.raises(InputValidationError, match="positive"):
-            validate_bin_column(df)
-
-    def test_non_integer_bin_raises(self):
-        df = pl.DataFrame(
-            [
-                {
-                    "clonotypeKey": "A",
-                    "sampleId": "s",
-                    "concentrationStr": "1",
-                    "concentration": 1.0,
-                    "bin": 1.5,
-                    "reads": 5,
-                }
-            ],
-        )
-        with pytest.raises(InputValidationError, match="integer"):
-            validate_bin_column(df)
+    @pytest.mark.parametrize("bad_bin, message", [(0, "positive"), (-1, "positive"), (1.5, "integer")])
+    def test_invalid_bin_raises(self, bad_bin, message):
+        with pytest.raises(InputValidationError, match=message):
+            validate_bin_column(pl.DataFrame([_row(bin=bad_bin)]))
 
     def test_all_empty_bin_raises_friendly_error(self):
         # An Integer metadata column whose sample values are all null arrives as
@@ -221,7 +136,7 @@ class TestBinValidation:
 
 class TestAntigenFilter:
     def test_ref_without_target_raises(self):
-        df = _mk(
+        df = pl.DataFrame(
             [
                 {
                     "clonotypeKey": "A",
@@ -238,7 +153,7 @@ class TestAntigenFilter:
             validate_antigen_filter(df, antigen_column_ref="antigen", target_antigen=None)
 
     def test_target_without_ref_warns(self):
-        df = _mk(
+        df = pl.DataFrame(
             [
                 {
                     "clonotypeKey": "A",
@@ -254,7 +169,7 @@ class TestAntigenFilter:
         assert any("antigenColumnRef" in w for w in warnings)
 
     def test_target_not_in_column_raises(self):
-        df = _mk(
+        df = pl.DataFrame(
             [
                 {
                     "clonotypeKey": "A",
@@ -273,7 +188,7 @@ class TestAntigenFilter:
 
 class TestSampleUniqueness:
     def test_sample_with_two_concentrations_raises(self):
-        df = _mk(
+        df = pl.DataFrame(
             [
                 {
                     "clonotypeKey": "A",
@@ -297,7 +212,7 @@ class TestSampleUniqueness:
             validate_sample_metadata_uniqueness(df, has_bin=True, has_antigen=False)
 
     def test_sample_with_two_bins_raises(self):
-        df = _mk(
+        df = pl.DataFrame(
             [
                 {
                     "clonotypeKey": "A",
@@ -400,7 +315,7 @@ class TestNarrowConcentrationRangeWarning:
             }
             for i, c in enumerate(concs)
         ]
-        df = _mk(rows)
+        df = pl.DataFrame(rows)
         warnings = validate_concentration_column(df, has_bin=True)
         has_narrow = any(
             ("order of magnitude" in w.lower()) or ("narrow" in w.lower()) or ("span" in w.lower()) for w in warnings
@@ -409,7 +324,7 @@ class TestNarrowConcentrationRangeWarning:
 
     # Single non-zero concentration has vacuously zero span → should warn.
     def test_single_nonzero_concentration_warns(self):
-        df = _mk(
+        df = pl.DataFrame(
             [
                 {
                     "clonotypeKey": "A",
@@ -458,7 +373,7 @@ class TestBinConcentrationGrid:
                             "reads": 5,
                         }
                     )
-        warnings = _validate_grid(_mk(rows))
+        warnings = _validate_grid(pl.DataFrame(rows))
         assert warnings == []
 
     def test_missing_combo_emits_warning(self):
@@ -489,7 +404,7 @@ class TestBinConcentrationGrid:
                 "reads": 5,
             },
         ]
-        warnings = _validate_grid(_mk(rows))
+        warnings = _validate_grid(pl.DataFrame(rows))
         assert len(warnings) > 0
 
 

@@ -103,18 +103,10 @@ class TestInputsTheModelNeeds:
     def small(self) -> pl.DataFrame:
         return simulate_titeseq({"A": (-8.0, 60.0), "N": (-2.0, 60.0)}, seed=5).reads
 
-    def test_bin_mode_without_cell_counts_is_rejected(self, small):
-        with pytest.raises(InputValidationError, match="cells sorted into each sample"):
-            _run(small.drop("cells"))
-
     def test_uncorrected_runs_only_when_asked_and_says_so(self, small, capsys):
         out = run(small.drop("cells"), params=FitParams(allow_uncorrected=True))
         assert out["per_clonotype"].height == 2
         assert "uncorrected" in capsys.readouterr().out
-
-    def test_missing_zero_control_is_rejected(self, small):
-        with pytest.raises(InputValidationError, match="0 M"):
-            _run(small.filter(pl.col("concentration") > 0), cell_count_col="cells")
 
     def test_baseline_override_replaces_the_zero_control(self, small):
         params = FitParams(bin_width_decades=0.7, baseline_fluorescence=2.5)
@@ -122,41 +114,59 @@ class TestInputsTheModelNeeds:
         a = out["per_clonotype"].filter(pl.col("clonotypeKey") == "A")
         assert np.log10(a["kd"][0]) == pytest.approx(-8.0, abs=0.25)
 
-    def test_plateau_prior_below_baseline_is_rejected(self, small):
-        with pytest.raises(InputValidationError, match="min_plateau_fraction"):
-            _run(small, params=FitParams(min_plateau_fraction=0.05), cell_count_col="cells")
-
     @pytest.mark.parametrize(
-        "corrupt, message",
+        "corrupt, kwargs, message",
         [
-            (lambda df: df.with_columns(pl.lit(-1.0).alias("cells")), "finite and >= 0"),
-            (
+            pytest.param(lambda df: df.drop("cells"), {}, "cells sorted into each sample", id="bin-mode-without-cells"),
+            pytest.param(
+                lambda df: df.filter(pl.col("concentration") > 0),
+                {"cell_count_col": "cells"},
+                "0 M",
+                id="missing-zero-control",
+            ),
+            pytest.param(
+                lambda df: df,
+                {"params": FitParams(min_plateau_fraction=0.05), "cell_count_col": "cells"},
+                "min_plateau_fraction",
+                id="plateau-prior-below-baseline",
+            ),
+            pytest.param(
+                lambda df: df,
+                {"params": FitParams(bin_width_decades=0.0), "cell_count_col": "cells"},
+                "bin_width_decades",
+                id="zero-bin-width",
+            ),
+            pytest.param(
+                lambda df: df,
+                {"params": FitParams(min_plateau_fraction=1.0), "cell_count_col": "cells"},
+                "min_plateau_fraction",
+                id="plateau-fraction-not-below-1",
+            ),
+            pytest.param(
+                lambda df: df.with_columns(pl.lit(-1.0).alias("cells")),
+                {"cell_count_col": "cells"},
+                "finite and >= 0",
+                id="negative-cells",
+            ),
+            pytest.param(
                 lambda df: df.with_columns(
                     pl.when(pl.col("clonotypeKey") == "A").then(1.0).otherwise(pl.col("cells")).alias("cells")
                 ),
+                {"cell_count_col": "cells"},
                 "one value per sample",
+                id="cells-differ-within-sample",
             ),
-            (lambda df: df.with_columns(pl.lit(None, dtype=pl.Float64).alias("cells")), "null"),
+            pytest.param(
+                lambda df: df.with_columns(pl.lit(None, dtype=pl.Float64).alias("cells")),
+                {"cell_count_col": "cells"},
+                "null",
+                id="null-cells",
+            ),
         ],
-        ids=["negative", "differs-within-sample", "null"],
     )
-    def test_invalid_cell_counts_are_rejected(self, small, corrupt, message):
+    def test_invalid_input_is_rejected(self, small, corrupt, kwargs, message):
         with pytest.raises(InputValidationError, match=message):
-            _run(corrupt(small), cell_count_col="cells")
-
-
-@pytest.mark.parametrize(
-    "params, message",
-    [
-        (FitParams(bin_width_decades=0.0), "bin_width_decades"),
-        (FitParams(min_plateau_fraction=1.0), "min_plateau_fraction"),
-    ],
-    ids=["zero-bin-width", "plateau-fraction-not-below-1"],
-)
-def test_invalid_model_settings_are_rejected(params, message):
-    reads = simulate_titeseq({"A": (-8.0, 60.0)}, seed=7).reads
-    with pytest.raises(InputValidationError, match=message):
-        _run(reads, params=params, cell_count_col="cells")
+            _run(corrupt(small), **kwargs)
 
 
 def test_uncertain_in_range_kd_is_partial(simulated_library):
