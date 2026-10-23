@@ -55,8 +55,18 @@ def test_in_range_binders_are_good_with_tight_uncertainty(fitted):
     for key, row in rows.items():
         if key.startswith("B"):
             assert row["affinityClass"] == "Good", key
-            assert row["kdCensor"] is None
+            assert row["kdCensor"] is None and row["kdOutOfRange"] is False
             assert row["kdLog10Sd"] < 0.3
+            assert row["r2"] > 0.9, key
+            assert row["hillCoefficient"] == 1.0  # the Adams 2016 model has n = 1
+
+
+# A K_D bound is still a fit: it reports n = 1 and is flagged out of range.
+@pytest.mark.parametrize("key", ["TIGHT", "NONBINDER"])
+def test_kd_bounds_are_flagged_out_of_range(fitted, key):
+    _, rows = fitted
+    assert rows[key]["kdOutOfRange"] is True
+    assert rows[key]["hillCoefficient"] == 1.0
 
 
 def test_binder_tighter_than_the_lowest_concentration_is_a_lower_bound(fitted):
@@ -82,6 +92,10 @@ def test_fitted_curve_is_emitted_only_for_non_failed_and_stays_within_bins(fitte
     assert "NONBINDER" not in set(fmb["clonotypeKey"].to_list())
     assert {"B00", "TIGHT"} <= set(fmb["clonotypeKey"].to_list())
     assert fmb["fittedMeanBin"].min() >= 1.0 and fmb["fittedMeanBin"].max() <= 4.0
+    # The curve tracks the observed mean bin: noise on the simulated library is about 0.2 bins.
+    both = fmb.join(out["mean_bin"], on=["clonotypeKey", "concentrationStr"])
+    assert both.height == fmb.height
+    assert (both["fittedMeanBin"] - both["meanBin"]).abs().max() < 0.3
 
 
 def test_sort_fractions_give_the_same_kd_when_reads_do_not_exceed_cells():
@@ -129,6 +143,18 @@ class TestInputsTheModelNeeds:
                 {"params": FitParams(min_plateau_fraction=0.05), "cell_count_col": "cells"},
                 "min_plateau_fraction",
                 id="plateau-prior-below-baseline",
+            ),
+            pytest.param(
+                lambda df: df,
+                {"params": FitParams(baseline_fluorescence=0.0), "cell_count_col": "cells"},
+                "0 M baseline",
+                id="zero-baseline",
+            ),
+            pytest.param(
+                lambda df: df,
+                {"params": FitParams(min_plateau_fraction=0.0), "cell_count_col": "cells"},
+                r"must be in \(0, 1\)",
+                id="plateau-fraction-zero",
             ),
             pytest.param(
                 lambda df: df,
@@ -187,7 +213,8 @@ def test_clonotype_seen_at_too_few_concentrations_is_not_fitted():
     out = _run(sim.reads.filter(keep), params=FitParams(bin_width_decades=0.7), cell_count_col="cells")
     a = out["per_clonotype"].filter(pl.col("clonotypeKey") == "A")
     assert (a["affinityClass"][0], a["fitFailureReason"][0]) == ("Failed", "insufficient_points")
-    assert a["kd"][0] is None and a["kdCensor"][0] is None
+    for column in ("kd", "hillCoefficient", "r2", "kdOutOfRange", "kdLog10Sd", "kdCensor"):
+        assert a[column][0] is None, column
     assert "A" not in set(out["fitted_mean_bin"]["clonotypeKey"].to_list())
 
 
