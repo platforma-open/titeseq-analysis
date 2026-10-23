@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor
+from contextlib import ExitStack
 from dataclasses import replace
 from functools import partial
 
@@ -127,26 +128,22 @@ def _execute_fits(
         return []
 
     max_workers = min(available_cpus(), n_survivors)
-    if max_workers > 1 and n_survivors >= _PARALLEL_FIT_MIN_SURVIVORS:
-        # chunksize trades IPC overhead against load balancing. ~4 chunks per
-        # worker keeps stragglers from stalling at the tail while batching
-        # enough work per round-trip to hide pickle cost.
-        chunksize = max(1, n_survivors // (max_workers * 4))
-        log(f"  parallel fit: {max_workers} workers, chunksize={chunksize}")
-        fits: list[FitResult] = []
-        with ProcessPoolExecutor(max_workers=max_workers) as executor:
-            for done, fit in enumerate(executor.map(worker, xs, ys, ws, chunksize=chunksize), start=1):
-                fits.append(fit)
-                if done % step == 0 or done == n_survivors:
-                    log(f"  fitted {done}/{n_survivors} clonotypes")
-        return fits
-
-    fits = []
-    for idx, (x, y, w) in enumerate(zip(xs, ys, ws)):
-        fits.append(worker(x, y, w))
-        done = idx + 1
-        if done % step == 0 or done == n_survivors:
-            log(f"  fitted {done}/{n_survivors} clonotypes")
+    fits: list[FitResult] = []
+    with ExitStack() as stack:
+        if max_workers > 1 and n_survivors >= _PARALLEL_FIT_MIN_SURVIVORS:
+            # chunksize trades IPC overhead against load balancing. ~4 chunks per
+            # worker keeps stragglers from stalling at the tail while batching
+            # enough work per round-trip to hide pickle cost.
+            chunksize = max(1, n_survivors // (max_workers * 4))
+            log(f"  parallel fit: {max_workers} workers, chunksize={chunksize}")
+            executor = stack.enter_context(ProcessPoolExecutor(max_workers=max_workers))
+            results = executor.map(worker, xs, ys, ws, chunksize=chunksize)
+        else:
+            results = map(worker, xs, ys, ws)
+        for done, fit in enumerate(results, start=1):
+            fits.append(fit)
+            if done % step == 0 or done == n_survivors:
+                log(f"  fitted {done}/{n_survivors} clonotypes")
     return fits
 
 
@@ -273,7 +270,7 @@ def _fit_all_clonotypes(
             schema=FITTED_MEAN_BIN_SCHEMA,
         )
     else:
-        fitted = pl.DataFrame({k: [] for k in FITTED_MEAN_BIN_SCHEMA}, schema=FITTED_MEAN_BIN_SCHEMA)
+        fitted = pl.DataFrame(schema=FITTED_MEAN_BIN_SCHEMA)
 
     return per_clonotype, fitted
 
