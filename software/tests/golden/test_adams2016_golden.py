@@ -14,8 +14,6 @@ Fits are cached on disk, keyed by the source code and settings, so unchanged cod
 
 from __future__ import annotations
 
-from typing import Any
-
 import numpy as np
 import polars as pl
 import pytest
@@ -39,14 +37,14 @@ pytestmark = pytest.mark.golden
 TIERS = [pytest.param("fast", id="fast"), pytest.param("full", id="full", marks=pytest.mark.slow)]
 
 
-def _paper_params(rep: GoldenReplicate, **extra: Any) -> FitParams:
+def _paper_params(rep: GoldenReplicate, *, baseline_fluorescence: float | None = None) -> FitParams:
     """The authors' settings: their amplitude prior, and every variant fitted (no read gate)."""
     return FitParams(
         bin_width_decades=rep.bin_width_decades,
         min_plateau_fraction=rep.min_plateau_fraction,
         min_reads_per_concentration=1,
         min_concentration_points=1,
-        **extra,
+        baseline_fluorescence=baseline_fluorescence,
     )
 
 

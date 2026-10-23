@@ -5,20 +5,25 @@ from __future__ import annotations
 
 import io
 from contextlib import redirect_stdout
-from typing import Any
 
 import numpy as np
 import polars as pl
 import pytest
 
-from constants import FitParams
+from constants import DEFAULT_PARAMS, FitParams
 from io_layer import InputValidationError
 from pipeline import run
 
 
-def _run(reads: pl.DataFrame, **kw: Any) -> dict[str, pl.DataFrame]:
+def _run(
+    reads: pl.DataFrame,
+    *,
+    params: FitParams = DEFAULT_PARAMS,
+    cell_count_col: str | None = None,
+    sort_fraction_col: str | None = None,
+) -> dict[str, pl.DataFrame]:
     with redirect_stdout(io.StringIO()):
-        return run(reads, **kw)
+        return run(reads, params=params, cell_count_col=cell_count_col, sort_fraction_col=sort_fraction_col)
 
 
 @pytest.fixture(scope="module")
