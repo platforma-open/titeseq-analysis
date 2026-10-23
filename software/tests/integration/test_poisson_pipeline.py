@@ -9,6 +9,7 @@ from contextlib import redirect_stdout
 import numpy as np
 import polars as pl
 import pytest
+from helpers import SimulatedExperiment, simulate_titeseq
 
 from constants import DEFAULT_PARAMS, FitParams
 from io_layer import InputValidationError
@@ -27,7 +28,7 @@ def _run(
 
 
 @pytest.fixture(scope="module")
-def fitted(simulated_library) -> tuple[dict[str, pl.DataFrame], dict[str, dict]]:
+def fitted(simulated_library: SimulatedExperiment) -> tuple[dict[str, pl.DataFrame], dict[str, dict]]:
     out = _run(simulated_library.reads, params=FitParams(bin_width_decades=0.7), cell_count_col="cells")
     pc = out["per_clonotype"].with_columns(pl.col("kd").log10().alias("log10_kd"))
     return out, {row["clonotypeKey"]: row for row in pc.iter_rows(named=True)}
@@ -83,8 +84,8 @@ def test_fitted_curve_is_emitted_only_for_non_failed_and_stays_within_bins(fitte
     assert fmb["fittedMeanBin"].min() >= 1.0 and fmb["fittedMeanBin"].max() <= 4.0
 
 
-def test_sort_fractions_give_the_same_kd_when_reads_do_not_exceed_cells(simulate):
-    sim = simulate({"A": (-8.0, 60.0), "B": (-7.0, 60.0), "N": (-2.0, 60.0)}, reads_per_sample=500, seed=3)
+def test_sort_fractions_give_the_same_kd_when_reads_do_not_exceed_cells():
+    sim = simulate_titeseq({"A": (-8.0, 60.0), "B": (-7.0, 60.0), "N": (-2.0, 60.0)}, reads_per_sample=500, seed=3)
     # Fractions are per sample: compute them from one row per sample, not per clonotype row.
     per_sample = sim.reads.select("sampleId", "concentrationStr", "cells").unique()
     per_sample = per_sample.with_columns(
@@ -99,8 +100,8 @@ def test_sort_fractions_give_the_same_kd_when_reads_do_not_exceed_cells(simulate
 
 class TestInputsTheModelNeeds:
     @pytest.fixture(scope="class")
-    def small(self, simulate) -> pl.DataFrame:
-        return simulate({"A": (-8.0, 60.0), "N": (-2.0, 60.0)}, seed=5).reads
+    def small(self) -> pl.DataFrame:
+        return simulate_titeseq({"A": (-8.0, 60.0), "N": (-2.0, 60.0)}, seed=5).reads
 
     def test_bin_mode_without_cell_counts_is_rejected(self, small):
         with pytest.raises(InputValidationError, match="cells sorted into each sample"):
@@ -152,8 +153,8 @@ class TestInputsTheModelNeeds:
     ],
     ids=["zero-bin-width", "plateau-fraction-not-below-1"],
 )
-def test_invalid_model_settings_are_rejected(simulate, params, message):
-    reads = simulate({"A": (-8.0, 60.0)}, seed=7).reads
+def test_invalid_model_settings_are_rejected(params, message):
+    reads = simulate_titeseq({"A": (-8.0, 60.0)}, seed=7).reads
     with pytest.raises(InputValidationError, match=message):
         _run(reads, params=params, cell_count_col="cells")
 
@@ -168,8 +169,8 @@ def test_uncertain_in_range_kd_is_partial(simulated_library):
     assert rows["NONBINDER"]["affinityClass"] == "Failed"
 
 
-def test_clonotype_seen_at_too_few_concentrations_is_not_fitted(simulate):
-    sim = simulate({"A": (-8.0, 60.0), "N": (-2.0, 60.0)}, seed=9)
+def test_clonotype_seen_at_too_few_concentrations_is_not_fitted():
+    sim = simulate_titeseq({"A": (-8.0, 60.0), "N": (-2.0, 60.0)}, seed=9)
     concs = sorted(sim.reads["concentration"].unique().to_list())
     # Keep "A" at 0 M and 3 nonzero concentrations only: below min_concentration_points (5).
     keep = pl.col("clonotypeKey").ne("A") | pl.col("concentration").is_in(concs[:4])
@@ -180,10 +181,10 @@ def test_clonotype_seen_at_too_few_concentrations_is_not_fitted(simulate):
     assert "A" not in set(out["fitted_mean_bin"]["clonotypeKey"].to_list())
 
 
-def test_unsorted_zero_control_does_not_change_the_fit(simulate):
+def test_unsorted_zero_control_does_not_change_the_fit():
     # A 0 M sample with no bin assignment (an unsorted control) is allowed in; it carries no bin
     # information, so the fit must ignore it rather than crash.
-    reads = simulate({"A": (-8.0, 60.0), "N": (-2.0, 60.0)}, seed=11).reads
+    reads = simulate_titeseq({"A": (-8.0, 60.0), "N": (-2.0, 60.0)}, seed=11).reads
     unsorted = reads.filter(pl.col("sampleId") == "c0_b1").with_columns(
         pl.lit("c0_unsorted").alias("sampleId"), pl.lit(None, dtype=pl.Int64).alias("bin")
     )
@@ -193,9 +194,9 @@ def test_unsorted_zero_control_does_not_change_the_fit(simulate):
     assert with_unsorted["per_clonotype"].sort("clonotypeKey").equals(plain)
 
 
-def test_control_only_data_reports_every_clonotype_failed(simulate):
+def test_control_only_data_reports_every_clonotype_failed():
     # Only 0 M samples: nothing to titrate, so every clonotype is Failed with a reason, not a crash.
-    reads = simulate({"A": (-8.0, 60.0), "N": (-2.0, 60.0)}, seed=13).reads.filter(pl.col("concentration") == 0)
+    reads = simulate_titeseq({"A": (-8.0, 60.0), "N": (-2.0, 60.0)}, seed=13).reads.filter(pl.col("concentration") == 0)
     out = _run(reads, params=FitParams(bin_width_decades=0.7), cell_count_col="cells")
     pc = out["per_clonotype"]
     assert set(pc["clonotypeKey"].to_list()) == {"A", "N"}
@@ -204,9 +205,9 @@ def test_control_only_data_reports_every_clonotype_failed(simulate):
     assert out["fitted_mean_bin"].height == 0
 
 
-def test_presort_library_sample_without_cell_count_does_not_change_the_fit(simulate):
+def test_presort_library_sample_without_cell_count_does_not_change_the_fit():
     # A pre-sort library sample has no concentration, bin or cell count; the fit does not use it.
-    reads = simulate({"A": (-8.0, 60.0), "N": (-2.0, 60.0)}, seed=17).reads
+    reads = simulate_titeseq({"A": (-8.0, 60.0), "N": (-2.0, 60.0)}, seed=17).reads
     presort = reads.filter(pl.col("sampleId") == "c0_b1").with_columns(
         pl.lit("presort").alias("sampleId"),
         pl.lit(None, dtype=pl.Utf8).alias("concentrationStr"),

@@ -13,14 +13,10 @@ from functools import partial
 
 import numpy as np
 import pytest
+from helpers import hill_curve
 
 import pipeline
 from hill_fit import FitResult, fit_one_clonotype
-
-
-def _hill_truth(x: np.ndarray, baseline: float, amplitude: float, kd: float, n: float) -> np.ndarray:
-    top = baseline + math.exp(amplitude)
-    return baseline + (top - baseline) * (x**n) / (kd**n + x**n)
 
 
 def _make_tasks(n_tasks: int, rng: np.random.Generator) -> tuple[list[np.ndarray], list[np.ndarray], list[np.ndarray]]:
@@ -32,7 +28,7 @@ def _make_tasks(n_tasks: int, rng: np.random.Generator) -> tuple[list[np.ndarray
         kd = 10 ** rng.uniform(-10, -7)
         baseline = 1.0
         amplitude = math.log(rng.uniform(1.0, 3.0))
-        y = _hill_truth(concs, baseline, amplitude, kd, n=1.0)
+        y = hill_curve(concs, baseline, amplitude, kd, n=1.0)
         # Small noise, well under δ_bin — doesn't push survivors below the gate.
         y = y + rng.normal(0, 0.02, size=y.shape)
         xs.append(concs.copy())

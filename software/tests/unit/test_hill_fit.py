@@ -6,14 +6,9 @@ import math
 
 import numpy as np
 import pytest
+from helpers import hill_curve
 
 from hill_fit import fit_one_clonotype, weighted_r2
-
-
-def hill_truth(x: np.ndarray, baseline: float, amplitude: float, kd: float, n: float) -> np.ndarray:
-    top = baseline + math.exp(amplitude)
-    return baseline + (top - baseline) * (x**n) / (kd**n + x**n)
-
 
 LOG_CONCS = np.array([0.1, 0.3, 1.0, 3.0, 10.0, 30.0, 100.0, 300.0])
 
@@ -67,7 +62,7 @@ class TestHillFitRoundtrip:
         baseline = 1.0
         amplitude = math.log(3.0)
         x = LOG_CONCS
-        y = hill_truth(x, baseline, amplitude, true_kd, true_n)
+        y = hill_curve(x, baseline, amplitude, true_kd, true_n)
         w = np.ones_like(x)
 
         fit = fit_one_clonotype(x, y, w, baseline_fixed=baseline, bin_mode=True, max_bin_label=8)
@@ -81,7 +76,7 @@ class TestHillFitRoundtrip:
         baseline = 0.01
         amplitude = math.log(0.5)
         x = LOG_CONCS
-        y = hill_truth(x, baseline, amplitude, 10.0, 1.0)
+        y = hill_curve(x, baseline, amplitude, 10.0, 1.0)
         w = np.ones_like(x)
 
         fit = fit_one_clonotype(x, y, w, baseline_fixed=baseline, bin_mode=False, max_bin_label=None)
@@ -93,7 +88,7 @@ class TestHillFitRoundtrip:
         baseline_true = 1.2
         amplitude = math.log(3.0)
         x = LOG_CONCS
-        y = hill_truth(x, baseline_true, amplitude, 10.0, 1.0)
+        y = hill_curve(x, baseline_true, amplitude, 10.0, 1.0)
         w = np.ones_like(x)
 
         fit = fit_one_clonotype(x, y, w, baseline_fixed=None, bin_mode=True, max_bin_label=8)
@@ -148,7 +143,7 @@ class TestDeltaDynamicRangeGate:
         baseline = 1.0 if bin_mode else 0.01
         max_bin_label = 8 if bin_mode else None
         x = LOG_CONCS
-        y = hill_truth(x, baseline, amplitude, kd=10.0, n=1.0)
+        y = hill_curve(x, baseline, amplitude, kd=10.0, n=1.0)
         w = np.ones_like(x) * 100.0
 
         fit = fit_one_clonotype(x, y, w, baseline_fixed=baseline, bin_mode=bin_mode, max_bin_label=max_bin_label)
@@ -210,7 +205,7 @@ class TestAmplitudeBoundsRespected:
         max_bin_label = 8 if bin_mode else None
         amplitude = math.log(1.5) if bin_mode else math.log(0.3)
         x = LOG_CONCS
-        y = hill_truth(x, baseline, amplitude, kd=10.0, n=1.0)
+        y = hill_curve(x, baseline, amplitude, kd=10.0, n=1.0)
         w = np.ones_like(x) * 100.0
 
         fit = fit_one_clonotype(x, y, w, baseline_fixed=baseline, bin_mode=bin_mode, max_bin_label=max_bin_label)

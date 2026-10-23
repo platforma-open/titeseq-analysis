@@ -3,45 +3,18 @@
 from __future__ import annotations
 
 import filecmp
-import math
 import subprocess
 import sys
 from pathlib import Path
 
 import numpy as np
 import polars as pl
+from helpers import hill_reads
 
 # Path to main.py — used to spawn the binary in a fresh subprocess so each run
 # gets its own randomized ahash seed (the same condition that production runs
 # meet, since each fit-curves invocation is a separate Python process).
 _MAIN_PY = Path(__file__).resolve().parents[2] / "src" / "main.py"
-
-
-def _hill_reads(clonotype: str, true_kd: float, concs: list[float], bins: list[int], per_conc: int = 500) -> list[dict]:
-    """Synthetic per-clonotype Hill-binding reads — mirrors test_cli helper."""
-    baseline = 1.5
-    top = baseline + math.exp(math.log(2.0))
-    rows = []
-    for i, c in enumerate(concs):
-        target = baseline + (top - baseline) * c / (true_kd + c)
-        weights = np.exp(-0.5 * ((np.array(bins, dtype=float) - target) / 0.35) ** 2)
-        weights /= weights.sum()
-        counts = np.round(weights * per_conc).astype(int)
-        if counts.sum() == 0:
-            counts[len(counts) // 2] = 1
-        for j, b in enumerate(bins):
-            rows.append(
-                {
-                    "clonotypeKey": clonotype,
-                    "sampleId": f"s_c{i}_b{b}",
-                    "concentrationStr": str(c),
-                    "concentration": float(c),
-                    "bin": int(b),
-                    "reads": int(counts[j]),
-                    "cells": 1000.0 + 100.0 * b,
-                }
-            )
-    return rows
 
 
 def _run_cli(reads_path: Path, out_dir: Path) -> dict[str, Path]:
@@ -87,7 +60,7 @@ def test_outputs_are_byte_identical_across_runs(tmp_path):
     bins = [1, 2, 3, 4]
     rows: list[dict] = []
     for i, kd in enumerate(np.logspace(-10, -6, 410)):
-        rows.extend(_hill_reads(f"CLONE_{i:03d}", float(kd), concs, bins))
+        rows.extend(hill_reads(f"CLONE_{i:03d}", float(kd), concs, bins, cells=lambda b: 1000.0 + 100.0 * b))
 
     reads_path = tmp_path / "reads.parquet"
     pl.DataFrame(rows).write_parquet(reads_path)

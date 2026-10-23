@@ -12,6 +12,7 @@ from dataclasses import dataclass
 import numpy as np
 import polars as pl
 import pytest
+from helpers import hill_curve
 
 from constants import FitParams
 from pipeline import run
@@ -34,11 +35,6 @@ class PoissonConfig:
     seed: int
 
 
-def _hill(x: float, baseline: float, amplitude: float, kd: float, n: float) -> float:
-    top = baseline + math.exp(amplitude)
-    return baseline + (top - baseline) * (x**n) / (kd**n + x**n)
-
-
 def build_poisson_reads(cfg: PoissonConfig) -> pl.DataFrame:
     rng = np.random.default_rng(cfg.seed)
     bins = list(range(1, cfg.n_bins + 1))
@@ -47,8 +43,9 @@ def build_poisson_reads(cfg: PoissonConfig) -> pl.DataFrame:
     for k in range(cfg.n_clonotypes):
         kd_k = cfg.true_kd * math.exp(rng.normal(0.0, 0.1))
         clonotype = f"C{k:05d}"
+        targets = hill_curve(np.asarray(cfg.concs), cfg.baseline, cfg.amplitude, kd_k, cfg.true_n)
         for i, c in enumerate(cfg.concs):
-            target = _hill(c, cfg.baseline, cfg.amplitude, kd_k, cfg.true_n)
+            target = targets[i]
             centers = np.array(bins, dtype=float)
             probs = np.exp(-0.5 * ((centers - target) / 0.5) ** 2)
             probs /= probs.sum()
@@ -87,8 +84,9 @@ def build_poisson_reads_with_skewed_sort(
     for k in range(cfg.n_clonotypes):
         kd_k = cfg.true_kd * math.exp(rng.normal(0.0, 0.1))
         clonotype = f"C{k:05d}"
+        targets = hill_curve(np.asarray(cfg.concs), cfg.baseline, cfg.amplitude, kd_k, cfg.true_n)
         for i, c in enumerate(cfg.concs):
-            target = _hill(c, cfg.baseline, cfg.amplitude, kd_k, cfg.true_n)
+            target = targets[i]
             centers = np.array(bins, dtype=float)
             probs = np.exp(-0.5 * ((centers - target) / 0.5) ** 2)
             probs /= probs.sum()

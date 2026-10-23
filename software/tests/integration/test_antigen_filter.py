@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import math
-
-import numpy as np
 import polars as pl
+from helpers import hill_reads
 
 from constants import FitParams
 from pipeline import run
@@ -15,44 +13,13 @@ from pipeline import run
 LINEAR_HILL = FitParams(fit_model="hill_free_n")
 
 
-def _good_reads_for(
-    clonotype: str,
-    antigen: str,
-    true_kd: float,
-    baseline: float,
-    concs: list[float],
-    bins: list[int],
-    per_conc: int = 500,
-) -> list[dict]:
-    rows = []
-    top = baseline + math.exp(math.log(2.0))
-    for i, c in enumerate(concs):
-        target = baseline + (top - baseline) * c / (true_kd + c)
-        weights = np.exp(-0.5 * ((np.array(bins, dtype=float) - target) / 0.35) ** 2)
-        weights /= weights.sum()
-        counts = np.round(weights * per_conc).astype(int)
-        for j, b in enumerate(bins):
-            rows.append(
-                {
-                    "clonotypeKey": clonotype,
-                    "sampleId": f"{antigen}_s_c{i}_b{b}",
-                    "concentrationStr": str(c),
-                    "concentration": float(c),
-                    "bin": int(b),
-                    "reads": int(counts[j]),
-                    "antigen": antigen,
-                }
-            )
-    return rows
-
-
 def test_antigen_filter_keeps_only_target():
     # Sub-µM grid; Kd values scaled to match (5 nM vs 500 nM antibodies).
     concs = [1e-10, 1e-9, 1e-8, 1e-7, 1e-6]
     bins = [1, 2, 3, 4]
-    rows = _good_reads_for("C1", "X", true_kd=5e-9, baseline=1.5, concs=concs, bins=bins)
+    rows = hill_reads("C1", 5e-9, concs, bins, antigen="X")
     # Same clonotype under a different antigen with a very different Kd
-    rows += _good_reads_for("C1", "Y", true_kd=5e-7, baseline=1.5, concs=concs, bins=bins)
+    rows += hill_reads("C1", 5e-7, concs, bins, antigen="Y")
     reads = pl.DataFrame(rows)
 
     out_x = run(reads, params=LINEAR_HILL, target_antigen="X", antigen_column_ref="antigen")

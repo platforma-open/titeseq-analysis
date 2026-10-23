@@ -3,38 +3,16 @@
 from __future__ import annotations
 
 import json
-import math
 
 import numpy as np
 import polars as pl
+from helpers import hill_reads
 
 from main import main
 
 
-def _hill_reads(clonotype: str, true_kd: float, concs: list[float], bins: list[int], per_conc: int = 500) -> list[dict]:
-    baseline = 1.5
-    top = baseline + math.exp(math.log(2.0))
-    rows = []
-    for i, c in enumerate(concs):
-        target = baseline + (top - baseline) * c / (true_kd + c)
-        weights = np.exp(-0.5 * ((np.array(bins, dtype=float) - target) / 0.35) ** 2)
-        weights /= weights.sum()
-        counts = np.round(weights * per_conc).astype(int)
-        if counts.sum() == 0:
-            counts[len(counts) // 2] = 1
-        for j, b in enumerate(bins):
-            rows.append(
-                {
-                    "clonotypeKey": clonotype,
-                    "sampleId": f"s_c{i}_b{b}",
-                    "concentrationStr": str(c),
-                    "concentration": float(c),
-                    "bin": int(b),
-                    "reads": int(counts[j]),
-                    "cells": 1000.0,
-                }
-            )
-    return rows
+def _cli_reads(clonotype: str, true_kd: float, concs: list[float], bins: list[int]) -> list[dict]:
+    return hill_reads(clonotype, true_kd, concs, bins, cells=lambda b: 1000.0)
 
 
 # Default model: needs a 0 M control and the cells sorted per sample.
@@ -44,7 +22,7 @@ _CELLS_ARGS = ["--cell-count-column", "cells"]
 
 # Parquet round-trip — verifies argparse wiring, file reader, and parquet writer branch
 def test_cli_parquet_roundtrip(tmp_path):
-    rows = _hill_reads("G1", 1e-8, _DEFAULT_MODEL_CONCS, [1, 2, 3, 4])
+    rows = _cli_reads("G1", 1e-8, _DEFAULT_MODEL_CONCS, [1, 2, 3, 4])
     reads_path = tmp_path / "reads.parquet"
     pl.DataFrame(rows).write_parquet(reads_path)
 
@@ -78,7 +56,7 @@ def test_cli_parquet_roundtrip(tmp_path):
 
 # TSV branch — exercises the non-parquet writer path
 def test_cli_tsv_output(tmp_path):
-    rows = _hill_reads("G1", 1e-8, _DEFAULT_MODEL_CONCS, [1, 2, 3, 4])
+    rows = _cli_reads("G1", 1e-8, _DEFAULT_MODEL_CONCS, [1, 2, 3, 4])
     reads_path = tmp_path / "reads.parquet"
     pl.DataFrame(rows).write_parquet(reads_path)
 
@@ -108,7 +86,7 @@ def test_cli_tsv_output(tmp_path):
 
 # --params JSON — ensures FitParams override path is wired through argparse
 def test_cli_with_params_json(tmp_path):
-    rows = _hill_reads("G1", 1e-8, [1e-10, 1e-9, 1e-8, 1e-7, 1e-6], [1, 2, 3, 4])
+    rows = _cli_reads("G1", 1e-8, [1e-10, 1e-9, 1e-8, 1e-7, 1e-6], [1, 2, 3, 4])
     reads_path = tmp_path / "reads.parquet"
     pl.DataFrame(rows).write_parquet(reads_path)
 
@@ -212,8 +190,8 @@ def test_cli_hook_effect_triggers_failure(tmp_path):
 
 def test_cli_fit_summary_counts_failed_clonotypes(tmp_path):
     # The block shows "All clonotypes failed" from this file; a non-binder is Failed (above range).
-    rows = _hill_reads("BINDER", 1e-8, _DEFAULT_MODEL_CONCS, [1, 2, 3, 4])
-    rows += _hill_reads("FLAT", 1e2, _DEFAULT_MODEL_CONCS, [1, 2, 3, 4])
+    rows = _cli_reads("BINDER", 1e-8, _DEFAULT_MODEL_CONCS, [1, 2, 3, 4])
+    rows += _cli_reads("FLAT", 1e2, _DEFAULT_MODEL_CONCS, [1, 2, 3, 4])
     reads_path = tmp_path / "reads.tsv"
     pl.DataFrame(rows).write_csv(reads_path, separator="\t")
     outs = [f"--out-{k}" for k in ("per-clonotype", "mean-bin", "fitted-mean-bin", "concentration-value")]
