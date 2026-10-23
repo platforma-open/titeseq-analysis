@@ -8,6 +8,30 @@ import pytest
 from normalization import MEAN_BIN, SIGNAL, compute_frequency_signal, compute_mean_bin, normalize
 
 
+def _read(
+    clonotype: str,
+    reads: int,
+    *,
+    sample: str = "s",
+    conc_str: str = "1",
+    bin_label: int | None = None,
+    sort_fraction: float | None = None,
+) -> dict:
+    """One reads row. The bin and sort_fraction columns are added only when given."""
+    row: dict = {
+        "clonotypeKey": clonotype,
+        "sampleId": sample,
+        "concentrationStr": conc_str,
+        "concentration": float(conc_str),
+    }
+    if bin_label is not None:
+        row["bin"] = bin_label
+    row["reads"] = reads
+    if sort_fraction is not None:
+        row["sort_fraction"] = sort_fraction
+    return row
+
+
 def _build_single_clonotype(
     reads_per_bin: list[int],
     depth_per_bin: list[int],
@@ -24,30 +48,9 @@ def _build_single_clonotype(
     for j, (r, d) in enumerate(zip(reads_per_bin, depth_per_bin)):
         bin_label = j + 1
         frac = sort_fraction_per_bin[j] if sort_fraction_per_bin is not None else None
-        row_a = {
-            "clonotypeKey": "A",
-            "sampleId": f"s_b{bin_label}",
-            "concentrationStr": "1",
-            "concentration": 1.0,
-            "bin": bin_label,
-            "reads": r,
-        }
-        if frac is not None:
-            row_a["sort_fraction"] = frac
-        rows.append(row_a)
-        filler = d - r
-        if filler > 0:
-            row_f = {
-                "clonotypeKey": "F",
-                "sampleId": f"s_b{bin_label}",
-                "concentrationStr": "1",
-                "concentration": 1.0,
-                "bin": bin_label,
-                "reads": filler,
-            }
-            if frac is not None:
-                row_f["sort_fraction"] = frac
-            rows.append(row_f)
+        rows.append(_read("A", r, sample=f"s_b{bin_label}", bin_label=bin_label, sort_fraction=frac))
+        if d - r > 0:
+            rows.append(_read("F", d - r, sample=f"s_b{bin_label}", bin_label=bin_label, sort_fraction=frac))
     return pl.DataFrame(rows)
 
 
@@ -80,26 +83,7 @@ class TestComputeMeanBin:
 
     # Single-bin clonotype: mean_bin equals that bin label (pass-through).
     def test_single_bin_equals_that_bin_label(self):
-        reads = pl.DataFrame(
-            [
-                {
-                    "clonotypeKey": "A",
-                    "sampleId": "s",
-                    "concentrationStr": "1",
-                    "concentration": 1.0,
-                    "bin": 4,
-                    "reads": 7,
-                },
-                {
-                    "clonotypeKey": "F",
-                    "sampleId": "s",
-                    "concentrationStr": "1",
-                    "concentration": 1.0,
-                    "bin": 4,
-                    "reads": 93,
-                },
-            ]
-        )
+        reads = pl.DataFrame([_read("A", 7, bin_label=4), _read("F", 93, bin_label=4)])
         out = compute_mean_bin(reads).filter(pl.col("clonotypeKey") == "A")
         assert out["mean_bin"][0] == 4.0
 
@@ -116,25 +100,9 @@ class TestComputeFrequencySignal:
         ],
     )
     def test_no_bin_signal_pinned(self, reads_clonotype, reads_other, expected):
-        rows = [
-            {
-                "clonotypeKey": "A",
-                "sampleId": "s",
-                "concentrationStr": "10",
-                "concentration": 10.0,
-                "reads": reads_clonotype,
-            }
-        ]
+        rows = [_read("A", reads_clonotype, conc_str="10")]
         if reads_other > 0:
-            rows.append(
-                {
-                    "clonotypeKey": "B",
-                    "sampleId": "s",
-                    "concentrationStr": "10",
-                    "concentration": 10.0,
-                    "reads": reads_other,
-                }
-            )
+            rows.append(_read("B", reads_other, conc_str="10"))
         reads = pl.DataFrame(rows)
         out = compute_frequency_signal(reads).filter(pl.col("clonotypeKey") == "A")
         assert out.height == 1
@@ -142,9 +110,7 @@ class TestComputeFrequencySignal:
 
     # total_reads_at_conc = 0 → signal is null (row survives with null, caller drops).
     def test_zero_total_reads_yields_null_signal(self):
-        reads = pl.DataFrame(
-            [{"clonotypeKey": "A", "sampleId": "s", "concentrationStr": "10", "concentration": 10.0, "reads": 0}]
-        )
+        reads = pl.DataFrame([_read("A", 0, conc_str="10")])
         out = compute_frequency_signal(reads)
         assert out[SIGNAL][0] is None
 
@@ -217,31 +183,13 @@ class TestComputeMeanBinSortFraction:
         rows = []
         # conc 1: bin 1 dominates the sort (0.8, 0.2) → corrected mean_bin pulled toward 1.
         # conc 2: bin 2 dominates the sort (0.2, 0.8) → corrected mean_bin pulled toward 2.
-        for conc_str, conc_val, fractions in [("1", 1.0, [0.8, 0.2]), ("2", 2.0, [0.2, 0.8])]:
+        for conc_str, fractions in [("1", [0.8, 0.2]), ("2", [0.2, 0.8])]:
             for j, frac in enumerate(fractions):
-                bin_label = j + 1
-                rows.append(
-                    {
-                        "clonotypeKey": "A",
-                        "sampleId": f"s_c{conc_str}_b{bin_label}",
-                        "concentrationStr": conc_str,
-                        "concentration": conc_val,
-                        "bin": bin_label,
-                        "reads": 10,
-                        "sort_fraction": frac,
-                    }
-                )
-                rows.append(
-                    {
-                        "clonotypeKey": "F",
-                        "sampleId": f"s_c{conc_str}_b{bin_label}",
-                        "concentrationStr": conc_str,
-                        "concentration": conc_val,
-                        "bin": bin_label,
-                        "reads": 90,
-                        "sort_fraction": frac,
-                    }
-                )
+                sample = f"s_c{conc_str}_b{j + 1}"
+                for clonotype, n in [("A", 10), ("F", 90)]:
+                    rows.append(
+                        _read(clonotype, n, sample=sample, conc_str=conc_str, bin_label=j + 1, sort_fraction=frac)
+                    )
         reads = pl.DataFrame(rows)
         out = (
             compute_mean_bin(reads, sort_fraction_col="sort_fraction")
@@ -271,8 +219,8 @@ class TestNormalizeDispatch:
         # simply dispatches to the frequency path unchanged.
         reads = pl.DataFrame(
             [
-                {"clonotypeKey": "A", "sampleId": "s", "concentrationStr": "1", "concentration": 1.0, "reads": 100},
-                {"clonotypeKey": "B", "sampleId": "s", "concentrationStr": "1", "concentration": 1.0, "reads": 900},
+                _read("A", 100),
+                _read("B", 900),
             ]
         )
         out_without = normalize(reads, bin_mode=False, sort_fraction_col=None).sort("clonotypeKey")

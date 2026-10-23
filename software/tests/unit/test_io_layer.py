@@ -19,7 +19,7 @@ from io_layer import (
 from io_layer import validate_bin_concentration_grid as _validate_grid
 
 
-def _row(**overrides: str | float) -> dict:
+def _row(**overrides: str | float | None) -> dict:
     """One valid reads row; overrides replace or add fields."""
     return {
         "clonotypeKey": "A",
@@ -68,17 +68,7 @@ class TestConcentrationValidation:
     )
     def test_high_magnitude_concentrations_accepted(self, concentrations):
         df = pl.DataFrame(
-            [
-                {
-                    "clonotypeKey": "A",
-                    "sampleId": f"s{i}",
-                    "concentrationStr": str(c),
-                    "concentration": c,
-                    "bin": 1,
-                    "reads": 5,
-                }
-                for i, c in enumerate(concentrations)
-            ]
+            [_row(sampleId=f"s{i}", concentrationStr=str(c), concentration=c) for i, c in enumerate(concentrations)]
         )
         validate_concentration_column(df, has_bin=True)  # no exception
 
@@ -86,19 +76,7 @@ class TestConcentrationValidation:
 class TestBinValidation:
     def test_non_consecutive_labels_ok(self):
         # Spec: labels may be non-consecutive; max_bin_label is actual max, not count.
-        df = pl.DataFrame(
-            [
-                {
-                    "clonotypeKey": "A",
-                    "sampleId": "s1",
-                    "concentrationStr": "1",
-                    "concentration": 1.0,
-                    "bin": b,
-                    "reads": 5,
-                }
-                for b in [1, 2, 5, 8]
-            ]
-        )
+        df = pl.DataFrame([_row(sampleId="s1", bin=b) for b in [1, 2, 5, 8]])
         validate_bin_column(df)
         assert max_bin_label(df) == 8  # label, not count
 
@@ -136,102 +114,29 @@ class TestBinValidation:
 
 class TestAntigenFilter:
     def test_ref_without_target_raises(self):
-        df = pl.DataFrame(
-            [
-                {
-                    "clonotypeKey": "A",
-                    "sampleId": "s1",
-                    "concentrationStr": "1",
-                    "concentration": 1.0,
-                    "bin": 1,
-                    "reads": 5,
-                    "antigen": "X",
-                }
-            ]
-        )
+        df = pl.DataFrame([_row(sampleId="s1", antigen="X")])
         with pytest.raises(InputValidationError, match="targetAntigen"):
             validate_antigen_filter(df, antigen_column_ref="antigen", target_antigen=None)
 
     def test_target_without_ref_warns(self):
-        df = pl.DataFrame(
-            [
-                {
-                    "clonotypeKey": "A",
-                    "sampleId": "s1",
-                    "concentrationStr": "1",
-                    "concentration": 1.0,
-                    "bin": 1,
-                    "reads": 5,
-                }
-            ]
-        )
+        df = pl.DataFrame([_row(sampleId="s1")])
         warnings = validate_antigen_filter(df, antigen_column_ref=None, target_antigen="X")
         assert any("antigenColumnRef" in w for w in warnings)
 
     def test_target_not_in_column_raises(self):
-        df = pl.DataFrame(
-            [
-                {
-                    "clonotypeKey": "A",
-                    "sampleId": "s1",
-                    "concentrationStr": "1",
-                    "concentration": 1.0,
-                    "bin": 1,
-                    "reads": 5,
-                    "antigen": "Y",
-                }
-            ]
-        )
+        df = pl.DataFrame([_row(sampleId="s1", antigen="Y")])
         with pytest.raises(InputValidationError, match="not found"):
             validate_antigen_filter(df, antigen_column_ref="antigen", target_antigen="X")
 
 
 class TestSampleUniqueness:
     def test_sample_with_two_concentrations_raises(self):
-        df = pl.DataFrame(
-            [
-                {
-                    "clonotypeKey": "A",
-                    "sampleId": "s1",
-                    "concentrationStr": "1",
-                    "concentration": 1.0,
-                    "bin": 1,
-                    "reads": 5,
-                },
-                {
-                    "clonotypeKey": "A",
-                    "sampleId": "s1",
-                    "concentrationStr": "10",
-                    "concentration": 10.0,
-                    "bin": 1,
-                    "reads": 5,
-                },
-            ]
-        )
+        df = pl.DataFrame([_row(sampleId="s1"), _row(sampleId="s1", concentrationStr="10", concentration=10.0)])
         with pytest.raises(InputValidationError, match="concentrationStr"):
             validate_sample_metadata_uniqueness(df, has_bin=True, has_antigen=False)
 
     def test_sample_with_two_bins_raises(self):
-        df = pl.DataFrame(
-            [
-                {
-                    "clonotypeKey": "A",
-                    "sampleId": "s1",
-                    "concentrationStr": "1",
-                    "concentration": 1.0,
-                    "bin": 1,
-                    "reads": 5,
-                },
-                {
-                    "clonotypeKey": "A",
-                    "sampleId": "s1",
-                    "concentrationStr": "1",
-                    "concentration": 1.0,
-                    "bin": 2,
-                    "reads": 5,
-                },
-            ]
-        )
+        df = pl.DataFrame([_row(sampleId="s1"), _row(sampleId="s1", bin=2)])
         with pytest.raises(InputValidationError, match="bin"):
             validate_sample_metadata_uniqueness(df, has_bin=True, has_antigen=False)
 
@@ -239,26 +144,7 @@ class TestSampleUniqueness:
 class TestCanonicalConcentrationAxis:
     # R14: string-preserving canonicalization prevents float-drift in axis joins.
     def test_numeric_equal_but_string_different_kept_separate(self):
-        df = pl.DataFrame(
-            [
-                {
-                    "clonotypeKey": "A",
-                    "sampleId": "s1",
-                    "concentrationStr": "1.0",
-                    "concentration": 1.0,
-                    "bin": 1,
-                    "reads": 5,
-                },
-                {
-                    "clonotypeKey": "A",
-                    "sampleId": "s2",
-                    "concentrationStr": "1.000",
-                    "concentration": 1.0,
-                    "bin": 1,
-                    "reads": 5,
-                },
-            ]
-        )
+        df = pl.DataFrame([_row(sampleId="s1", concentrationStr="1.0"), _row(sampleId="s2", concentrationStr="1.000")])
         result = canonicalize_concentration(df)
         assert set(result["concentrationStr"].to_list()) == {"1.0", "1.000"}
 
@@ -304,18 +190,9 @@ class TestNarrowConcentrationRangeWarning:
         ],
     )
     def test_narrow_range_emits_warning(self, concs, expect_warning):
-        rows = [
-            {
-                "clonotypeKey": "A",
-                "sampleId": f"s{i}",
-                "concentrationStr": str(c),
-                "concentration": c,
-                "bin": 1,
-                "reads": 5,
-            }
-            for i, c in enumerate(concs)
-        ]
-        df = pl.DataFrame(rows)
+        df = pl.DataFrame(
+            [_row(sampleId=f"s{i}", concentrationStr=str(c), concentration=c) for i, c in enumerate(concs)]
+        )
         warnings = validate_concentration_column(df, has_bin=True)
         has_narrow = any(
             ("order of magnitude" in w.lower()) or ("narrow" in w.lower()) or ("span" in w.lower()) for w in warnings
@@ -326,22 +203,8 @@ class TestNarrowConcentrationRangeWarning:
     def test_single_nonzero_concentration_warns(self):
         df = pl.DataFrame(
             [
-                {
-                    "clonotypeKey": "A",
-                    "sampleId": "s1",
-                    "concentrationStr": "0",
-                    "concentration": 0.0,
-                    "bin": 1,
-                    "reads": 5,
-                },
-                {
-                    "clonotypeKey": "A",
-                    "sampleId": "s2",
-                    "concentrationStr": "5",
-                    "concentration": 5.0,
-                    "bin": 1,
-                    "reads": 5,
-                },
+                _row(sampleId="s1", concentrationStr="0", concentration=0.0),
+                _row(sampleId="s2", concentrationStr="5", concentration=5.0),
             ]
         )
         warnings = validate_concentration_column(df, has_bin=True)
@@ -359,50 +222,27 @@ class TestBinConcentrationGrid:
 
     def test_uniform_grid_no_warning(self):
         # Every clonotype has the full (bin × conc) cartesian product present.
-        rows = []
-        for clone in ["A", "B"]:
-            for conc in ["1", "10"]:
-                for b in [1, 2]:
-                    rows.append(
-                        {
-                            "clonotypeKey": clone,
-                            "sampleId": f"s-{clone}-{conc}-{b}",
-                            "concentrationStr": conc,
-                            "concentration": float(conc),
-                            "bin": b,
-                            "reads": 5,
-                        }
-                    )
+        rows = [
+            _row(
+                clonotypeKey=clone,
+                sampleId=f"s-{clone}-{conc}-{b}",
+                concentrationStr=conc,
+                concentration=float(conc),
+                bin=b,
+            )
+            for clone in ["A", "B"]
+            for conc in ["1", "10"]
+            for b in [1, 2]
+        ]
         warnings = _validate_grid(pl.DataFrame(rows))
         assert warnings == []
 
     def test_missing_combo_emits_warning(self):
         # A has (bin=1, conc=10); B is missing that combo → warn on B.
         rows = [
-            {
-                "clonotypeKey": "A",
-                "sampleId": "s1",
-                "concentrationStr": "1",
-                "concentration": 1.0,
-                "bin": 1,
-                "reads": 5,
-            },
-            {
-                "clonotypeKey": "A",
-                "sampleId": "s2",
-                "concentrationStr": "10",
-                "concentration": 10.0,
-                "bin": 1,
-                "reads": 5,
-            },
-            {
-                "clonotypeKey": "B",
-                "sampleId": "s1",
-                "concentrationStr": "1",
-                "concentration": 1.0,
-                "bin": 1,
-                "reads": 5,
-            },
+            _row(sampleId="s1"),
+            _row(sampleId="s2", concentrationStr="10", concentration=10.0),
+            _row(clonotypeKey="B", sampleId="s1"),
         ]
         warnings = _validate_grid(pl.DataFrame(rows))
         assert len(warnings) > 0
@@ -437,15 +277,15 @@ def _mk_reads_with_sort_fraction(
             bin_label = j + 1
             for clone in clonotypes:
                 rows.append(
-                    {
-                        "clonotypeKey": clone,
-                        "sampleId": f"s_c{conc}_b{bin_label}",
-                        "concentrationStr": conc,
-                        "concentration": float(conc),
-                        "bin": bin_label,
-                        "reads": 10,
-                        "sort_fraction": frac,
-                    }
+                    _row(
+                        clonotypeKey=clone,
+                        sampleId=f"s_c{conc}_b{bin_label}",
+                        concentrationStr=conc,
+                        concentration=float(conc),
+                        bin=bin_label,
+                        reads=10,
+                        sort_fraction=frac,
+                    )
                 )
     return pl.DataFrame(rows)
 
@@ -469,18 +309,7 @@ class TestValidateSortFraction:
         validate_sort_fraction(df, "sort_fraction")
 
     def test_missing_column_raises(self):
-        df = pl.DataFrame(
-            [
-                {
-                    "clonotypeKey": "A",
-                    "sampleId": "s",
-                    "concentrationStr": "1",
-                    "concentration": 1.0,
-                    "bin": 1,
-                    "reads": 5,
-                }
-            ]
-        )
+        df = pl.DataFrame([_row()])
         with pytest.raises(InputValidationError, match="missing"):
             validate_sort_fraction(df, "sort_fraction")
 
@@ -530,24 +359,8 @@ class TestValidateSortFraction:
     def test_null_raises(self):
         df = pl.DataFrame(
             [
-                {
-                    "clonotypeKey": "A",
-                    "sampleId": "s_c1_b1",
-                    "concentrationStr": "1",
-                    "concentration": 1.0,
-                    "bin": 1,
-                    "reads": 10,
-                    "sort_fraction": None,
-                },
-                {
-                    "clonotypeKey": "A",
-                    "sampleId": "s_c1_b2",
-                    "concentrationStr": "1",
-                    "concentration": 1.0,
-                    "bin": 2,
-                    "reads": 10,
-                    "sort_fraction": 1.0,
-                },
+                _row(sampleId="s_c1_b1", reads=10, sort_fraction=None),
+                _row(sampleId="s_c1_b2", bin=2, reads=10, sort_fraction=1.0),
             ]
         )
         with pytest.raises(InputValidationError, match="null"):

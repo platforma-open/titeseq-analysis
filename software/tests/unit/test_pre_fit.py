@@ -53,25 +53,24 @@ class TestGlobalBaseline:
         assert compute_global_baseline(df) == pytest.approx(1.5)
 
 
-def _sig_frame(rows: list[dict]) -> pl.DataFrame:
-    """Signal-frame shape: clonotypeKey, concentrationStr, concentration, signal, clonotype_reads_at_conc."""
-    return pl.DataFrame(rows)
+def _point(conc_str: str, signal: float = 2.0, reads: int = 10, *, weighted: bool = True) -> dict:
+    """One signal-frame row for clonotype A. `weighted` adds the weight column, equal to the reads."""
+    row = {
+        "clonotypeKey": "A",
+        "concentrationStr": conc_str,
+        "concentration": float(conc_str),
+        "signal": signal,
+        "clonotype_reads_at_conc": reads,
+    }
+    if weighted:
+        row[WEIGHT] = float(reads)
+    return row
 
 
 class TestApplyFloorAndWeights:
     # R8: weight w_j = clonotype_reads_at_conc at concentration j.
     def test_weight_equals_reads_sum(self):
-        df = _sig_frame(
-            [
-                {
-                    "clonotypeKey": "A",
-                    "concentrationStr": "1",
-                    "concentration": 1.0,
-                    "signal": 2.5,
-                    "clonotype_reads_at_conc": 10,
-                },
-            ]
-        )
+        df = pl.DataFrame([_point("1", 2.5, 10, weighted=False)])
         result = apply_floor_and_weights(df, DEFAULT_PARAMS)
         assert result[WEIGHT][0] == 10.0
 
@@ -83,17 +82,7 @@ class TestApplyFloorAndWeights:
     )
     def test_floor_threshold_inclusive(self, reads_at_conc, kept):
         params = FitParams(min_reads_per_concentration=3)
-        df = _sig_frame(
-            [
-                {
-                    "clonotypeKey": "A",
-                    "concentrationStr": "1",
-                    "concentration": 1.0,
-                    "signal": 2.5,
-                    "clonotype_reads_at_conc": reads_at_conc,
-                },
-            ]
-        )
+        df = pl.DataFrame([_point("1", 2.5, reads_at_conc, weighted=False)])
         result = apply_floor_and_weights(df, params)
         assert (result.height == 1) is kept
 
@@ -126,36 +115,14 @@ class TestClassifyInsufficient:
     # R9: fewer than min_concentration_points → insufficient_points.
     def test_under_min_points_marks_insufficient_points(self):
         params = FitParams(min_concentration_points=5)
-        rows = [
-            {
-                "clonotypeKey": "A",
-                "concentrationStr": str(c),
-                "concentration": float(c),
-                "signal": 2.0,
-                "clonotype_reads_at_conc": 10,
-                WEIGHT: 10.0,
-            }
-            for c in [1, 10, 100]  # only 3 non-zero points
-        ]
-        filtered = pl.DataFrame(rows)
+        filtered = pl.DataFrame([_point(str(c)) for c in [1, 10, 100]])  # only 3 non-zero points
         result = classify_insufficient(filtered, ["A"], params)
         assert result.filter(pl.col("clonotypeKey") == "A")["insufficient_reason"][0] == "insufficient_points"
 
     # Boundary: exactly min_concentration_points → not marked.
     def test_exactly_min_points_not_marked(self):
         params = FitParams(min_concentration_points=5)
-        rows = [
-            {
-                "clonotypeKey": "A",
-                "concentrationStr": str(c),
-                "concentration": float(c),
-                "signal": 2.0,
-                "clonotype_reads_at_conc": 10,
-                WEIGHT: 10.0,
-            }
-            for c in [1, 3, 10, 30, 100]  # exactly 5
-        ]
-        filtered = pl.DataFrame(rows)
+        filtered = pl.DataFrame([_point(str(c)) for c in [1, 3, 10, 30, 100]])  # exactly 5
         result = classify_insufficient(filtered, ["A"], params)
         reason_cell = result.filter(pl.col("clonotypeKey") == "A")["insufficient_reason"]
         assert reason_cell.is_null().item() is True
@@ -163,54 +130,15 @@ class TestClassifyInsufficient:
     # c=0 rows are NOT counted toward the minimum points threshold (only fit points).
     def test_c0_excluded_from_point_count(self):
         params = FitParams(min_concentration_points=5)
-        rows = [
-            {
-                "clonotypeKey": "A",
-                "concentrationStr": "0",
-                "concentration": 0.0,
-                "signal": 1.0,
-                "clonotype_reads_at_conc": 10,
-                WEIGHT: 10.0,
-            }
-        ]
-        rows += [
-            {
-                "clonotypeKey": "A",
-                "concentrationStr": str(c),
-                "concentration": float(c),
-                "signal": 2.0,
-                "clonotype_reads_at_conc": 10,
-                WEIGHT: 10.0,
-            }
-            for c in [1, 3, 10, 30]  # only 4 non-zero → still insufficient
-        ]
-        filtered = pl.DataFrame(rows)
+        # only 4 non-zero → still insufficient
+        filtered = pl.DataFrame([_point("0", 1.0)] + [_point(str(c)) for c in [1, 3, 10, 30]])
         result = classify_insufficient(filtered, ["A"], params)
         assert result.filter(pl.col("clonotypeKey") == "A")["insufficient_reason"][0] == "insufficient_points"
 
 
 class TestSplitC0:
     def test_partitions_c0_from_fit_points(self):
-        df = pl.DataFrame(
-            [
-                {
-                    "clonotypeKey": "A",
-                    "concentrationStr": "0",
-                    "concentration": 0.0,
-                    "signal": 1.2,
-                    "clonotype_reads_at_conc": 100,
-                    WEIGHT: 100.0,
-                },
-                {
-                    "clonotypeKey": "A",
-                    "concentrationStr": "10",
-                    "concentration": 10.0,
-                    "signal": 2.5,
-                    "clonotype_reads_at_conc": 100,
-                    WEIGHT: 100.0,
-                },
-            ]
-        )
+        df = pl.DataFrame([_point("0", 1.2, 100), _point("10", 2.5, 100)])
         c0, non_c0 = split_c0(df)
         assert c0.height == 1
         assert c0["concentrationStr"][0] == "0"
@@ -219,19 +147,7 @@ class TestSplitC0:
 
 def _fit_points(signals: tuple[float, float, float], reads: tuple[int, int, int] = (100, 100, 100)) -> pl.DataFrame:
     """One clonotype at concentrations 1 / 10 / 100: (top-3, top-2, top-1) signals and reads."""
-    return pl.DataFrame(
-        [
-            {
-                "clonotypeKey": "A",
-                "concentrationStr": str(int(c)),
-                "concentration": c,
-                "signal": signal,
-                "clonotype_reads_at_conc": n,
-                "weight": float(n),
-            }
-            for c, signal, n in zip((1.0, 10.0, 100.0), signals, reads)
-        ]
-    )
+    return pl.DataFrame([_point(c, signal, n) for c, signal, n in zip(("1", "10", "100"), signals, reads)])
 
 
 # R9b: flag a hook when top2 - top1 > δ AND top3 - top1 > δ/2 (strict), with δ = 0.2 in bin mode and
