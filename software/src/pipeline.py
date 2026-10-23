@@ -134,9 +134,7 @@ def _execute_fits(
         log(f"  parallel fit: {max_workers} workers, chunksize={chunksize}")
         fits: list = []
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
-            for done, fit in enumerate(
-                executor.map(worker, xs, ys, ws, chunksize=chunksize), start=1
-            ):
+            for done, fit in enumerate(executor.map(worker, xs, ys, ws, chunksize=chunksize), start=1):
                 fits.append(fit)
                 if done % step == 0 or done == n_survivors:
                     log(f"  fitted {done}/{n_survivors} clonotypes")

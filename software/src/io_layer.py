@@ -80,9 +80,7 @@ def validate_concentration_column(df: pl.DataFrame, has_bin: bool) -> list[str]:
     nonzero = df.filter(pl.col(COL_CONC_VAL) > 0).select(pl.col(COL_CONC_VAL).unique())
     n_nonzero = nonzero.height
     if n_nonzero == 1:
-        warnings.append(
-            "only one non-zero concentration present; narrow dose range may not bracket Kd,app (R5)"
-        )
+        warnings.append("only one non-zero concentration present; narrow dose range may not bracket Kd,app (R5)")
     elif n_nonzero >= 2:
         max_c = float(nonzero.select(pl.col(COL_CONC_VAL).max()).item())
         min_c = float(nonzero.select(pl.col(COL_CONC_VAL).min()).item())
@@ -133,8 +131,7 @@ def validate_sort_fraction(reads: pl.DataFrame, col: str) -> None:
     if bad.height > 0:
         violations = bad.select([COL_CONC_STR, "s"]).to_dicts()
         raise InputValidationError(
-            f"sort_fraction values must sum to 1.0 per concentration "
-            f"(tolerance 1e-3). Violations: {violations}"
+            f"sort_fraction values must sum to 1.0 per concentration (tolerance 1e-3). Violations: {violations}"
         )
 
 
@@ -174,9 +171,7 @@ def validate_bin_column(df: pl.DataFrame) -> None:
     # string column of empty strings (the TSV builder's null encoding). Surface a
     # user-actionable message instead of the generic "got String" dtype complaint.
     if df.schema[COL_BIN] == pl.Utf8:
-        non_empty = df.filter(
-            pl.col(COL_BIN).is_not_null() & (pl.col(COL_BIN).str.len_chars() > 0)
-        ).height
+        non_empty = df.filter(pl.col(COL_BIN).is_not_null() & (pl.col(COL_BIN).str.len_chars() > 0)).height
         if non_empty == 0:
             raise InputValidationError(
                 "bin column has no integer values — the selected metadata "

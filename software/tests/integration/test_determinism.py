@@ -51,15 +51,24 @@ def _run_cli(reads_path: Path, out_dir: Path) -> dict[str, Path]:
     cv = out_dir / "concentration_value.tsv"
     result = subprocess.run(
         [
-            sys.executable, str(_MAIN_PY),
-            "--reads", str(reads_path),
-            "--out-per-clonotype", str(pc),
-            "--out-mean-bin", str(mb),
-            "--out-fitted-mean-bin", str(fmb),
-            "--out-concentration-value", str(cv),
-            "--cell-count-column", "cells",
+            sys.executable,
+            str(_MAIN_PY),
+            "--reads",
+            str(reads_path),
+            "--out-per-clonotype",
+            str(pc),
+            "--out-mean-bin",
+            str(mb),
+            "--out-fitted-mean-bin",
+            str(fmb),
+            "--out-concentration-value",
+            str(cv),
+            "--cell-count-column",
+            "cells",
         ],
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     assert result.returncode == 0, f"fit-curves failed (rc={result.returncode}): {result.stderr}"
     return {"per_clonotype": pc, "mean_bin": mb, "fitted_mean_bin": fmb, "concentration_value": cv}

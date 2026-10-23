@@ -119,9 +119,7 @@ class TestMeanBinFrame:
     # Spec-realigned schema — clonotypeKey + concentrationStr (canonical String axis
     # key) + meanBin. No more concentrationAM, no Float concentration column.
     def test_output_columns_match_spec(self):
-        signal = pl.DataFrame(
-            [{"clonotypeKey": "A", "concentrationStr": "1e-7", "concentration": 1e-7, "signal": 2.0}]
-        )
+        signal = pl.DataFrame([{"clonotypeKey": "A", "concentrationStr": "1e-7", "concentration": 1e-7, "signal": 2.0}])
         out = build_mean_bin_frame(signal)
         assert out.columns == ["clonotypeKey", "concentrationStr", "meanBin"]
 

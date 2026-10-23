@@ -16,6 +16,7 @@ from io_layer import (
     validate_sample_metadata_uniqueness,
     validate_sort_fraction,
 )
+from io_layer import validate_bin_concentration_grid as _validate_grid
 
 
 def _mk(rows, has_bin=True, has_antigen=False):
@@ -379,12 +380,12 @@ class TestNarrowConcentrationRangeWarning:
     @pytest.mark.parametrize(
         "concs, expect_warning",
         [
-            ([1e-9, 2e-9, 3e-9, 5e-9, 7e-9], True),    # 7/1 = 7 < 10 → warn
-            ([1e-9, 1e-8, 1e-7], False),                # 100/1 = 100 ≥ 10 → no warn
-            ([1e-9, 1e-8], False),                      # 10/1 = 10 exactly at boundary → no warn
-            ([1e-9, 9.99e-9], True),                    # 9.99/1 = 9.99 < 10 → warn
-            ([0.0, 1e-9, 1e-8, 1e-7], False),           # 0 excluded from ratio → 100/1 ok
-            ([0.0, 1e-9, 2e-9, 3e-9], True),            # 0 excluded → 3/1 < 10 → warn
+            ([1e-9, 2e-9, 3e-9, 5e-9, 7e-9], True),  # 7/1 = 7 < 10 → warn
+            ([1e-9, 1e-8, 1e-7], False),  # 100/1 = 100 ≥ 10 → no warn
+            ([1e-9, 1e-8], False),  # 10/1 = 10 exactly at boundary → no warn
+            ([1e-9, 9.99e-9], True),  # 9.99/1 = 9.99 < 10 → warn
+            ([0.0, 1e-9, 1e-8, 1e-7], False),  # 0 excluded from ratio → 100/1 ok
+            ([0.0, 1e-9, 2e-9, 3e-9], True),  # 0 excluded → 3/1 < 10 → warn
         ],
     )
     def test_narrow_range_emits_warning(self, concs, expect_warning):
@@ -402,8 +403,7 @@ class TestNarrowConcentrationRangeWarning:
         df = _mk(rows)
         warnings = validate_concentration_column(df, has_bin=True)
         has_narrow = any(
-            ("order of magnitude" in w.lower()) or ("narrow" in w.lower()) or ("span" in w.lower())
-            for w in warnings
+            ("order of magnitude" in w.lower()) or ("narrow" in w.lower()) or ("span" in w.lower()) for w in warnings
         )
         assert has_narrow is expect_warning, f"concs={concs}, warnings={warnings}"
 
@@ -430,12 +430,9 @@ class TestNarrowConcentrationRangeWarning:
             ]
         )
         warnings = validate_concentration_column(df, has_bin=True)
-        assert any(
-            ("narrow" in w.lower()) or ("range" in w.lower()) or ("span" in w.lower()) for w in warnings
-        ), f"warnings={warnings}"
-
-
-from io_layer import validate_bin_concentration_grid as _validate_grid
+        assert any(("narrow" in w.lower()) or ("range" in w.lower()) or ("span" in w.lower()) for w in warnings), (
+            f"warnings={warnings}"
+        )
 
 
 class TestBinConcentrationGrid:

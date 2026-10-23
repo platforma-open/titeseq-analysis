@@ -195,5 +195,3 @@ class TestValidatorWarnings:
         captured = capsys.readouterr()
         assert "ambiguous" in captured.out
         assert "ambiguous" not in captured.err
-
-

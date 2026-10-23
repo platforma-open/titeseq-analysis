@@ -151,9 +151,7 @@ class TestDeltaDynamicRangeGate:
         y = hill_truth(x, baseline, amplitude, kd=10.0, n=1.0)
         w = np.ones_like(x) * 100.0
 
-        fit = fit_one_clonotype(
-            x, y, w, baseline_fixed=baseline, bin_mode=bin_mode, max_bin_label=max_bin_label
-        )
+        fit = fit_one_clonotype(x, y, w, baseline_fixed=baseline, bin_mode=bin_mode, max_bin_label=max_bin_label)
         assert fit.converged is should_converge, (
             f"{'bin' if bin_mode else 'no-bin'} amp={math.exp(amplitude):.3f}: "
             f"expected converged={should_converge}, got {fit.converged}"
@@ -215,9 +213,7 @@ class TestAmplitudeBoundsRespected:
         y = hill_truth(x, baseline, amplitude, kd=10.0, n=1.0)
         w = np.ones_like(x) * 100.0
 
-        fit = fit_one_clonotype(
-            x, y, w, baseline_fixed=baseline, bin_mode=bin_mode, max_bin_label=max_bin_label
-        )
+        fit = fit_one_clonotype(x, y, w, baseline_fixed=baseline, bin_mode=bin_mode, max_bin_label=max_bin_label)
         assert fit.converged is True
         assert (fit.top - fit.baseline) >= delta_expected - 1e-9, (
             f"top − baseline = {fit.top - fit.baseline:.4f} violates δ = {delta_expected}"
