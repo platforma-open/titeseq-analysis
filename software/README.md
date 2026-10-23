@@ -16,3 +16,6 @@ Type every function signature in `src/`: all parameters and the return type, in 
 (`list[float]`, `X | None`). Leave local variables unannotated. Use `np.ndarray` for arrays and the polars types
 (`pl.DataFrame`) callers already see. In tests, annotate helpers and fixtures; test functions need no
 annotations. Add a `# ty: ignore[<rule>]` only for a gap in a third-party library's types, with a short reason.
+
+`ruff check` enforces the signature rule (`ANN`), bans `Any` (`ANN401`) and requires modern syntax (`UP`). CI runs it with
+`ruff format --check`.
