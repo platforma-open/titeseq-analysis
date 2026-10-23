@@ -12,14 +12,9 @@ from dataclasses import dataclass
 import numpy as np
 import polars as pl
 import pytest
-from helpers import hill_curve
+from helpers import LINEAR_HILL, hill_curve
 
-from constants import FitParams
 from pipeline import run
-
-# Fixtures are built on the linear Hill model over mean bin, without cell counts or a 0 M control,
-# so they exercise the opt-in hill_free_n model.
-LINEAR_HILL = FitParams(fit_model="hill_free_n")
 
 
 @dataclass

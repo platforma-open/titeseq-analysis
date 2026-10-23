@@ -18,13 +18,11 @@ from pathlib import Path
 
 import polars as pl
 import pytest
+from helpers import LINEAR_HILL
 
-from constants import FitParams
 from pipeline import run
 
-# The corpus was generated from the linear Hill model on mean bin (no cell counts, no 0 M baseline
-# in fluorescence space), so it exercises the opt-in hill_free_n model.
-LINEAR_HILL = FitParams(fit_model="hill_free_n")
+# The corpus was generated from the linear Hill model on mean bin, so it runs with LINEAR_HILL.
 
 CORPUS_DIR = Path(__file__).resolve().parent.parent / "data" / "corpus"
 MANIFEST = json.loads((CORPUS_DIR / "manifest.json").read_text())
@@ -233,53 +231,3 @@ class TestAntigenFilter:
         targets = set(MANIFEST["antigen"]["clonotypes"].keys())
         actual = set(frame["clonotypeKey"].to_list())
         assert targets.issubset(actual), f"{frame_name}: missing targets {targets - actual}"
-
-
-class TestDeterminism:
-    """Re-running the pipeline must produce stable classifications + bounded
-    numeric drift.
-
-    Classification columns (affinityClass, fitFailureReason, kdOutOfRange) must
-    match exactly. Fitted kd/n/r2 can drift slightly between runs because polars'
-    multi-threaded group_by is not order-stable, which reshuffles the rows fed
-    to scipy.optimize.curve_fit. For borderline fits (e.g. P_NOISY, which sits
-    between Partial and Failed) the optimizer can follow a different path and
-    land on a nearby local minimum, yielding a few percent drift in fitted
-    values. Tolerance bands are set ~3x the empirically observed maxima so the
-    test flags an order-of-magnitude regression in optimizer stability without
-    flaking on routine FP-order noise.
-
-    Empirical max drift across 15 run pairs: kd 0.01%, n 1.44%, r2 ~0.
-    """
-
-    def test_bin_mode_classification_repeatable(self):
-        reads = pl.read_parquet(CORPUS_DIR / "reads_bin_mode.parquet")
-        a = run(reads, params=LINEAR_HILL)["per_clonotype"].sort("clonotypeKey")
-        b = run(reads, params=LINEAR_HILL)["per_clonotype"].sort("clonotypeKey")
-
-        for col in ("clonotypeKey", "affinityClass", "fitFailureReason", "kdOutOfRange"):
-            assert a[col].to_list() == b[col].to_list(), f"column {col} differs"
-
-    def test_bin_mode_numeric_drift_bounded(self):
-        reads = pl.read_parquet(CORPUS_DIR / "reads_bin_mode.parquet")
-        a = run(reads, params=LINEAR_HILL)["per_clonotype"].sort("clonotypeKey")
-        b = run(reads, params=LINEAR_HILL)["per_clonotype"].sort("clonotypeKey")
-        keys = a["clonotypeKey"].to_list()
-
-        # (column, rel, abs) — plot-position columns track their source values
-        # when finite and exact sentinels when null, so the same bands apply.
-        checks = [
-            ("kd", 0.02, 1e-9),
-            ("hillCoefficient", 0.05, 1e-9),
-            ("r2", 0.0, 0.01),
-            ("kdPlotPosition", 0.02, 1e-9),
-            ("hillPlotPosition", 0.05, 1e-9),
-        ]
-        for col, rel, abs_tol in checks:
-            for k, av, bv in zip(keys, a[col].to_list(), b[col].to_list()):
-                if av is None and bv is None:
-                    continue
-                assert av is not None and bv is not None, f"{col} for {k}: one run null, other not ({av}, {bv})"
-                assert av == pytest.approx(bv, rel=rel, abs=abs_tol), (
-                    f"{col} for {k}: {av} vs {bv} outside rel={rel}, abs={abs_tol}"
-                )

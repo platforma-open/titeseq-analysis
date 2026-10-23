@@ -5,15 +5,31 @@ from __future__ import annotations
 import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import polars as pl
+
+from constants import FitParams
+
+# The opt-in linear Hill model on mean bin. Fixtures without cell counts or a 0 M baseline need it.
+LINEAR_HILL = FitParams(fit_model="hill_free_n")
 
 
 def hill_curve(x: np.ndarray, baseline: float, amplitude: float, kd: float, n: float) -> np.ndarray:
     """Hill curve with top = baseline + e^amplitude. A reference for the fitter, so it does not reuse src."""
     top = baseline + math.exp(amplitude)
     return baseline + (top - baseline) * (x**n) / (kd**n + x**n)
+
+
+OUTPUTS = ("per_clonotype", "mean_bin", "fitted_mean_bin", "concentration_value")
+
+
+def cli_outputs(out_dir: Path, suffix: str = ".tsv") -> tuple[list[str], dict[str, Path]]:
+    """The four required output arguments of main.py, writing into out_dir, and the paths they name."""
+    paths = {name: out_dir / f"{name}{suffix}" for name in OUTPUTS}
+    argv = [x for name, path in paths.items() for x in (f"--out-{name.replace('_', '-')}", str(path))]
+    return argv, paths
 
 
 def hill_reads(
@@ -23,16 +39,18 @@ def hill_reads(
     bins: list[int],
     *,
     baseline: float = 1.5,
+    amplitude: float = math.log(2.0),
+    n: float = 1.0,
     per_conc: int = 500,
     cells: Callable[[int], float] | None = None,
     antigen: str | None = None,
 ) -> list[dict]:
     """Noiseless reads for one clonotype: per_conc reads per concentration, spread over the bins as a Gaussian
-    (sd 0.35 bins) around a Hill mean bin with amplitude 2 and n = 1.
+    (sd 0.35 bins) around the Hill mean bin `hill_curve(c, baseline, amplitude, true_kd, n)`.
 
     cells(bin) adds a `cells` column; antigen adds an `antigen` column and prefixes the sample ids.
     """
-    targets = hill_curve(np.asarray(concs, dtype=float), baseline, math.log(2.0), true_kd, 1.0)
+    targets = hill_curve(np.asarray(concs, dtype=float), baseline, amplitude, true_kd, n)
     prefix = f"{antigen}_" if antigen is not None else ""
     rows = []
     for i, c in enumerate(concs):
