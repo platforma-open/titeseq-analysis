@@ -407,6 +407,16 @@ class TestBinConcentrationGrid:
         warnings = _validate_grid(pl.DataFrame(rows))
         assert len(warnings) > 0
 
+    # The warning reaches the Fit Log; its examples must not change between runs on the same input.
+    def test_examples_are_the_first_clonotypes_by_key(self):
+        full = [_row(clonotypeKey="FULL", concentrationStr=c, concentration=float(c)) for c in ["1", "10"]]
+        partial = [_row(clonotypeKey=f"C{i:02d}") for i in reversed(range(40))]
+        warnings = _validate_grid(pl.DataFrame(full + partial))
+        assert warnings == [
+            "40 clonotype(s) have missing (bin, concentration) combinations; "
+            "expected 2, examples: ['C00', 'C01', 'C02', 'C03', 'C04'] (R5)"
+        ]
+
 
 def _mk_reads_with_sort_fraction(
     concentrations: list[str],

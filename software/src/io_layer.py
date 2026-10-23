@@ -268,7 +268,7 @@ def validate_bin_concentration_grid(df: pl.DataFrame) -> list[str]:
     )
     missing = per_clone.filter(pl.col("n_combos") < n_grid)
     if missing.height > 0:
-        offenders = missing[COL_CLONOTYPE].to_list()[:5]
+        offenders = missing[COL_CLONOTYPE].sort().to_list()[:5]
         warnings.append(
             f"{missing.height} clonotype(s) have missing (bin, concentration) combinations; "
             f"expected {n_grid}, examples: {offenders} (R5)"
