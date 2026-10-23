@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from hypothesis import assume, given, settings
+from hypothesis import assume, example, given, settings
 from hypothesis import strategies as st
 from scipy.optimize import minimize
 
@@ -53,6 +53,28 @@ class TestProfileLoglik:
         ours = profile_loglik(R[None, None], a[None, None], np.array([k]), LOG_VALUES, np.array([m]))[0, 0, 0]
         oracle = _brute_force_profile(R, a, k, LOG_VALUES, m)
         assume(np.isfinite(oracle))  # the oracle found no feasible point: nothing to compare against
+        assert ours >= oracle - 1e-7 * max(1.0, abs(oracle))
+
+    # Bins that share one exposure are common in real data (equal cells sorted per bin). When an empty bin
+    # shares it, the one-empty-bin root sits on a pole at nu = 0, and the bisection approaches it through
+    # subnormal floats without stopping early. The pinned example is such a case.
+    @settings(max_examples=40, deadline=None)
+    @example(R=[300, 70, 0, 50], exposures=[None, 130.0, None, None], shared=1000.0, m_frac=1.0 / 2.1)
+    @given(
+        R=counts.filter(lambda r: 0 in r),
+        exposures=st.lists(st.none() | st.floats(1e3, 1e6), min_size=4, max_size=4),
+        shared=st.floats(1e3, 1e6),
+        m_frac=st.floats(0.05, 0.95),
+    )
+    def test_shared_exposure_never_worse_than_a_general_optimiser(self, R, exposures, shared, m_frac):
+        # Every empty bin, and every bin drawn as None, gets the shared exposure.
+        a = np.array([shared if r == 0 or e is None else e for r, e in zip(R, exposures)])
+        R = np.array(R, float)
+        k = (R / a).sum()
+        m = m_frac * LOG_VALUES[-1]
+        ours = profile_loglik(R[None, None], a[None, None], np.array([k]), LOG_VALUES, np.array([m]))[0, 0, 0]
+        oracle = _brute_force_profile(R, a, k, LOG_VALUES, m)
+        assume(np.isfinite(oracle))
         assert ours >= oracle - 1e-7 * max(1.0, abs(oracle))
 
     # Exact value where it is known: at the mean the reads imply, with k = sum R/a, the optimum is
