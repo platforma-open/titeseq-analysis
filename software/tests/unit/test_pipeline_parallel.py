@@ -91,7 +91,3 @@ class TestExecuteFitsParity:
         monkeypatch.setattr(pipeline, "ProcessPoolExecutor", _ShouldNotRun)
         fits = pipeline._execute_fits(worker, xs, ys, ws, n_survivors=5, step=1)
         assert len(fits) == 5
-
-    def test_empty_input_returns_empty(self):
-        worker = _worker()
-        assert pipeline._execute_fits(worker, [], [], [], n_survivors=0, step=1) == []

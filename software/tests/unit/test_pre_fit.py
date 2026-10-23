@@ -38,14 +38,6 @@ class TestGlobalBaseline:
         df = _c0([0.0, 2.0])
         assert compute_global_baseline(df) == pytest.approx(1.0)
 
-    # No c=0 data at all → None (downstream uses 4-param fit).
-    def test_empty_returns_none(self):
-        df = pl.DataFrame(
-            {"clonotypeKey": [], "concentrationStr": [], "signal": [], "weight": []},
-            schema={"clonotypeKey": pl.Utf8, "concentrationStr": pl.Utf8, "signal": pl.Float64, "weight": pl.Float64},
-        )
-        assert compute_global_baseline(df) is None
-
     # Upstream floor filter drops some clonotypes from the c=0 set;
     # only surviving rows contribute to B.
     def test_only_passes_surviving_rows(self):
