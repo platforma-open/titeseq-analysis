@@ -143,7 +143,7 @@ def fit_one_clonotype(
         lo = [log_kd_lo, N_LO, amp_lo]
         hi = [log_kd_hi, N_HI, amp_hi]
 
-        def model(x_, log_kd, n, amp):
+        def model(x_: np.ndarray, log_kd: float, n: float, amp: float) -> np.ndarray:
             return _hill(x_, log_kd, n, amp, baseline_fixed)
     else:
         # R10 baseline bounds — signal-mode dependent, δ-aware so `top ≥ baseline + δ`

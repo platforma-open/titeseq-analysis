@@ -66,11 +66,20 @@ def build_tensors(reads: pl.DataFrame, cell_count_col: str | None) -> CountTenso
     return CountTensors(clonotypes, concs[COL_CONC_STR].to_list(), concs[COL_CONC_VAL].to_numpy(), bins, R, cells)
 
 
-def _fit_chunk(args) -> GridFit:
+def _fit_chunk(
+    args: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float, tuple[float, float]],
+) -> GridFit:
     return fit_titration(*args)
 
 
-def _fit_parallel(R, a, conc, log_values, B, bounds) -> GridFit:
+def _fit_parallel(
+    R: np.ndarray,
+    a: np.ndarray,
+    conc: np.ndarray,
+    log_values: np.ndarray,
+    B: float,
+    bounds: tuple[float, float],
+) -> GridFit:
     V = R.shape[0]
     workers = min(available_cpus(), math.ceil(V / _CHUNK))
     if workers <= 1 or V < _PARALLEL_MIN_CLONOTYPES:
@@ -178,7 +187,7 @@ def fit_poisson(
         rows["kd"].append(10.0 ** min(max(lk, lo), hi) if fitted else None)
         rows["hillCoefficient"].append(1.0 if fitted else None)
         r2 = None
-        if y_hat is not None:
+        if y_hat is not None and sub is not None:
             ok = sub[SIGNAL].is_not_null().to_numpy()
             r2 = weighted_r2(sub[SIGNAL].to_numpy()[ok], y_hat[ok], sub[CLONOTYPE_READS_AT_CONC].to_numpy()[ok])
             r2 = None if r2 is None or math.isnan(r2) else r2
@@ -188,7 +197,7 @@ def fit_poisson(
         rows["kdOutOfRange"].append(censor is not None if fitted else None)
         rows["kdLog10Sd"].append(float(fit.log10_kd_sd[i]) if fitted else None)
         rows["kdCensor"].append(censor if fitted else None)
-        if cls != "Failed" and y_hat is not None:
+        if cls != "Failed" and y_hat is not None and sub is not None:
             fitted_parts.append(
                 pl.DataFrame(
                     {COL_CLONOTYPE: [key] * sub.height, COL_CONC_STR: sub[COL_CONC_STR], "fittedMeanBin": y_hat},

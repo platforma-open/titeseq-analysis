@@ -91,7 +91,9 @@ def _loglik(R: np.ndarray, x: np.ndarray) -> np.ndarray:
         return (np.where(R > 0, R * np.log(np.where(x > 0, x, 1.0)), 0.0) - x).sum(-1)
 
 
-def _interior(R, ka, L, m, filled):
+def _interior(
+    R: np.ndarray, ka: np.ndarray, L: np.ndarray, m: np.ndarray, filled: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
     """No empty bin carries mass: damped Newton on the dual over the bins with reads.
 
     Only points whose m lies strictly inside the range of the filled bins can be interior; the rest
@@ -106,7 +108,7 @@ def _interior(R, ka, L, m, filled):
     nu = np.zeros_like(mf)
     act = np.flatnonzero((lo < mf) & (mf < hi))
 
-    def dual(i, lam_, nu_):
+    def dual(i: np.ndarray, lam_: np.ndarray, nu_: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         s_ = kaf[i] + lam_[:, None] + nu_[:, None] * Lf[i]
         bad = (ff[i] & (s_ <= 0)).any(-1)
         val = -np.where(ff[i], Rf[i] * np.log(np.where(s_ > 0, s_, 1.0)), 0.0).sum(-1) + lam_ + nu_ * mf[i]
@@ -151,7 +153,9 @@ def _interior(R, ka, L, m, filled):
     return q.reshape(R.shape), feasible.reshape(shape)
 
 
-def _one_empty_bin(R, ka, L, m, filled, z):
+def _one_empty_bin(
+    R: np.ndarray, ka: np.ndarray, L: np.ndarray, m: np.ndarray, filled: np.ndarray, z: int
+) -> tuple[np.ndarray, np.ndarray]:
     """Empty bin z carries mass (its dual slack is 0): a monotone 1-D root in nu."""
     c = ka - ka[..., z : z + 1]
     d = L - L[..., z : z + 1]
@@ -172,7 +176,7 @@ def _one_empty_bin(R, ka, L, m, filled, z):
     lo = np.where(np.isfinite(lo), lo, np.minimum(hi, 0.0) - span)
     hi = np.where(np.isfinite(hi), hi, np.maximum(lo, 0.0) + span)
 
-    def g(nu):
+    def g(nu: np.ndarray) -> np.ndarray:
         den = c + nu[..., None] * d
         with np.errstate(divide="ignore", invalid="ignore"):
             return np.where(filled, R * d / np.where(filled, den, 1.0), 0.0).sum(-1) - rhs
@@ -195,7 +199,9 @@ def _one_empty_bin(R, ka, L, m, filled, z):
     return np.maximum(q, 0.0), feasible
 
 
-def _two_empty_bins(R, ka, L, m, filled, z1, z2):
+def _two_empty_bins(
+    R: np.ndarray, ka: np.ndarray, L: np.ndarray, m: np.ndarray, filled: np.ndarray, z1: int, z2: int
+) -> tuple[np.ndarray, np.ndarray]:
     """Empty bins z1, z2 carry mass: both slacks are 0, which fixes the duals; then a 2x2 solve."""
     nu = -(ka[..., z1] - ka[..., z2]) / (L[..., z1] - L[..., z2])
     lam = -ka[..., z1] - nu * L[..., z1]

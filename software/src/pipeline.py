@@ -18,6 +18,7 @@ argparse and file I/O.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import replace
 from functools import partial
@@ -37,7 +38,7 @@ from constants import (
     FitParams,
 )
 from cpus import available_cpus
-from hill_fit import fit_one_clonotype
+from hill_fit import FitResult, fit_one_clonotype
 from io_layer import (
     InputValidationError,
     apply_antigen_filter,
@@ -106,14 +107,14 @@ _PARALLEL_FIT_MIN_SURVIVORS = 50
 
 
 def _execute_fits(
-    worker,
+    worker: Callable[[np.ndarray, np.ndarray, np.ndarray], FitResult],
     xs: list[np.ndarray],
     ys: list[np.ndarray],
     ws: list[np.ndarray],
     *,
     n_survivors: int,
     step: int,
-) -> list:
+) -> list[FitResult]:
     """Run worker(x, y, w) over each (x, y, w) triple; in-order results.
 
     Uses ProcessPoolExecutor when it pays off (worker count > 1 and enough
@@ -132,7 +133,7 @@ def _execute_fits(
         # enough work per round-trip to hide pickle cost.
         chunksize = max(1, n_survivors // (max_workers * 4))
         log(f"  parallel fit: {max_workers} workers, chunksize={chunksize}")
-        fits: list = []
+        fits: list[FitResult] = []
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
             for done, fit in enumerate(executor.map(worker, xs, ys, ws, chunksize=chunksize), start=1):
                 fits.append(fit)
