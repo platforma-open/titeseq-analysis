@@ -39,7 +39,7 @@ def _hill_reads(clonotype: str, true_kd: float, concs, bins, per_conc=500):
 
 # Default model: needs a 0 M control and the cells sorted per sample.
 _DEFAULT_MODEL_CONCS = [0.0, 1e-10, 1e-9, 1e-8, 1e-7, 1e-6]
-_CELLS_ARGS = ["--cell-count-column", "cells"]
+_CELLS_ARGS = ["--allow-computed-baseline", "--cell-count-column", "cells"]
 
 
 # Parquet round-trip — verifies argparse wiring, file reader, and parquet writer branch

@@ -43,7 +43,9 @@ def test_classification_truth_table(r2, n, converged, expected_class, expected_r
 # Non-default thresholds (e.g. multimeric-antigen scenario) exercise the same truth table.
 # Guards against hardcoded constants leaking into classify().
 def test_classification_with_non_default_thresholds():
-    strict = FitParams(r2_threshold_good=0.95, r2_threshold_failed=0.7, n_min=0.8, n_max=3.0)
+    strict = FitParams(
+        allow_computed_baseline=True, r2_threshold_good=0.95, r2_threshold_failed=0.7, n_min=0.8, n_max=3.0
+    )
     # R² = 0.93, n=1.5: in Partial zone under strict thresholds (would be Good with defaults).
     result = classify(0.93, 1.5, True, strict)
     assert result.affinity_class == "Partial"

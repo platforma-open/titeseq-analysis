@@ -19,7 +19,7 @@ from pipeline import run
 
 CONCS_M = [1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5]
 # The linear Hill fit, opt-in in bin mode since the Adams 2016 model became the default.
-HILL = FitParams(fit_model="hill_free_n")
+HILL = FitParams(allow_computed_baseline=True, fit_model="hill_free_n")
 
 
 def _bin_rows(concs, kds, rng, *, reads=400, sigma=0.4, prefix="K", extra=None, all_bins=False):
@@ -56,7 +56,7 @@ def test_constant_signal_clonotype_is_not_partial():
     y = np.full(6, 2.0)
     r2 = weighted_r2(y, y + 1e-3, np.full(6, 5.0))
     assert np.isnan(r2)
-    assert classify(r2, 1.0, True, FitParams()).affinity_class == "Failed"
+    assert classify(r2, 1.0, True, FitParams(allow_computed_baseline=True)).affinity_class == "Failed"
 
 
 def test_unbinned_zero_control_does_not_shift_kd():
@@ -109,7 +109,13 @@ def test_sort_fraction_with_antigen_column_is_accepted():
         for r in part:
             r["sampleId"] = f"{ag}_{r['sampleId']}"
         rows += part
-    run(pl.DataFrame(rows), target_antigen="AgA", antigen_column_ref="antigen", sort_fraction_col="sort_fraction")
+    run(
+        pl.DataFrame(rows),
+        params=FitParams(allow_computed_baseline=True),
+        target_antigen="AgA",
+        antigen_column_ref="antigen",
+        sort_fraction_col="sort_fraction",
+    )
 
 
 def test_sort_fraction_ignores_samples_without_concentration():
@@ -140,7 +146,7 @@ def test_too_few_points_for_parameter_count_is_reported_as_insufficient_points()
     concs = list(np.logspace(-10, -5, 4))  # 4 points, no 0 M control -> 4 free parameters
     out = run(
         pl.DataFrame(_bin_rows(concs, [1e-8] * 10, rng)),
-        params=FitParams(fit_model="hill_free_n", min_concentration_points=3),
+        params=FitParams(allow_computed_baseline=True, fit_model="hill_free_n", min_concentration_points=3),
     )
     reasons = set(out["per_clonotype"]["fitFailureReason"].to_list())
     assert "convergence_failure" not in reasons

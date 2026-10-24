@@ -24,7 +24,7 @@ from pipeline import run
 
 # The corpus was generated from the linear Hill model on mean bin (no cell counts, no 0 M baseline
 # in fluorescence space), so it exercises the opt-in hill_free_n model.
-LINEAR_HILL = FitParams(fit_model="hill_free_n")
+LINEAR_HILL = FitParams(allow_computed_baseline=True, fit_model="hill_free_n")
 
 CORPUS_DIR = Path(__file__).resolve().parent.parent / "data" / "corpus"
 MANIFEST = json.loads((CORPUS_DIR / "manifest.json").read_text())
@@ -69,9 +69,7 @@ def antigen_outputs() -> dict[str, pl.DataFrame]:
 
 
 @pytest.fixture(scope="module")
-def outputs_by_section(
-    bin_outputs, no_bin_outputs, antigen_outputs
-) -> dict[str, dict[str, pl.DataFrame]]:
+def outputs_by_section(bin_outputs, no_bin_outputs, antigen_outputs) -> dict[str, dict[str, pl.DataFrame]]:
     return {
         "bin_mode": bin_outputs,
         "no_bin_mode": no_bin_outputs,
@@ -126,11 +124,7 @@ def test_classification_matches_manifest(outputs_by_section, section, key, entry
 @pytest.mark.parametrize(
     "section,key,entry",
     [(s, k, e) for s, k, e in ALL_ENTRIES if e.get("kd_range") is not None],
-    ids=[
-        f"{s}-{k}"
-        for s, k, e in ALL_ENTRIES
-        if e.get("kd_range") is not None
-    ],
+    ids=[f"{s}-{k}" for s, k, e in ALL_ENTRIES if e.get("kd_range") is not None],
 )
 def test_kd_within_tolerance(outputs_by_section, section, key, entry):
     row = _row_for(outputs_by_section[section]["per_clonotype"], key)
@@ -142,19 +136,13 @@ def test_kd_within_tolerance(outputs_by_section, section, key, entry):
 @pytest.mark.parametrize(
     "section,key,entry",
     [(s, k, e) for s, k, e in ALL_ENTRIES if e.get("hill_range") is not None],
-    ids=[
-        f"{s}-{k}"
-        for s, k, e in ALL_ENTRIES
-        if e.get("hill_range") is not None
-    ],
+    ids=[f"{s}-{k}" for s, k, e in ALL_ENTRIES if e.get("hill_range") is not None],
 )
 def test_hill_within_tolerance(outputs_by_section, section, key, entry):
     row = _row_for(outputs_by_section[section]["per_clonotype"], key)
     lo, hi = entry["hill_range"]
     assert row["hillCoefficient"] is not None, "expected fitted n, got null"
-    assert lo <= row["hillCoefficient"] <= hi, (
-        f"n={row['hillCoefficient']} not in [{lo}, {hi}]"
-    )
+    assert lo <= row["hillCoefficient"] <= hi, f"n={row['hillCoefficient']} not in [{lo}, {hi}]"
 
 
 # R14b: kd outside [min non-zero conc, max conc] sets the flag. Skips entries
@@ -162,11 +150,7 @@ def test_hill_within_tolerance(outputs_by_section, section, key, entry):
 @pytest.mark.parametrize(
     "section,key,entry",
     [(s, k, e) for s, k, e in ALL_ENTRIES if e.get("kd_out_of_range") is not None],
-    ids=[
-        f"{s}-{k}"
-        for s, k, e in ALL_ENTRIES
-        if e.get("kd_out_of_range") is not None
-    ],
+    ids=[f"{s}-{k}" for s, k, e in ALL_ENTRIES if e.get("kd_out_of_range") is not None],
 )
 def test_kd_out_of_range_flag(outputs_by_section, section, key, entry):
     row = _row_for(outputs_by_section[section]["per_clonotype"], key)
@@ -176,16 +160,8 @@ def test_kd_out_of_range_flag(outputs_by_section, section, key, entry):
 # R17: null kd → kdPlotPosition = max_conc * 10; null n → hillPlotPosition = -1.0.
 @pytest.mark.parametrize(
     "section,key,entry",
-    [
-        (s, k, e)
-        for s, k, e in ALL_ENTRIES
-        if e.get("hill_plot_position_is_sentinel")
-    ],
-    ids=[
-        f"{s}-{k}"
-        for s, k, e in ALL_ENTRIES
-        if e.get("hill_plot_position_is_sentinel")
-    ],
+    [(s, k, e) for s, k, e in ALL_ENTRIES if e.get("hill_plot_position_is_sentinel")],
+    ids=[f"{s}-{k}" for s, k, e in ALL_ENTRIES if e.get("hill_plot_position_is_sentinel")],
 )
 def test_r17_sentinel_values(outputs_by_section, section, key, entry):
     row = _row_for(outputs_by_section[section]["per_clonotype"], key)
@@ -245,9 +221,7 @@ class TestAntigenFilter:
         frame = antigen_outputs[frame_name]
         distractors = set(MANIFEST["antigen"]["distractor_clonotypes"])
         actual = set(frame["clonotypeKey"].to_list())
-        assert actual.isdisjoint(distractors), (
-            f"{frame_name}: distractors leaked: {actual & distractors}"
-        )
+        assert actual.isdisjoint(distractors), f"{frame_name}: distractors leaked: {actual & distractors}"
 
     @pytest.mark.parametrize("frame_name", ["per_clonotype", "mean_bin", "fitted_mean_bin"])
     def test_targets_present(self, antigen_outputs, frame_name):
@@ -301,9 +275,7 @@ class TestDeterminism:
             for k, av, bv in zip(keys, a[col].to_list(), b[col].to_list()):
                 if av is None and bv is None:
                     continue
-                assert av is not None and bv is not None, (
-                    f"{col} for {k}: one run null, other not ({av}, {bv})"
-                )
+                assert av is not None and bv is not None, f"{col} for {k}: one run null, other not ({av}, {bv})"
                 assert av == pytest.approx(bv, rel=rel, abs=abs_tol), (
                     f"{col} for {k}: {av} vs {bv} outside rel={rel}, abs={abs_tol}"
                 )
