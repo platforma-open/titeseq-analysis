@@ -15,7 +15,7 @@ import polars as pl
 
 from constants import COL_CLONOTYPE, COL_CONC_STR, COL_CONC_VAL
 
-PER_CLONOTYPE_SCHEMA: dict[str, pl.DataType] = {
+PER_CLONOTYPE_SCHEMA: dict[str, pl.DataType | type[pl.DataType]] = {
     COL_CLONOTYPE: pl.Utf8,
     "kd": pl.Float64,
     "hillCoefficient": pl.Float64,
@@ -53,10 +53,7 @@ def add_diagnostic_plot_columns(frame: pl.DataFrame, max_concentration: float) -
     clonotypes. Both columns are diagnostic — not for reporting — and never null.
     """
     return frame.with_columns(
-        pl.when(pl.col("kd").is_null())
-        .then(max_concentration * 10.0)
-        .otherwise(pl.col("kd"))
-        .alias("kdPlotPosition"),
+        pl.when(pl.col("kd").is_null()).then(max_concentration * 10.0).otherwise(pl.col("kd")).alias("kdPlotPosition"),
         pl.when(pl.col("hillCoefficient").is_null())
         .then(-1.0)
         .otherwise(pl.col("hillCoefficient"))
@@ -109,14 +106,14 @@ def build_concentration_value_frame(signal_frame: pl.DataFrame) -> pl.DataFrame:
     )
 
 
-FITTED_MEAN_BIN_SCHEMA: dict[str, pl.DataType] = {
+FITTED_MEAN_BIN_SCHEMA: dict[str, pl.DataType | type[pl.DataType]] = {
     COL_CLONOTYPE: pl.Utf8,
     COL_CONC_STR: pl.Utf8,
     "fittedMeanBin": pl.Float64,
 }
 
 
-CONCENTRATION_VALUE_SCHEMA: dict[str, pl.DataType] = {
+CONCENTRATION_VALUE_SCHEMA: dict[str, pl.DataType | type[pl.DataType]] = {
     COL_CONC_STR: pl.Utf8,
     COL_CONC_VAL: pl.Float64,
 }

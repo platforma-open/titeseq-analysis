@@ -18,7 +18,9 @@ argparse and file I/O.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor
+from contextlib import ExitStack
 from dataclasses import replace
 from functools import partial
 
@@ -37,7 +39,7 @@ from constants import (
     FitParams,
 )
 from cpus import available_cpus
-from hill_fit import fit_one_clonotype
+from hill_fit import FitResult, fit_one_clonotype
 from io_layer import (
     InputValidationError,
     apply_antigen_filter,
@@ -106,14 +108,14 @@ _PARALLEL_FIT_MIN_SURVIVORS = 50
 
 
 def _execute_fits(
-    worker,
+    worker: Callable[[np.ndarray, np.ndarray, np.ndarray], FitResult],
     xs: list[np.ndarray],
     ys: list[np.ndarray],
     ws: list[np.ndarray],
     *,
     n_survivors: int,
     step: int,
-) -> list:
+) -> list[FitResult]:
     """Run worker(x, y, w) over each (x, y, w) triple; in-order results.
 
     Uses ProcessPoolExecutor when it pays off (worker count > 1 and enough
@@ -126,28 +128,22 @@ def _execute_fits(
         return []
 
     max_workers = min(available_cpus(), n_survivors)
-    if max_workers > 1 and n_survivors >= _PARALLEL_FIT_MIN_SURVIVORS:
-        # chunksize trades IPC overhead against load balancing. ~4 chunks per
-        # worker keeps stragglers from stalling at the tail while batching
-        # enough work per round-trip to hide pickle cost.
-        chunksize = max(1, n_survivors // (max_workers * 4))
-        log(f"  parallel fit: {max_workers} workers, chunksize={chunksize}")
-        fits: list = []
-        with ProcessPoolExecutor(max_workers=max_workers) as executor:
-            for done, fit in enumerate(
-                executor.map(worker, xs, ys, ws, chunksize=chunksize), start=1
-            ):
-                fits.append(fit)
-                if done % step == 0 or done == n_survivors:
-                    log(f"  fitted {done}/{n_survivors} clonotypes")
-        return fits
-
-    fits = []
-    for idx, (x, y, w) in enumerate(zip(xs, ys, ws)):
-        fits.append(worker(x, y, w))
-        done = idx + 1
-        if done % step == 0 or done == n_survivors:
-            log(f"  fitted {done}/{n_survivors} clonotypes")
+    fits: list[FitResult] = []
+    with ExitStack() as stack:
+        if max_workers > 1 and n_survivors >= _PARALLEL_FIT_MIN_SURVIVORS:
+            # chunksize trades IPC overhead against load balancing. ~4 chunks per
+            # worker keeps stragglers from stalling at the tail while batching
+            # enough work per round-trip to hide pickle cost.
+            chunksize = max(1, n_survivors // (max_workers * 4))
+            log(f"  parallel fit: {max_workers} workers, chunksize={chunksize}")
+            executor = stack.enter_context(ProcessPoolExecutor(max_workers=max_workers))
+            results = executor.map(worker, xs, ys, ws, chunksize=chunksize)
+        else:
+            results = map(worker, xs, ys, ws)
+        for done, fit in enumerate(results, start=1):
+            fits.append(fit)
+            if done % step == 0 or done == n_survivors:
+                log(f"  fitted {done}/{n_survivors} clonotypes")
     return fits
 
 
@@ -274,7 +270,7 @@ def _fit_all_clonotypes(
             schema=FITTED_MEAN_BIN_SCHEMA,
         )
     else:
-        fitted = pl.DataFrame({k: [] for k in FITTED_MEAN_BIN_SCHEMA}, schema=FITTED_MEAN_BIN_SCHEMA)
+        fitted = pl.DataFrame(schema=FITTED_MEAN_BIN_SCHEMA)
 
     return per_clonotype, fitted
 

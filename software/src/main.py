@@ -48,8 +48,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--sort-fraction-column",
         default=None,
-        help="Column name in reads.tsv carrying sort fraction C_bc/C_c per sample. "
-        "Absent ⇒ no FACS correction.",
+        help="Column name in reads.tsv carrying sort fraction C_bc/C_c per sample. Absent ⇒ no FACS correction.",
     )
     parser.add_argument(
         "--cell-count-column",

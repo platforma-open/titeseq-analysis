@@ -9,19 +9,26 @@ from contextlib import redirect_stdout
 import numpy as np
 import polars as pl
 import pytest
+from helpers import SimulatedExperiment, simulate_titeseq
 
-from constants import FitParams
+from constants import DEFAULT_PARAMS, FitParams
 from io_layer import InputValidationError
 from pipeline import run
 
 
-def _run(reads, **kw):
+def _run(
+    reads: pl.DataFrame,
+    *,
+    params: FitParams = DEFAULT_PARAMS,
+    cell_count_col: str | None = None,
+    sort_fraction_col: str | None = None,
+) -> dict[str, pl.DataFrame]:
     with redirect_stdout(io.StringIO()):
-        return run(reads, **kw)
+        return run(reads, params=params, cell_count_col=cell_count_col, sort_fraction_col=sort_fraction_col)
 
 
 @pytest.fixture(scope="module")
-def fitted(simulated_library):
+def fitted(simulated_library: SimulatedExperiment) -> tuple[dict[str, pl.DataFrame], dict[str, dict]]:
     out = _run(simulated_library.reads, params=FitParams(bin_width_decades=0.7), cell_count_col="cells")
     pc = out["per_clonotype"].with_columns(pl.col("kd").log10().alias("log10_kd"))
     return out, {row["clonotypeKey"]: row for row in pc.iter_rows(named=True)}
@@ -48,8 +55,18 @@ def test_in_range_binders_are_good_with_tight_uncertainty(fitted):
     for key, row in rows.items():
         if key.startswith("B"):
             assert row["affinityClass"] == "Good", key
-            assert row["kdCensor"] is None
+            assert row["kdCensor"] is None and row["kdOutOfRange"] is False
             assert row["kdLog10Sd"] < 0.3
+            assert row["r2"] > 0.9, key
+            assert row["hillCoefficient"] == 1.0  # the Adams 2016 model has n = 1
+
+
+# A K_D bound is still a fit: it reports n = 1 and is flagged out of range.
+@pytest.mark.parametrize("key", ["TIGHT", "NONBINDER"])
+def test_kd_bounds_are_flagged_out_of_range(fitted, key):
+    _, rows = fitted
+    assert rows[key]["kdOutOfRange"] is True
+    assert rows[key]["hillCoefficient"] == 1.0
 
 
 def test_binder_tighter_than_the_lowest_concentration_is_a_lower_bound(fitted):
@@ -75,10 +92,14 @@ def test_fitted_curve_is_emitted_only_for_non_failed_and_stays_within_bins(fitte
     assert "NONBINDER" not in set(fmb["clonotypeKey"].to_list())
     assert {"B00", "TIGHT"} <= set(fmb["clonotypeKey"].to_list())
     assert fmb["fittedMeanBin"].min() >= 1.0 and fmb["fittedMeanBin"].max() <= 4.0
+    # The curve tracks the observed mean bin: noise on the simulated library is about 0.2 bins.
+    both = fmb.join(out["mean_bin"], on=["clonotypeKey", "concentrationStr"])
+    assert both.height == fmb.height
+    assert (both["fittedMeanBin"] - both["meanBin"]).abs().max() < 0.3
 
 
-def test_sort_fractions_give_the_same_kd_when_reads_do_not_exceed_cells(simulate):
-    sim = simulate({"A": (-8.0, 60.0), "B": (-7.0, 60.0), "N": (-2.0, 60.0)}, reads_per_sample=500, seed=3)
+def test_sort_fractions_give_the_same_kd_when_reads_do_not_exceed_cells():
+    sim = simulate_titeseq({"A": (-8.0, 60.0), "B": (-7.0, 60.0), "N": (-2.0, 60.0)}, reads_per_sample=500, seed=3)
     # Fractions are per sample: compute them from one row per sample, not per clonotype row.
     per_sample = sim.reads.select("sampleId", "concentrationStr", "cells").unique()
     per_sample = per_sample.with_columns(
@@ -93,21 +114,13 @@ def test_sort_fractions_give_the_same_kd_when_reads_do_not_exceed_cells(simulate
 
 class TestInputsTheModelNeeds:
     @pytest.fixture(scope="class")
-    def small(self, simulate):
-        return simulate({"A": (-8.0, 60.0), "N": (-2.0, 60.0)}, seed=5).reads
-
-    def test_bin_mode_without_cell_counts_is_rejected(self, small):
-        with pytest.raises(InputValidationError, match="cells sorted into each sample"):
-            _run(small.drop("cells"))
+    def small(self) -> pl.DataFrame:
+        return simulate_titeseq({"A": (-8.0, 60.0), "N": (-2.0, 60.0)}, seed=5).reads
 
     def test_uncorrected_runs_only_when_asked_and_says_so(self, small, capsys):
         out = run(small.drop("cells"), params=FitParams(allow_uncorrected=True))
         assert out["per_clonotype"].height == 2
         assert "uncorrected" in capsys.readouterr().out
-
-    def test_missing_zero_control_is_rejected(self, small):
-        with pytest.raises(InputValidationError, match="0 M"):
-            _run(small.filter(pl.col("concentration") > 0), cell_count_col="cells")
 
     def test_baseline_override_replaces_the_zero_control(self, small):
         params = FitParams(bin_width_decades=0.7, baseline_fluorescence=2.5)
@@ -115,41 +128,71 @@ class TestInputsTheModelNeeds:
         a = out["per_clonotype"].filter(pl.col("clonotypeKey") == "A")
         assert np.log10(a["kd"][0]) == pytest.approx(-8.0, abs=0.25)
 
-    def test_plateau_prior_below_baseline_is_rejected(self, small):
-        with pytest.raises(InputValidationError, match="min_plateau_fraction"):
-            _run(small, params=FitParams(min_plateau_fraction=0.05), cell_count_col="cells")
-
     @pytest.mark.parametrize(
-        "corrupt, message",
+        "corrupt, kwargs, message",
         [
-            (lambda df: df.with_columns(pl.lit(-1.0).alias("cells")), "finite and >= 0"),
-            (
+            pytest.param(lambda df: df.drop("cells"), {}, "cells sorted into each sample", id="bin-mode-without-cells"),
+            pytest.param(
+                lambda df: df.filter(pl.col("concentration") > 0),
+                {"cell_count_col": "cells"},
+                "0 M",
+                id="missing-zero-control",
+            ),
+            pytest.param(
+                lambda df: df,
+                {"params": FitParams(min_plateau_fraction=0.05), "cell_count_col": "cells"},
+                "min_plateau_fraction",
+                id="plateau-prior-below-baseline",
+            ),
+            pytest.param(
+                lambda df: df,
+                {"params": FitParams(baseline_fluorescence=0.0), "cell_count_col": "cells"},
+                "0 M baseline",
+                id="zero-baseline",
+            ),
+            pytest.param(
+                lambda df: df,
+                {"params": FitParams(min_plateau_fraction=0.0), "cell_count_col": "cells"},
+                r"must be in \(0, 1\)",
+                id="plateau-fraction-zero",
+            ),
+            pytest.param(
+                lambda df: df,
+                {"params": FitParams(bin_width_decades=0.0), "cell_count_col": "cells"},
+                "bin_width_decades",
+                id="zero-bin-width",
+            ),
+            pytest.param(
+                lambda df: df,
+                {"params": FitParams(min_plateau_fraction=1.0), "cell_count_col": "cells"},
+                "min_plateau_fraction",
+                id="plateau-fraction-not-below-1",
+            ),
+            pytest.param(
+                lambda df: df.with_columns(pl.lit(-1.0).alias("cells")),
+                {"cell_count_col": "cells"},
+                "finite and >= 0",
+                id="negative-cells",
+            ),
+            pytest.param(
                 lambda df: df.with_columns(
                     pl.when(pl.col("clonotypeKey") == "A").then(1.0).otherwise(pl.col("cells")).alias("cells")
                 ),
+                {"cell_count_col": "cells"},
                 "one value per sample",
+                id="cells-differ-within-sample",
             ),
-            (lambda df: df.with_columns(pl.lit(None, dtype=pl.Float64).alias("cells")), "null"),
+            pytest.param(
+                lambda df: df.with_columns(pl.lit(None, dtype=pl.Float64).alias("cells")),
+                {"cell_count_col": "cells"},
+                "null",
+                id="null-cells",
+            ),
         ],
-        ids=["negative", "differs-within-sample", "null"],
     )
-    def test_invalid_cell_counts_are_rejected(self, small, corrupt, message):
+    def test_invalid_input_is_rejected(self, small, corrupt, kwargs, message):
         with pytest.raises(InputValidationError, match=message):
-            _run(corrupt(small), cell_count_col="cells")
-
-
-@pytest.mark.parametrize(
-    "params, message",
-    [
-        (FitParams(bin_width_decades=0.0), "bin_width_decades"),
-        (FitParams(min_plateau_fraction=1.0), "min_plateau_fraction"),
-    ],
-    ids=["zero-bin-width", "plateau-fraction-not-below-1"],
-)
-def test_invalid_model_settings_are_rejected(simulate, params, message):
-    reads = simulate({"A": (-8.0, 60.0)}, seed=7).reads
-    with pytest.raises(InputValidationError, match=message):
-        _run(reads, params=params, cell_count_col="cells")
+            _run(corrupt(small), **kwargs)
 
 
 def test_uncertain_in_range_kd_is_partial(simulated_library):
@@ -162,22 +205,23 @@ def test_uncertain_in_range_kd_is_partial(simulated_library):
     assert rows["NONBINDER"]["affinityClass"] == "Failed"
 
 
-def test_clonotype_seen_at_too_few_concentrations_is_not_fitted(simulate):
-    sim = simulate({"A": (-8.0, 60.0), "N": (-2.0, 60.0)}, seed=9)
+def test_clonotype_seen_at_too_few_concentrations_is_not_fitted():
+    sim = simulate_titeseq({"A": (-8.0, 60.0), "N": (-2.0, 60.0)}, seed=9)
     concs = sorted(sim.reads["concentration"].unique().to_list())
     # Keep "A" at 0 M and 3 nonzero concentrations only: below min_concentration_points (5).
     keep = pl.col("clonotypeKey").ne("A") | pl.col("concentration").is_in(concs[:4])
     out = _run(sim.reads.filter(keep), params=FitParams(bin_width_decades=0.7), cell_count_col="cells")
     a = out["per_clonotype"].filter(pl.col("clonotypeKey") == "A")
     assert (a["affinityClass"][0], a["fitFailureReason"][0]) == ("Failed", "insufficient_points")
-    assert a["kd"][0] is None and a["kdCensor"][0] is None
+    for column in ("kd", "hillCoefficient", "r2", "kdOutOfRange", "kdLog10Sd", "kdCensor"):
+        assert a[column][0] is None, column
     assert "A" not in set(out["fitted_mean_bin"]["clonotypeKey"].to_list())
 
 
-def test_unsorted_zero_control_does_not_change_the_fit(simulate):
+def test_unsorted_zero_control_does_not_change_the_fit():
     # A 0 M sample with no bin assignment (an unsorted control) is allowed in; it carries no bin
     # information, so the fit must ignore it rather than crash.
-    reads = simulate({"A": (-8.0, 60.0), "N": (-2.0, 60.0)}, seed=11).reads
+    reads = simulate_titeseq({"A": (-8.0, 60.0), "N": (-2.0, 60.0)}, seed=11).reads
     unsorted = reads.filter(pl.col("sampleId") == "c0_b1").with_columns(
         pl.lit("c0_unsorted").alias("sampleId"), pl.lit(None, dtype=pl.Int64).alias("bin")
     )
@@ -187,9 +231,9 @@ def test_unsorted_zero_control_does_not_change_the_fit(simulate):
     assert with_unsorted["per_clonotype"].sort("clonotypeKey").equals(plain)
 
 
-def test_control_only_data_reports_every_clonotype_failed(simulate):
+def test_control_only_data_reports_every_clonotype_failed():
     # Only 0 M samples: nothing to titrate, so every clonotype is Failed with a reason, not a crash.
-    reads = simulate({"A": (-8.0, 60.0), "N": (-2.0, 60.0)}, seed=13).reads.filter(pl.col("concentration") == 0)
+    reads = simulate_titeseq({"A": (-8.0, 60.0), "N": (-2.0, 60.0)}, seed=13).reads.filter(pl.col("concentration") == 0)
     out = _run(reads, params=FitParams(bin_width_decades=0.7), cell_count_col="cells")
     pc = out["per_clonotype"]
     assert set(pc["clonotypeKey"].to_list()) == {"A", "N"}
@@ -198,9 +242,9 @@ def test_control_only_data_reports_every_clonotype_failed(simulate):
     assert out["fitted_mean_bin"].height == 0
 
 
-def test_presort_library_sample_without_cell_count_does_not_change_the_fit(simulate):
+def test_presort_library_sample_without_cell_count_does_not_change_the_fit():
     # A pre-sort library sample has no concentration, bin or cell count; the fit does not use it.
-    reads = simulate({"A": (-8.0, 60.0), "N": (-2.0, 60.0)}, seed=17).reads
+    reads = simulate_titeseq({"A": (-8.0, 60.0), "N": (-2.0, 60.0)}, seed=17).reads
     presort = reads.filter(pl.col("sampleId") == "c0_b1").with_columns(
         pl.lit("presort").alias("sampleId"),
         pl.lit(None, dtype=pl.Utf8).alias("concentrationStr"),
