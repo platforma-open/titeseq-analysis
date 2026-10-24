@@ -32,6 +32,9 @@ from constants import DEFAULT_PARAMS, FitParams
         # Did not converge → Failed (convergence_failure), regardless of R²/n
         (0.0, 0.0, False, "Failed", "convergence_failure"),
         (None, None, False, "Failed", "convergence_failure"),
+        # Converged, but the fit left R² or n undefined → Failed (convergence_failure)
+        (None, 1.0, True, "Failed", "convergence_failure"),
+        (0.95, None, True, "Failed", "convergence_failure"),
     ],
 )
 def test_classification_truth_table(r2, n, converged, expected_class, expected_reason):
