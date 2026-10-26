@@ -1,4 +1,4 @@
-//tengo:hash_override F310EBAA-21EC-494E-8975-EA2251B7D12C
+//tengo:hash_override 77908597-6847-408F-8ACE-D9BAEB858310
 // Entry template for the Tite-Seq Analysis block.
 // Joins the abundance PColumn with per-sample metadata into one long-format reads TSV,
 // runs the Python fit-curves binary, and imports its three outputs as traced PFrames.
@@ -83,6 +83,22 @@ wf.body(func(args) {
 	readsBuilder.cpu(1)
 	readsTsv := readsBuilder.build()
 
+	// Build samples.tsv: one row per sampleId, carrying only per-sample metadata.
+	// This is the sample list, and reads.tsv is not. reads.tsv is a join against
+	// abundance, so a sample whose clonotypes all have zero reads produces no rows
+	// at all. Python needs the true list for the R5 check that every
+	// (bin, concentration) sample was measured.
+	samplesTsv := undefined
+	if hasBin {
+		samplesBuilder := pframes.tsvFileBuilder()
+		samplesBuilder.setAxisHeader(concSpec.axesSpec[0].name, "sampleId")
+		samplesBuilder.add(columns.getColumn("concentration"), { header: "concentration" })
+		samplesBuilder.add(columns.getColumn("bin"), { header: "bin" })
+		samplesBuilder.mem("1GiB")
+		samplesBuilder.cpu(1)
+		samplesTsv = samplesBuilder.build()
+	}
+
 	// params.json payload. Python auto-detects bin-mode (COL_BIN presence)
 	// and baseline-from-zero (c=0 rows), so only tuning params go here.
 	paramsPayload := {
@@ -129,6 +145,11 @@ wf.body(func(args) {
 		saveFile("concentration_value.tsv").
 		saveFileContent("fit_summary.json").
 		saveStdoutStream()
+
+	if !is_undefined(samplesTsv) {
+		execBuilder.addFile("samples.tsv", samplesTsv).
+			arg("--samples").arg("samples.tsv")
+	}
 
 	if hasAntigen {
 		execBuilder.arg("--antigen-column-ref").arg("antigen")

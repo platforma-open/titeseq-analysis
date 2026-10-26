@@ -11,7 +11,7 @@ from pathlib import Path
 import polars as pl
 
 from constants import DEFAULT_PARAMS, FitParams
-from io_layer import read_reads_table
+from io_layer import canonicalize_concentration, read_reads_table
 from log import log
 from pipeline import run
 
@@ -58,6 +58,13 @@ def main(argv: list[str] | None = None) -> int:
         "Preferred over --sort-fraction-column: also allows rescaling bins with more reads than cells.",
     )
     parser.add_argument(
+        "--samples",
+        default=None,
+        help="path to the sample table (one row per sampleId with its bin and concentration). "
+        "Used only for the R5 check that every (bin, concentration) sample was measured, which "
+        "the sparse reads table cannot answer. Omitted: that check is skipped.",
+    )
+    parser.add_argument(
         "--allow-computed-baseline",
         action="store_true",
         help="Compute the 0 M baseline when none is given. Only correct when every clonotype is a "
@@ -69,6 +76,10 @@ def main(argv: list[str] | None = None) -> int:
     log(f"Reading input table: {args.reads}")
     reads = read_reads_table(args.reads)
     log(f"Loaded {reads.height} rows, {len(reads.columns)} columns")
+    samples = None
+    if args.samples:
+        samples = canonicalize_concentration(read_reads_table(args.samples))
+        log(f"Loaded {samples.height} samples from {args.samples}")
     params = DEFAULT_PARAMS
     if args.params:
         with open(args.params) as f:
@@ -84,6 +95,7 @@ def main(argv: list[str] | None = None) -> int:
         antigen_column_ref=args.antigen_column_ref,
         sort_fraction_col=args.sort_fraction_column,
         cell_count_col=args.cell_count_column,
+        samples=samples,
     )
     log("Writing output frames")
     _write_frame(outputs["per_clonotype"], args.out_per_clonotype)

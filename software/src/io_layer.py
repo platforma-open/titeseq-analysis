@@ -243,36 +243,43 @@ def validate_sample_metadata_uniqueness(df: pl.DataFrame, has_bin: bool, has_ant
             raise InputValidationError(f"sampleId must map to a single {c}; violating samples: {sample_list}")
 
 
-def validate_bin_concentration_grid(df: pl.DataFrame) -> list[str]:
-    """R5 sub-clause: warn when (bin, concentration) combos are non-uniformly populated.
+def validate_bin_concentration_grid(samples: pl.DataFrame | None) -> list[str]:
+    """R5 sub-clause: warn when a (bin, concentration) sample is absent from the titration.
 
-    Absent combinations silently reduce the number of bins contributing to mean_bin
-    at that concentration, biasing the result without any flag. The reference grid
-    is every (bin, concentrationStr) pair observed for ANY clonotype; any clonotype
-    with fewer combinations present is flagged.
+    An unmeasured (bin, concentration) sample drops a bin from mean_bin at that
+    concentration, which biases the result with no other flag.
+
+    `samples` is the sample table — one row per sampleId with its bin and
+    concentration — not the reads table. The reads table cannot answer this
+    question. It is sparse, so a (bin, concentration) pair is missing from it both
+    when the sample was never measured and when every clonotype simply had no reads
+    there. The second case is routine and unbiased: at 0 M the high-fluorescence
+    bins are empty by construction, and a clonotype absent from a bin is a true zero
+    that contributes nothing to either side of the mean_bin ratio. Checking reads
+    therefore fires on every real dataset (bug-hunt M3). `None` skips the check.
     """
     warnings: list[str] = []
-    if COL_BIN not in df.columns:
+    if samples is None or COL_BIN not in samples.columns:
         return warnings
 
-    ref_grid = df.select([COL_BIN, COL_CONC_STR]).unique()
-    n_grid = ref_grid.height
-    if n_grid <= 1:
+    measured = samples.select([COL_BIN, COL_CONC_STR]).unique()
+    bins = samples[COL_BIN].unique()
+    concentrations = samples[COL_CONC_STR].unique()
+    expected = len(bins) * len(concentrations)
+    if expected <= 1 or measured.height >= expected:
         return warnings
 
-    per_clone = (
-        df.select([COL_CLONOTYPE, COL_BIN, COL_CONC_STR])
-        .unique()
-        .group_by(COL_CLONOTYPE, maintain_order=True)
-        .agg(pl.len().alias("n_combos"))
+    absent = (
+        bins.to_frame(name=COL_BIN)
+        .join(concentrations.to_frame(name=COL_CONC_STR), how="cross")
+        .join(measured, on=[COL_BIN, COL_CONC_STR], how="anti")
+        .sort([COL_CONC_STR, COL_BIN])
     )
-    missing = per_clone.filter(pl.col("n_combos") < n_grid)
-    if missing.height > 0:
-        offenders = missing[COL_CLONOTYPE].sort().to_list()[:5]
-        warnings.append(
-            f"{missing.height} clonotype(s) have missing (bin, concentration) combinations; "
-            f"expected {n_grid}, examples: {offenders} (R5)"
-        )
+    examples = [f"(bin {b}, {c} M)" for b, c in absent.head(5).iter_rows()]
+    warnings.append(
+        f"{absent.height} (bin, concentration) sample(s) absent from the titration; "
+        f"expected {expected}, examples: {examples} (R5)"
+    )
     return warnings
 
 

@@ -214,47 +214,43 @@ class TestNarrowConcentrationRangeWarning:
 
 
 class TestBinConcentrationGrid:
-    """R5 sub-clause: warn when (bin, concentration) combos are non-uniformly populated.
+    """R5 sub-clause: warn when a (bin, concentration) sample is absent from the titration.
 
-    Absent combinations silently reduce the number of bins contributing to
-    mean_bin at that concentration, biasing the result without any flag.
+    An unmeasured sample drops a bin from mean_bin at that concentration. A clonotype
+    merely having no reads in a bin is a true zero and changes no fitted value, so it
+    is not reported.
     """
 
-    def test_uniform_grid_no_warning(self):
-        # Every clonotype has the full (bin × conc) cartesian product present.
-        rows = [
-            _row(
-                clonotypeKey=clone,
-                sampleId=f"s-{clone}-{conc}-{b}",
-                concentrationStr=conc,
-                concentration=float(conc),
-                bin=b,
-            )
-            for clone in ["A", "B"]
-            for conc in ["1", "10"]
-            for b in [1, 2]
-        ]
-        warnings = _validate_grid(pl.DataFrame(rows))
-        assert warnings == []
+    @staticmethod
+    def _samples(pairs: list[tuple[int, str]]) -> pl.DataFrame:
+        """One row per sampleId, as the workflow's samples.tsv supplies it."""
+        return pl.DataFrame(
+            [
+                {"sampleId": f"s{i}", "bin": b, "concentrationStr": c, "concentration": float(c)}
+                for i, (b, c) in enumerate(pairs)
+            ]
+        )
 
-    def test_missing_combo_emits_warning(self):
-        # A has (bin=1, conc=10); B is missing that combo → warn on B.
-        rows = [
-            _row(sampleId="s1"),
-            _row(sampleId="s2", concentrationStr="10", concentration=10.0),
-            _row(clonotypeKey="B", sampleId="s1"),
-        ]
-        warnings = _validate_grid(pl.DataFrame(rows))
-        assert len(warnings) > 0
+    def test_no_sample_table_skips_the_check(self):
+        assert _validate_grid(None) == []
+
+    def test_full_grid_no_warning(self):
+        samples = self._samples([(b, c) for c in ["1", "10"] for b in [1, 2]])
+        assert _validate_grid(samples) == []
+
+    def test_absent_sample_emits_warning(self):
+        # Conc 10 was only ever sorted into bin 1.
+        samples = self._samples([(1, "1"), (2, "1"), (1, "10")])
+        warnings = _validate_grid(samples)
+        assert len(warnings) == 1
+        assert "(bin 2, 10 M)" in warnings[0]
 
     # The warning reaches the Fit Log; its examples must not change between runs on the same input.
-    def test_examples_are_the_first_clonotypes_by_key(self):
-        full = [_row(clonotypeKey="FULL", concentrationStr=c, concentration=float(c)) for c in ["1", "10"]]
-        partial = [_row(clonotypeKey=f"C{i:02d}") for i in reversed(range(40))]
-        warnings = _validate_grid(pl.DataFrame(full + partial))
-        assert warnings == [
-            "40 clonotype(s) have missing (bin, concentration) combinations; "
-            "expected 2, examples: ['C00', 'C01', 'C02', 'C03', 'C04'] (R5)"
+    def test_examples_are_absent_pairs_in_a_stable_order(self):
+        samples = self._samples([(1, "1"), (2, "1"), (3, "1"), (1, "10")])
+        assert _validate_grid(samples) == [
+            "2 (bin, concentration) sample(s) absent from the titration; "
+            "expected 6, examples: ['(bin 2, 10 M)', '(bin 3, 10 M)'] (R5)"
         ]
 
 

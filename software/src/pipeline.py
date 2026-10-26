@@ -85,6 +85,7 @@ def _validate_inputs(
     has_antigen: bool,
     target_antigen: str | None,
     antigen_column_ref: str | None,
+    samples: pl.DataFrame | None,
 ) -> None:
     """Run all R1-R5 validators and emit accumulated warnings to stderr."""
     validate_reads_schema(reads, has_bin=has_bin, has_antigen=has_antigen)
@@ -92,7 +93,7 @@ def _validate_inputs(
     warnings += validate_concentration_column(reads, has_bin=has_bin)
     if has_bin:
         validate_bin_column(reads)
-        warnings += validate_bin_concentration_grid(reads)
+        warnings += validate_bin_concentration_grid(samples)
     warnings += validate_antigen_filter(reads, antigen_column_ref, target_antigen)
     validate_sample_metadata_uniqueness(reads, has_bin=has_bin, has_antigen=has_antigen)
     # Warnings go through the same log channel as progress messages. The Tengo workflow
@@ -317,6 +318,7 @@ def run(
     antigen_column_ref: str | None = None,
     sort_fraction_col: str | None = None,
     cell_count_col: str | None = None,
+    samples: pl.DataFrame | None = None,
 ) -> dict[str, pl.DataFrame]:
     """Execute the full pipeline on an in-memory reads frame.
 
@@ -342,6 +344,7 @@ def run(
         has_antigen=has_antigen,
         target_antigen=target_antigen,
         antigen_column_ref=antigen_column_ref,
+        samples=samples,
     )
 
     # Filter to the target antigen first: sort fractions and cell counts sum per concentration

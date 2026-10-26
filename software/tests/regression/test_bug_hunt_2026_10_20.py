@@ -186,12 +186,44 @@ def test_no_bin_mode_fits_binders_in_a_200_clonotype_library():
     assert (pc["affinityClass"] != "Failed").sum() > 0
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="bug-hunt M3: R5 grid warning fires on every sparse dataset; spec R5 requires the per-clonotype check",
-)
+def _sample_table(concs: list[float], bins: tuple[int, ...] = (1, 2, 3, 4)) -> pl.DataFrame:
+    """The per-sample table the workflow passes as samples.tsv.
+
+    Built from the sorting design, not from the reads, which is the whole point: the
+    workflow reads it off the bin and concentration metadata columns, so a sample that
+    collected no reads from any clonotype is still listed. `_bin_rows` names samples
+    `s{conc index}_b{bin}`, so the design is the full (concentration x bin) product.
+    """
+    return pl.DataFrame(
+        [
+            {"sampleId": f"s{i}_b{b}", "bin": b, "concentration": c, "concentrationStr": str(c)}
+            for i, c in enumerate(concs)
+            for b in bins
+        ]
+    )
+
+
 def test_grid_warning_silent_when_bins_simply_have_zero_reads(capsys):
+    """bug-hunt M3: a clonotype with no reads in a bin is a true zero, not a gap.
+
+    Every (bin, concentration) sample here was measured, so the check must stay quiet
+    even though the reads table has no row for many (clonotype, bin) pairs — at 0 M the
+    high bins are empty for the whole library.
+    """
     rng = np.random.default_rng(21)
-    rows = _bin_rows([0.0, *CONCS_M[:5]], list(10 ** rng.uniform(-9, -7, 10)), rng, reads=300, sigma=0.35)
-    run(pl.DataFrame(rows), params=LINEAR_HILL)
-    assert "missing (bin, concentration) combinations" not in capsys.readouterr().out
+    concs = [0.0, *CONCS_M[:5]]
+    rows = _bin_rows(concs, list(10 ** rng.uniform(-9, -7, 10)), rng, reads=300, sigma=0.35)
+    run(pl.DataFrame(rows), params=LINEAR_HILL, samples=_sample_table(concs))
+    assert "(R5)" not in capsys.readouterr().out
+
+
+def test_grid_warning_fires_when_a_sample_is_missing_from_the_titration(capsys):
+    """The R5 warning still reports a (bin, concentration) sample nobody measured."""
+    rng = np.random.default_rng(21)
+    concs = [0.0, *CONCS_M[:5]]
+    rows = _bin_rows(concs, list(10 ** rng.uniform(-9, -7, 10)), rng, reads=300, sigma=0.35)
+    samples = _sample_table(concs).filter(~((pl.col("bin") == 2) & (pl.col("concentration") == CONCS_M[3])))
+    run(pl.DataFrame(rows), params=LINEAR_HILL, samples=samples)
+    out = capsys.readouterr().out
+    assert "(bin, concentration) sample(s) absent from the titration" in out
+    assert "(R5)" in out
