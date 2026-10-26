@@ -18,7 +18,7 @@ from pipeline import run
 
 # Fixtures are built on the linear Hill model over mean bin, without cell counts or a 0 M control,
 # so they exercise the opt-in hill_free_n model.
-LINEAR_HILL = FitParams(fit_model="hill_free_n")
+LINEAR_HILL = FitParams(allow_computed_baseline=True, fit_model="hill_free_n")
 
 
 @dataclass
@@ -156,9 +156,7 @@ def test_synthetic_titeseq_facs_correction_improves_recovery():
         good = pc.filter(pl.col("affinityClass").is_in(["Good", "Partial"]))
         if good.height == 0:
             return 0.0
-        within = good.filter(
-            (pl.col("kd") >= cfg.true_kd / factor) & (pl.col("kd") <= cfg.true_kd * factor)
-        )
+        within = good.filter((pl.col("kd") >= cfg.true_kd / factor) & (pl.col("kd") <= cfg.true_kd * factor))
         return within.height / good.height
 
     out_corrected = run(reads, params=LINEAR_HILL, sort_fraction_col="sort_fraction")
@@ -170,9 +168,7 @@ def test_synthetic_titeseq_facs_correction_improves_recovery():
     # Corrected must recover at least 70% of fits within 5x of the injected Kd.
     # Uncorrected on this skew should be meaningfully worse — assert the gap to
     # catch regressions where the correction silently becomes a no-op.
-    assert corrected_rate >= 0.7, (
-        f"corrected recovery {corrected_rate:.0%} — correction broken or fixture too hard"
-    )
+    assert corrected_rate >= 0.7, f"corrected recovery {corrected_rate:.0%} — correction broken or fixture too hard"
     assert corrected_rate > uncorrected_rate, (
         f"corrected {corrected_rate:.0%} did not beat uncorrected {uncorrected_rate:.0%} — "
         "is the correction actually reaching normalize()?"

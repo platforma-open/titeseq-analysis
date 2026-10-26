@@ -9,6 +9,7 @@ import {
   PlSectionSeparator,
   PlSlideModal,
 } from "@platforma-sdk/ui-vue";
+import { plRefsEqual } from "@platforma-sdk/model";
 import { computed, watch } from "vue";
 import { useApp } from "../app";
 import { useFieldValidation } from "../composables/useFieldValidation";
@@ -45,7 +46,8 @@ watch(
 // inline on each PlNumberField.
 const warnings = computed(() => app.model.outputs.validationWarnings ?? []);
 
-const binMode = computed(() => app.model.outputs.binMode === true);
+// Settings follow the unsaved bin choice; `outputs.binMode` is the mode of the results on screen.
+const binMode = computed(() => app.model.data.binColumnRef !== undefined);
 
 // Bin mode fits the Adams 2016 model unless the linear Hill is chosen; no-bin mode always uses the
 // linear Hill, so its R², Hill-coefficient and hook settings apply there too.
@@ -86,9 +88,11 @@ const targetAntigenLabel = computed(() =>
     : "Target antigen",
 );
 
+// An external data patch replaces the ref with an equal copy; only a different column clears the target.
 watch(
   () => app.model.data.antigenColumnRef,
-  () => {
+  (next, prev) => {
+    if (next !== undefined && prev !== undefined && plRefsEqual(next, prev)) return;
     app.model.data.targetAntigen = undefined;
   },
 );

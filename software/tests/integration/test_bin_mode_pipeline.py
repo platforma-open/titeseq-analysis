@@ -11,7 +11,7 @@ from constants import FitParams
 from pipeline import run
 
 # These tests cover the opt-in linear Hill model: fixtures are built on mean bin, without cell counts.
-LINEAR_HILL = FitParams(fit_model="hill_free_n")
+LINEAR_HILL = FitParams(allow_computed_baseline=True, fit_model="hill_free_n")
 
 
 def _build_bin_reads_for_hill(
@@ -195,5 +195,3 @@ class TestValidatorWarnings:
         captured = capsys.readouterr()
         assert "ambiguous" in captured.out
         assert "ambiguous" not in captured.err
-
-

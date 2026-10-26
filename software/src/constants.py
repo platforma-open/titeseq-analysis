@@ -48,8 +48,13 @@ class FitParams:
     # Amplitude prior: every clonotype must be able to reach this fraction of the bin range at
     # saturation. Adams 2016 used 0.63-0.70. Flat curves then fit as K_D above the titration range.
     min_plateau_fraction: float = 0.65
-    # Mean fluorescence at 0 M in units of bin-1 fluorescence. None: computed from the 0 M samples.
+    # Mean fluorescence at 0 M in units of bin-1 fluorescence. None: computed from the 0 M samples,
+    # which needs allow_computed_baseline because the estimate assumes a designed library.
     baseline_fluorescence: float | None = None
+    # Compute the 0 M baseline when none is given. The estimate is the mean over clonotypes, so it
+    # is only right when every clonotype is a designed library member: sequencing-error clonotypes
+    # each carry equal weight and inflate it several-fold. Off unless asked for.
+    allow_computed_baseline: bool = False
     # Without cell counts every bin is assumed to hold the same number of cells. Off unless asked for.
     allow_uncorrected: bool = False
     # Posterior SD of log10 K_D at or below which an in-range K_D is classed Good.

@@ -14,6 +14,7 @@ the n-in-range check, inclusive on R² thresholds):
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from constants import AffinityClass, FailureReason, FitParams
@@ -41,7 +42,8 @@ def classify(
 
     n_in_range = params.n_min <= n <= params.n_max
 
-    if r2 < params.r2_threshold_failed:
+    # A non-finite R² (a flat signal has no variance to explain) passes neither threshold.
+    if not math.isfinite(r2) or r2 < params.r2_threshold_failed:
         return Classification("Failed", "low_r2")
     if r2 >= params.r2_threshold_good:
         if n_in_range:

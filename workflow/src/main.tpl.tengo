@@ -122,10 +122,12 @@ wf.body(func(args) {
 		arg("--out-mean-bin").arg("mean_bin.tsv").
 		arg("--out-fitted-mean-bin").arg("fitted_mean_bin.tsv").
 		arg("--out-concentration-value").arg("concentration_value.tsv").
+		arg("--out-fit-summary").arg("fit_summary.json").
 		saveFile("per_clonotype.tsv").
 		saveFile("mean_bin.tsv").
 		saveFile("fitted_mean_bin.tsv").
 		saveFile("concentration_value.tsv").
+		saveFileContent("fit_summary.json").
 		saveStdoutStream()
 
 	if hasAntigen {
@@ -489,7 +491,9 @@ wf.body(func(args) {
 		outputs: {
 			summaryPf: pframes.exportFrame(summaryPf),
 			signalPf: pframes.exportFrame(signalPf),
-			logHandle: fit.getStdoutStream()
+			logHandle: fit.getStdoutStream(),
+			// JSON { clonotypes, failed }: the model's all-Failed state.
+			fitSummary: fit.getFileContent("fit_summary.json")
 		},
 		exports: {
 			pf: exportPf

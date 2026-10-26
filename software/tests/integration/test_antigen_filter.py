@@ -12,7 +12,7 @@ from pipeline import run
 
 # Fixtures are built on the linear Hill model over mean bin, without cell counts or a 0 M control,
 # so they exercise the opt-in hill_free_n model.
-LINEAR_HILL = FitParams(fit_model="hill_free_n")
+LINEAR_HILL = FitParams(allow_computed_baseline=True, fit_model="hill_free_n")
 
 
 def _good_reads_for(clonotype, antigen, true_kd, baseline, concs, bins, per_conc=500):

@@ -82,7 +82,7 @@ class TestApplyFloorAndWeights:
         [(2, False), (3, True), (10, True)],
     )
     def test_floor_threshold_inclusive(self, reads_at_conc, kept):
-        params = FitParams(min_reads_per_concentration=3)
+        params = FitParams(allow_computed_baseline=True, min_reads_per_concentration=3)
         df = _sig_frame(
             [
                 {
@@ -125,7 +125,7 @@ class TestClassifyInsufficient:
 
     # R9: fewer than min_concentration_points → insufficient_points.
     def test_under_min_points_marks_insufficient_points(self):
-        params = FitParams(min_concentration_points=5)
+        params = FitParams(allow_computed_baseline=True, min_concentration_points=5)
         rows = [
             {
                 "clonotypeKey": "A",
@@ -143,7 +143,7 @@ class TestClassifyInsufficient:
 
     # Boundary: exactly min_concentration_points → not marked.
     def test_exactly_min_points_not_marked(self):
-        params = FitParams(min_concentration_points=5)
+        params = FitParams(allow_computed_baseline=True, min_concentration_points=5)
         rows = [
             {
                 "clonotypeKey": "A",
@@ -162,7 +162,7 @@ class TestClassifyInsufficient:
 
     # c=0 rows are NOT counted toward the minimum points threshold (only fit points).
     def test_c0_excluded_from_point_count(self):
-        params = FitParams(min_concentration_points=5)
+        params = FitParams(allow_computed_baseline=True, min_concentration_points=5)
         rows = [
             {
                 "clonotypeKey": "A",

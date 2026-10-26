@@ -40,6 +40,7 @@ TIERS = [pytest.param("fast", id="fast"), pytest.param("full", id="full", marks=
 def _paper_params(rep, **extra) -> FitParams:
     """The authors' settings: their amplitude prior, and every variant fitted (no read gate)."""
     return FitParams(
+        allow_computed_baseline=True,
         bin_width_decades=rep.bin_width_decades,
         min_plateau_fraction=rep.min_plateau_fraction,
         min_reads_per_concentration=1,
@@ -166,7 +167,10 @@ def test_baseline_from_zero_m_reads_matches_the_authors(adams_replicates, number
 def test_default_settings_still_track_flow(adams_replicates, adams_clone_keys):
     # Block defaults (q = 0.65 instead of the authors' 0.63-0.70; read gate on): Table I must still
     # agree with flow, and every clone must get a K_D or a bound.
-    fits = {rep.number: fit_golden(rep, FitParams(bin_width_decades=rep.bin_width_decades)) for rep in adams_replicates}
+    fits = {
+        rep.number: fit_golden(rep, FitParams(allow_computed_baseline=True, bin_width_decades=rep.bin_width_decades))
+        for rep in adams_replicates
+    }
     means = _clone_means(fits, adams_clone_keys)
     assert all(np.isfinite(v) for v in means.values())
     assert _r2(means) >= 0.80

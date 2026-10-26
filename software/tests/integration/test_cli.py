@@ -39,7 +39,7 @@ def _hill_reads(clonotype: str, true_kd: float, concs, bins, per_conc=500):
 
 # Default model: needs a 0 M control and the cells sorted per sample.
 _DEFAULT_MODEL_CONCS = [0.0, 1e-10, 1e-9, 1e-8, 1e-7, 1e-6]
-_CELLS_ARGS = ["--cell-count-column", "cells"]
+_CELLS_ARGS = ["--allow-computed-baseline", "--cell-count-column", "cells"]
 
 
 # Parquet round-trip — verifies argparse wiring, file reader, and parquet writer branch
@@ -208,3 +208,20 @@ def test_cli_hook_effect_triggers_failure(tmp_path):
     assert h1["kd"][0] is None
     assert h1["kdPlotPosition"][0] == max(concs) * 10.0
     assert h1["hillPlotPosition"][0] == -1.0
+
+
+def test_cli_fit_summary_counts_failed_clonotypes(tmp_path):
+    # The block shows "All clonotypes failed" from this file; a non-binder is Failed (above range).
+    rows = _hill_reads("BINDER", 1e-8, _DEFAULT_MODEL_CONCS, [1, 2, 3, 4])
+    rows += _hill_reads("FLAT", 1e2, _DEFAULT_MODEL_CONCS, [1, 2, 3, 4])
+    reads_path = tmp_path / "reads.tsv"
+    pl.DataFrame(rows).write_csv(reads_path, separator="\t")
+    outs = [f"--out-{k}" for k in ("per-clonotype", "mean-bin", "fitted-mean-bin", "concentration-value")]
+    paths = [str(tmp_path / f"{i}.tsv") for i in range(len(outs))]
+    summary_path = tmp_path / "fit_summary.json"
+    argv = ["--reads", str(reads_path), *[x for pair in zip(outs, paths) for x in pair], *_CELLS_ARGS]
+    assert main([*argv, "--out-fit-summary", str(summary_path)]) == 0
+    pc = pl.read_csv(paths[0], separator="\t")
+    expected_failed = pc.filter(pl.col("affinityClass") == "Failed").height
+    assert json.loads(summary_path.read_text()) == {"clonotypes": 2, "failed": expected_failed}
+    assert expected_failed >= 1

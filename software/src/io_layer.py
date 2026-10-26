@@ -94,12 +94,18 @@ def validate_concentration_column(df: pl.DataFrame, has_bin: bool) -> list[str]:
     return warnings
 
 
+def _sorted_rows(reads: pl.DataFrame) -> pl.DataFrame:
+    """Rows with a concentration and a bin: the only rows a sort correction applies to. A pre-sort
+    library sample or an unsorted 0 M control may leave the per-sample cell metadata empty."""
+    return reads.filter(pl.col(COL_CONC_VAL).is_not_null() & pl.col(COL_BIN).is_not_null())
+
+
 def validate_sort_fraction(reads: pl.DataFrame, col: str) -> None:
     """FACS sort-fraction column validator (Adams, Mora, Walczak, Kinney 2016 eq. A3).
 
     Invariants:
       * Column exists in `reads`.
-      * No nulls (every sample with reads must carry a fraction).
+      * No nulls on sorted rows (a concentration and a bin); other rows are not corrected.
       * Values in [0, 1].
       * Per concentration, |Σ_b sort_fraction − 1| < 1e-3 — deduplicated by sample
         so that repeating a per-sample value across clonotypes does not inflate
@@ -111,6 +117,7 @@ def validate_sort_fraction(reads: pl.DataFrame, col: str) -> None:
     if col not in reads.columns:
         raise InputValidationError(f"Sort-fraction column '{col}' missing from reads")
 
+    reads = _sorted_rows(reads)
     vals = reads[col]
     if vals.is_null().any():
         raise InputValidationError(f"Sort-fraction column '{col}' has null values")
@@ -134,11 +141,12 @@ def validate_sort_fraction(reads: pl.DataFrame, col: str) -> None:
 def validate_cell_count(reads: pl.DataFrame, col: str) -> None:
     """Cells sorted into each sample (Adams, Mora, Walczak, Kinney 2016 eq. E4, C_bc).
 
-    Invariants: column present, no nulls, finite, >= 0, one value per sample, and at least one
-    sample with cells at every concentration.
+    Invariants on sorted rows (a concentration and a bin): no nulls, finite, >= 0, one value per
+    sample, and at least one sample with cells at every concentration. The column must be present.
     """
     if col not in reads.columns:
         raise InputValidationError(f"Cell-count column '{col}' missing from reads")
+    reads = _sorted_rows(reads)
     vals = reads[col].cast(pl.Float64)
     if vals.is_null().any():
         raise InputValidationError(f"Cell-count column '{col}' has null values")
