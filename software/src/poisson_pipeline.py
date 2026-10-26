@@ -120,8 +120,17 @@ def fit_poisson(
     zero = np.flatnonzero(t.concentrations == 0)
     if params.baseline_fluorescence is not None:
         B = float(params.baseline_fluorescence)
-    elif zero.size:
+    elif zero.size and params.allow_computed_baseline:
         B = baseline(R[:, zero[0], :], a2[zero[0]], log_values)
+    elif zero.size:
+        raise InputValidationError(
+            "poisson_log needs the 0 M baseline. It can be computed from the 0 M samples, but the "
+            "estimate weights every clonotype equally, so it is only right when every clonotype is "
+            "a designed library member. On a de-novo clonotype set the sequencing-error clonotypes "
+            "outnumber the real variants and inflate it several-fold, which shifts every K_D. "
+            "Set baseline_fluorescence, or set allow_computed_baseline if the clonotypes are a "
+            "known library."
+        )
     else:
         B = None
     if B is None or not B > 0:

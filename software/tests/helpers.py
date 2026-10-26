@@ -13,7 +13,7 @@ import polars as pl
 from constants import FitParams
 
 # The opt-in linear Hill model on mean bin. Fixtures without cell counts or a 0 M baseline need it.
-LINEAR_HILL = FitParams(fit_model="hill_free_n")
+LINEAR_HILL = FitParams(allow_computed_baseline=True, fit_model="hill_free_n")
 
 
 def hill_curve(x: np.ndarray, baseline: float, amplitude: float, kd: float, n: float) -> np.ndarray:

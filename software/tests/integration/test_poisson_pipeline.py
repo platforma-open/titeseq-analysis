@@ -29,7 +29,11 @@ def _run(
 
 @pytest.fixture(scope="module")
 def fitted(simulated_library: SimulatedExperiment) -> tuple[dict[str, pl.DataFrame], dict[str, dict]]:
-    out = _run(simulated_library.reads, params=FitParams(bin_width_decades=0.7), cell_count_col="cells")
+    out = _run(
+        simulated_library.reads,
+        params=FitParams(allow_computed_baseline=True, bin_width_decades=0.7),
+        cell_count_col="cells",
+    )
     pc = out["per_clonotype"].with_columns(pl.col("kd").log10().alias("log10_kd"))
     return out, {row["clonotypeKey"]: row for row in pc.iter_rows(named=True)}
 
@@ -106,7 +110,7 @@ def test_sort_fractions_give_the_same_kd_when_reads_do_not_exceed_cells():
         (pl.col("cells") / pl.col("cells").sum().over("concentrationStr")).alias("frac")
     )
     reads = sim.reads.join(per_sample.select("sampleId", "frac"), on="sampleId")
-    params = FitParams(bin_width_decades=0.7, min_concentration_points=3)
+    params = FitParams(allow_computed_baseline=True, bin_width_decades=0.7, min_concentration_points=3)
     by_cells = _run(reads, params=params, cell_count_col="cells")["per_clonotype"]
     by_frac = _run(reads.drop("cells"), params=params, sort_fraction_col="frac")["per_clonotype"]
     assert by_cells["kd"].to_list() == pytest.approx(by_frac["kd"].to_list())
@@ -118,12 +122,12 @@ class TestInputsTheModelNeeds:
         return simulate_titeseq({"A": (-8.0, 60.0), "N": (-2.0, 60.0)}, seed=5).reads
 
     def test_uncorrected_runs_only_when_asked_and_says_so(self, small, capsys):
-        out = run(small.drop("cells"), params=FitParams(allow_uncorrected=True))
+        out = run(small.drop("cells"), params=FitParams(allow_computed_baseline=True, allow_uncorrected=True))
         assert out["per_clonotype"].height == 2
         assert "uncorrected" in capsys.readouterr().out
 
     def test_baseline_override_replaces_the_zero_control(self, small):
-        params = FitParams(bin_width_decades=0.7, baseline_fluorescence=2.5)
+        params = FitParams(allow_computed_baseline=True, bin_width_decades=0.7, baseline_fluorescence=2.5)
         out = _run(small.filter(pl.col("concentration") > 0), params=params, cell_count_col="cells")
         a = out["per_clonotype"].filter(pl.col("clonotypeKey") == "A")
         assert np.log10(a["kd"][0]) == pytest.approx(-8.0, abs=0.25)
@@ -140,31 +144,49 @@ class TestInputsTheModelNeeds:
             ),
             pytest.param(
                 lambda df: df,
-                {"params": FitParams(min_plateau_fraction=0.05), "cell_count_col": "cells"},
+                {"cell_count_col": "cells"},
+                "designed library member",
+                id="computed-baseline-needs-opt-in",
+            ),
+            pytest.param(
+                lambda df: df,
+                {
+                    "params": FitParams(allow_computed_baseline=True, min_plateau_fraction=0.05),
+                    "cell_count_col": "cells",
+                },
                 "min_plateau_fraction",
                 id="plateau-prior-below-baseline",
             ),
             pytest.param(
                 lambda df: df,
-                {"params": FitParams(baseline_fluorescence=0.0), "cell_count_col": "cells"},
+                {
+                    "params": FitParams(allow_computed_baseline=True, baseline_fluorescence=0.0),
+                    "cell_count_col": "cells",
+                },
                 "0 M baseline",
                 id="zero-baseline",
             ),
             pytest.param(
                 lambda df: df,
-                {"params": FitParams(min_plateau_fraction=0.0), "cell_count_col": "cells"},
+                {
+                    "params": FitParams(allow_computed_baseline=True, min_plateau_fraction=0.0),
+                    "cell_count_col": "cells",
+                },
                 r"must be in \(0, 1\)",
                 id="plateau-fraction-zero",
             ),
             pytest.param(
                 lambda df: df,
-                {"params": FitParams(bin_width_decades=0.0), "cell_count_col": "cells"},
+                {"params": FitParams(allow_computed_baseline=True, bin_width_decades=0.0), "cell_count_col": "cells"},
                 "bin_width_decades",
                 id="zero-bin-width",
             ),
             pytest.param(
                 lambda df: df,
-                {"params": FitParams(min_plateau_fraction=1.0), "cell_count_col": "cells"},
+                {
+                    "params": FitParams(allow_computed_baseline=True, min_plateau_fraction=1.0),
+                    "cell_count_col": "cells",
+                },
                 "min_plateau_fraction",
                 id="plateau-fraction-not-below-1",
             ),
@@ -198,7 +220,11 @@ class TestInputsTheModelNeeds:
 def test_uncertain_in_range_kd_is_partial(simulated_library):
     # kd_sd_good is the Good/Partial line: with a zero tolerance every in-range K_D is Partial,
     # while bounds keep their own classes.
-    out = _run(simulated_library.reads, params=FitParams(bin_width_decades=0.7, kd_sd_good=0.0), cell_count_col="cells")
+    out = _run(
+        simulated_library.reads,
+        params=FitParams(allow_computed_baseline=True, bin_width_decades=0.7, kd_sd_good=0.0),
+        cell_count_col="cells",
+    )
     rows = {r["clonotypeKey"]: r for r in out["per_clonotype"].iter_rows(named=True)}
     assert rows["B30"]["affinityClass"] == "Partial"
     assert rows["TIGHT"]["affinityClass"] == "Good"
@@ -210,7 +236,11 @@ def test_clonotype_seen_at_too_few_concentrations_is_not_fitted():
     concs = sorted(sim.reads["concentration"].unique().to_list())
     # Keep "A" at 0 M and 3 nonzero concentrations only: below min_concentration_points (5).
     keep = pl.col("clonotypeKey").ne("A") | pl.col("concentration").is_in(concs[:4])
-    out = _run(sim.reads.filter(keep), params=FitParams(bin_width_decades=0.7), cell_count_col="cells")
+    out = _run(
+        sim.reads.filter(keep),
+        params=FitParams(allow_computed_baseline=True, bin_width_decades=0.7),
+        cell_count_col="cells",
+    )
     a = out["per_clonotype"].filter(pl.col("clonotypeKey") == "A")
     assert (a["affinityClass"][0], a["fitFailureReason"][0]) == ("Failed", "insufficient_points")
     for column in ("kd", "hillCoefficient", "r2", "kdOutOfRange", "kdLog10Sd", "kdCensor"):
@@ -225,7 +255,7 @@ def test_unsorted_zero_control_does_not_change_the_fit():
     unsorted = reads.filter(pl.col("sampleId") == "c0_b1").with_columns(
         pl.lit("c0_unsorted").alias("sampleId"), pl.lit(None, dtype=pl.Int64).alias("bin")
     )
-    params = FitParams(bin_width_decades=0.7)
+    params = FitParams(allow_computed_baseline=True, bin_width_decades=0.7)
     plain = _run(reads, params=params, cell_count_col="cells")["per_clonotype"].sort("clonotypeKey")
     with_unsorted = _run(pl.concat([reads, unsorted]), params=params, cell_count_col="cells")
     assert with_unsorted["per_clonotype"].sort("clonotypeKey").equals(plain)
@@ -234,7 +264,7 @@ def test_unsorted_zero_control_does_not_change_the_fit():
 def test_control_only_data_reports_every_clonotype_failed():
     # Only 0 M samples: nothing to titrate, so every clonotype is Failed with a reason, not a crash.
     reads = simulate_titeseq({"A": (-8.0, 60.0), "N": (-2.0, 60.0)}, seed=13).reads.filter(pl.col("concentration") == 0)
-    out = _run(reads, params=FitParams(bin_width_decades=0.7), cell_count_col="cells")
+    out = _run(reads, params=FitParams(allow_computed_baseline=True, bin_width_decades=0.7), cell_count_col="cells")
     pc = out["per_clonotype"]
     assert set(pc["clonotypeKey"].to_list()) == {"A", "N"}
     assert (pc["affinityClass"] == "Failed").all()
@@ -252,7 +282,7 @@ def test_presort_library_sample_without_cell_count_does_not_change_the_fit():
         pl.lit(None, dtype=pl.Int64).alias("bin"),
         pl.lit(None, dtype=pl.Float64).alias("cells"),
     )
-    params = FitParams(bin_width_decades=0.7)
+    params = FitParams(allow_computed_baseline=True, bin_width_decades=0.7)
     plain = _run(reads, params=params, cell_count_col="cells")["per_clonotype"].sort("clonotypeKey")
     with_presort = _run(pl.concat([reads, presort]), params=params, cell_count_col="cells")
     assert with_presort["per_clonotype"].sort("clonotypeKey").equals(plain)

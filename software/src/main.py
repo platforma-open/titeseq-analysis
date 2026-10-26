@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import sys
 from pathlib import Path
@@ -56,6 +57,13 @@ def main(argv: list[str] | None = None) -> int:
         help="Column name in reads.tsv carrying the cells sorted into each sample (C_bc). "
         "Preferred over --sort-fraction-column: also allows rescaling bins with more reads than cells.",
     )
+    parser.add_argument(
+        "--allow-computed-baseline",
+        action="store_true",
+        help="Compute the 0 M baseline when none is given. Only correct when every clonotype is a "
+        "designed library member: on a de-novo clonotype set the sequencing-error clonotypes each "
+        "carry equal weight and inflate it several-fold. Prefer setting baseline_fluorescence.",
+    )
     args = parser.parse_args(argv)
 
     log(f"Reading input table: {args.reads}")
@@ -66,6 +74,8 @@ def main(argv: list[str] | None = None) -> int:
         with open(args.params) as f:
             params = FitParams(**json.load(f))
         log(f"Loaded custom params from {args.params}")
+    if args.allow_computed_baseline:
+        params = dataclasses.replace(params, allow_computed_baseline=True)
 
     outputs = run(
         reads,

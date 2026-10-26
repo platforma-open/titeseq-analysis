@@ -46,7 +46,7 @@ def _default_model_library(tmp_path: Path) -> tuple[Path, list[str]]:
     ]
     reads_path = tmp_path / "reads.parquet"
     pl.DataFrame(rows).write_parquet(reads_path)
-    return reads_path, ["--cell-count-column", "cells"]
+    return reads_path, ["--allow-computed-baseline", "--cell-count-column", "cells"]
 
 
 def _linear_hill_corpus(tmp_path: Path) -> tuple[Path, list[str]]:
