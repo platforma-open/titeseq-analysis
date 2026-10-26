@@ -80,9 +80,7 @@ def validate_concentration_column(df: pl.DataFrame, has_bin: bool) -> list[str]:
     nonzero = df.filter(pl.col(COL_CONC_VAL) > 0).select(pl.col(COL_CONC_VAL).unique())
     n_nonzero = nonzero.height
     if n_nonzero == 1:
-        warnings.append(
-            "only one non-zero concentration present; narrow dose range may not bracket Kd,app (R5)"
-        )
+        warnings.append("only one non-zero concentration present; narrow dose range may not bracket Kd,app (R5)")
     elif n_nonzero >= 2:
         max_c = float(nonzero.select(pl.col(COL_CONC_VAL).max()).item())
         min_c = float(nonzero.select(pl.col(COL_CONC_VAL).min()).item())
@@ -94,12 +92,18 @@ def validate_concentration_column(df: pl.DataFrame, has_bin: bool) -> list[str]:
     return warnings
 
 
+def _sorted_rows(reads: pl.DataFrame) -> pl.DataFrame:
+    """Rows with a concentration and a bin: the only rows a sort correction applies to. A pre-sort
+    library sample or an unsorted 0 M control may leave the per-sample cell metadata empty."""
+    return reads.filter(pl.col(COL_CONC_VAL).is_not_null() & pl.col(COL_BIN).is_not_null())
+
+
 def validate_sort_fraction(reads: pl.DataFrame, col: str) -> None:
     """FACS sort-fraction column validator (Adams, Mora, Walczak, Kinney 2016 eq. A3).
 
     Invariants:
       * Column exists in `reads`.
-      * No nulls (every sample with reads must carry a fraction).
+      * No nulls on sorted rows (a concentration and a bin); other rows are not corrected.
       * Values in [0, 1].
       * Per concentration, |Σ_b sort_fraction − 1| < 1e-3 — deduplicated by sample
         so that repeating a per-sample value across clonotypes does not inflate
@@ -111,6 +115,7 @@ def validate_sort_fraction(reads: pl.DataFrame, col: str) -> None:
     if col not in reads.columns:
         raise InputValidationError(f"Sort-fraction column '{col}' missing from reads")
 
+    reads = _sorted_rows(reads)
     vals = reads[col]
     if vals.is_null().any():
         raise InputValidationError(f"Sort-fraction column '{col}' has null values")
@@ -126,9 +131,34 @@ def validate_sort_fraction(reads: pl.DataFrame, col: str) -> None:
     if bad.height > 0:
         violations = bad.select([COL_CONC_STR, "s"]).to_dicts()
         raise InputValidationError(
-            f"sort_fraction values must sum to 1.0 per concentration "
-            f"(tolerance 1e-3). Violations: {violations}"
+            f"sort_fraction values must sum to 1.0 per concentration (tolerance 1e-3). Violations: {violations}"
         )
+
+
+def validate_cell_count(reads: pl.DataFrame, col: str) -> None:
+    """Cells sorted into each sample (Adams, Mora, Walczak, Kinney 2016 eq. E4, C_bc).
+
+    Invariants on sorted rows (a concentration and a bin): no nulls, finite, >= 0, one value per
+    sample, and at least one sample with cells at every concentration. The column must be present.
+    """
+    if col not in reads.columns:
+        raise InputValidationError(f"Cell-count column '{col}' missing from reads")
+    reads = _sorted_rows(reads)
+    vals = reads[col].cast(pl.Float64)
+    if vals.is_null().any():
+        raise InputValidationError(f"Cell-count column '{col}' has null values")
+    if (~vals.is_finite()).any() or (vals < 0).any():
+        raise InputValidationError(f"Cell counts must be finite and >= 0; column '{col}'")
+    per_sample = reads.select([COL_SAMPLE, col]).unique()
+    dup = per_sample.group_by(COL_SAMPLE).len().filter(pl.col("len") > 1)
+    if dup.height > 0:
+        raise InputValidationError(
+            f"Cell count must be one value per sample; samples with several: {dup[COL_SAMPLE].to_list()[:5]}"
+        )
+    per_conc = reads.select([COL_SAMPLE, COL_CONC_STR, col]).unique().group_by(COL_CONC_STR).agg(pl.col(col).sum())
+    empty = per_conc.filter(pl.col(col) <= 0)
+    if empty.height > 0:
+        raise InputValidationError(f"No cells sorted at concentration(s) {empty[COL_CONC_STR].to_list()}")
 
 
 def validate_bin_column(df: pl.DataFrame) -> None:
@@ -141,9 +171,7 @@ def validate_bin_column(df: pl.DataFrame) -> None:
     # string column of empty strings (the TSV builder's null encoding). Surface a
     # user-actionable message instead of the generic "got String" dtype complaint.
     if df.schema[COL_BIN] == pl.Utf8:
-        non_empty = df.filter(
-            pl.col(COL_BIN).is_not_null() & (pl.col(COL_BIN).str.len_chars() > 0)
-        ).height
+        non_empty = df.filter(pl.col(COL_BIN).is_not_null() & (pl.col(COL_BIN).str.len_chars() > 0)).height
         if non_empty == 0:
             raise InputValidationError(
                 "bin column has no integer values — the selected metadata "
@@ -215,36 +243,43 @@ def validate_sample_metadata_uniqueness(df: pl.DataFrame, has_bin: bool, has_ant
             raise InputValidationError(f"sampleId must map to a single {c}; violating samples: {sample_list}")
 
 
-def validate_bin_concentration_grid(df: pl.DataFrame) -> list[str]:
-    """R5 sub-clause: warn when (bin, concentration) combos are non-uniformly populated.
+def validate_bin_concentration_grid(samples: pl.DataFrame | None) -> list[str]:
+    """R5 sub-clause: warn when a (bin, concentration) sample is absent from the titration.
 
-    Absent combinations silently reduce the number of bins contributing to mean_bin
-    at that concentration, biasing the result without any flag. The reference grid
-    is every (bin, concentrationStr) pair observed for ANY clonotype; any clonotype
-    with fewer combinations present is flagged.
+    An unmeasured (bin, concentration) sample drops a bin from mean_bin at that
+    concentration, which biases the result with no other flag.
+
+    `samples` is the sample table — one row per sampleId with its bin and
+    concentration — not the reads table. The reads table cannot answer this
+    question. It is sparse, so a (bin, concentration) pair is missing from it both
+    when the sample was never measured and when every clonotype simply had no reads
+    there. The second case is routine and unbiased: at 0 M the high-fluorescence
+    bins are empty by construction, and a clonotype absent from a bin is a true zero
+    that contributes nothing to either side of the mean_bin ratio. Checking reads
+    therefore fires on every real dataset (bug-hunt M3). `None` skips the check.
     """
     warnings: list[str] = []
-    if COL_BIN not in df.columns:
+    if samples is None or COL_BIN not in samples.columns:
         return warnings
 
-    ref_grid = df.select([COL_BIN, COL_CONC_STR]).unique()
-    n_grid = ref_grid.height
-    if n_grid <= 1:
+    measured = samples.select([COL_BIN, COL_CONC_STR]).unique()
+    bins = samples[COL_BIN].unique()
+    concentrations = samples[COL_CONC_STR].unique()
+    expected = len(bins) * len(concentrations)
+    if expected <= 1 or measured.height >= expected:
         return warnings
 
-    per_clone = (
-        df.select([COL_CLONOTYPE, COL_BIN, COL_CONC_STR])
-        .unique()
-        .group_by(COL_CLONOTYPE, maintain_order=True)
-        .agg(pl.len().alias("n_combos"))
+    absent = (
+        bins.to_frame(name=COL_BIN)
+        .join(concentrations.to_frame(name=COL_CONC_STR), how="cross")
+        .join(measured, on=[COL_BIN, COL_CONC_STR], how="anti")
+        .sort([COL_CONC_STR, COL_BIN])
     )
-    missing = per_clone.filter(pl.col("n_combos") < n_grid)
-    if missing.height > 0:
-        offenders = missing[COL_CLONOTYPE].to_list()[:5]
-        warnings.append(
-            f"{missing.height} clonotype(s) have missing (bin, concentration) combinations; "
-            f"expected {n_grid}, examples: {offenders} (R5)"
-        )
+    examples = [f"(bin {b}, {c} M)" for b, c in absent.head(5).iter_rows()]
+    warnings.append(
+        f"{absent.height} (bin, concentration) sample(s) absent from the titration; "
+        f"expected {expected}, examples: {examples} (R5)"
+    )
     return warnings
 
 

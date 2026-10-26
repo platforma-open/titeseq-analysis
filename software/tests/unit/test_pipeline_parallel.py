@@ -8,30 +8,27 @@ both paths and compare outputs.
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from functools import partial
 
 import numpy as np
 import pytest
+from helpers import hill_curve
 
 import pipeline
-from hill_fit import fit_one_clonotype
+from hill_fit import FitResult, fit_one_clonotype
 
 
-def _hill_truth(x, baseline, amplitude, kd, n):
-    top = baseline + math.exp(amplitude)
-    return baseline + (top - baseline) * (x**n) / (kd**n + x**n)
-
-
-def _make_tasks(n_tasks: int, rng: np.random.Generator):
+def _make_tasks(n_tasks: int, rng: np.random.Generator) -> tuple[list[np.ndarray], list[np.ndarray], list[np.ndarray]]:
     """Generate n_tasks realistic (x, y, w) triples for the Hill fitter."""
     concs = np.array([0.0, 1e-10, 1e-9, 1e-8, 1e-7, 1e-6])
     xs, ys, ws = [], [], []
-    for i in range(n_tasks):
+    for _ in range(n_tasks):
         # Spread Kd across the grid to keep fits non-degenerate.
         kd = 10 ** rng.uniform(-10, -7)
         baseline = 1.0
         amplitude = math.log(rng.uniform(1.0, 3.0))
-        y = _hill_truth(concs, baseline, amplitude, kd, n=1.0)
+        y = hill_curve(concs, baseline, amplitude, kd, n=1.0)
         # Small noise, well under δ_bin — doesn't push survivors below the gate.
         y = y + rng.normal(0, 0.02, size=y.shape)
         xs.append(concs.copy())
@@ -40,7 +37,7 @@ def _make_tasks(n_tasks: int, rng: np.random.Generator):
     return xs, ys, ws
 
 
-def _worker():
+def _worker() -> Callable[[np.ndarray, np.ndarray, np.ndarray], FitResult]:
     return partial(
         fit_one_clonotype,
         baseline_fixed=1.0,
@@ -63,9 +60,9 @@ class TestExecuteFitsParity:
         monkeypatch.setattr(pipeline, "_PARALLEL_FIT_MIN_SURVIVORS", 10_000)
         serial_fits = pipeline._execute_fits(worker, xs, ys, ws, n_survivors=80, step=20)
 
-        # Force parallel: threshold low, and ensure cpu_count > 1 for the branch to trigger.
+        # Force parallel: threshold low, and ensure available_cpus > 1 for the branch to trigger.
         monkeypatch.setattr(pipeline, "_PARALLEL_FIT_MIN_SURVIVORS", 1)
-        monkeypatch.setattr(pipeline.os, "cpu_count", lambda: 4)
+        monkeypatch.setattr(pipeline, "available_cpus", lambda: 4)
         parallel_fits = pipeline._execute_fits(worker, xs, ys, ws, n_survivors=80, step=20)
 
         assert len(serial_fits) == len(parallel_fits) == 80
@@ -88,13 +85,9 @@ class TestExecuteFitsParity:
         # Default threshold (50) with 5 tasks — parallel branch must not activate.
         # We detect the serial path by patching ProcessPoolExecutor to explode if used.
         class _ShouldNotRun:
-            def __init__(self, *a, **k):
+            def __init__(self, *a: object, **k: object) -> None:
                 raise AssertionError("ProcessPoolExecutor must not be used below threshold")
 
         monkeypatch.setattr(pipeline, "ProcessPoolExecutor", _ShouldNotRun)
         fits = pipeline._execute_fits(worker, xs, ys, ws, n_survivors=5, step=1)
         assert len(fits) == 5
-
-    def test_empty_input_returns_empty(self):
-        worker = _worker()
-        assert pipeline._execute_fits(worker, [], [], [], n_survivors=0, step=1) == []

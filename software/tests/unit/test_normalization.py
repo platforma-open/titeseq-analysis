@@ -8,6 +8,30 @@ import pytest
 from normalization import MEAN_BIN, SIGNAL, compute_frequency_signal, compute_mean_bin, normalize
 
 
+def _read(
+    clonotype: str,
+    reads: int,
+    *,
+    sample: str = "s",
+    conc_str: str = "1",
+    bin_label: int | None = None,
+    sort_fraction: float | None = None,
+) -> dict:
+    """One reads row. The bin and sort_fraction columns are added only when given."""
+    row: dict = {
+        "clonotypeKey": clonotype,
+        "sampleId": sample,
+        "concentrationStr": conc_str,
+        "concentration": float(conc_str),
+    }
+    if bin_label is not None:
+        row["bin"] = bin_label
+    row["reads"] = reads
+    if sort_fraction is not None:
+        row["sort_fraction"] = sort_fraction
+    return row
+
+
 def _build_single_clonotype(
     reads_per_bin: list[int],
     depth_per_bin: list[int],
@@ -24,30 +48,9 @@ def _build_single_clonotype(
     for j, (r, d) in enumerate(zip(reads_per_bin, depth_per_bin)):
         bin_label = j + 1
         frac = sort_fraction_per_bin[j] if sort_fraction_per_bin is not None else None
-        row_a = {
-            "clonotypeKey": "A",
-            "sampleId": f"s_b{bin_label}",
-            "concentrationStr": "1",
-            "concentration": 1.0,
-            "bin": bin_label,
-            "reads": r,
-        }
-        if frac is not None:
-            row_a["sort_fraction"] = frac
-        rows.append(row_a)
-        filler = d - r
-        if filler > 0:
-            row_f = {
-                "clonotypeKey": "F",
-                "sampleId": f"s_b{bin_label}",
-                "concentrationStr": "1",
-                "concentration": 1.0,
-                "bin": bin_label,
-                "reads": filler,
-            }
-            if frac is not None:
-                row_f["sort_fraction"] = frac
-            rows.append(row_f)
+        rows.append(_read("A", r, sample=f"s_b{bin_label}", bin_label=bin_label, sort_fraction=frac))
+        if d - r > 0:
+            rows.append(_read("F", d - r, sample=f"s_b{bin_label}", bin_label=bin_label, sort_fraction=frac))
     return pl.DataFrame(rows)
 
 
@@ -58,7 +61,7 @@ class TestComputeMeanBin:
         [
             # freqs = [0.01, 0.04, 0.025, 0.05] → 0.365 / 0.125 = 2.92
             ([10, 20, 5, 5], [1000, 500, 200, 100], pytest.approx(2.92, abs=1e-9)),
-            # Single bin has reads → mean_bin == that bin label
+            # Single bin has reads → mean_bin == that bin label; zero-read bins add to neither sum
             ([0, 0, 7, 0], [1000, 500, 200, 100], 3.0),
             # Uniform frequency across 4 bins → centre of mass
             ([100, 50, 20, 10], [100, 50, 20, 10], 2.5),
@@ -71,37 +74,6 @@ class TestComputeMeanBin:
         out = compute_mean_bin(reads).filter(pl.col("clonotypeKey") == "A")
         assert out.height == 1
         assert out["mean_bin"][0] == expected_mean_bin
-
-    # Zero reads in one bin: that bin contributes 0 to both numerator and denominator.
-    def test_zero_reads_bin_excluded_from_contribution(self):
-        reads = _build_single_clonotype([0, 10, 0, 0], [100, 100, 100, 100])
-        out = compute_mean_bin(reads).filter(pl.col("clonotypeKey") == "A")
-        assert out["mean_bin"][0] == 2.0
-
-    # Single-bin clonotype: mean_bin equals that bin label (pass-through).
-    def test_single_bin_equals_that_bin_label(self):
-        reads = pl.DataFrame(
-            [
-                {
-                    "clonotypeKey": "A",
-                    "sampleId": "s",
-                    "concentrationStr": "1",
-                    "concentration": 1.0,
-                    "bin": 4,
-                    "reads": 7,
-                },
-                {
-                    "clonotypeKey": "F",
-                    "sampleId": "s",
-                    "concentrationStr": "1",
-                    "concentration": 1.0,
-                    "bin": 4,
-                    "reads": 93,
-                },
-            ]
-        )
-        out = compute_mean_bin(reads).filter(pl.col("clonotypeKey") == "A")
-        assert out["mean_bin"][0] == 4.0
 
 
 class TestComputeFrequencySignal:
@@ -116,25 +88,9 @@ class TestComputeFrequencySignal:
         ],
     )
     def test_no_bin_signal_pinned(self, reads_clonotype, reads_other, expected):
-        rows = [
-            {
-                "clonotypeKey": "A",
-                "sampleId": "s",
-                "concentrationStr": "10",
-                "concentration": 10.0,
-                "reads": reads_clonotype,
-            }
-        ]
+        rows = [_read("A", reads_clonotype, conc_str="10")]
         if reads_other > 0:
-            rows.append(
-                {
-                    "clonotypeKey": "B",
-                    "sampleId": "s",
-                    "concentrationStr": "10",
-                    "concentration": 10.0,
-                    "reads": reads_other,
-                }
-            )
+            rows.append(_read("B", reads_other, conc_str="10"))
         reads = pl.DataFrame(rows)
         out = compute_frequency_signal(reads).filter(pl.col("clonotypeKey") == "A")
         assert out.height == 1
@@ -142,9 +98,7 @@ class TestComputeFrequencySignal:
 
     # total_reads_at_conc = 0 → signal is null (row survives with null, caller drops).
     def test_zero_total_reads_yields_null_signal(self):
-        reads = pl.DataFrame(
-            [{"clonotypeKey": "A", "sampleId": "s", "concentrationStr": "10", "concentration": 10.0, "reads": 0}]
-        )
+        reads = pl.DataFrame([_read("A", 0, conc_str="10")])
         out = compute_frequency_signal(reads)
         assert out[SIGNAL][0] is None
 
@@ -156,57 +110,22 @@ class TestComputeMeanBinSortFraction:
     legacy behaviour. Non-None activates the weighted-mean correction.
     """
 
-    # The legacy default must be preserved. The pre-FACS test_mean_bin_pinned
-    # cases above already anchor the uncorrected output numerically; this test
-    # is the explicit guard that passing sort_fraction_col=None is identical
-    # to the (deprecated) positional-argument-less call.
-    def test_legacy_mode_matches_uncorrected(self):
-        reads = _build_single_clonotype([10, 20, 5, 5], [1000, 500, 200, 100])
-        legacy = compute_mean_bin(reads, sort_fraction_col=None).filter(pl.col("clonotypeKey") == "A")
-        assert legacy["mean_bin"][0] == pytest.approx(2.92, abs=1e-9)
-
-    # When every bin catches an equal cell fraction, the correction factor is
-    # constant across bins → reduces bit-exactly to the legacy formula.
-    def test_uniform_fractions_match_legacy(self):
-        reads_per_bin = [10, 20, 5, 5]
-        depth_per_bin = [1000, 500, 200, 100]
-        n_bins = len(reads_per_bin)
-        uniform = [1.0 / n_bins] * n_bins
-        reads = _build_single_clonotype(reads_per_bin, depth_per_bin, sort_fraction_per_bin=uniform)
-        corrected = compute_mean_bin(reads, sort_fraction_col="sort_fraction").filter(pl.col("clonotypeKey") == "A")
-        legacy = compute_mean_bin(reads, sort_fraction_col=None).filter(pl.col("clonotypeKey") == "A")
-        assert corrected["mean_bin"][0] == pytest.approx(legacy["mean_bin"][0], abs=1e-12)
-
-    # Anchored 2-bin case: freq=[0.1, 0.1], fraction=[0.8, 0.2].
-    # Uncorrected mean_bin = (1·0.1 + 2·0.1) / (0.1 + 0.1) = 1.5.
-    # Corrected num = 1·(0.1·0.8) + 2·(0.1·0.2) = 0.12.
-    # Corrected den = 0.1·0.8 + 0.1·0.2 = 0.10.
-    # Corrected mean_bin = 1.2.
-    def test_skewed_fractions_pinned_shifts_mean_toward_heavy_bin(self):
-        reads = _build_single_clonotype(
-            reads_per_bin=[10, 10],
-            depth_per_bin=[100, 100],
-            sort_fraction_per_bin=[0.8, 0.2],
-        )
+    # Corrected mean_bin = Σ(b·freq·frac) / Σ(freq·frac), freq = reads/depth per bin.
+    @pytest.mark.parametrize(
+        "reads_per_bin, depth_per_bin, fractions, expected",
+        [
+            # Equal fractions make the correction a constant factor: identical to the uncorrected 2.92.
+            pytest.param([10, 20, 5, 5], [1000, 500, 200, 100], [0.25] * 4, 2.92, id="uniform-equals-uncorrected"),
+            # freq=[0.1, 0.1], frac=[0.8, 0.2]: (1·0.08 + 2·0.02) / 0.10 = 1.2, pulled toward the heavy bin.
+            pytest.param([10, 10], [100, 100], [0.8, 0.2], 1.2, id="skew-pulls-toward-heavy-bin"),
+            # frac=[0.5, 0, 0.5]: bin 2's reads drop out of both sums, (0.05 + 0.15) / 0.10 = 2.0.
+            pytest.param([10, 10, 10], [100, 100, 100], [0.5, 0.0, 0.5], 2.0, id="zero-fraction-bin-excluded"),
+        ],
+    )
+    def test_corrected_mean_bin_pinned(self, reads_per_bin, depth_per_bin, fractions, expected):
+        reads = _build_single_clonotype(reads_per_bin, depth_per_bin, sort_fraction_per_bin=fractions)
         out = compute_mean_bin(reads, sort_fraction_col="sort_fraction").filter(pl.col("clonotypeKey") == "A")
-        assert out["mean_bin"][0] == pytest.approx(1.2)
-
-    # Exclusion behaviour: a bin with sort_fraction=0 contributes to neither
-    # numerator nor denominator even when it carries nonzero reads. This is the
-    # formula acting correctly — multiplying freq by 0 zeros both num and den
-    # contributions.
-    def test_zero_sort_fraction_bin_excluded(self):
-        # freq=[0.1, 0.1, 0.1] with fraction=[0.5, 0.0, 0.5].
-        # Weighted num = 1·(0.1·0.5) + 2·(0.1·0.0) + 3·(0.1·0.5) = 0.05 + 0 + 0.15 = 0.20.
-        # Weighted den = 0.1·0.5 + 0.1·0.0 + 0.1·0.5 = 0.10.
-        # Corrected mean_bin = 2.0 — bin 2's reads silently removed, exactly as the spec intends.
-        reads = _build_single_clonotype(
-            reads_per_bin=[10, 10, 10],
-            depth_per_bin=[100, 100, 100],
-            sort_fraction_per_bin=[0.5, 0.0, 0.5],
-        )
-        out = compute_mean_bin(reads, sort_fraction_col="sort_fraction").filter(pl.col("clonotypeKey") == "A")
-        assert out["mean_bin"][0] == pytest.approx(2.0)
+        assert out["mean_bin"][0] == pytest.approx(expected, abs=1e-9)
 
     # The correction must act inside each (clonotype, concentration) group.
     # A bug where the weighting leaks across concentrations would produce the
@@ -217,31 +136,13 @@ class TestComputeMeanBinSortFraction:
         rows = []
         # conc 1: bin 1 dominates the sort (0.8, 0.2) → corrected mean_bin pulled toward 1.
         # conc 2: bin 2 dominates the sort (0.2, 0.8) → corrected mean_bin pulled toward 2.
-        for conc_str, conc_val, fractions in [("1", 1.0, [0.8, 0.2]), ("2", 2.0, [0.2, 0.8])]:
+        for conc_str, fractions in [("1", [0.8, 0.2]), ("2", [0.2, 0.8])]:
             for j, frac in enumerate(fractions):
-                bin_label = j + 1
-                rows.append(
-                    {
-                        "clonotypeKey": "A",
-                        "sampleId": f"s_c{conc_str}_b{bin_label}",
-                        "concentrationStr": conc_str,
-                        "concentration": conc_val,
-                        "bin": bin_label,
-                        "reads": 10,
-                        "sort_fraction": frac,
-                    }
-                )
-                rows.append(
-                    {
-                        "clonotypeKey": "F",
-                        "sampleId": f"s_c{conc_str}_b{bin_label}",
-                        "concentrationStr": conc_str,
-                        "concentration": conc_val,
-                        "bin": bin_label,
-                        "reads": 90,
-                        "sort_fraction": frac,
-                    }
-                )
+                sample = f"s_c{conc_str}_b{j + 1}"
+                for clonotype, n in [("A", 10), ("F", 90)]:
+                    rows.append(
+                        _read(clonotype, n, sample=sample, conc_str=conc_str, bin_label=j + 1, sort_fraction=frac)
+                    )
         reads = pl.DataFrame(rows)
         out = (
             compute_mean_bin(reads, sort_fraction_col="sort_fraction")
@@ -258,23 +159,12 @@ class TestComputeMeanBinSortFraction:
 class TestNormalizeDispatch:
     """normalize() threads sort_fraction_col to compute_mean_bin without mutating legacy paths."""
 
-    def test_legacy_bin_mode_bit_exact(self):
+    # Bin mode is compute_mean_bin with the column renamed; in no-bin mode sort_fraction (bin-space) is a no-op.
+    def test_dispatch_by_mode(self):
         reads = _build_single_clonotype([10, 20, 5, 5], [1000, 500, 200, 100])
-        sort_keys = ["clonotypeKey", "concentrationStr"]
-        legacy = normalize(reads, bin_mode=True, sort_fraction_col=None).sort(sort_keys)
-        direct = compute_mean_bin(reads, sort_fraction_col=None).rename({MEAN_BIN: SIGNAL}).sort(sort_keys)
-        assert legacy.equals(direct)
-
-    def test_frequency_mode_ignores_sort_fraction(self):
-        # sort_fraction is bin-space; in no-bin mode the kwarg must be a no-op.
-        # compute_frequency_signal never sees the column, so passing the kwarg
-        # simply dispatches to the frequency path unchanged.
-        reads = pl.DataFrame(
-            [
-                {"clonotypeKey": "A", "sampleId": "s", "concentrationStr": "1", "concentration": 1.0, "reads": 100},
-                {"clonotypeKey": "B", "sampleId": "s", "concentrationStr": "1", "concentration": 1.0, "reads": 900},
-            ]
-        )
-        out_without = normalize(reads, bin_mode=False, sort_fraction_col=None).sort("clonotypeKey")
-        out_with = normalize(reads, bin_mode=False, sort_fraction_col="sort_fraction").sort("clonotypeKey")
-        assert out_without.equals(out_with)
+        keys = ["clonotypeKey", "concentrationStr"]
+        direct = compute_mean_bin(reads, sort_fraction_col=None).rename({MEAN_BIN: SIGNAL}).sort(keys)
+        assert normalize(reads, bin_mode=True, sort_fraction_col=None).sort(keys).equals(direct)
+        no_bin = pl.DataFrame([_read("A", 100), _read("B", 900)])
+        without = normalize(no_bin, bin_mode=False, sort_fraction_col=None).sort("clonotypeKey")
+        assert normalize(no_bin, bin_mode=False, sort_fraction_col="sort_fraction").sort("clonotypeKey").equals(without)

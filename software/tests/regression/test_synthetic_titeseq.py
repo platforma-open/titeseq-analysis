@@ -12,6 +12,7 @@ from dataclasses import dataclass
 import numpy as np
 import polars as pl
 import pytest
+from helpers import LINEAR_HILL, hill_curve
 
 from pipeline import run
 
@@ -29,11 +30,6 @@ class PoissonConfig:
     seed: int
 
 
-def _hill(x, baseline, amplitude, kd, n):
-    top = baseline + math.exp(amplitude)
-    return baseline + (top - baseline) * (x**n) / (kd**n + x**n)
-
-
 def build_poisson_reads(cfg: PoissonConfig) -> pl.DataFrame:
     rng = np.random.default_rng(cfg.seed)
     bins = list(range(1, cfg.n_bins + 1))
@@ -42,8 +38,9 @@ def build_poisson_reads(cfg: PoissonConfig) -> pl.DataFrame:
     for k in range(cfg.n_clonotypes):
         kd_k = cfg.true_kd * math.exp(rng.normal(0.0, 0.1))
         clonotype = f"C{k:05d}"
+        targets = hill_curve(np.asarray(cfg.concs), cfg.baseline, cfg.amplitude, kd_k, cfg.true_n)
         for i, c in enumerate(cfg.concs):
-            target = _hill(c, cfg.baseline, cfg.amplitude, kd_k, cfg.true_n)
+            target = targets[i]
             centers = np.array(bins, dtype=float)
             probs = np.exp(-0.5 * ((centers - target) / 0.5) ** 2)
             probs /= probs.sum()
@@ -82,8 +79,9 @@ def build_poisson_reads_with_skewed_sort(
     for k in range(cfg.n_clonotypes):
         kd_k = cfg.true_kd * math.exp(rng.normal(0.0, 0.1))
         clonotype = f"C{k:05d}"
+        targets = hill_curve(np.asarray(cfg.concs), cfg.baseline, cfg.amplitude, kd_k, cfg.true_n)
         for i, c in enumerate(cfg.concs):
-            target = _hill(c, cfg.baseline, cfg.amplitude, kd_k, cfg.true_n)
+            target = targets[i]
             centers = np.array(bins, dtype=float)
             probs = np.exp(-0.5 * ((centers - target) / 0.5) ** 2)
             probs /= probs.sum()
@@ -151,13 +149,11 @@ def test_synthetic_titeseq_facs_correction_improves_recovery():
         good = pc.filter(pl.col("affinityClass").is_in(["Good", "Partial"]))
         if good.height == 0:
             return 0.0
-        within = good.filter(
-            (pl.col("kd") >= cfg.true_kd / factor) & (pl.col("kd") <= cfg.true_kd * factor)
-        )
+        within = good.filter((pl.col("kd") >= cfg.true_kd / factor) & (pl.col("kd") <= cfg.true_kd * factor))
         return within.height / good.height
 
-    out_corrected = run(reads, sort_fraction_col="sort_fraction")
-    out_uncorrected = run(reads)
+    out_corrected = run(reads, params=LINEAR_HILL, sort_fraction_col="sort_fraction")
+    out_uncorrected = run(reads, params=LINEAR_HILL)
 
     corrected_rate = _within_factor(out_corrected, factor=5.0)
     uncorrected_rate = _within_factor(out_uncorrected, factor=5.0)
@@ -165,9 +161,7 @@ def test_synthetic_titeseq_facs_correction_improves_recovery():
     # Corrected must recover at least 70% of fits within 5x of the injected Kd.
     # Uncorrected on this skew should be meaningfully worse — assert the gap to
     # catch regressions where the correction silently becomes a no-op.
-    assert corrected_rate >= 0.7, (
-        f"corrected recovery {corrected_rate:.0%} — correction broken or fixture too hard"
-    )
+    assert corrected_rate >= 0.7, f"corrected recovery {corrected_rate:.0%} — correction broken or fixture too hard"
     assert corrected_rate > uncorrected_rate, (
         f"corrected {corrected_rate:.0%} did not beat uncorrected {uncorrected_rate:.0%} — "
         "is the correction actually reaching normalize()?"
@@ -189,7 +183,7 @@ def test_poisson_titeseq_kd_recovery():
         seed=42,
     )
     reads = build_poisson_reads(cfg)
-    out = run(reads)
+    out = run(reads, params=LINEAR_HILL)
     pc = out["per_clonotype"]
     good = pc.filter(pl.col("affinityClass").is_in(["Good", "Partial"]))
     # Fraction recovered (not Failed) — deep regression alarm, not a calibration bound.

@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import filecmp
-import math
+import json
 import subprocess
 import sys
 from pathlib import Path
 
 import numpy as np
 import polars as pl
+import pytest
+from helpers import cli_outputs, hill_reads
 
 # Path to main.py — used to spawn the binary in a fresh subprocess so each run
 # gets its own randomized ahash seed (the same condition that production runs
@@ -17,82 +19,59 @@ import polars as pl
 _MAIN_PY = Path(__file__).resolve().parents[2] / "src" / "main.py"
 
 
-def _hill_reads(clonotype: str, true_kd: float, concs, bins, per_conc=500):
-    """Synthetic per-clonotype Hill-binding reads — mirrors test_cli helper."""
-    baseline = 1.5
-    top = baseline + math.exp(math.log(2.0))
-    rows = []
-    for i, c in enumerate(concs):
-        target = baseline + (top - baseline) * c / (true_kd + c)
-        weights = np.exp(-0.5 * ((np.array(bins, dtype=float) - target) / 0.35) ** 2)
-        weights /= weights.sum()
-        counts = np.round(weights * per_conc).astype(int)
-        if counts.sum() == 0:
-            counts[len(counts) // 2] = 1
-        for j, b in enumerate(bins):
-            rows.append(
-                {
-                    "clonotypeKey": clonotype,
-                    "sampleId": f"s_c{i}_b{b}",
-                    "concentrationStr": str(c),
-                    "concentration": float(c),
-                    "bin": int(b),
-                    "reads": int(counts[j]),
-                }
-            )
-    return rows
+_CORPUS_BIN_MODE = Path(__file__).resolve().parents[1] / "data" / "corpus" / "reads_bin_mode.parquet"
 
 
-def _run_cli(reads_path: Path, out_dir: Path) -> dict[str, Path]:
-    pc = out_dir / "per_clonotype.tsv"
-    mb = out_dir / "mean_bin.tsv"
-    fmb = out_dir / "fitted_mean_bin.tsv"
-    cv = out_dir / "concentration_value.tsv"
+def _run_cli(reads_path: Path, out_dir: Path, extra_args: list[str]) -> dict[str, Path]:
+    out_dir.mkdir()
+    out_args, paths = cli_outputs(out_dir)
     result = subprocess.run(
-        [
-            sys.executable, str(_MAIN_PY),
-            "--reads", str(reads_path),
-            "--out-per-clonotype", str(pc),
-            "--out-mean-bin", str(mb),
-            "--out-fitted-mean-bin", str(fmb),
-            "--out-concentration-value", str(cv),
-        ],
-        capture_output=True, text=True, check=False,
+        [sys.executable, str(_MAIN_PY), "--reads", str(reads_path), *out_args, *extra_args],
+        capture_output=True,
+        text=True,
+        check=False,
     )
     assert result.returncode == 0, f"fit-curves failed (rc={result.returncode}): {result.stderr}"
-    return {"per_clonotype": pc, "mean_bin": mb, "fitted_mean_bin": fmb, "concentration_value": cv}
+    return paths
 
 
-def test_outputs_are_byte_identical_across_runs(tmp_path):
+def _default_model_library(tmp_path: Path) -> tuple[Path, list[str]]:
+    # Needs a 0 M control. 410 clonotypes so the fit runs in parallel chunks, whose reassembly order must
+    # not depend on which worker finishes first.
+    concs = [0.0, 1e-10, 1e-9, 3e-9, 1e-8, 3e-8, 1e-7, 1e-6]
+    rows = [
+        row
+        for i, kd in enumerate(np.logspace(-10, -6, 410))
+        for row in hill_reads(f"CLONE_{i:03d}", float(kd), concs, [1, 2, 3, 4], cells=lambda b: 1000.0 + 100.0 * b)
+    ]
+    reads_path = tmp_path / "reads.parquet"
+    pl.DataFrame(rows).write_parquet(reads_path)
+    return reads_path, ["--allow-computed-baseline", "--cell-count-column", "cells"]
+
+
+def _linear_hill_corpus(tmp_path: Path) -> tuple[Path, list[str]]:
+    # The linear Hill path runs its own process pool over clonotypes.
+    params_path = tmp_path / "params.json"
+    params_path.write_text(json.dumps({"fit_model": "hill_free_n"}))
+    return _CORPUS_BIN_MODE, ["--params", str(params_path)]
+
+
+@pytest.mark.parametrize(
+    "make_input", [_default_model_library, _linear_hill_corpus], ids=["default-model", "linear-hill"]
+)
+def test_outputs_are_byte_identical_across_runs(tmp_path, make_input):
     """Spawn fit-curves twice as separate processes and byte-compare every TSV.
 
     Each subprocess gets a fresh ahash seed, which is what surfaces hash-order
     non-determinism in `polars.group_by` — the actual condition under which
     CIDConflictError fires in production.
     """
-    concs = [1e-10, 1e-9, 3e-9, 1e-8, 3e-8, 1e-7, 1e-6]
-    bins = [1, 2, 3, 4]
-    rows: list[dict] = []
-    for clonotype, kd in [("CLONE_A", 1e-8), ("CLONE_B", 3e-9), ("CLONE_C", 5e-9), ("CLONE_D", 1e-7)]:
-        rows.extend(_hill_reads(clonotype, kd, concs, bins))
-
-    reads_path = tmp_path / "reads.parquet"
-    pl.DataFrame(rows).write_parquet(reads_path)
-
-    out_a = tmp_path / "run_a"
-    out_b = tmp_path / "run_b"
-    out_a.mkdir()
-    out_b.mkdir()
-
-    paths_a = _run_cli(reads_path, out_a)
-    paths_b = _run_cli(reads_path, out_b)
-
+    reads_path, extra_args = make_input(tmp_path)
+    paths_a = _run_cli(reads_path, tmp_path / "run_a", extra_args)
+    paths_b = _run_cli(reads_path, tmp_path / "run_b", extra_args)
     for name, path_a in paths_a.items():
-        path_b = paths_b[name]
-        assert path_a.exists(), f"first run missing {name}"
-        assert path_b.exists(), f"second run missing {name}"
         # shallow=False forces full content compare, not stat-based.
-        assert filecmp.cmp(path_a, path_b, shallow=False), (
+        assert filecmp.cmp(path_a, paths_b[name], shallow=False), (
             f"{name} differs between two runs of identical input — "
             f"non-determinism in pipeline will cause CIDConflictError downstream"
         )

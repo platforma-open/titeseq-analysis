@@ -29,7 +29,9 @@ def compute_mean_bin(reads: pl.DataFrame, *, sort_fraction_col: str | None = Non
         correction via a positional-argument slip.
 
     Returns long frame: clonotypeKey, concentrationStr, concentration, mean_bin, clonotype_reads_at_conc.
+    Rows without a bin (an unsorted 0 M control) have no bin to average and are left out.
     """
+    reads = reads.filter(pl.col(COL_BIN).is_not_null())
     with_freq = reads.with_columns(
         pl.col(COL_READS).sum().over([COL_CONC_STR, COL_BIN]).alias("depth"),
     ).with_columns(pl.when(pl.col("depth") > 0).then(pl.col(COL_READS) / pl.col("depth")).otherwise(0.0).alias(FREQ))

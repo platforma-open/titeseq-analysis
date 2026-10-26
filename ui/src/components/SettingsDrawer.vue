@@ -2,12 +2,14 @@
 import {
   PlAccordionSection,
   PlAlert,
+  PlCheckbox,
   PlDropdown,
   PlDropdownRef,
   PlNumberField,
   PlSectionSeparator,
   PlSlideModal,
 } from "@platforma-sdk/ui-vue";
+import { plRefsEqual } from "@platforma-sdk/model";
 import { computed, watch } from "vue";
 import { useApp } from "../app";
 import { useFieldValidation } from "../composables/useFieldValidation";
@@ -26,6 +28,10 @@ const {
   hookThresholdBinError,
   hookThresholdNoBinError,
   hookMinReadsError,
+  binWidthError,
+  plateauError,
+  kdSdGoodError,
+  baselineError,
 } = useFieldValidation();
 
 watch(
@@ -40,7 +46,26 @@ watch(
 // inline on each PlNumberField.
 const warnings = computed(() => app.model.outputs.validationWarnings ?? []);
 
-const binMode = computed(() => app.model.outputs.binMode === true);
+// Settings follow the unsaved bin choice; `outputs.binMode` is the mode of the results on screen.
+const binMode = computed(() => app.model.data.binColumnRef !== undefined);
+
+// Bin mode fits the Adams 2016 model unless the linear Hill is chosen; no-bin mode always uses the
+// linear Hill, so its R², Hill-coefficient and hook settings apply there too.
+const adamsModel = computed(() => binMode.value && app.model.data.fitModel === "poisson_log");
+
+const fitModelOptions = [
+  { value: "poisson_log" as const, label: "Adams 2016 (log fluorescence, n = 1)" },
+  { value: "hill_free_n" as const, label: "Linear Hill, free n" },
+];
+
+// Cell counts are what .args() waits for under the Adams model, unless sort fractions stand in or
+// the operator accepted an uncorrected fit.
+const cellCountsRequired = computed(
+  () =>
+    adamsModel.value &&
+    app.model.data.sortFractionColumnRef === undefined &&
+    !app.model.data.allowUncorrected,
+);
 
 const targetAntigenOptions = computed(() =>
   (app.model.outputs.targetAntigenValues ?? []).map((v) => ({ value: v, label: v })),
@@ -63,20 +88,25 @@ const targetAntigenLabel = computed(() =>
     : "Target antigen",
 );
 
+// An external data patch replaces the ref with an equal copy; only a different column clears the target.
 watch(
   () => app.model.data.antigenColumnRef,
-  () => {
+  (next, prev) => {
+    if (next !== undefined && prev !== undefined && plRefsEqual(next, prev)) return;
     app.model.data.targetAntigen = undefined;
   },
 );
 
-// Sort-fraction correction only applies in bin mode. Clearing the bin column
-// would leave an orphaned sortFractionColumnRef that the model validator would
-// then reject, so drop it here in lock-step with the bin column.
+// Sort fractions and cell counts only apply in bin mode. Clearing the bin column
+// would leave orphaned refs that the model validator would then reject, so drop
+// them here in lock-step with the bin column.
 watch(
   () => app.model.data.binColumnRef,
   (binRef) => {
-    if (binRef === undefined) app.model.data.sortFractionColumnRef = undefined;
+    if (binRef === undefined) {
+      app.model.data.sortFractionColumnRef = undefined;
+      app.model.data.cellCountColumnRef = undefined;
+    }
   },
 );
 </script>
@@ -121,15 +151,31 @@ watch(
     </PlDropdownRef>
     <PlDropdownRef
       v-if="app.model.data.binColumnRef !== undefined"
+      v-model="app.model.data.cellCountColumnRef"
+      :options="app.model.outputs.cellCountOptions"
+      label="Sorted cell counts"
+      :required="cellCountsRequired"
+      clearable
+    >
+      <template #tooltip>
+        Per-sample number of cells FACS sorted into that sample's (concentration, bin) — C_bc in
+        Adams, Mora, Walczak, Kinney 2016. Weights each bin by the cells it holds and caps a bin's
+        reads at its cell count. Required by the Adams 2016 model unless sort fractions are given.
+      </template>
+    </PlDropdownRef>
+    <PlDropdownRef
+      v-if="
+        app.model.data.binColumnRef !== undefined && app.model.data.cellCountColumnRef === undefined
+      "
       v-model="app.model.data.sortFractionColumnRef"
       :options="app.model.outputs.sortFractionOptions"
       label="FACS sort fraction (optional)"
       clearable
     >
       <template #tooltip>
-        Optional. Per-sample numerical metadata column giving the fraction of cells sorted into that
-        sample's (concentration, bin) — C_bc / C_c in Adams, Mora, Walczak, Kinney 2016. Values must
-        sum to 1 per concentration. When supplied, Mean Bin is corrected for FACS sort yield.
+        Use when only fractions are known. Per-sample fraction of cells sorted into that sample's
+        (concentration, bin) — C_bc / C_c in Adams, Mora, Walczak, Kinney 2016. Values must sum to 1
+        per concentration. Sorted cell counts are preferred: fractions cannot cap a bin's reads.
       </template>
     </PlDropdownRef>
     <PlDropdownRef
@@ -160,6 +206,78 @@ watch(
       {{ w.message }}
     </PlAlert>
 
+    <PlAccordionSection v-if="binMode" label="Curve model">
+      <PlDropdown v-model="app.model.data.fitModel" :options="fitModelOptions" label="Model">
+        <template #tooltip>
+          Adams 2016 (default) is the published Tite-Seq estimator: a Poisson likelihood on read
+          counts, mean log fluorescence log10(B + A·c/(c + Kd)) with Hill n = 1, and a minimum
+          plateau that reads flat curves as Kd above the range. Linear Hill fits mean bin directly
+          with a free n; it does not reproduce published Tite-Seq values.
+        </template>
+      </PlDropdown>
+      <template v-if="adamsModel">
+        <PlNumberField
+          v-model="app.model.data.binWidthDecades"
+          label="Bin width (decades of fluorescence)"
+          :min-value="0"
+          :step="0.05"
+          :error-message="binWidthError"
+          required
+        >
+          <template #tooltip>
+            Width of one FACS gate in log10 fluorescence — the spacing between bin gates. Adams 2016
+            used 0.61–0.71. Default 0.65.
+          </template>
+        </PlNumberField>
+        <PlNumberField
+          v-model="app.model.data.minPlateauFraction"
+          label="Minimum plateau (fraction of bin range)"
+          :min-value="0"
+          :max-value="1"
+          :step="0.05"
+          :error-message="plateauError"
+          required
+        >
+          <template #tooltip>
+            Every variant is assumed able to reach at least this fraction of the bin range at
+            saturation, so a flat curve reads as Kd above the titration rather than a tight binder.
+            A tight binder that displays poorly is then reported weaker than it is. Adams 2016 used
+            0.63–0.70. Default 0.65.
+          </template>
+        </PlNumberField>
+        <PlNumberField
+          v-model="app.model.data.kdSdGood"
+          label="Good class: max Kd,app uncertainty (decades)"
+          :min-value="0"
+          :step="0.05"
+          :error-message="kdSdGoodError"
+          required
+        >
+          <template #tooltip>
+            An in-range Kd,app is Good when its posterior standard deviation is at or below this,
+            Partial above it. Kd,app above the titration range is Failed; below it is Good. Default
+            0.5.
+          </template>
+        </PlNumberField>
+        <PlNumberField
+          v-model="app.model.data.baselineFluorescence"
+          label="0 M baseline fluorescence (optional)"
+          :min-value="0"
+          :step="0.1"
+          :error-message="baselineError"
+          clearable
+        >
+          <template #tooltip>
+            Mean fluorescence of cells at 0 M antigen, in units of the lowest bin's fluorescence.
+            Leave empty to compute it from the 0 M samples, which are then required.
+          </template>
+        </PlNumberField>
+        <PlCheckbox v-model="app.model.data.allowUncorrected">
+          Fit without cell counts (assume equal cells per bin)
+        </PlCheckbox>
+      </template>
+    </PlAccordionSection>
+
     <PlAccordionSection label="Read coverage">
       <PlNumberField
         v-model="app.model.data.minReadsPerConcentration"
@@ -189,7 +307,7 @@ watch(
       </PlNumberField>
     </PlAccordionSection>
 
-    <PlAccordionSection label="Fit quality">
+    <PlAccordionSection v-if="!adamsModel" label="Fit quality">
       <PlNumberField
         v-model="app.model.data.r2ThresholdGood"
         label="R² threshold — Good"
@@ -246,7 +364,7 @@ watch(
       </PlNumberField>
     </PlAccordionSection>
 
-    <PlAccordionSection label="Hook effect">
+    <PlAccordionSection v-if="!adamsModel" label="Hook effect">
       <PlNumberField
         v-if="binMode"
         v-model="app.model.data.hookEffectThresholdBin"

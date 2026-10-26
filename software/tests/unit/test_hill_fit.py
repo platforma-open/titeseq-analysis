@@ -6,14 +6,11 @@ import math
 
 import numpy as np
 import pytest
+from helpers import hill_curve
+from hypothesis import given
+from hypothesis import strategies as st
 
 from hill_fit import fit_one_clonotype, weighted_r2
-
-
-def hill_truth(x, baseline, amplitude, kd, n):
-    top = baseline + math.exp(amplitude)
-    return baseline + (top - baseline) * (x**n) / (kd**n + x**n)
-
 
 LOG_CONCS = np.array([0.1, 0.3, 1.0, 3.0, 10.0, 30.0, 100.0, 300.0])
 
@@ -51,37 +48,36 @@ class TestWeightedR2:
 
 
 class TestHillFitRoundtrip:
-    # Noiseless round-trip: fit must recover true Kd within tight tolerance.
-    # Guards against reparametrization, sign errors, and wrong Hill algebra.
-    @pytest.mark.parametrize(
-        "true_kd, true_n, abs_err_kd, abs_err_n",
-        [
-            (10.0, 1.0, 1e-4, 1e-4),
-            (10.0, 2.0, 1e-4, 1e-4),
-            (10.0, 0.5, 1e-3, 1e-4),
-            (0.1, 1.0, 1e-4, 1e-4),
-            (1000.0, 1.0, 10.0, 1e-3),  # high-KD arm: concentrations barely reach mid-point
-        ],
-    )
-    def test_noiseless_roundtrip(self, true_kd, true_n, abs_err_kd, abs_err_n):
-        baseline = 1.0
-        amplitude = math.log(3.0)
-        x = LOG_CONCS
-        y = hill_truth(x, baseline, amplitude, true_kd, true_n)
-        w = np.ones_like(x)
-
-        fit = fit_one_clonotype(x, y, w, baseline_fixed=baseline, bin_mode=True, max_bin_label=8)
+    # Noiseless round-trip: fit must recover true Kd and n for any curve whose midpoint lies within the
+    # concentrations. Guards against reparametrization, sign errors, and wrong Hill algebra.
+    @given(log10_kd=st.floats(-1.0, 2.0), n=st.floats(0.5, 2.0), amplitude=st.floats(1.0, 5.0))
+    def test_noiseless_roundtrip(self, log10_kd, n, amplitude):
+        kd = 10.0**log10_kd
+        y = hill_curve(LOG_CONCS, 1.0, math.log(amplitude), kd, n)
+        fit = fit_one_clonotype(
+            LOG_CONCS, y, np.ones_like(LOG_CONCS), baseline_fixed=1.0, bin_mode=True, max_bin_label=8
+        )
         assert fit.converged is True
-        assert fit.kd == pytest.approx(true_kd, abs=abs_err_kd, rel=1e-3)
-        assert fit.n == pytest.approx(true_n, abs=abs_err_n)
+        assert fit.kd == pytest.approx(kd, rel=1e-4)
+        assert fit.n == pytest.approx(n, abs=1e-4)
         assert fit.r2_w == pytest.approx(1.0, abs=1e-6)
+
+    # High-Kd arm: the concentrations barely reach the midpoint, so Kd is only loosely determined.
+    def test_noiseless_roundtrip_kd_beyond_the_concentrations(self):
+        y = hill_curve(LOG_CONCS, 1.0, math.log(3.0), 1000.0, 1.0)
+        fit = fit_one_clonotype(
+            LOG_CONCS, y, np.ones_like(LOG_CONCS), baseline_fixed=1.0, bin_mode=True, max_bin_label=8
+        )
+        assert fit.converged is True
+        assert fit.kd == pytest.approx(1000.0, abs=10.0)
+        assert fit.n == pytest.approx(1.0, abs=1e-3)
 
     # No-bin mode: amplitude upper bound is log(0.95); still recoverable.
     def test_no_bin_mode_amplitude_bound(self):
         baseline = 0.01
         amplitude = math.log(0.5)
         x = LOG_CONCS
-        y = hill_truth(x, baseline, amplitude, 10.0, 1.0)
+        y = hill_curve(x, baseline, amplitude, 10.0, 1.0)
         w = np.ones_like(x)
 
         fit = fit_one_clonotype(x, y, w, baseline_fixed=baseline, bin_mode=False, max_bin_label=None)
@@ -93,7 +89,7 @@ class TestHillFitRoundtrip:
         baseline_true = 1.2
         amplitude = math.log(3.0)
         x = LOG_CONCS
-        y = hill_truth(x, baseline_true, amplitude, 10.0, 1.0)
+        y = hill_curve(x, baseline_true, amplitude, 10.0, 1.0)
         w = np.ones_like(x)
 
         fit = fit_one_clonotype(x, y, w, baseline_fixed=None, bin_mode=True, max_bin_label=8)
@@ -103,25 +99,23 @@ class TestHillFitRoundtrip:
 
 
 class TestHillFitFailureModes:
-    # Flat curve: top − baseline < δ → convergence_failure.
-    # This specifically exercises the `top - baseline < δ` branch of R10.
-    def test_flat_curve_yields_convergence_failure(self):
-        x = LOG_CONCS
-        y = np.full_like(x, 1.0)  # absolutely flat signal
-        w = np.ones_like(x)
-        fit = fit_one_clonotype(x, y, w, baseline_fixed=1.0, bin_mode=True, max_bin_label=8)
-        assert fit.converged is False
+    # A signal with no dynamic range (top − baseline < δ, R10) has nothing to fit: the optimiser would
+    # otherwise park K_D far outside the data with an undefined R².
+    @pytest.mark.parametrize(
+        "x, y, baseline_fixed, max_bin_label",
+        [
+            pytest.param(LOG_CONCS, np.full_like(LOG_CONCS, 1.0), 1.0, 8, id="flat-baseline-fixed"),
+            pytest.param(LOG_CONCS, 1.0 + 1e-4 * np.arange(len(LOG_CONCS)), 1.0, 8, id="tiny-amplitude"),
+            pytest.param(np.array([1e-10, 1e-9, 1e-8, 1e-7, 1e-6]), np.full(5, 2.5), None, 4, id="flat-baseline-free"),
+        ],
+    )
+    def test_no_dynamic_range_is_a_convergence_failure(self, x, y, baseline_fixed, max_bin_label):
+        fit = fit_one_clonotype(
+            x, y, np.full_like(x, 100.0), baseline_fixed, bin_mode=True, max_bin_label=max_bin_label
+        )
+        assert not fit.converged
         assert fit.reason == "convergence_failure"
-
-    # Tiny dynamic range (< δ) with baseline fixed → reject with convergence_failure.
-    def test_tiny_amplitude_below_delta_fails(self):
-        x = LOG_CONCS
-        # Amplitude well below δ=0.05 in absolute terms
-        y = np.full_like(x, 1.0) + 1e-4 * np.arange(len(x))
-        w = np.ones_like(x)
-        fit = fit_one_clonotype(x, y, w, baseline_fixed=1.0, bin_mode=True, max_bin_label=8)
-        assert fit.converged is False
-        assert fit.reason == "convergence_failure"
+        assert fit.kd is None
 
 
 class TestDeltaDynamicRangeGate:
@@ -148,12 +142,10 @@ class TestDeltaDynamicRangeGate:
         baseline = 1.0 if bin_mode else 0.01
         max_bin_label = 8 if bin_mode else None
         x = LOG_CONCS
-        y = hill_truth(x, baseline, amplitude, kd=10.0, n=1.0)
+        y = hill_curve(x, baseline, amplitude, kd=10.0, n=1.0)
         w = np.ones_like(x) * 100.0
 
-        fit = fit_one_clonotype(
-            x, y, w, baseline_fixed=baseline, bin_mode=bin_mode, max_bin_label=max_bin_label
-        )
+        fit = fit_one_clonotype(x, y, w, baseline_fixed=baseline, bin_mode=bin_mode, max_bin_label=max_bin_label)
         assert fit.converged is should_converge, (
             f"{'bin' if bin_mode else 'no-bin'} amp={math.exp(amplitude):.3f}: "
             f"expected converged={should_converge}, got {fit.converged}"
@@ -179,7 +171,7 @@ class TestOptimizeWarningBecomesFailure:
 
         import hill_fit
 
-        def fake_curve_fit(*_args, **_kwargs):
+        def fake_curve_fit(*_args: object, **_kwargs: object) -> tuple[np.ndarray, None]:
             _warnings.warn(
                 "Covariance of the parameters could not be estimated",
                 OptimizeWarning,
@@ -212,13 +204,12 @@ class TestAmplitudeBoundsRespected:
         max_bin_label = 8 if bin_mode else None
         amplitude = math.log(1.5) if bin_mode else math.log(0.3)
         x = LOG_CONCS
-        y = hill_truth(x, baseline, amplitude, kd=10.0, n=1.0)
+        y = hill_curve(x, baseline, amplitude, kd=10.0, n=1.0)
         w = np.ones_like(x) * 100.0
 
-        fit = fit_one_clonotype(
-            x, y, w, baseline_fixed=baseline, bin_mode=bin_mode, max_bin_label=max_bin_label
-        )
+        fit = fit_one_clonotype(x, y, w, baseline_fixed=baseline, bin_mode=bin_mode, max_bin_label=max_bin_label)
         assert fit.converged is True
+        assert fit.top is not None and fit.baseline is not None
         assert (fit.top - fit.baseline) >= delta_expected - 1e-9, (
             f"top − baseline = {fit.top - fit.baseline:.4f} violates δ = {delta_expected}"
         )

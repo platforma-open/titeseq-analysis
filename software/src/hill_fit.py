@@ -21,8 +21,8 @@ from scipy.optimize import OptimizeWarning, curve_fit
 from constants import DELTA_BIN, DELTA_NO_BIN
 
 # Parameter bounds for the Hill fit — tuned once, not caller-configurable.
-KD_LO: float = 1e-15
-KD_HI: float = 1e3
+# Kd may sit this many decades beyond the titrated range, in the data's own concentration unit.
+KD_RANGE_DECADES: float = 3.0
 N_LO: float = 0.1
 N_HI: float = 10.0
 
@@ -115,6 +115,7 @@ def fit_one_clonotype(
     Returns FitResult with `converged=False, reason="convergence_failure"` on:
       - scipy.curve_fit raising
       - top − baseline < mode-specific δ after fit (bin: 0.5, no-bin: 0.05)
+      - a flat signal (weighted R² undefined)
     """
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=float)
@@ -130,16 +131,19 @@ def fit_one_clonotype(
     baseline_known = baseline_fixed is not None
     anchor_for_guesses = baseline_fixed if baseline_known else float(np.min(y))
     log_kd0, n0, amp0 = _initial_guesses(x, y, anchor_for_guesses)
-    log_kd0 = min(max(log_kd0, math.log(KD_LO)), math.log(KD_HI))
+    positive = x[x > 0]
+    log_kd_lo = math.log(float(positive.min())) - KD_RANGE_DECADES * math.log(10.0)
+    log_kd_hi = math.log(float(positive.max())) + KD_RANGE_DECADES * math.log(10.0)
+    log_kd0 = min(max(log_kd0, log_kd_lo), log_kd_hi)
     n0 = min(max(n0, N_LO), N_HI)
     amp0 = min(max(amp0, amp_lo), amp_hi)
 
     if baseline_known:
         p0 = [log_kd0, n0, amp0]
-        lo = [math.log(KD_LO), N_LO, amp_lo]
-        hi = [math.log(KD_HI), N_HI, amp_hi]
+        lo = [log_kd_lo, N_LO, amp_lo]
+        hi = [log_kd_hi, N_HI, amp_hi]
 
-        def model(x_, log_kd, n, amp):
+        def model(x_: np.ndarray, log_kd: float, n: float, amp: float) -> np.ndarray:
             return _hill(x_, log_kd, n, amp, baseline_fixed)
     else:
         # R10 baseline bounds — signal-mode dependent, δ-aware so `top ≥ baseline + δ`
@@ -154,8 +158,8 @@ def fit_one_clonotype(
             base_hi = 0.95
         base0 = min(max(anchor_for_guesses, base_lo), base_hi)
         p0 = [log_kd0, n0, amp0, base0]
-        lo = [math.log(KD_LO), N_LO, amp_lo, base_lo]
-        hi = [math.log(KD_HI), N_HI, amp_hi, base_hi]
+        lo = [log_kd_lo, N_LO, amp_lo, base_lo]
+        hi = [log_kd_hi, N_HI, amp_hi, base_hi]
         model = _hill
 
     try:
@@ -190,13 +194,17 @@ def fit_one_clonotype(
     if amp <= amp_lo + 1e-6:
         return _failure()
     top_minus_base = math.exp(amp)
+    r2 = weighted_r2(y, y_hat, w)
+    # A flat signal has no variance to explain: R² is 0/0 and K_D is unconstrained.
+    if math.isnan(r2):
+        return _failure()
 
     return FitResult(
         kd=math.exp(log_kd),
         n=float(n),
         top=float(baseline_out) + top_minus_base,
         baseline=float(baseline_out),
-        r2_w=weighted_r2(y, y_hat, w),
+        r2_w=r2,
         y_hat=y_hat,
         converged=True,
         reason=None,

@@ -3,104 +3,40 @@
 from __future__ import annotations
 
 import json
-import math
 
 import numpy as np
 import polars as pl
+import pytest
+from helpers import cli_outputs, hill_reads
 
 from main import main
 
 
-def _hill_reads(clonotype: str, true_kd: float, concs, bins, per_conc=500):
-    baseline = 1.5
-    top = baseline + math.exp(math.log(2.0))
-    rows = []
-    for i, c in enumerate(concs):
-        target = baseline + (top - baseline) * c / (true_kd + c)
-        weights = np.exp(-0.5 * ((np.array(bins, dtype=float) - target) / 0.35) ** 2)
-        weights /= weights.sum()
-        counts = np.round(weights * per_conc).astype(int)
-        if counts.sum() == 0:
-            counts[len(counts) // 2] = 1
-        for j, b in enumerate(bins):
-            rows.append(
-                {
-                    "clonotypeKey": clonotype,
-                    "sampleId": f"s_c{i}_b{b}",
-                    "concentrationStr": str(c),
-                    "concentration": float(c),
-                    "bin": int(b),
-                    "reads": int(counts[j]),
-                }
-            )
-    return rows
+def _cli_reads(clonotype: str, true_kd: float, concs: list[float], bins: list[int]) -> list[dict]:
+    return hill_reads(clonotype, true_kd, concs, bins, cells=lambda b: 1000.0)
 
 
-# Parquet round-trip — verifies argparse wiring, file reader, and parquet writer branch
-def test_cli_parquet_roundtrip(tmp_path):
-    rows = _hill_reads("G1", 1e-8, [1e-10, 1e-9, 1e-8, 1e-7, 1e-6], [1, 2, 3, 4])
+# Default model: needs a 0 M control and the cells sorted per sample.
+_DEFAULT_MODEL_CONCS = [0.0, 1e-10, 1e-9, 1e-8, 1e-7, 1e-6]
+_CELLS_ARGS = ["--allow-computed-baseline", "--cell-count-column", "cells"]
+
+
+# Both writer branches: every output file is written in the format its suffix names.
+@pytest.mark.parametrize("suffix", [".parquet", ".tsv"])
+def test_cli_writes_every_output(tmp_path, suffix):
     reads_path = tmp_path / "reads.parquet"
-    pl.DataFrame(rows).write_parquet(reads_path)
-
-    pc_path = tmp_path / "pc.parquet"
-    mb_path = tmp_path / "mb.parquet"
-    fmb_path = tmp_path / "fmb.parquet"
-    cv_path = tmp_path / "cv.parquet"
-
-    rc = main(
-        [
-            "--reads",
-            str(reads_path),
-            "--out-per-clonotype",
-            str(pc_path),
-            "--out-mean-bin",
-            str(mb_path),
-            "--out-fitted-mean-bin",
-            str(fmb_path),
-            "--out-concentration-value",
-            str(cv_path),
-        ]
-    )
-    assert rc == 0
-    assert pc_path.exists() and mb_path.exists() and fmb_path.exists() and cv_path.exists()
-
-    pc = pl.read_parquet(pc_path)
-    assert pc.height == 1
-    assert pc["clonotypeKey"][0] == "G1"
-
-
-# TSV branch — exercises the non-parquet writer path
-def test_cli_tsv_output(tmp_path):
-    rows = _hill_reads("G1", 1e-8, [1e-10, 1e-9, 1e-8, 1e-7, 1e-6], [1, 2, 3, 4])
-    reads_path = tmp_path / "reads.parquet"
-    pl.DataFrame(rows).write_parquet(reads_path)
-
-    pc_path = tmp_path / "pc.tsv"
-    mb_path = tmp_path / "mb.tsv"
-    fmb_path = tmp_path / "fmb.tsv"
-    cv_path = tmp_path / "cv.tsv"
-
-    rc = main(
-        [
-            "--reads",
-            str(reads_path),
-            "--out-per-clonotype",
-            str(pc_path),
-            "--out-mean-bin",
-            str(mb_path),
-            "--out-fitted-mean-bin",
-            str(fmb_path),
-            "--out-concentration-value",
-            str(cv_path),
-        ]
-    )
-    assert rc == 0
-    assert pc_path.read_text().startswith("clonotypeKey")
+    pl.DataFrame(_cli_reads("G1", 1e-8, _DEFAULT_MODEL_CONCS, [1, 2, 3, 4])).write_parquet(reads_path)
+    out_args, paths = cli_outputs(tmp_path, suffix)
+    assert main(["--reads", str(reads_path), *out_args, *_CELLS_ARGS]) == 0
+    assert all(path.exists() for path in paths.values())
+    pc_path = paths["per_clonotype"]
+    pc = pl.read_parquet(pc_path) if suffix == ".parquet" else pl.read_csv(pc_path, separator="\t")
+    assert pc["clonotypeKey"].to_list() == ["G1"]
 
 
 # --params JSON — ensures FitParams override path is wired through argparse
 def test_cli_with_params_json(tmp_path):
-    rows = _hill_reads("G1", 1e-8, [1e-10, 1e-9, 1e-8, 1e-7, 1e-6], [1, 2, 3, 4])
+    rows = _cli_reads("G1", 1e-8, [1e-10, 1e-9, 1e-8, 1e-7, 1e-6], [1, 2, 3, 4])
     reads_path = tmp_path / "reads.parquet"
     pl.DataFrame(rows).write_parquet(reads_path)
 
@@ -117,27 +53,13 @@ def test_cli_with_params_json(tmp_path):
                 "hook_effect_threshold_bin": 0.2,
                 "hook_effect_threshold_no_bin": 0.02,
                 "hook_effect_min_reads": 20,
+                "fit_model": "hill_free_n",
             }
         )
     )
 
-    rc = main(
-        [
-            "--reads",
-            str(reads_path),
-            "--out-per-clonotype",
-            str(tmp_path / "pc.parquet"),
-            "--out-mean-bin",
-            str(tmp_path / "mb.parquet"),
-            "--out-fitted-mean-bin",
-            str(tmp_path / "fmb.parquet"),
-            "--out-concentration-value",
-            str(tmp_path / "cv.parquet"),
-            "--params",
-            str(params_path),
-        ]
-    )
-    assert rc == 0
+    out_args, _ = cli_outputs(tmp_path)
+    assert main(["--reads", str(reads_path), *out_args, "--params", str(params_path)]) == 0
 
 
 # Hook-flagged clonotype → non_monotonic_signal branch in run()
@@ -170,23 +92,12 @@ def test_cli_hook_effect_triggers_failure(tmp_path):
     reads_path = tmp_path / "reads.parquet"
     pl.DataFrame(rows).write_parquet(reads_path)
 
-    pc_path = tmp_path / "pc.parquet"
-    rc = main(
-        [
-            "--reads",
-            str(reads_path),
-            "--out-per-clonotype",
-            str(pc_path),
-            "--out-mean-bin",
-            str(tmp_path / "mb.parquet"),
-            "--out-fitted-mean-bin",
-            str(tmp_path / "fmb.parquet"),
-            "--out-concentration-value",
-            str(tmp_path / "cv.parquet"),
-        ]
-    )
-    assert rc == 0
-    pc = pl.read_parquet(pc_path)
+    # The hook gate belongs to the opt-in linear Hill model; the default model does not fail on it.
+    params_path = tmp_path / "params.json"
+    params_path.write_text(json.dumps({"fit_model": "hill_free_n"}))
+    out_args, paths = cli_outputs(tmp_path, ".parquet")
+    assert main(["--params", str(params_path), "--reads", str(reads_path), *out_args]) == 0
+    pc = pl.read_parquet(paths["per_clonotype"])
     h1 = pc.filter(pl.col("clonotypeKey") == "H1")
     assert h1["affinityClass"][0] == "Failed"
     assert h1["fitFailureReason"][0] == "non_monotonic_signal"
@@ -194,3 +105,18 @@ def test_cli_hook_effect_triggers_failure(tmp_path):
     assert h1["kd"][0] is None
     assert h1["kdPlotPosition"][0] == max(concs) * 10.0
     assert h1["hillPlotPosition"][0] == -1.0
+
+
+def test_cli_fit_summary_counts_failed_clonotypes(tmp_path):
+    # The block shows "All clonotypes failed" from this file; a non-binder is Failed (above range).
+    rows = _cli_reads("BINDER", 1e-8, _DEFAULT_MODEL_CONCS, [1, 2, 3, 4])
+    rows += _cli_reads("FLAT", 1e2, _DEFAULT_MODEL_CONCS, [1, 2, 3, 4])
+    reads_path = tmp_path / "reads.tsv"
+    pl.DataFrame(rows).write_csv(reads_path, separator="\t")
+    out_args, paths = cli_outputs(tmp_path)
+    summary_path = tmp_path / "fit_summary.json"
+    assert main(["--reads", str(reads_path), *out_args, *_CELLS_ARGS, "--out-fit-summary", str(summary_path)]) == 0
+    pc = pl.read_csv(paths["per_clonotype"], separator="\t")
+    expected_failed = pc.filter(pl.col("affinityClass") == "Failed").height
+    assert json.loads(summary_path.read_text()) == {"clonotypes": 2, "failed": expected_failed}
+    assert expected_failed >= 1

@@ -16,18 +16,21 @@ dependencies = [
 [dependency-groups]
 # Dev-only tooling (not shipped). Runtime libs live in [project.dependencies] above.
 dev = [
+    "hypothesis>=6.170.5",
     "pytest>=9.0.2",
     "pytest-cov>=6.0.0",
     "ruff>=0.14",
+    "ty==0.0.91",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "tests"]
 addopts = "-ra --strict-markers"
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "hot_path: perf smoke tests",
+    "golden: reproduces Adams et al. 2016 from the authors' data (downloads it on first run)",
 ]
 
 [tool.coverage.run]
@@ -54,10 +57,17 @@ indent-width = 4
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E4", "E7", "E9", "E501", "F", "I"]
-ignore = []
+# ANN: every signature is typed, and ANN401 bans `Any`. UP: modern syntax (`list[int]`, `X | None`).
+# B, C4, PIE: common bug and idiom checks. PGH: no blanket `# type: ignore`.
+select = ["E4", "E7", "E9", "E501", "F", "I", "ANN", "UP", "B", "C4", "PIE", "PGH"]
+# B905 asks for zip(strict=True), which raises on unequal lengths: a behaviour change, not a lint fix.
+ignore = ["B905"]
 fixable = ["ALL"]
 unfixable = []
+
+[tool.ruff.lint.per-file-ignores]
+# Test functions and their fixture arguments need no annotations; helpers still need return types (ANN202).
+"tests/**" = ["ANN001", "ANN201"]
 
 [tool.ruff.format]
 quote-style = "double"
