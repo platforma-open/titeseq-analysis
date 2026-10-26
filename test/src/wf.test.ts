@@ -414,6 +414,12 @@ blockTest(
         targetAntigen: undefined,
         cellCountColumnRef: cellCountRef,
         fitModel: "poisson_log",
+        // The Adams model will not compute the 0 M baseline for itself: the estimate
+        // weights every clonotype equally, so it is only right for a curated designed
+        // library. The block therefore requires the user to supply it, and this test
+        // stands in for that user. 12.7852 is this fixture's own 0 M baseline, so the
+        // run reproduces what the block produced before the opt-in landed.
+        baselineFluorescence: 12.7852,
         binWidthDecades: 0.65,
         minPlateauFraction: 0.65,
         allowUncorrected: false,
