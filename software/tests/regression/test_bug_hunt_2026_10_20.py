@@ -7,9 +7,12 @@ so the marker must be removed together with the fix.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import numpy as np
 import polars as pl
 import pytest
+from helpers import LINEAR_HILL
 
 from classify import classify
 from constants import FitParams
@@ -18,11 +21,19 @@ from io_layer import InputValidationError
 from pipeline import run
 
 CONCS_M = [1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5]
-# The linear Hill fit, opt-in in bin mode since the Adams 2016 model became the default.
-HILL = FitParams(allow_computed_baseline=True, fit_model="hill_free_n")
 
 
-def _bin_rows(concs, kds, rng, *, reads=400, sigma=0.4, prefix="K", extra=None, all_bins=False):
+def _bin_rows(
+    concs: list[float],
+    kds: list[float],
+    rng: np.random.Generator,
+    *,
+    reads: int = 400,
+    sigma: float = 0.4,
+    prefix: str = "K",
+    extra: Callable[[int, float, int], dict] | None = None,
+    all_bins: bool = False,
+) -> list[dict]:
     rows = []
     for k, kd in enumerate(kds):
         for i, c in enumerate(concs):
@@ -64,7 +75,7 @@ def test_unbinned_zero_control_does_not_shift_kd():
     concs = [0.0, *CONCS_M]
     kds = list(10 ** rng.uniform(-9, -7, size=20))
     rows = _bin_rows(concs, kds, rng)
-    ref = run(pl.DataFrame(rows), params=HILL)["per_clonotype"]
+    ref = run(pl.DataFrame(rows), params=LINEAR_HILL)["per_clonotype"]
     unbinned = (
         pl.DataFrame(rows)
         .with_columns(
@@ -77,18 +88,18 @@ def test_unbinned_zero_control_does_not_shift_kd():
         .group_by(["clonotypeKey", "sampleId", "concentration", "bin"], maintain_order=True)
         .agg(pl.col("reads").sum())
     )
-    out = run(unbinned, params=HILL)["per_clonotype"]
+    out = run(unbinned, params=LINEAR_HILL)["per_clonotype"]
     joined = ref.select("clonotypeKey", pl.col("kd").alias("kd_ref")).join(
         out.select("clonotypeKey", "kd"), on="clonotypeKey"
     )
     ratio = joined.drop_nulls().select((pl.col("kd") / pl.col("kd_ref")).alias("r"))["r"]
-    assert ratio.min() > 0.5
+    assert ratio.min() > 0.5  # ty: ignore[unsupported-operator]  polars types Series.min() as any scalar
 
 
 def test_kd_not_capped_when_concentrations_are_nanomolar():
     rng = np.random.default_rng(5)
     concs_nm = [0.0, 0.3, 3.0, 30.0, 300.0, 3000.0, 10000.0]
-    out = run(pl.DataFrame(_bin_rows(concs_nm, [5000.0] * 5, rng, reads=1000)), params=HILL)["per_clonotype"]
+    out = run(pl.DataFrame(_bin_rows(concs_nm, [5000.0] * 5, rng, reads=1000)), params=LINEAR_HILL)["per_clonotype"]
     kds = out["kd"].drop_nulls()
     assert kds.len() > 0
     assert (kds > 1500.0).all()
@@ -136,7 +147,7 @@ def test_sort_fraction_ignores_samples_without_concentration():
         rows, schema_overrides={"concentration": pl.Float64, "bin": pl.Int64, "sort_fraction": pl.Float64}
     )
     try:
-        run(df, params=HILL, sort_fraction_col="sort_fraction")
+        run(df, params=LINEAR_HILL, sort_fraction_col="sort_fraction")
     except InputValidationError as e:
         pytest.fail(f"rejected: {e}")
 
@@ -182,5 +193,5 @@ def test_no_bin_mode_fits_binders_in_a_200_clonotype_library():
 def test_grid_warning_silent_when_bins_simply_have_zero_reads(capsys):
     rng = np.random.default_rng(21)
     rows = _bin_rows([0.0, *CONCS_M[:5]], list(10 ** rng.uniform(-9, -7, 10)), rng, reads=300, sigma=0.35)
-    run(pl.DataFrame(rows), params=HILL)
+    run(pl.DataFrame(rows), params=LINEAR_HILL)
     assert "missing (bin, concentration) combinations" not in capsys.readouterr().out

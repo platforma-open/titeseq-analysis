@@ -27,7 +27,10 @@ from paper_adams2016 import (
     REPO,
     WT_CDR1H_AA,
     WT_CDR3H_AA,
+    Replicate,
 )
+
+from constants import FitParams
 
 RAW_URL = f"https://raw.githubusercontent.com/{REPO}/{PINNED_COMMIT}/data/{{name}}"
 
@@ -73,7 +76,7 @@ class GoldenReplicate:
     baseline_fluorescence: float
 
 
-def build_replicate(rep) -> GoldenReplicate:
+def build_replicate(rep: Replicate) -> GoldenReplicate:
     table = pl.read_csv(fetch(f"replicate_{rep.number}.csv"), infer_schema_length=10000)
     table = table.with_columns((pl.col("CDR1H") + "_" + pl.col("CDR3H")).alias("clonotypeKey"))
     cells = _sort_counts(rep.sort_counts_file)
@@ -111,7 +114,7 @@ _SRC = Path(__file__).resolve().parents[2] / "src"
 REST = "__rest_of_library__"
 
 
-def _fit_key(rep_number: int, params, keys: tuple[str, ...] | None) -> str:
+def _fit_key(rep_number: int, params: FitParams, keys: tuple[str, ...] | None) -> str:
     """Everything that can change a fit: source code, library versions, settings, data, subset."""
     h = hashlib.sha256()
     for f in sorted(_SRC.glob("*.py")):
@@ -124,7 +127,7 @@ def _fit_key(rep_number: int, params, keys: tuple[str, ...] | None) -> str:
     return h.hexdigest()[:24]
 
 
-def fit_golden(rep: GoldenReplicate, params, keys: tuple[str, ...] | None = None) -> pl.DataFrame:
+def fit_golden(rep: GoldenReplicate, params: FitParams, keys: tuple[str, ...] | None = None) -> pl.DataFrame:
     """Run pipeline.run on a replicate and join the published K_D; cached on disk by `_fit_key`.
 
     `keys` restricts the fit to those clonotypes: every other clonotype is pooled into one, so each

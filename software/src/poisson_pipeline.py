@@ -66,11 +66,20 @@ def build_tensors(reads: pl.DataFrame, cell_count_col: str | None) -> CountTenso
     return CountTensors(clonotypes, concs[COL_CONC_STR].to_list(), concs[COL_CONC_VAL].to_numpy(), bins, R, cells)
 
 
-def _fit_chunk(args) -> GridFit:
+def _fit_chunk(
+    args: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float, tuple[float, float]],
+) -> GridFit:
     return fit_titration(*args)
 
 
-def _fit_parallel(R, a, conc, log_values, B, bounds) -> GridFit:
+def _fit_parallel(
+    R: np.ndarray,
+    a: np.ndarray,
+    conc: np.ndarray,
+    log_values: np.ndarray,
+    B: float,
+    bounds: tuple[float, float],
+) -> GridFit:
     V = R.shape[0]
     workers = min(available_cpus(), math.ceil(V / _CHUNK))
     if workers <= 1 or V < _PARALLEL_MIN_CLONOTYPES:
@@ -163,17 +172,6 @@ def fit_poisson(
             reason = "insufficient_points"  # no non-zero concentration to fit
         lk = float(fit.log10_kd[i])
         censor = "below" if lk <= lo else "above" if lk >= hi else None
-        sub = by_clonotype.get((key,))
-        y_hat = None
-        if reason is None and sub is not None and sub.height:
-            y_hat = predicted_mean_bin(
-                lk,
-                float(fit.amplitude[i]),
-                sub[COL_CONC_VAL].to_numpy(),
-                B,
-                params.bin_width_decades,
-                int(t.bin_labels[-1]),
-            )
         if reason is not None:
             cls = "Failed"
         elif censor == "above":
@@ -182,32 +180,37 @@ def fit_poisson(
             cls = "Good"
         else:
             cls = "Partial"
-        fitted = reason is None or reason == "kd_above_range"
-        rows[COL_CLONOTYPE].append(key)
-        rows["kd"].append(10.0 ** min(max(lk, lo), hi) if fitted else None)
-        rows["hillCoefficient"].append(1.0 if fitted else None)
+        has_fit = reason is None or reason == "kd_above_range"
         r2 = None
-        if y_hat is not None:
+        sub = by_clonotype.get((key,))
+        if has_fit and sub is not None and sub.height:
+            y_hat = predicted_mean_bin(
+                lk,
+                float(fit.amplitude[i]),
+                sub[COL_CONC_VAL].to_numpy(),
+                B,
+                params.bin_width_decades,
+                int(t.bin_labels[-1]),
+            )
             ok = sub[SIGNAL].is_not_null().to_numpy()
             r2 = weighted_r2(sub[SIGNAL].to_numpy()[ok], y_hat[ok], sub[CLONOTYPE_READS_AT_CONC].to_numpy()[ok])
             r2 = None if r2 is None or math.isnan(r2) else r2
+            if cls != "Failed":
+                fitted_parts.append(
+                    pl.DataFrame(
+                        {COL_CLONOTYPE: [key] * sub.height, COL_CONC_STR: sub[COL_CONC_STR], "fittedMeanBin": y_hat},
+                        schema=FITTED_MEAN_BIN_SCHEMA,
+                    )
+                )
+        rows[COL_CLONOTYPE].append(key)
+        rows["kd"].append(10.0 ** min(max(lk, lo), hi) if has_fit else None)
+        rows["hillCoefficient"].append(1.0 if has_fit else None)
         rows["r2"].append(r2)
         rows["affinityClass"].append(cls)
         rows["fitFailureReason"].append(reason)
-        rows["kdOutOfRange"].append(censor is not None if fitted else None)
-        rows["kdLog10Sd"].append(float(fit.log10_kd_sd[i]) if fitted else None)
-        rows["kdCensor"].append(censor if fitted else None)
-        if cls != "Failed" and y_hat is not None:
-            fitted_parts.append(
-                pl.DataFrame(
-                    {COL_CLONOTYPE: [key] * sub.height, COL_CONC_STR: sub[COL_CONC_STR], "fittedMeanBin": y_hat},
-                    schema=FITTED_MEAN_BIN_SCHEMA,
-                )
-            )
+        rows["kdOutOfRange"].append(censor is not None if has_fit else None)
+        rows["kdLog10Sd"].append(float(fit.log10_kd_sd[i]) if has_fit else None)
+        rows["kdCensor"].append(censor if has_fit else None)
     per_clonotype = pl.DataFrame(rows, schema=PER_CLONOTYPE_SCHEMA)
-    fitted = (
-        pl.concat(fitted_parts)
-        if fitted_parts
-        else pl.DataFrame({k: [] for k in FITTED_MEAN_BIN_SCHEMA}, schema=FITTED_MEAN_BIN_SCHEMA)
-    )
+    fitted = pl.concat(fitted_parts) if fitted_parts else pl.DataFrame(schema=FITTED_MEAN_BIN_SCHEMA)
     return per_clonotype, fitted

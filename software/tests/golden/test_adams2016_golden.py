@@ -17,7 +17,7 @@ from __future__ import annotations
 import numpy as np
 import polars as pl
 import pytest
-from golden_data import fast_subset, fit_golden
+from golden_data import GoldenReplicate, fast_subset, fit_golden
 from paper_adams2016 import (
     FIG4C_R2,
     LOG10_KD_LOWER_LIMIT,
@@ -37,7 +37,7 @@ pytestmark = pytest.mark.golden
 TIERS = [pytest.param("fast", id="fast"), pytest.param("full", id="full", marks=pytest.mark.slow)]
 
 
-def _paper_params(rep, **extra) -> FitParams:
+def _paper_params(rep: GoldenReplicate, *, baseline_fluorescence: float | None = None) -> FitParams:
     """The authors' settings: their amplitude prior, and every variant fitted (no read gate)."""
     return FitParams(
         allow_computed_baseline=True,
@@ -45,17 +45,17 @@ def _paper_params(rep, **extra) -> FitParams:
         min_plateau_fraction=rep.min_plateau_fraction,
         min_reads_per_concentration=1,
         min_concentration_points=1,
-        **extra,
+        baseline_fluorescence=baseline_fluorescence,
     )
 
 
 @pytest.fixture(scope="module")
-def fits_full(adams_replicates):
+def fits_full(adams_replicates: list[GoldenReplicate]) -> dict[int, pl.DataFrame]:
     return {rep.number: fit_golden(rep, _paper_params(rep)) for rep in adams_replicates}
 
 
 @pytest.fixture(scope="module")
-def fits_fast(adams_replicates, adams_clone_keys):
+def fits_fast(adams_replicates: list[GoldenReplicate], adams_clone_keys: dict[str, str]) -> dict[int, pl.DataFrame]:
     return {
         rep.number: fit_golden(
             rep,
@@ -67,7 +67,7 @@ def fits_fast(adams_replicates, adams_clone_keys):
 
 
 @pytest.fixture(params=TIERS)
-def fits(request):
+def fits(request: pytest.FixtureRequest) -> dict[int, pl.DataFrame]:
     return request.getfixturevalue(f"fits_{request.param}")
 
 
