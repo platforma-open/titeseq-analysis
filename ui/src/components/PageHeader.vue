@@ -58,7 +58,7 @@ watchEffect(() => {
     </template>
   </PlBtnGhost>
   <PlBtnGhost @click.stop="app.model.data.settingsOpen = true">
-    Inputs
+    Settings
     <template #append>
       <PlMaskIcon24 name="settings" />
     </template>
