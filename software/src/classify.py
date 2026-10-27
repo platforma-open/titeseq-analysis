@@ -1,15 +1,14 @@
 """R12: classification — map (R²_w, n, converged) to affinity class + failure reason.
 
-Spec truth table (applied in order per row; boundaries inclusive on both sides of
-the n-in-range check, inclusive on R² thresholds):
+A fit that converged is always reported. R² and the Hill-coefficient range set the class; neither
+discards the fit. An adequacy gate here cost 215/209/217 of the 250 tightest binders on the three
+Adams 2016 replicates, measured by leave-one-out at the recommended configuration.
 
-  Did not converge                      -> Failed, convergence_failure
-  R² < r2_threshold_failed              -> Failed, low_r2
-  R² >= r2_threshold_good  and n in [nMin,nMax]    -> Good
-  R² >= r2_threshold_good  and n out of range      -> Partial, n_out_of_range (downgrade)
-  r2_threshold_failed <= R² < r2_threshold_good
-     and n in [nMin,nMax]                -> Partial
-     and n out of range                  -> Failed, n_out_of_range
+Truth table:
+
+  Did not converge                                  -> Failed, convergence_failure
+  R² >= r2_threshold_good and n in [nMin, nMax]     -> Good
+  anything else that converged                      -> Partial
 """
 
 from __future__ import annotations
@@ -41,14 +40,7 @@ def classify(
         return Classification("Failed", "convergence_failure")
 
     n_in_range = params.n_min <= n <= params.n_max
-
-    # A non-finite R² (a flat signal has no variance to explain) passes neither threshold.
-    if not math.isfinite(r2) or r2 < params.r2_threshold_failed:
-        return Classification("Failed", "low_r2")
-    if r2 >= params.r2_threshold_good:
-        if n_in_range:
-            return Classification("Good", None)
-        return Classification("Partial", None)
-    if n_in_range:
-        return Classification("Partial", None)
-    return Classification("Failed", "n_out_of_range")
+    # A non-finite R² (a flat signal has no variance to explain) clears no threshold.
+    if math.isfinite(r2) and r2 >= params.r2_threshold_good and n_in_range:
+        return Classification("Good", None)
+    return Classification("Partial", None)

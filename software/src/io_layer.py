@@ -161,6 +161,26 @@ def validate_cell_count(reads: pl.DataFrame, col: str) -> None:
         raise InputValidationError(f"No cells sorted at concentration(s) {empty[COL_CONC_STR].to_list()}")
 
 
+def validate_bin_fluorescence(reads: pl.DataFrame, col: str) -> list[str]:
+    """Mean log10 fluorescence of the cells sorted into each sample. Optional input.
+
+    Returns warnings rather than raising: the column only ever refines the fit, and the fixed bin
+    scale remains a correct fallback, so a bad value must not stop the run. The caller falls back
+    to that scale whenever this returns anything.
+    """
+    if col not in reads.columns:
+        return [f"Bin-fluorescence column '{col}' missing from reads; using the fixed bin scale"]
+    sorted_rows = _sorted_rows(reads)
+    vals = sorted_rows[col].cast(pl.Float64, strict=False)
+    if vals.is_null().any() or (~vals.is_finite()).any():
+        return [f"Bin-fluorescence column '{col}' has missing or non-finite values"]
+    per_sample = sorted_rows.select([COL_SAMPLE, col]).unique()
+    dup = per_sample.group_by(COL_SAMPLE).len().filter(pl.col("len") > 1)
+    if dup.height > 0:
+        return [f"Bin fluorescence must be one value per sample; samples with several: {dup[COL_SAMPLE].to_list()[:5]}"]
+    return []
+
+
 def validate_bin_column(df: pl.DataFrame) -> None:
     """R3: bin must be a positive integer. Non-consecutive labels are allowed.
 

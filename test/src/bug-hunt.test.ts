@@ -32,11 +32,17 @@ function blockData(over: Partial<BlockData>): BlockData {
     cellCountColumnRef: undefined,
     targetAntigen: undefined,
     // The fixtures were built on the linear Hill model.
-    fitModel: "hill_free_n",
+    fitModelOverride: "hill_free_n",
+    binFluorescenceColumnRef: undefined,
+    gateWidthColumnRef: undefined,
+    amplitudePriorQ: undefined,
+    // The fixtures' expected classes come from a free-n Hill fit with the hook detector on,
+    // which is no longer the default.
+    hookDetectorEnabled: true,
+    pinHillExponent: false,
     binWidthDecades: 0.65,
     minPlateauFraction: 0.65,
     baselineFluorescence: undefined,
-    allowUncorrected: false,
     kdSdGood: 0.5,
     minReadsPerConcentration: 3,
     minConcentrationPoints: 5,
@@ -194,7 +200,7 @@ blockTest(
         targetAntigen: "target",
         sortFractionColumnRef: refs.sortFraction,
         // A 0 M baseline above the plateau prior: the Adams fit rejects the run in Python.
-        fitModel: "poisson_log",
+        fitModelOverride: "poisson_log",
         baselineFluorescence: 1000,
       }),
     });

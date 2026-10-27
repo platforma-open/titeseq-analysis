@@ -27,12 +27,16 @@ const configured: BlockData = {
   antigenColumnRef: ref("antigen"),
   sortFractionColumnRef: ref("sortFraction"),
   cellCountColumnRef: ref("cells"),
+  binFluorescenceColumnRef: ref("meanFluor"),
+  gateWidthColumnRef: ref("gateWidth"),
   targetAntigen: "CD19",
-  fitModel: "hill_free_n",
+  fitModelOverride: "hill_free_n",
   binWidthDecades: 0.7,
   minPlateauFraction: 0.6,
   baselineFluorescence: 2.5,
-  allowUncorrected: true,
+  amplitudePriorQ: 0.55,
+  hookDetectorEnabled: true,
+  pinHillExponent: false,
   kdSdGood: 0.3,
   minReadsPerConcentration: 7,
   minConcentrationPoints: 8,
@@ -63,13 +67,15 @@ describe("the template round trip", () => {
       ...configured,
       r2ThresholdFailed: 0,
       hookEffectThresholdNoBin: 0,
-      allowUncorrected: false,
+      hookDetectorEnabled: false,
+      pinHillExponent: false,
       customBlockLabel: "",
     });
     expect(restored.r2ThresholdFailed).toBe(0);
     expect(restored.hookEffectThresholdNoBin).toBe(0);
     expect(restored.customBlockLabel).toBe("");
-    expect(restored.allowUncorrected).toBe(false);
+    expect(restored.hookDetectorEnabled).toBe(false);
+    expect(restored.pinHillExponent).toBe(false);
   });
 
   it("carries a half-configured block — an abundance column and nothing else", () => {

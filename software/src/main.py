@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import dataclasses
 import json
 import sys
 from pathlib import Path
@@ -58,18 +57,24 @@ def main(argv: list[str] | None = None) -> int:
         "Preferred over --sort-fraction-column: also allows rescaling bins with more reads than cells.",
     )
     parser.add_argument(
+        "--bin-fluorescence-column",
+        default=None,
+        help="Column name in reads.tsv carrying the mean log10 fluorescence of the cells sorted "
+        "into each sample. Optional: bound, each bin's fluorescence is read per concentration "
+        "instead of from one fixed gate spacing. A bad or incomplete column warns and is ignored.",
+    )
+    parser.add_argument(
+        "--gate-width-column",
+        default=None,
+        help="Column name in reads.tsv carrying the FACS gate width in decades for each sample. "
+        "Optional: bound, the bin width is read from it instead of from the params file.",
+    )
+    parser.add_argument(
         "--samples",
         default=None,
         help="path to the sample table (one row per sampleId with its bin and concentration). "
         "Used only for the R5 check that every (bin, concentration) sample was measured, which "
         "the sparse reads table cannot answer. Omitted: that check is skipped.",
-    )
-    parser.add_argument(
-        "--allow-computed-baseline",
-        action="store_true",
-        help="Compute the 0 M baseline when none is given. Only correct when every clonotype is a "
-        "designed library member: on a de-novo clonotype set the sequencing-error clonotypes each "
-        "carry equal weight and inflate it several-fold. Prefer setting baseline_fluorescence.",
     )
     args = parser.parse_args(argv)
 
@@ -85,9 +90,6 @@ def main(argv: list[str] | None = None) -> int:
         with open(args.params) as f:
             params = FitParams(**json.load(f))
         log(f"Loaded custom params from {args.params}")
-    if args.allow_computed_baseline:
-        params = dataclasses.replace(params, allow_computed_baseline=True)
-
     outputs = run(
         reads,
         params=params,
@@ -95,6 +97,8 @@ def main(argv: list[str] | None = None) -> int:
         antigen_column_ref=args.antigen_column_ref,
         sort_fraction_col=args.sort_fraction_column,
         cell_count_col=args.cell_count_column,
+        bin_fluorescence_col=args.bin_fluorescence_column,
+        gate_width_col=args.gate_width_column,
         samples=samples,
     )
     log("Writing output frames")

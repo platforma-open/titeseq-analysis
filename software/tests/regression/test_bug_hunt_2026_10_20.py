@@ -16,7 +16,7 @@ from helpers import LINEAR_HILL
 
 from classify import classify
 from constants import FitParams
-from hill_fit import weighted_r2
+from hill_fit import fit_one_clonotype, weighted_r2
 from io_layer import InputValidationError
 from pipeline import run
 
@@ -59,15 +59,21 @@ def _bin_rows(
     return rows
 
 
-def test_constant_signal_clonotype_is_not_partial():
+def test_constant_signal_clonotype_is_never_good():
     # A clonotype whose observed signal is identical at every concentration (for
     # example all of its reads in one bin) has zero weighted variance, so
-    # weighted_r2 returns NaN. Whether the fit then converges is platform- and
-    # float-noise-dependent; when it does, classify() must not pass it.
+    # weighted_r2 returns NaN. A non-finite R² clears no threshold, so the fit is
+    # Partial at best — never Good. The fitter refuses the flat signal before the
+    # classifier ever sees it: a constant signal has no dynamic range, so
+    # fit_one_clonotype returns converged=False and the pipeline reports Failed.
     y = np.full(6, 2.0)
     r2 = weighted_r2(y, y + 1e-3, np.full(6, 5.0))
     assert np.isnan(r2)
-    assert classify(r2, 1.0, True, FitParams(allow_computed_baseline=True)).affinity_class == "Failed"
+    assert classify(r2, 1.0, True, FitParams()).affinity_class == "Partial"
+
+    flat = fit_one_clonotype(np.array(CONCS_M), y, np.full(6, 5.0), 2.0, bin_mode=True, max_bin_label=4, pin_n=True)
+    assert not flat.converged
+    assert flat.reason == "insufficient_dynamic_range"
 
 
 def test_unbinned_zero_control_does_not_shift_kd():
@@ -122,7 +128,7 @@ def test_sort_fraction_with_antigen_column_is_accepted():
         rows += part
     run(
         pl.DataFrame(rows),
-        params=FitParams(allow_computed_baseline=True),
+        params=FitParams(),
         target_antigen="AgA",
         antigen_column_ref="antigen",
         sort_fraction_col="sort_fraction",
@@ -157,7 +163,7 @@ def test_too_few_points_for_parameter_count_is_reported_as_insufficient_points()
     concs = list(np.logspace(-10, -5, 4))  # 4 points, no 0 M control -> 4 free parameters
     out = run(
         pl.DataFrame(_bin_rows(concs, [1e-8] * 10, rng)),
-        params=FitParams(allow_computed_baseline=True, fit_model="hill_free_n", min_concentration_points=3),
+        params=FitParams(fit_model="hill_free_n", min_concentration_points=3),
     )
     reasons = set(out["per_clonotype"]["fitFailureReason"].to_list())
     assert "convergence_failure" not in reasons

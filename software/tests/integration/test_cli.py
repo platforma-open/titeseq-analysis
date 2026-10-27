@@ -16,9 +16,10 @@ def _cli_reads(clonotype: str, true_kd: float, concs: list[float], bins: list[in
     return hill_reads(clonotype, true_kd, concs, bins, cells=lambda b: 1000.0)
 
 
-# Default model: needs a 0 M control and the cells sorted per sample.
+# Default model: needs a 0 M control and the cells sorted per sample. The 0 M baseline is computed
+# from that control, with no opt-in flag.
 _DEFAULT_MODEL_CONCS = [0.0, 1e-10, 1e-9, 1e-8, 1e-7, 1e-6]
-_CELLS_ARGS = ["--allow-computed-baseline", "--cell-count-column", "cells"]
+_CELLS_ARGS = ["--cell-count-column", "cells"]
 
 
 # Both writer branches: every output file is written in the format its suffix names.
@@ -93,8 +94,9 @@ def test_cli_hook_effect_triggers_failure(tmp_path):
     pl.DataFrame(rows).write_parquet(reads_path)
 
     # The hook gate belongs to the opt-in linear Hill model; the default model does not fail on it.
+    # The detector is off by default, so the params file turns it on.
     params_path = tmp_path / "params.json"
-    params_path.write_text(json.dumps({"fit_model": "hill_free_n"}))
+    params_path.write_text(json.dumps({"fit_model": "hill_free_n", "hook_detector_enabled": True}))
     out_args, paths = cli_outputs(tmp_path, ".parquet")
     assert main(["--params", str(params_path), "--reads", str(reads_path), *out_args]) == 0
     pc = pl.read_parquet(paths["per_clonotype"])
@@ -107,16 +109,96 @@ def test_cli_hook_effect_triggers_failure(tmp_path):
     assert h1["hillPlotPosition"][0] == -1.0
 
 
+def _bin_fluorescence_reads() -> list[dict]:
+    """Two clonotypes measured in every (concentration, bin) sample, with a per-sample gate value.
+
+    The gate values rise across bins and drift a little across concentrations, which is what a real
+    sort report carries and what the fixed `bin_width * (label - 1)` scale cannot express.
+    """
+    rows = _cli_reads("G1", 1e-8, _DEFAULT_MODEL_CONCS, [1, 2, 3, 4])
+    rows += _cli_reads("G2", 1e-7, _DEFAULT_MODEL_CONCS, [1, 2, 3, 4])
+    for row in rows:
+        drift = 0.02 * _DEFAULT_MODEL_CONCS.index(row["concentration"])
+        row["bin_fluorescence"] = 0.65 * (row["bin"] - 1) * (1.0 + drift)
+    return rows
+
+
+# Change 8: the measured gate fluorescence replaces the fixed bin scale when the column is bound.
+def test_cli_bin_fluorescence_column_changes_the_fit(tmp_path):
+    reads_path = tmp_path / "reads.parquet"
+    pl.DataFrame(_bin_fluorescence_reads()).write_parquet(reads_path)
+
+    plain_args, plain_paths = cli_outputs(tmp_path / "plain", ".parquet")
+    (tmp_path / "plain").mkdir()
+    assert main(["--reads", str(reads_path), *plain_args, *_CELLS_ARGS]) == 0
+
+    measured_args, measured_paths = cli_outputs(tmp_path / "measured", ".parquet")
+    (tmp_path / "measured").mkdir()
+    assert (
+        main(
+            [
+                "--reads",
+                str(reads_path),
+                *measured_args,
+                *_CELLS_ARGS,
+                "--bin-fluorescence-column",
+                "bin_fluorescence",
+            ]
+        )
+        == 0
+    )
+    plain = pl.read_parquet(plain_paths["per_clonotype"]).sort("clonotypeKey")
+    measured = pl.read_parquet(measured_paths["per_clonotype"]).sort("clonotypeKey")
+    assert plain.columns == measured.columns
+    assert measured["kd"].is_not_null().all()
+    assert measured["kd"].to_list() != plain["kd"].to_list()
+
+
+# A bad optional column must never stop the run: it warns on stdout and the fixed scale stands in.
+def test_cli_bin_fluorescence_column_warns_and_falls_back(tmp_path, capsys):
+    reads_path = tmp_path / "reads.parquet"
+    pl.DataFrame(_bin_fluorescence_reads()).write_parquet(reads_path)
+
+    plain_args, plain_paths = cli_outputs(tmp_path / "plain", ".parquet")
+    (tmp_path / "plain").mkdir()
+    assert main(["--reads", str(reads_path), *plain_args, *_CELLS_ARGS]) == 0
+    capsys.readouterr()
+
+    bad_args, bad_paths = cli_outputs(tmp_path / "bad", ".parquet")
+    (tmp_path / "bad").mkdir()
+    assert main(["--reads", str(reads_path), *bad_args, *_CELLS_ARGS, "--bin-fluorescence-column", "absent"]) == 0
+    out = capsys.readouterr().out
+    assert "WARN" in out and "absent" in out
+    assert pl.read_parquet(bad_paths["per_clonotype"]).equals(pl.read_parquet(plain_paths["per_clonotype"]))
+
+
 def test_cli_fit_summary_counts_failed_clonotypes(tmp_path):
-    # The block shows "All clonotypes failed" from this file; a non-binder is Failed (above range).
+    # The block shows "All clonotypes failed" from this file. Only a refusal to fit counts: SPARSE
+    # is below the read floor, while the flat non-binder is clamped to the top of the range and
+    # still reported.
     rows = _cli_reads("BINDER", 1e-8, _DEFAULT_MODEL_CONCS, [1, 2, 3, 4])
     rows += _cli_reads("FLAT", 1e2, _DEFAULT_MODEL_CONCS, [1, 2, 3, 4])
+    rows += [
+        {
+            "clonotypeKey": "SPARSE",
+            "sampleId": f"s_c{i}_b{b}",
+            "concentrationStr": str(c),
+            "concentration": float(c),
+            "bin": b,
+            "reads": 1 if b == 1 else 0,
+            "cells": 1000.0,
+        }
+        for i, c in enumerate(_DEFAULT_MODEL_CONCS)
+        for b in (1, 2, 3, 4)
+    ]
     reads_path = tmp_path / "reads.tsv"
     pl.DataFrame(rows).write_csv(reads_path, separator="\t")
     out_args, paths = cli_outputs(tmp_path)
     summary_path = tmp_path / "fit_summary.json"
     assert main(["--reads", str(reads_path), *out_args, *_CELLS_ARGS, "--out-fit-summary", str(summary_path)]) == 0
     pc = pl.read_csv(paths["per_clonotype"], separator="\t")
-    expected_failed = pc.filter(pl.col("affinityClass") == "Failed").height
-    assert json.loads(summary_path.read_text()) == {"clonotypes": 2, "failed": expected_failed}
-    assert expected_failed >= 1
+    by_key = {row["clonotypeKey"]: row for row in pc.iter_rows(named=True)}
+    assert by_key["SPARSE"]["fitFailureReason"] == "insufficient_reads"
+    assert by_key["FLAT"]["affinityClass"] != "Failed"
+    assert by_key["FLAT"]["kdCensor"] == "above"
+    assert json.loads(summary_path.read_text()) == {"clonotypes": 3, "failed": 1}

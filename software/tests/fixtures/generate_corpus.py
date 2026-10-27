@@ -97,12 +97,16 @@ def _sigmoid_targets(kd: float, n: float) -> list[float]:
     return [_hill(c, BASELINE, AMPLITUDE, kd, n) for c in CONCENTRATIONS]
 
 
+# Every class but Failed carries a fit, so every class but Failed reaches fitted_mean_bin.
+_FITTED_CLASSES = ("Good", "Partial", "CensoredBelow")
+
+
 def _expects_fit(entry: dict) -> bool:
-    """True when the manifest entry anticipates a successful fit (Good or Partial outcome)."""
+    """True when the manifest entry anticipates a successful fit."""
     if "expected_class" in entry:
-        return entry["expected_class"] in ("Good", "Partial")
+        return entry["expected_class"] in _FITTED_CLASSES
     if "expected_class_in" in entry:
-        return any(c in ("Good", "Partial") for c in entry["expected_class_in"])
+        return any(c in _FITTED_CLASSES for c in entry["expected_class_in"])
     return False
 
 
@@ -132,6 +136,7 @@ def _build_bin_mode_table() -> tuple[pl.DataFrame, dict]:
             "kd_range": [kd / 3.0, kd * 3.0],
             "hill_range": [0.5, 2.0],
             "kd_out_of_range": False,
+            "kd_censor": None,
             "hill_plot_position_is_sentinel": False,
             "notes": f"Clean sigmoid, kd ≈ {kd} — baseline Good across decades",
         }
@@ -148,6 +153,7 @@ def _build_bin_mode_table() -> tuple[pl.DataFrame, dict]:
         "kd_range": [1e-9, 1e-7],
         "hill_range": [0.3, 10.0],
         "kd_out_of_range": False,
+        "kd_censor": None,
         "hill_plot_position_is_sentinel": False,
         "notes": "Wider σ bin assignment → weighted R² between r2_failed (0.5) and r2_good (0.8)",
     }
@@ -161,32 +167,37 @@ def _build_bin_mode_table() -> tuple[pl.DataFrame, dict]:
     targets = _sigmoid_targets(1e-8, 1.0)
     all_rows += _bin_mode_rows("F_LOW_R2", targets, [200] * n_conc, 1.0, rng, c0_sigma=DEFAULT_SIGMA)
     entries["F_LOW_R2"] = {
-        "expected_class": "Failed",
-        "expected_reason_in": ["low_r2", "convergence_failure"],
-        "kd_range": None,
+        "expected_class": "CensoredBelow",
+        "expected_reason": None,
+        "kd_range": [9.9e-11, 1.01e-10],
         "hill_range": None,
-        "kd_out_of_range": None,
+        "kd_out_of_range": True,
+        "kd_censor": "below",
+        "r2_below": 0.5,
         "hill_plot_position_is_sentinel": False,
         "notes": (
-            "Sigmoid signal with noisy bin assignment → fit lands in Failed territory."
-            " Accept either low_r2 or convergence_failure; both are valid expressions of"
-            " 'signal too noisy for a useful fit'."
+            "Sigmoid signal with noisy bin assignment → R² below r2_threshold_failed (0.5)."
+            " A converged fit is reported, never discarded: the K_D rails to the bottom of the"
+            " titrated range, so it is clamped there and censored below. r2_below pins the"
+            " bad-R² character the deleted low_r2 reason used to carry."
         ),
     }
 
-    # ---- P_N_HIGH — steep Hill but high R² → Partial (reason None), n > n_max=2
-    # (Truth-table row "r2 >= r2_good AND n out of range → Partial, reason None".)
+    # ---- P_N_HIGH — steep Hill (true n=4). Under the default pinned exponent the fit reports
+    # n = 1 and still tracks the data, so the manifest expects Good. The free-exponent reading
+    # (n > n_max=2 → Partial) is asserted by the pin_hill_exponent=False test in test_corpus_e2e.
     rng = _rng("P_N_HIGH")
     targets = _sigmoid_targets(1e-8, 4.0)
     all_rows += _bin_mode_rows("P_N_HIGH", targets, [500] * n_conc, DEFAULT_SIGMA, rng)
     entries["P_N_HIGH"] = {
-        "expected_class": "Partial",
+        "expected_class": "Good",
         "expected_reason": None,
         "kd_range": [3e-9, 3e-8],
-        "hill_range": [2.0, 10.0],
+        "hill_range": None,
         "kd_out_of_range": False,
+        "kd_censor": None,
         "hill_plot_position_is_sentinel": False,
-        "notes": "Steep Hill (true n=4) + good data → high R², fit n > n_max=2 → Partial",
+        "notes": "Steep Hill (true n=4) + good data; n pinned at 1 by default → high R² → Good",
     }
 
     # ---- F_HOOK — R9b top-3 pattern, all top-3 reads well above hook_effect_min_reads
@@ -207,13 +218,19 @@ def _build_bin_mode_table() -> tuple[pl.DataFrame, dict]:
     ]
     all_rows += _bin_mode_rows("F_HOOK", hook_targets, [500] * n_conc, DEFAULT_SIGMA, rng)
     entries["F_HOOK"] = {
-        "expected_class": "Failed",
-        "expected_reason": "non_monotonic_signal",
-        "kd_range": None,
+        "expected_class": "Partial",
+        "expected_reason": None,
+        "kd_range": [1e-9, 1e-8],
         "hill_range": None,
-        "kd_out_of_range": None,
-        "hill_plot_position_is_sentinel": True,
-        "notes": "R9b: top-2 & top-3 elevated, top-1 drop > θ; every top-3 conc has reads ≥ hook_effect_min_reads",
+        "kd_out_of_range": False,
+        "kd_censor": None,
+        "hill_plot_position_is_sentinel": False,
+        "notes": (
+            "R9b hook shape: top-2 & top-3 elevated, top-1 drop > θ; every top-3 conc has reads"
+            " ≥ hook_effect_min_reads. The detector is off by default, so the fit is reported"
+            " Partial. The detector reading (Failed/non_monotonic_signal) is asserted by the"
+            " hook_detector_enabled=True test in test_corpus_e2e."
+        ),
     }
 
     # ---- F_INSUF_R — every concentration below read floor (all concs with 0 reads for this clonotype)
@@ -238,6 +255,7 @@ def _build_bin_mode_table() -> tuple[pl.DataFrame, dict]:
         "kd_range": None,
         "hill_range": None,
         "kd_out_of_range": None,
+        "kd_censor": None,
         "hill_plot_position_is_sentinel": True,
         "notes": "All non-zero concs have clonotype_reads_at_conc < min_reads_per_concentration=3",
     }
@@ -255,14 +273,15 @@ def _build_bin_mode_table() -> tuple[pl.DataFrame, dict]:
         "kd_range": None,
         "hill_range": None,
         "kd_out_of_range": None,
+        "kd_censor": None,
         "hill_plot_position_is_sentinel": True,
         "notes": "Only 3 non-zero concs pass read floor; below min_concentration_points=5",
     }
 
     # ---- F_FLAT — constant signal across all concentrations.
     # curve_fit converges (it can pick any kd + tiny amplitude with no data to contradict),
-    # so kd/n are NOT null (not a sentinel case). R² is ~0 → Failed/low_r2. Included as
-    # the "flat dose-response" dual of F_LOW_R2's "sigmoid + noisy".
+    # so kd/n are NOT null (not a sentinel case). R² is negative. The "flat dose-response"
+    # dual of F_LOW_R2's "sigmoid + noisy".
     rng = _rng("F_FLAT")
     # Target c=0 at BASELINE so it doesn't pull the R6 global baseline; later
     # concentrations hold BASELINE too so there is no dose-response signal.
@@ -270,15 +289,17 @@ def _build_bin_mode_table() -> tuple[pl.DataFrame, dict]:
     all_rows += _bin_mode_rows("F_FLAT", flat_targets, [500] * n_conc, 0.08, rng)
     entries["F_FLAT"] = {
         "expected_class": "Failed",
-        "expected_reason_in": ["low_r2", "convergence_failure"],
+        "expected_reason": "insufficient_dynamic_range",
         "kd_range": None,
         "hill_range": None,
         "kd_out_of_range": None,
-        "hill_plot_position_is_sentinel": False,
+        "kd_censor": None,
+        "hill_plot_position_is_sentinel": True,
         "notes": (
-            "Razor-flat signal anchored on BASELINE — no dose-response. Fit either"
-            " fails to converge (amp_lo bound rejects flat signal) or converges at a"
-            " rail kd with R² ≈ 0. Either Failed reason is acceptable."
+            "Razor-flat signal anchored on BASELINE — no dose-response. The fit lands on the"
+            " amplitude floor, which says the assay separated this clonotype from background at"
+            " no concentration. That is a statement about the data, not a verdict on the fit, so"
+            " it carries its own reason."
         ),
     }
 
@@ -290,14 +311,17 @@ def _build_bin_mode_table() -> tuple[pl.DataFrame, dict]:
     targets = _sigmoid_targets(5e-11, 1.0)
     all_rows += _bin_mode_rows("K_LOW", targets, [1500] * n_conc, DEFAULT_SIGMA, rng)
     entries["K_LOW"] = {
-        "expected_class_in": ["Good", "Partial"],
+        "expected_class": "CensoredBelow",
         "expected_reason": None,
-        "kd_range": [0.0, 1e-10],
+        "kd_range": [9.9e-11, 1.01e-10],
         "hill_range": None,
         "kd_out_of_range": True,
+        "kd_censor": "below",
         "hill_plot_position_is_sentinel": False,
         "notes": (
-            "Saturated Hill (true kd=5e-11) below min conc → kdOutOfRange=true; exact class depends on fit stability"
+            "Saturated Hill (true kd=5e-11) below the lowest titrated concentration: the K_D is"
+            " clamped to that concentration and reported as a bound — its own CensoredBelow class,"
+            " outside the Good/Partial default so a block of bounds cannot head a ranking."
         ),
     }
 
@@ -342,6 +366,7 @@ def _build_bin_mode_table() -> tuple[pl.DataFrame, dict]:
         "kd_range": None,
         "hill_range": None,
         "kd_out_of_range": None,
+        "kd_censor": None,
         "hill_plot_position_is_sentinel": True,
         "notes": "Only c=0 rows survive floor; zero non-zero points → insufficient_reads",
     }
@@ -409,30 +434,37 @@ def _build_no_bin_mode_table() -> tuple[pl.DataFrame, dict]:
         "kd_range": [1e-9, 2e-7],
         "hill_range": [0.3, 2.5],
         "kd_out_of_range": False,
+        "kd_censor": None,
         "hill_plot_position_is_sentinel": False,
         "notes": "R7b frequency signal — clean sigmoid rise to ~27% at max conc",
     }
     entries["NB_HOOK"] = {
-        "expected_class": "Failed",
-        "expected_reason": "non_monotonic_signal",
-        "kd_range": None,
+        "expected_class": "Partial",
+        "expected_reason": None,
+        "kd_range": [1e-9, 1e-7],
         "hill_range": None,
-        "kd_out_of_range": None,
-        "hill_plot_position_is_sentinel": True,
-        "notes": "R9b no-bin threshold (0.02): top-1 freq < top-2,top-3 → hook flagged",
-    }
-    entries["NB_LOW_R2"] = {
-        "expected_class": "Failed",
-        "expected_reason_in": ["low_r2", "convergence_failure"],
-        "kd_range": None,
-        "hill_range": None,
-        "kd_out_of_range": None,
+        "kd_out_of_range": False,
+        "kd_censor": None,
         "hill_plot_position_is_sentinel": False,
         "notes": (
-            "Scrambled frequencies → Hill fit either fails to converge or converges to"
-            " low R². Either Failed reason is acceptable; the branch under test is"
-            " 'scrambled no-bin signal does not classify as Good or Partial'."
-            " Sentinel positions only apply on convergence_failure, so not asserted."
+            "R9b no-bin shape (threshold 0.02): top-1 freq < top-2, top-3. The detector is off"
+            " by default, so the fit is reported Partial. The detector reading"
+            " (Failed/non_monotonic_signal) is asserted by the hook_detector_enabled=True test."
+        ),
+    }
+    entries["NB_LOW_R2"] = {
+        "expected_class": "Partial",
+        "expected_reason": None,
+        "kd_range": None,
+        "hill_range": None,
+        "kd_out_of_range": True,
+        "kd_censor": None,
+        "r2_below": 0.5,
+        "hill_plot_position_is_sentinel": False,
+        "notes": (
+            "Scrambled frequencies → a converged fit with R² below r2_threshold_failed (0.5),"
+            " reported Partial. No-bin mode does not clamp or censor, so the out-of-range K_D is"
+            " flagged only. r2_below pins the bad-R² character the deleted low_r2 reason carried."
         ),
     }
     # NB_FILLER is not in the manifest expectations — it exists only to stabilize
@@ -465,6 +497,7 @@ def _build_antigen_table() -> tuple[pl.DataFrame, dict]:
         "kd_range": [1.5e-9, 1.5e-8],
         "hill_range": [0.5, 2.0],
         "kd_out_of_range": False,
+        "kd_censor": None,
         "hill_plot_position_is_sentinel": False,
         "notes": "antigen=target, kd≈5 nM — survives R4 filter",
     }
@@ -474,6 +507,7 @@ def _build_antigen_table() -> tuple[pl.DataFrame, dict]:
         "kd_range": [1.5e-8, 1.5e-7],
         "hill_range": [0.5, 2.0],
         "kd_out_of_range": False,
+        "kd_censor": None,
         "hill_plot_position_is_sentinel": False,
         "notes": "antigen=target, kd≈50 nM — survives R4 filter",
     }
@@ -493,7 +527,7 @@ def main() -> None:
     antigen_df.write_parquet(CORPUS_DIR / "reads_antigen.parquet")
 
     manifest = {
-        "corpus_version": "1.0.0",
+        "corpus_version": "2.0.0",
         "master_seed": MASTER_SEED,
         "concentrations": CONCENTRATIONS,
         "bins": BINS,

@@ -9,6 +9,7 @@
           0.5,
           2.0
         ],
+        "kd_censor": null,
         "kd_out_of_range": false,
         "kd_range": [
           1.5e-09,
@@ -24,6 +25,7 @@
           0.5,
           2.0
         ],
+        "kd_censor": null,
         "kd_out_of_range": false,
         "kd_range": [
           1.5e-08,
@@ -45,36 +47,40 @@
         "expected_reason": "insufficient_reads",
         "hill_plot_position_is_sentinel": true,
         "hill_range": null,
+        "kd_censor": null,
         "kd_out_of_range": null,
         "kd_range": null,
         "notes": "Only c=0 rows survive floor; zero non-zero points \u2192 insufficient_reads"
       },
       "F_FLAT": {
         "expected_class": "Failed",
-        "expected_reason_in": [
-          "low_r2",
-          "convergence_failure"
-        ],
-        "hill_plot_position_is_sentinel": false,
-        "hill_range": null,
-        "kd_out_of_range": null,
-        "kd_range": null,
-        "notes": "Razor-flat signal anchored on BASELINE \u2014 no dose-response. Fit either fails to converge (amp_lo bound rejects flat signal) or converges at a rail kd with R\u00b2 \u2248 0. Either Failed reason is acceptable."
-      },
-      "F_HOOK": {
-        "expected_class": "Failed",
-        "expected_reason": "non_monotonic_signal",
+        "expected_reason": "insufficient_dynamic_range",
         "hill_plot_position_is_sentinel": true,
         "hill_range": null,
+        "kd_censor": null,
         "kd_out_of_range": null,
         "kd_range": null,
-        "notes": "R9b: top-2 & top-3 elevated, top-1 drop > \u03b8; every top-3 conc has reads \u2265 hook_effect_min_reads"
+        "notes": "Razor-flat signal anchored on BASELINE \u2014 no dose-response. The fit lands on the amplitude floor, which says the assay separated this clonotype from background at no concentration. That is a statement about the data, not a verdict on the fit, so it carries its own reason."
+      },
+      "F_HOOK": {
+        "expected_class": "Partial",
+        "expected_reason": null,
+        "hill_plot_position_is_sentinel": false,
+        "hill_range": null,
+        "kd_censor": null,
+        "kd_out_of_range": false,
+        "kd_range": [
+          1e-09,
+          1e-08
+        ],
+        "notes": "R9b hook shape: top-2 & top-3 elevated, top-1 drop > \u03b8; every top-3 conc has reads \u2265 hook_effect_min_reads. The detector is off by default, so the fit is reported Partial. The detector reading (Failed/non_monotonic_signal) is asserted by the hook_detector_enabled=True test in test_corpus_e2e."
       },
       "F_INSUF_P": {
         "expected_class": "Failed",
         "expected_reason": "insufficient_points",
         "hill_plot_position_is_sentinel": true,
         "hill_range": null,
+        "kd_censor": null,
         "kd_out_of_range": null,
         "kd_range": null,
         "notes": "Only 3 non-zero concs pass read floor; below min_concentration_points=5"
@@ -84,21 +90,24 @@
         "expected_reason": "insufficient_reads",
         "hill_plot_position_is_sentinel": true,
         "hill_range": null,
+        "kd_censor": null,
         "kd_out_of_range": null,
         "kd_range": null,
         "notes": "All non-zero concs have clonotype_reads_at_conc < min_reads_per_concentration=3"
       },
       "F_LOW_R2": {
-        "expected_class": "Failed",
-        "expected_reason_in": [
-          "low_r2",
-          "convergence_failure"
-        ],
+        "expected_class": "CensoredBelow",
+        "expected_reason": null,
         "hill_plot_position_is_sentinel": false,
         "hill_range": null,
-        "kd_out_of_range": null,
-        "kd_range": null,
-        "notes": "Sigmoid signal with noisy bin assignment \u2192 fit lands in Failed territory. Accept either low_r2 or convergence_failure; both are valid expressions of 'signal too noisy for a useful fit'."
+        "kd_censor": "below",
+        "kd_out_of_range": true,
+        "kd_range": [
+          9.9e-11,
+          1.01e-10
+        ],
+        "notes": "Sigmoid signal with noisy bin assignment \u2192 R\u00b2 below r2_threshold_failed (0.5). A converged fit is reported, never discarded: the K_D rails to the bottom of the titrated range, so it is clamped there and censored below. r2_below pins the bad-R\u00b2 character the deleted low_r2 reason used to carry.",
+        "r2_below": 0.5
       },
       "G_HIGH": {
         "expected_class": "Good",
@@ -108,6 +117,7 @@
           0.5,
           2.0
         ],
+        "kd_censor": null,
         "kd_out_of_range": false,
         "kd_range": [
           3.3333333333333334e-08,
@@ -123,6 +133,7 @@
           0.5,
           2.0
         ],
+        "kd_censor": null,
         "kd_out_of_range": false,
         "kd_range": [
           3.3333333333333337e-10,
@@ -138,6 +149,7 @@
           0.5,
           2.0
         ],
+        "kd_censor": null,
         "kd_out_of_range": false,
         "kd_range": [
           3.3333333333333334e-09,
@@ -146,19 +158,17 @@
         "notes": "Clean sigmoid, kd \u2248 1e-08 \u2014 baseline Good across decades"
       },
       "K_LOW": {
-        "expected_class_in": [
-          "Good",
-          "Partial"
-        ],
+        "expected_class": "CensoredBelow",
         "expected_reason": null,
         "hill_plot_position_is_sentinel": false,
         "hill_range": null,
+        "kd_censor": "below",
         "kd_out_of_range": true,
         "kd_range": [
-          0.0,
-          1e-10
+          9.9e-11,
+          1.01e-10
         ],
-        "notes": "Saturated Hill (true kd=5e-11) below min conc \u2192 kdOutOfRange=true; exact class depends on fit stability"
+        "notes": "Saturated Hill (true kd=5e-11) below the lowest titrated concentration: the K_D is clamped to that concentration and reported as a bound \u2014 its own CensoredBelow class, outside the Good/Partial default so a block of bounds cannot head a ranking."
       },
       "P_NOISY": {
         "expected_class": "Partial",
@@ -168,6 +178,7 @@
           0.3,
           10.0
         ],
+        "kd_censor": null,
         "kd_out_of_range": false,
         "kd_range": [
           1e-09,
@@ -176,22 +187,22 @@
         "notes": "Wider \u03c3 bin assignment \u2192 weighted R\u00b2 between r2_failed (0.5) and r2_good (0.8)"
       },
       "P_N_HIGH": {
-        "expected_class": "Partial",
+        "expected_class": "Good",
         "expected_reason": null,
         "hill_plot_position_is_sentinel": false,
-        "hill_range": [
-          2.0,
-          10.0
-        ],
+        "hill_range": null,
+        "kd_censor": null,
         "kd_out_of_range": false,
         "kd_range": [
           3e-09,
           3e-08
         ],
-        "notes": "Steep Hill (true n=4) + good data \u2192 high R\u00b2, fit n > n_max=2 \u2192 Partial"
+        "notes": "Steep Hill (true n=4) + good data; n pinned at 1 by default \u2192 high R\u00b2 \u2192 Good"
       }
     },
     "fitted_mean_bin_clonotypes": [
+      "F_HOOK",
+      "F_LOW_R2",
       "G_HIGH",
       "G_LOW",
       "G_MID",
@@ -218,7 +229,7 @@
     3e-07,
     1e-06
   ],
-  "corpus_version": "1.0.0",
+  "corpus_version": "2.0.0",
   "master_seed": 20260417,
   "max_non_zero_concentration": 1e-06,
   "no_bin_mode": {
@@ -231,6 +242,7 @@
           0.3,
           2.5
         ],
+        "kd_censor": null,
         "kd_out_of_range": false,
         "kd_range": [
           1e-09,
@@ -239,29 +251,34 @@
         "notes": "R7b frequency signal \u2014 clean sigmoid rise to ~27% at max conc"
       },
       "NB_HOOK": {
-        "expected_class": "Failed",
-        "expected_reason": "non_monotonic_signal",
-        "hill_plot_position_is_sentinel": true,
-        "hill_range": null,
-        "kd_out_of_range": null,
-        "kd_range": null,
-        "notes": "R9b no-bin threshold (0.02): top-1 freq < top-2,top-3 \u2192 hook flagged"
-      },
-      "NB_LOW_R2": {
-        "expected_class": "Failed",
-        "expected_reason_in": [
-          "low_r2",
-          "convergence_failure"
-        ],
+        "expected_class": "Partial",
+        "expected_reason": null,
         "hill_plot_position_is_sentinel": false,
         "hill_range": null,
-        "kd_out_of_range": null,
+        "kd_censor": null,
+        "kd_out_of_range": false,
+        "kd_range": [
+          1e-09,
+          1e-07
+        ],
+        "notes": "R9b no-bin shape (threshold 0.02): top-1 freq < top-2, top-3. The detector is off by default, so the fit is reported Partial. The detector reading (Failed/non_monotonic_signal) is asserted by the hook_detector_enabled=True test."
+      },
+      "NB_LOW_R2": {
+        "expected_class": "Partial",
+        "expected_reason": null,
+        "hill_plot_position_is_sentinel": false,
+        "hill_range": null,
+        "kd_censor": null,
+        "kd_out_of_range": true,
         "kd_range": null,
-        "notes": "Scrambled frequencies \u2192 Hill fit either fails to converge or converges to low R\u00b2. Either Failed reason is acceptable; the branch under test is 'scrambled no-bin signal does not classify as Good or Partial'. Sentinel positions only apply on convergence_failure, so not asserted."
+        "notes": "Scrambled frequencies \u2192 a converged fit with R\u00b2 below r2_threshold_failed (0.5), reported Partial. No-bin mode does not clamp or censor, so the out-of-range K_D is flagged only. r2_below pins the bad-R\u00b2 character the deleted low_r2 reason carried.",
+        "r2_below": 0.5
       }
     },
     "fitted_mean_bin_clonotypes": [
-      "NB_GOOD"
+      "NB_GOOD",
+      "NB_HOOK",
+      "NB_LOW_R2"
     ]
   }
 }

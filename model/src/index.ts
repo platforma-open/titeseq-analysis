@@ -29,6 +29,10 @@ export type ValidationIssue = {
   message: string;
 };
 
+/**
+ * What the workflow consumes. `fitModel` here is the model the block RESOLVED, not a stored
+ * choice: `deriveArgs` routes it from the bound columns unless `fitModelOverride` forces one.
+ */
 export type BlockArgs = {
   abundanceRef?: PlRef;
   concentrationColumnRef?: PlRef;
@@ -38,12 +42,19 @@ export type BlockArgs = {
   // Cells sorted into each sample (C_bc in Adams 2016 eq. E4). Preferred over sort fractions: it
   // also lets the fit cap a bin's reads at its cell count.
   cellCountColumnRef?: PlRef;
+  // Measured mean log10 fluorescence of the cells in each sample's gate. Bound, each bin's
+  // fluorescence is read per concentration instead of from one fixed gate spacing.
+  binFluorescenceColumnRef?: PlRef;
+  // FACS gate width in decades, per sample. Bound, it supplies the bin width.
+  gateWidthColumnRef?: PlRef;
   targetAntigen?: string;
   fitModel: FitModel;
   binWidthDecades: number;
   minPlateauFraction: number;
   baselineFluorescence?: number;
-  allowUncorrected: boolean;
+  amplitudePriorQ?: number;
+  hookDetectorEnabled: boolean;
+  pinHillExponent: boolean;
   kdSdGood: number;
   minReadsPerConcentration: number;
   minConcentrationPoints: number;
@@ -58,7 +69,10 @@ export type BlockArgs = {
   customBlockLabel: string;
 };
 
-export type BlockData = BlockArgs & {
+/** What the settings drawer edits and the project stores. */
+export type BlockData = Omit<BlockArgs, "fitModel"> & {
+  // Forces the curve model instead of routing on the bound columns. Undefined means route.
+  fitModelOverride?: FitModel;
   tableState: PlDataTableStateV2;
   graphStateTitrationCurves: GraphMakerState;
   graphStateKDHistogram: GraphMakerState;
@@ -77,9 +91,9 @@ const HILL_COEF_COL = summaryCol("hillCoefficient", "Double");
 const AFFINITY_CLASS_COL = summaryCol("affinityClass", "String");
 const FIT_FAILURE_REASON_COL = summaryCol("fitFailureReason", "String");
 
-// Pin colours by colorIdx so low_r2 stays green and n_out_of_range stays
-// purple across datasets. The "light" palette would otherwise assign by
-// category-encounter order, which flips when a dataset has only one reason.
+// Pin colours by colorIdx so convergence_failure stays green and
+// insufficient_dynamic_range stays purple across datasets. The "light" palette would otherwise
+// assign by category-encounter order, which flips when a dataset has only one reason.
 const AFFINITY_VS_FIT_DEFAULT_STATE: GraphMakerState = {
   title: "",
   template: "dots",
@@ -120,11 +134,14 @@ const AFFINITY_VS_FIT_DEFAULT_STATE: GraphMakerState = {
       type: "categorical",
       palette: "light",
       naAes: { color: "#ccc", lineShape: "solid", dotShape: "21" },
-      order: ["low_r2", "n_out_of_range"],
+      order: ["convergence_failure", "insufficient_dynamic_range"],
       hidden: {},
       mapping: {
-        low_r2: { colorIdx: 0, aes: { color: "#99E099", lineShape: "solid", dotShape: "21" } },
-        n_out_of_range: {
+        convergence_failure: {
+          colorIdx: 0,
+          aes: { color: "#99E099", lineShape: "solid", dotShape: "21" },
+        },
+        insufficient_dynamic_range: {
           colorIdx: 1,
           aes: { color: "#C1ADFF", lineShape: "solid", dotShape: "21" },
         },
@@ -137,10 +154,26 @@ const AFFINITY_VS_FIT_DEFAULT_STATE: GraphMakerState = {
 const DEFAULT_BIN_WIDTH_DECADES = 0.65;
 const DEFAULT_MIN_PLATEAU_FRACTION = 0.65;
 const DEFAULT_KD_SD_GOOD = 0.5;
+const DEFAULT_HOOK_DETECTOR_ENABLED = false;
+const DEFAULT_PIN_HILL_EXPONENT = true;
+
+/** v2: the Adams 2016 model, chosen by hand, with the uncorrected-fit escape hatch. */
+export type BlockDataV2 = Omit<
+  BlockData,
+  | "fitModelOverride"
+  | "binFluorescenceColumnRef"
+  | "gateWidthColumnRef"
+  | "amplitudePriorQ"
+  | "hookDetectorEnabled"
+  | "pinHillExponent"
+> & {
+  fitModel: FitModel;
+  allowUncorrected: boolean;
+};
 
 /** Block data before the Adams 2016 model: no cell counts, no model choice. */
 export type BlockDataV1 = Omit<
-  BlockData,
+  BlockDataV2,
   | "cellCountColumnRef"
   | "fitModel"
   | "binWidthDecades"
@@ -162,12 +195,16 @@ export const initBlockData = (params?: BlockParams): BlockData => ({
   antigenColumnRef: params?.antigenColumnRef,
   sortFractionColumnRef: params?.sortFractionColumnRef,
   cellCountColumnRef: params?.cellCountColumnRef,
+  binFluorescenceColumnRef: params?.binFluorescenceColumnRef,
+  gateWidthColumnRef: params?.gateWidthColumnRef,
   targetAntigen: params?.targetAntigen,
-  fitModel: params?.fitModel ?? "poisson_log",
+  fitModelOverride: params?.fitModelOverride,
   binWidthDecades: params?.binWidthDecades ?? DEFAULT_BIN_WIDTH_DECADES,
   minPlateauFraction: params?.minPlateauFraction ?? DEFAULT_MIN_PLATEAU_FRACTION,
   baselineFluorescence: params?.baselineFluorescence,
-  allowUncorrected: params?.allowUncorrected ?? false,
+  amplitudePriorQ: params?.amplitudePriorQ,
+  hookDetectorEnabled: params?.hookDetectorEnabled ?? DEFAULT_HOOK_DETECTOR_ENABLED,
+  pinHillExponent: params?.pinHillExponent ?? DEFAULT_PIN_HILL_EXPONENT,
   kdSdGood: params?.kdSdGood ?? DEFAULT_KD_SD_GOOD,
   minReadsPerConcentration: params?.minReadsPerConcentration ?? 3,
   minConcentrationPoints: params?.minConcentrationPoints ?? 5,
@@ -213,9 +250,9 @@ export const initBlockData = (params?: BlockParams): BlockData => ({
 
 /**
  * v1 -> v2. A project configured before v2 has no cell counts; it stays on the linear Hill it ran
- * with, so a rerun reproduces its results instead of failing. New blocks start on poisson_log.
+ * with, so a rerun reproduces its results instead of failing.
  */
-export const migrateV1ToV2 = (v1: BlockDataV1): BlockData => ({
+export const migrateV1ToV2 = (v1: BlockDataV1): BlockDataV2 => ({
   ...v1,
   cellCountColumnRef: undefined,
   fitModel: "hill_free_n",
@@ -226,9 +263,33 @@ export const migrateV1ToV2 = (v1: BlockDataV1): BlockData => ({
   kdSdGood: DEFAULT_KD_SD_GOOD,
 });
 
+/**
+ * v2 -> v3. Drops the stored model choice so every project is routed on its bound columns, and
+ * drops the uncorrected-fit flag, which no longer gates anything.
+ *
+ * The pin has to be dropped rather than carried: `migrate` fast-paths a project already at its
+ * latest version, so a project that passed through v1 -> v2 would otherwise keep
+ * `fitModel: "hill_free_n"` forever and the routing would never reach it. Clearing it here also
+ * keeps a legacy pin distinguishable from a deliberate override, which shares the field otherwise.
+ */
+export const migrateV2ToV3 = ({
+  fitModel: _fitModel,
+  allowUncorrected: _allowUncorrected,
+  ...v2
+}: BlockDataV2): BlockData => ({
+  ...v2,
+  fitModelOverride: undefined,
+  binFluorescenceColumnRef: undefined,
+  gateWidthColumnRef: undefined,
+  amplitudePriorQ: undefined,
+  hookDetectorEnabled: DEFAULT_HOOK_DETECTOR_ENABLED,
+  pinHillExponent: DEFAULT_PIN_HILL_EXPONENT,
+});
+
 const dataModel = new DataModelBuilder({ kind })
   .from<BlockDataV1>("v1")
-  .migrate<BlockData>("v2", migrateV1ToV2)
+  .migrate<BlockDataV2>("v2", migrateV1ToV2)
+  .migrate<BlockData>("v3", migrateV2ToV3)
   .init(({ params }) => initBlockData(params));
 
 function isIntegerValueType(vt: string | undefined): boolean {
@@ -338,6 +399,23 @@ const validHillSettings = (data: BlockData, isBinMode: boolean): HillSettings =>
   };
 };
 
+/**
+ * The curve model the bound columns support.
+ *
+ * Measurement needs the cells sorted into each sample. Without them the mean bin is uncorrected,
+ * and feeding that to the measurement likelihood is measurably WORSE than the ranking fit
+ * (rank agreement 0.888 -> 0.822 on Adams 2016 replicate 1). "More data, better results" is a
+ * property of this routing, not of the inputs: more data has to switch the model to hold.
+ */
+export const routeFitModel = (
+  data: Pick<BlockData, "binColumnRef" | "cellCountColumnRef" | "sortFractionColumnRef">,
+): FitModel => {
+  if (data.binColumnRef === undefined) return "hill_free_n";
+  const cellsKnown =
+    data.cellCountColumnRef !== undefined || data.sortFractionColumnRef !== undefined;
+  return cellsKnown ? "poisson_log" : "hill_free_n";
+};
+
 export const deriveArgs = (data: BlockData): BlockArgs => {
   if (data.abundanceRef === undefined) throw new Error("Abundance column is required");
   if (data.concentrationColumnRef === undefined)
@@ -350,18 +428,13 @@ export const deriveArgs = (data: BlockData): BlockArgs => {
     );
   if (data.cellCountColumnRef !== undefined && data.binColumnRef === undefined)
     throw new Error("Sorted cell counts require a FACS bin column — they only apply in bin mode");
-  if (
-    data.binColumnRef !== undefined &&
-    data.fitModel === "poisson_log" &&
-    data.cellCountColumnRef === undefined &&
-    data.sortFractionColumnRef === undefined &&
-    !data.allowUncorrected
-  )
-    throw new Error(
-      "Sorted cell counts (or sort fractions) are required for the Adams 2016 model — " +
-        "without them every bin is assumed to hold the same number of cells",
-    );
+  if (data.binFluorescenceColumnRef !== undefined && data.binColumnRef === undefined)
+    throw new Error("Measured bin fluorescence requires a FACS bin column");
+  if (data.gateWidthColumnRef !== undefined && data.binColumnRef === undefined)
+    throw new Error("FACS gate width requires a FACS bin column");
   if (!(data.binWidthDecades > 0)) throw new Error("Bin width must be above 0 decades");
+  if (data.amplitudePriorQ !== undefined && !(data.amplitudePriorQ > 0 && data.amplitudePriorQ < 1))
+    throw new Error("Amplitude prior must be between 0 and 1, exclusive");
   if (!(data.minPlateauFraction > 0 && data.minPlateauFraction < 1))
     throw new Error("Minimum plateau must be between 0 and 1, exclusive");
   if (!(data.kdSdGood > 0)) throw new Error("Good-class Kd,app uncertainty must be above 0");
@@ -383,7 +456,8 @@ export const deriveArgs = (data: BlockData): BlockArgs => {
   // the Adams model. They are validated only when used and sent as fixed values otherwise, so a
   // hidden setting can neither block a run nor mark the block stale.
   const isBinMode = data.binColumnRef !== undefined;
-  const usesHill = !isBinMode || data.fitModel === "hill_free_n";
+  const fitModel = data.fitModelOverride ?? routeFitModel(data);
+  const usesHill = fitModel === "hill_free_n";
   const hill = usesHill ? validHillSettings(data, isBinMode) : HILL_SETTINGS_UNUSED;
   return {
     abundanceRef: data.abundanceRef,
@@ -392,12 +466,16 @@ export const deriveArgs = (data: BlockData): BlockArgs => {
     antigenColumnRef: data.antigenColumnRef,
     sortFractionColumnRef: data.sortFractionColumnRef,
     cellCountColumnRef: data.cellCountColumnRef,
+    binFluorescenceColumnRef: data.binFluorescenceColumnRef,
+    gateWidthColumnRef: data.gateWidthColumnRef,
     targetAntigen: data.targetAntigen,
-    fitModel: data.fitModel,
+    fitModel,
     binWidthDecades: data.binWidthDecades,
     minPlateauFraction: data.minPlateauFraction,
     baselineFluorescence: data.baselineFluorescence,
-    allowUncorrected: data.allowUncorrected,
+    amplitudePriorQ: data.amplitudePriorQ,
+    hookDetectorEnabled: data.hookDetectorEnabled ?? DEFAULT_HOOK_DETECTOR_ENABLED,
+    pinHillExponent: data.pinHillExponent ?? DEFAULT_PIN_HILL_EXPONENT,
     kdSdGood: data.kdSdGood,
     minReadsPerConcentration: data.minReadsPerConcentration,
     minConcentrationPoints: data.minConcentrationPoints,
@@ -499,6 +577,60 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     ),
   )
 
+  // Measured mean log10 fluorescence of each sample's gate. Any finite per-sample number other
+  // than the columns already picked; log fluorescence may be negative, so no value predicate.
+  .output("binFluorescenceOptions", (ctx) =>
+    filterPopulatedOptions(
+      ctx,
+      (spec) =>
+        isPColumnSpec(spec) &&
+        (isFloatValueType(spec.valueType) || isIntegerValueType(spec.valueType)) &&
+        spec.axesSpec.length === 1 &&
+        spec.axesSpec[0].name === "pl7.app/sampleId",
+    ).filter(
+      (opt) =>
+        ![
+          ctx.data.concentrationColumnRef,
+          ctx.data.binColumnRef,
+          ctx.data.sortFractionColumnRef,
+          ctx.data.cellCountColumnRef,
+          ctx.data.gateWidthColumnRef,
+        ].some((ref) => ref !== undefined && plRefsEqual(opt.ref, ref)),
+    ),
+  )
+
+  // FACS gate width in decades. Strictly positive and small — a gate spanning more than a decade
+  // would make the bin scale meaningless.
+  .output("gateWidthOptions", (ctx) =>
+    filterPopulatedOptions(
+      ctx,
+      (spec) =>
+        isPColumnSpec(spec) &&
+        isFloatValueType(spec.valueType) &&
+        spec.axesSpec.length === 1 &&
+        spec.axesSpec[0].name === "pl7.app/sampleId",
+      { valuePredicate: (finite) => finite.every((v) => v > 0 && v <= 2) },
+    ).filter(
+      (opt) =>
+        ![
+          ctx.data.concentrationColumnRef,
+          ctx.data.binColumnRef,
+          ctx.data.sortFractionColumnRef,
+          ctx.data.cellCountColumnRef,
+          ctx.data.binFluorescenceColumnRef,
+        ].some((ref) => ref !== undefined && plRefsEqual(opt.ref, ref)),
+    ),
+  )
+
+  // The model the bound columns route to, or the override. Shown beside the results, because a
+  // setting chosen for the user rather than by the user has to be visible where the result is read.
+  .output(
+    "resolvedFitModel",
+    (ctx): FitModel => ctx.data.fitModelOverride ?? routeFitModel(ctx.data),
+  )
+
+  .output("fitModelIsOverridden", (ctx) => ctx.data.fitModelOverride !== undefined)
+
   .output("antigenOptions", (ctx) =>
     ctx.resultPool.getOptions(
       (spec) =>
@@ -571,23 +703,32 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
       }
     }
 
-    // poisson_log anchors the baseline on the 0 M control (Adams 2016 App. E). Without one the
-    // fit fails unless the operator supplies the baseline fluorescence.
-    if (
-      data.binColumnRef !== undefined &&
-      data.fitModel === "poisson_log" &&
-      data.baselineFluorescence === undefined &&
-      data.concentrationColumnRef !== undefined
-    ) {
+    // Nothing below blocks a run. Each says what the block did with the data it was given and
+    // what one more input would buy.
+    const routed = data.fitModelOverride ?? routeFitModel(data);
+
+    if (data.binColumnRef !== undefined && routed === "hill_free_n" && !data.fitModelOverride) {
+      issues.push({
+        severity: "warning",
+        message:
+          "No sorted cell counts: the ranking fit ran, which orders candidates but does not " +
+          "measure them. Supplying the cells sorted into each sample switches the block to the " +
+          "Adams 2016 measurement model and makes Kd,app comparable between runs.",
+      });
+    }
+
+    if (data.baselineFluorescence === undefined && data.concentrationColumnRef !== undefined) {
       const conc = ctx.resultPool
         .getDataByRef(data.concentrationColumnRef)
         ?.data?.getDataAsJson<Record<string, Record<string, number | null>>>()?.["data"];
       if (conc && !Object.values(conc).some((v) => v === 0)) {
         issues.push({
-          severity: "error",
+          severity: "warning",
           message:
-            "No 0 M (no-antigen) sample: the Adams 2016 model needs it to set the background " +
-            "fluorescence. Add a 0 M control or enter the 0 M baseline fluorescence under Curve model.",
+            "No 0 M (no-antigen) sample and no baseline entered: the background fluorescence " +
+            "floated as a free parameter, so absolute Kd,app values are not comparable between " +
+            "runs. Ranking within this run is unaffected. Add a 0 M control, or enter the 0 M " +
+            "baseline fluorescence under Curve model.",
         });
       }
     }

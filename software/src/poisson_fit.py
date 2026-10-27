@@ -4,8 +4,11 @@ Model, per clonotype s and concentration c:
     mean log10 fluorescence  m_sc = log10(B + A_s * c / (c + K_s))          (E1, E2; Hill n = 1)
     expected reads           r_bsc = a_bc * k_s * q_b|sc,  a_bc = T_bc * C_c / C_bc   (E4)
     with q_b|sc >= 0, sum_b q_b|sc = 1, sum_b q_b|sc * l_b = m_sc                  (E5)
-where l_b = bin_width * (bin_label - 1) is the bin's log10 fluorescence relative to bin 1, T_bc the
-reads in sample (b, c), C_bc the cells sorted into it, and k_s the clonotype's library fraction.
+where l_bc is the bin's log10 fluorescence, T_bc the reads in sample (b, c), C_bc the cells sorted
+into it, and k_s the clonotype's library fraction. Absent measured values l_bc = bin_width *
+(bin_label - 1), one fixed scale for every concentration; with them it is the sort report's own mean
+per gate, which moves with concentration because at low concentration the cells in the high gates
+sit at the bottom of the gate.
 Reads are Poisson (E3). The bin probabilities q are profiled out; K and A are found on a grid.
 
 k_s is the ratio estimate (geometric mean over concentrations of sum_b R_b / a_b), shared by all
@@ -29,6 +32,28 @@ _BACKTRACK_STEPS = 40
 KD_GRID_STEP = 0.03
 AMPLITUDE_GRID_POINTS = 161
 M_GRID_POINTS = 120
+
+# Read floor for a clonotype to count toward the 0 M baseline: max(100, M/30), M the read-weighted
+# median clonotype size. The unfloored mean converges to a computable wrong number as
+# sequencing-error clonotypes dominate, because each carries equal weight whatever its depth. A
+# one-read clonotype implies a fluorescence near 10 against a correct 2.59.
+BASELINE_MIN_READS = 100.0
+BASELINE_MEDIAN_DIVISOR = 30.0
+# Unfloored clonotype mean over the pooled baseline, above which the 0 M set looks contaminated.
+# Clean Adams 2016 replicates span 0.79 to 1.26; one-fold contamination starts at 2.03.
+BASELINE_CONTAMINATION_RATIO = 1.5
+
+
+@dataclass(frozen=True)
+class BaselineEstimate:
+    """B plus what it was computed from, so the pipeline can report and warn on it."""
+
+    value: float | None
+    n_kept: int
+    n_total: int
+    read_floor: float
+    # Unfloored clonotype mean divided by the pooled baseline; None when either is unavailable.
+    contamination_ratio: float | None
 
 
 @dataclass(frozen=True)
@@ -69,20 +94,58 @@ def library_fraction(reads: np.ndarray, a: np.ndarray) -> np.ndarray:
     return np.exp(mean)
 
 
-def baseline(reads0: np.ndarray, a0: np.ndarray, log_values: np.ndarray) -> float | None:
-    """B: mean over clonotypes of the linear fluorescence implied by their 0 M bin probabilities.
-
-    reads0: (V, B) reads at 0 M; a0: (B,) exposure at 0 M. Appendix E sets B to the mean fluorescence
-    of cells labelled at 0 M; in bin-1 units this reproduces the authors' values to 3 decimals.
-    """
+def _implied_fluorescence(reads0: np.ndarray, a0: np.ndarray, log_values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """(V,) linear fluorescence each clonotype's 0 M bin probabilities imply, plus which are defined."""
     with np.errstate(divide="ignore", invalid="ignore"):
         q = np.where(a0 > 0, reads0 / np.where(a0 > 0, a0, 1.0), 0.0)
     tot = q.sum(1)
-    keep = tot > 0
+    defined = tot > 0
+    lin = np.full(reads0.shape[0], np.nan)
+    if defined.any():
+        lin[defined] = ((q[defined] / tot[defined, None]) * 10.0**log_values).sum(1)
+    return lin, defined
+
+
+def read_weighted_median(sizes: np.ndarray) -> float:
+    """Clonotype size at which half the reads lie below it — the N50 of clonotype read counts.
+
+    The plain median tracks how many error clonotypes there are; this tracks how deeply the real
+    library was sequenced, which is what the floor has to scale with.
+    """
+    s = np.sort(np.asarray(sizes, dtype=float))
+    s = s[s > 0]
+    if s.size == 0:
+        return 0.0
+    c = np.cumsum(s)
+    return float(s[int(np.searchsorted(c, c[-1] / 2.0))])
+
+
+def baseline(reads0: np.ndarray, a0: np.ndarray, log_values: np.ndarray, raw_reads0: np.ndarray) -> BaselineEstimate:
+    """B: mean implied 0 M fluorescence over clonotypes deep enough to carry the estimate.
+
+    reads0: (V, B) exposure-rescaled reads at 0 M; a0: (B,) exposure at 0 M; raw_reads0: (V, B) the
+    same reads before the rescale. Appendix E sets B to the mean fluorescence of cells labelled at
+    0 M; in bin-1 units this reproduces the authors' values to 3 decimals.
+
+    The floor is applied to the RAW reads, never the rescaled ones. The rescale shrinks the high
+    bins by two to three orders of magnitude, so flooring on it removes exactly the
+    high-fluorescence clonotypes the estimate needs.
+    """
+    lin, defined = _implied_fluorescence(reads0, a0, log_values)
+    raw_total = np.asarray(raw_reads0, dtype=float).sum(1)
+    read_floor = max(BASELINE_MIN_READS, read_weighted_median(raw_total) / BASELINE_MEDIAN_DIVISOR)
+
+    keep = defined & (raw_total >= read_floor)
+    # A library sequenced too shallowly for any clonotype to clear the floor still needs an answer.
     if not keep.any():
-        return None
-    lin = ((q[keep] / tot[keep, None]) * 10.0**log_values).sum(1)
-    return float(lin.mean())
+        keep, read_floor = defined, 0.0
+    if not keep.any():
+        return BaselineEstimate(None, 0, 0, read_floor, None)
+
+    pooled_lin, pooled_ok = _implied_fluorescence(reads0.sum(0, keepdims=True), a0, log_values)
+    unfloored = float(np.nanmean(lin[defined]))
+    ratio = unfloored / float(pooled_lin[0]) if bool(pooled_ok[0]) and float(pooled_lin[0]) > 0 else None
+    return BaselineEstimate(float(np.nanmean(lin[keep])), int(keep.sum()), int(defined.sum()), read_floor, ratio)
 
 
 def _loglik(R: np.ndarray, x: np.ndarray) -> np.ndarray:
@@ -224,7 +287,8 @@ def profile_loglik(
 ) -> np.ndarray:
     """max over q of sum_b R_b log(k a_b q_b) - k a_b q_b, for every m in m_grid. Returns (V, C, M).
 
-    reads, a: (V, C, B); k: (V,). Rows with no reads give 0 (they carry no information on m).
+    reads, a: (V, C, B); k: (V,); log_values: (C, B). Rows with no reads give 0 (they carry no
+    information on m).
     Solved exactly through the KKT conditions: either no empty bin carries probability (Newton on the
     two-variable dual), or one or two empty bins do (their dual slack is zero, which leaves a 1-D root
     or a closed form). Every feasible candidate is optimal; the best is kept.
@@ -233,7 +297,7 @@ def profile_loglik(
     B = reads.shape[-1]
     R = np.broadcast_to(reads[:, :, None, :], shape + (B,))
     ka = np.broadcast_to((k[:, None, None] * a)[:, :, None, :], shape + (B,))
-    L = np.broadcast_to(log_values, shape + (B,))
+    L = np.broadcast_to(np.asarray(log_values, dtype=float)[None, :, None, :], shape + (B,))
     m = np.broadcast_to(m_grid[None, None, :], shape)
     filled = R > 0
     q, ok = _interior(R, ka, L, m, filled)
@@ -267,15 +331,17 @@ def fit_titration(
     """Grid maximum likelihood of (K, A) for every clonotype.
 
     reads, a: (V, C, B) for all concentrations including 0 M (the 0 M row predicts m = log10 B).
-    concentrations: (C,). A model mean above the top bin's value contributes nothing to the
-    likelihood, as in the authors' code, where it falls outside the interpolation grid.
+    concentrations: (C,); log_values: (C, B). A model mean outside the bins' own fluorescence range
+    contributes nothing to the likelihood, as in the authors' code, where it falls outside the
+    interpolation grid.
     """
     conc = np.asarray(concentrations, dtype=float)
+    log_values = np.asarray(log_values, dtype=float)
     pos = conc[conc > 0]
     lo, hi = np.log10(pos.min()) - 0.5, np.log10(pos.max()) + 1.0
     logk = np.linspace(lo, hi, int(round((hi - lo) / KD_GRID_STEP)) + 1)
     A = np.logspace(np.log10(amplitude_bounds[0]), np.log10(amplitude_bounds[1]), AMPLITUDE_GRID_POINTS)
-    m_grid = np.linspace(1e-4, log_values[-1] - 1e-4, M_GRID_POINTS)
+    m_grid = np.linspace(float(log_values.min()) + 1e-4, float(log_values.max()) - 1e-4, M_GRID_POINTS)
 
     theta = conc[:, None] / (conc[:, None] + 10.0 ** logk[None, :])  # (C, K)
     m = np.log10(baseline_fluorescence + A[None, None, :] * theta[:, :, None])  # (C, K, A)
@@ -293,7 +359,12 @@ def fit_titration(
     for s0 in range(0, V, chunk):
         LL = profile_loglik(reads[s0 : s0 + chunk], a[s0 : s0 + chunk], k[s0 : s0 + chunk], log_values, m_grid)
         for j, Lv in enumerate(LL):
-            val = (1.0 - w) * Lv[cidx, i0] + w * Lv[cidx, i0 + 1]
+            # An infeasible grid point carries -inf, and 0 * -inf is NaN, which would survive the
+            # sum and corrupt the argmax. An interpolation touching an infeasible point is itself
+            # infeasible, so it takes -inf.
+            with np.errstate(invalid="ignore"):
+                val = (1.0 - w) * Lv[cidx, i0] + w * Lv[cidx, i0 + 1]
+            val = np.where(np.isnan(val), -np.inf, val)
             total = np.where(outside, 0.0, val).sum(0)  # (K, A)
             ik, ia = np.unravel_index(np.argmax(total), total.shape)
             post = np.exp(total - total[ik, ia])
@@ -313,7 +384,27 @@ def predicted_mean_bin(
     bin_width: float,
     n_bins: int,
 ) -> np.ndarray:
-    """Mean bin (1-based) the fitted curve predicts, capped at the top bin."""
+    """Mean bin (1-based) the fitted curve predicts on the fixed scale, capped at the top bin."""
     theta = concentrations / (concentrations + 10.0**log10_kd)
     m = np.log10(baseline_fluorescence + amplitude * theta) / bin_width
     return 1.0 + np.clip(m, 0.0, n_bins - 1)
+
+
+def predicted_mean_bin_measured(
+    log10_kd: float,
+    amplitude: float,
+    concentrations: np.ndarray,
+    baseline_fluorescence: float,
+    log_values: np.ndarray,
+    bin_labels: np.ndarray,
+) -> np.ndarray:
+    """Mean bin the fitted curve predicts when each bin's fluorescence was measured per sample.
+
+    log_values: (C, B) for the same concentrations, ascending across bins. The predicted mean log
+    fluorescence is inverted against that concentration's own gate values, so the result stays on
+    the observed bin numbering and is comparable with the measured mean bin.
+    """
+    theta = np.asarray(concentrations, dtype=float) / (np.asarray(concentrations, dtype=float) + 10.0**log10_kd)
+    m = np.log10(baseline_fluorescence + amplitude * theta)
+    labels = np.asarray(bin_labels, dtype=float)
+    return np.array([float(np.interp(m[i], log_values[i], labels)) for i in range(m.size)])

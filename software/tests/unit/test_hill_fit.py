@@ -10,6 +10,7 @@ from helpers import hill_curve
 from hypothesis import given
 from hypothesis import strategies as st
 
+from constants import DELTA_BIN, DELTA_NO_BIN
 from hill_fit import fit_one_clonotype, weighted_r2
 
 LOG_CONCS = np.array([0.1, 0.3, 1.0, 3.0, 10.0, 30.0, 100.0, 300.0])
@@ -98,60 +99,164 @@ class TestHillFitRoundtrip:
         assert fit.kd == pytest.approx(10.0, abs=1e-3)
 
 
+class TestPinnedHillExponent:
+    """`pin_n=True` fixes the Hill exponent at 1, as the Adams 2016 model does.
+
+    `fit_one_clonotype` defaults to `pin_n=False` even though the production default is
+    `FitParams.pin_hill_exponent=True`, so a direct call keeps the free-n behaviour.
+    """
+
+    @pytest.mark.parametrize(
+        "baseline_fixed, bin_mode, max_bin_label, baseline, amplitude",
+        [
+            pytest.param(1.0, True, 8, 1.0, math.log(3.0), id="bin-baseline-fixed"),
+            pytest.param(None, True, 8, 1.0, math.log(3.0), id="bin-baseline-free"),
+            pytest.param(0.01, False, None, 0.01, math.log(0.5), id="no-bin-baseline-fixed"),
+            pytest.param(None, False, None, 0.01, math.log(0.5), id="no-bin-baseline-free"),
+        ],
+    )
+    def test_pin_n_returns_exactly_one(self, baseline_fixed, bin_mode, max_bin_label, baseline, amplitude):
+        # True n = 2.0: a pinned fit must report 1.0, not the data's exponent.
+        y = hill_curve(LOG_CONCS, baseline, amplitude, 10.0, 2.0)
+        fit = fit_one_clonotype(
+            LOG_CONCS,
+            y,
+            np.full_like(LOG_CONCS, 100.0),
+            baseline_fixed,
+            bin_mode=bin_mode,
+            max_bin_label=max_bin_label,
+            pin_n=True,
+        )
+        assert fit.converged is True
+        assert fit.n == 1.0
+
+    def test_default_is_free_n(self):
+        y = hill_curve(LOG_CONCS, 1.0, math.log(3.0), 10.0, 2.0)
+        fit = fit_one_clonotype(LOG_CONCS, y, np.full_like(LOG_CONCS, 100.0), 1.0, bin_mode=True, max_bin_label=8)
+        assert fit.converged is True
+        assert fit.n == pytest.approx(2.0, abs=1e-4)
+
+
+class TestAmplitudePrior:
+    """`amp_prior_q` raises the amplitude lower bound to that fraction of the bin range.
+
+    Bin mode with a max_bin_label only. The bound is `1 + q·span` on the saturated mean bin, span
+    being `max_bin_label - 1`.
+    """
+
+    @pytest.mark.parametrize("baseline_fixed", [1.0, None])
+    def test_a_curve_under_the_prior_is_rejected(self, baseline_fixed):
+        # True amplitude 1.0 sits well under the prior's floor of 0.65·7 = 4.55.
+        y = hill_curve(LOG_CONCS, 1.0, math.log(1.0), 10.0, 1.0)
+        w = np.full_like(LOG_CONCS, 100.0)
+
+        free = fit_one_clonotype(LOG_CONCS, y, w, baseline_fixed, bin_mode=True, max_bin_label=8)
+        assert free.converged is True
+        assert free.top - free.baseline == pytest.approx(1.0, abs=1e-3)
+
+        pinned = fit_one_clonotype(LOG_CONCS, y, w, baseline_fixed, bin_mode=True, max_bin_label=8, amp_prior_q=0.65)
+        assert pinned.converged is False
+        assert pinned.reason == "insufficient_dynamic_range"
+
+    @pytest.mark.parametrize("baseline_fixed", [1.0, None])
+    def test_a_curve_above_the_prior_is_untouched(self, baseline_fixed):
+        # True amplitude 6.0 clears the prior's floor of 4.55, so the raised bound never binds.
+        y = hill_curve(LOG_CONCS, 1.0, math.log(6.0), 10.0, 1.0)
+        w = np.full_like(LOG_CONCS, 100.0)
+        fit = fit_one_clonotype(LOG_CONCS, y, w, baseline_fixed, bin_mode=True, max_bin_label=8, amp_prior_q=0.65)
+        assert fit.converged is True
+        assert fit.top - fit.baseline == pytest.approx(6.0, abs=1e-2)
+
+    # No-bin mode has no bin range, so the floor stays at DELTA_NO_BIN.
+    def test_no_bin_mode_ignores_the_prior(self):
+        y = hill_curve(LOG_CONCS, 0.01, math.log(0.5), 10.0, 1.0)
+        w = np.full_like(LOG_CONCS, 100.0)
+        fit = fit_one_clonotype(LOG_CONCS, y, w, 0.01, bin_mode=False, max_bin_label=None, amp_prior_q=0.65)
+        assert fit.converged is True
+        assert fit.top - fit.baseline == pytest.approx(0.5, abs=1e-6)
+
+
 class TestHillFitFailureModes:
-    # A signal with no dynamic range (top − baseline < δ, R10) has nothing to fit: the optimiser would
-    # otherwise park K_D far outside the data with an undefined R².
+    # A flat signal reaches the amplitude floor before its weighted R² is ever evaluated: there is
+    # no dynamic range for the fit to measure.
     @pytest.mark.parametrize(
         "x, y, baseline_fixed, max_bin_label",
         [
             pytest.param(LOG_CONCS, np.full_like(LOG_CONCS, 1.0), 1.0, 8, id="flat-baseline-fixed"),
-            pytest.param(LOG_CONCS, 1.0 + 1e-4 * np.arange(len(LOG_CONCS)), 1.0, 8, id="tiny-amplitude"),
             pytest.param(np.array([1e-10, 1e-9, 1e-8, 1e-7, 1e-6]), np.full(5, 2.5), None, 4, id="flat-baseline-free"),
         ],
     )
-    def test_no_dynamic_range_is_a_convergence_failure(self, x, y, baseline_fixed, max_bin_label):
+    def test_flat_signal_has_no_dynamic_range(self, x, y, baseline_fixed, max_bin_label):
         fit = fit_one_clonotype(
             x, y, np.full_like(x, 100.0), baseline_fixed, bin_mode=True, max_bin_label=max_bin_label
         )
         assert not fit.converged
-        assert fit.reason == "convergence_failure"
+        assert fit.reason == "insufficient_dynamic_range"
+        assert fit.kd is None
+
+    # A near-flat ramp reaches the amplitude floor in bin mode too. Admitting these rows instead
+    # was measured to cost rank agreement 0.909 -> 0.779 on Adams 2016 replicate 1.
+    def test_near_flat_ramp_in_bin_mode_is_rejected(self):
+        y = 1.0 + 1e-4 * np.arange(len(LOG_CONCS))
+        fit = fit_one_clonotype(LOG_CONCS, y, np.full_like(LOG_CONCS, 100.0), 1.0, bin_mode=True, max_bin_label=8)
+        assert fit.converged is False
+        assert fit.reason == "insufficient_dynamic_range"
+        assert fit.kd is None
+
+    # The same ramp in no-bin mode, where the floor is an absolute frequency.
+    def test_near_flat_ramp_in_no_bin_mode_is_rejected(self):
+        y = 1e-4 * np.arange(len(LOG_CONCS))
+        fit = fit_one_clonotype(LOG_CONCS, y, np.full_like(LOG_CONCS, 100.0), 0.0, bin_mode=False, max_bin_label=None)
+        assert fit.converged is False
+        assert fit.reason == "insufficient_dynamic_range"
         assert fit.kd is None
 
 
 class TestDeltaDynamicRangeGate:
-    """R10: `top − baseline` must be ≥ mode-specific δ.
+    """R10: `top − baseline` must be ≥ mode-specific δ (δ_bin = 0.5, δ_no_bin = 0.05).
 
-    Spec: δ_bin = 0.5, δ_no_bin = 0.05. Fits whose true dynamic range falls
-    below the mode's δ must be rejected as convergence_failure; fits above
-    must converge.
+    Bin mode applies δ as a bound on the optimiser only: a curve below δ comes back converged with
+    its amplitude pinned at δ. No-bin mode keeps the post-fit rejection, with reason
+    `insufficient_dynamic_range`.
     """
 
-    @pytest.mark.parametrize(
-        "bin_mode, amplitude, should_converge",
-        [
-            # Bin mode, δ = 0.5:
-            (True, math.log(0.3), False),  # 0.3 < 0.5 → reject (current code ACCEPTS; catches bug)
-            (True, math.log(0.6), True),  # 0.6 ≥ 0.5 → accept
-            (True, math.log(2.0), True),  # healthy signal
-            # No-bin mode, δ = 0.05:
-            (False, math.log(0.03), False),  # 0.03 < 0.05 → reject
-            (False, math.log(0.08), True),  # 0.08 ≥ 0.05 → accept
-        ],
-    )
-    def test_mode_specific_delta_gate(self, bin_mode, amplitude, should_converge):
-        baseline = 1.0 if bin_mode else 0.01
-        max_bin_label = 8 if bin_mode else None
-        x = LOG_CONCS
-        y = hill_curve(x, baseline, amplitude, kd=10.0, n=1.0)
-        w = np.ones_like(x) * 100.0
-
-        fit = fit_one_clonotype(x, y, w, baseline_fixed=baseline, bin_mode=bin_mode, max_bin_label=max_bin_label)
-        assert fit.converged is should_converge, (
-            f"{'bin' if bin_mode else 'no-bin'} amp={math.exp(amplitude):.3f}: "
-            f"expected converged={should_converge}, got {fit.converged}"
+    @pytest.mark.parametrize("amplitude", [0.05, 0.1, 0.3])
+    def test_bin_mode_rejects_a_sub_delta_curve(self, amplitude):
+        y = hill_curve(LOG_CONCS, 1.0, math.log(amplitude), kd=10.0, n=1.0)
+        fit = fit_one_clonotype(
+            LOG_CONCS, y, np.full_like(LOG_CONCS, 100.0), baseline_fixed=1.0, bin_mode=True, max_bin_label=8
         )
-        if not should_converge:
-            assert fit.reason == "convergence_failure"
+        assert fit.converged is False
+        assert fit.reason == "insufficient_dynamic_range"
+        assert fit.kd is None
+
+    @pytest.mark.parametrize("amplitude", [0.6, 2.0])
+    def test_bin_mode_recovers_a_curve_above_delta(self, amplitude):
+        y = hill_curve(LOG_CONCS, 1.0, math.log(amplitude), kd=10.0, n=1.0)
+        fit = fit_one_clonotype(
+            LOG_CONCS, y, np.full_like(LOG_CONCS, 100.0), baseline_fixed=1.0, bin_mode=True, max_bin_label=8
+        )
+        assert fit.converged is True
+        assert fit.top - fit.baseline == pytest.approx(amplitude, abs=1e-4)
+
+    @pytest.mark.parametrize("amplitude", [0.01, 0.03])
+    def test_no_bin_mode_rejects_a_sub_delta_curve(self, amplitude):
+        y = hill_curve(LOG_CONCS, 0.01, math.log(amplitude), kd=10.0, n=1.0)
+        fit = fit_one_clonotype(
+            LOG_CONCS, y, np.full_like(LOG_CONCS, 100.0), baseline_fixed=0.01, bin_mode=False, max_bin_label=None
+        )
+        assert fit.converged is False
+        assert fit.reason == "insufficient_dynamic_range"
+        assert fit.kd is None
+
+    @pytest.mark.parametrize("amplitude", [0.08, 0.5])
+    def test_no_bin_mode_recovers_a_curve_above_delta(self, amplitude):
+        y = hill_curve(LOG_CONCS, 0.01, math.log(amplitude), kd=10.0, n=1.0)
+        fit = fit_one_clonotype(
+            LOG_CONCS, y, np.full_like(LOG_CONCS, 100.0), baseline_fixed=0.01, bin_mode=False, max_bin_label=None
+        )
+        assert fit.converged is True
+        assert fit.top - fit.baseline == pytest.approx(amplitude, abs=1e-4)
 
 
 class TestOptimizeWarningBecomesFailure:
@@ -198,17 +303,20 @@ class TestAmplitudeBoundsRespected:
     solver bound drifting back below the spec minimum. Complements TestDeltaDynamicRangeGate.
     """
 
-    @pytest.mark.parametrize("bin_mode, delta_expected", [(True, 0.5), (False, 0.05)])
-    def test_converged_top_minus_baseline_ge_delta(self, bin_mode, delta_expected):
+    @pytest.mark.parametrize("bin_mode, delta_expected", [(True, DELTA_BIN), (False, DELTA_NO_BIN)])
+    @pytest.mark.parametrize("true_amplitude_fraction", [0.1, 1.0])
+    def test_converged_top_minus_baseline_ge_delta(self, bin_mode, delta_expected, true_amplitude_fraction):
         baseline = 1.0 if bin_mode else 0.01
         max_bin_label = 8 if bin_mode else None
-        amplitude = math.log(1.5) if bin_mode else math.log(0.3)
+        amplitude = math.log((1.5 if bin_mode else 0.3) * true_amplitude_fraction)
         x = LOG_CONCS
         y = hill_curve(x, baseline, amplitude, kd=10.0, n=1.0)
         w = np.ones_like(x) * 100.0
 
         fit = fit_one_clonotype(x, y, w, baseline_fixed=baseline, bin_mode=bin_mode, max_bin_label=max_bin_label)
-        assert fit.converged is True
+        if not fit.converged:
+            assert fit.reason == "insufficient_dynamic_range"
+            return
         assert fit.top is not None and fit.baseline is not None
         assert (fit.top - fit.baseline) >= delta_expected - 1e-9, (
             f"top − baseline = {fit.top - fit.baseline:.4f} violates δ = {delta_expected}"

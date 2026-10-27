@@ -153,10 +153,16 @@ blockTest(
         antigenColumnRef: undefined,
         targetAntigen: undefined,
         // The manifest's expected classes come from the linear Hill model the fixtures were built on.
-        fitModel: "hill_free_n",
+        fitModelOverride: "hill_free_n",
+        binFluorescenceColumnRef: undefined,
+        gateWidthColumnRef: undefined,
+        amplitudePriorQ: undefined,
+        // The fixtures' expected classes come from a free-n Hill fit with the hook detector on,
+        // which is no longer the default.
+        hookDetectorEnabled: true,
+        pinHillExponent: false,
         binWidthDecades: 0.65,
         minPlateauFraction: 0.65,
-        allowUncorrected: false,
         kdSdGood: 0.5,
         minReadsPerConcentration: 3,
         minConcentrationPoints: 5,
@@ -413,16 +419,22 @@ blockTest(
         antigenColumnRef: undefined,
         targetAntigen: undefined,
         cellCountColumnRef: cellCountRef,
-        fitModel: "poisson_log",
+        fitModelOverride: "poisson_log",
         // The Adams model will not compute the 0 M baseline for itself: the estimate
         // weights every clonotype equally, so it is only right for a curated designed
         // library. The block therefore requires the user to supply it, and this test
         // stands in for that user. 12.7852 is this fixture's own 0 M baseline, so the
         // run reproduces what the block produced before the opt-in landed.
         baselineFluorescence: 12.7852,
+        binFluorescenceColumnRef: undefined,
+        gateWidthColumnRef: undefined,
+        amplitudePriorQ: undefined,
+        // The fixtures' expected classes come from a free-n Hill fit with the hook detector on,
+        // which is no longer the default.
+        hookDetectorEnabled: true,
+        pinHillExponent: false,
         binWidthDecades: 0.65,
         minPlateauFraction: 0.65,
-        allowUncorrected: false,
         kdSdGood: 0.5,
         minReadsPerConcentration: 3,
         minConcentrationPoints: 5,

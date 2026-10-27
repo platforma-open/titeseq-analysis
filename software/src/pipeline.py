@@ -18,6 +18,7 @@ argparse and file I/O.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor
 from contextlib import ExitStack
@@ -41,13 +42,13 @@ from constants import (
 from cpus import available_cpus
 from hill_fit import FitResult, fit_one_clonotype
 from io_layer import (
-    InputValidationError,
     apply_antigen_filter,
     canonicalize_concentration,
     max_bin_label,
     validate_antigen_filter,
     validate_bin_column,
     validate_bin_concentration_grid,
+    validate_bin_fluorescence,
     validate_cell_count,
     validate_concentration_column,
     validate_reads_schema,
@@ -218,6 +219,8 @@ def _fit_all_clonotypes(
         baseline_fixed=global_baseline,
         bin_mode=bin_mode,
         max_bin_label=max_bin,
+        pin_n=params.pin_hill_exponent,
+        amp_prior_q=params.amplitude_prior_q,
     )
     n_survivors = len(xs)
     gated = n_clon - n_survivors
@@ -233,7 +236,14 @@ def _fit_all_clonotypes(
     fitted_y_hats: list[np.ndarray] = []
 
     for fit, (i, clonotype, cs, x) in zip(fits, contexts):
-        cls = classify(fit.r2_w, fit.n, fit.converged, params)
+        # A failed fit carries its own reason; `convergence_failure` is only the default.
+        cls = classify(
+            fit.r2_w,
+            fit.n,
+            fit.converged,
+            params,
+            precomputed_reason=None if fit.converged else fit.reason,
+        )
         kd_col[i] = fit.kd
         n_col[i] = fit.n
         r2_col[i] = fit.r2_w
@@ -274,6 +284,40 @@ def _fit_all_clonotypes(
         fitted = pl.DataFrame(schema=FITTED_MEAN_BIN_SCHEMA)
 
     return per_clonotype, fitted
+
+
+def _clamp_and_censor(per_clonotype: pl.DataFrame, min_conc: float, max_conc: float) -> pl.DataFrame:
+    """Clamp a Hill K_D into the titrated range, flag which edge it hit, class the floor.
+
+    Outside the titrated concentrations the fitted K_D is an extrapolation. Measured on the three
+    Adams 2016 replicates the sub-floor spread carries no rank information at all (rank agreement
+    0.299, -0.023 and 0.258 inside the bound block), so the ordering of ~190 of ~210 distinct
+    sub-floor values is noise. The clamped value is the limit, and `kdCensor` says it is a bound.
+
+    Both edges are clamped and flagged; neither is failed. Failing the above-range edge strips the
+    weak-binder tail out of the scored set and was the sole cause of every measured regression.
+    """
+    lo, hi = math.log10(min_conc), math.log10(max_conc)
+    fitted = pl.col("kd").is_not_null() & (pl.col("kd") > 0) & (pl.col("affinityClass") != "Failed")
+    log_kd = pl.col("kd").log10()
+    censor = (
+        pl.when(fitted & (log_kd <= lo))
+        .then(pl.lit("below"))
+        .when(fitted & (log_kd >= hi))
+        .then(pl.lit("above"))
+        .otherwise(pl.lit(None, dtype=pl.Utf8))
+    )
+    return per_clonotype.with_columns(censor.alias("kdCensor")).with_columns(
+        pl.when(fitted).then(pl.lit(10.0) ** log_kd.clip(lo, hi)).otherwise(pl.col("kd")).alias("kd"),
+        pl.when(fitted)
+        .then(pl.col("kdCensor").is_not_null())
+        .otherwise(pl.lit(None, dtype=pl.Boolean))
+        .alias("kdOutOfRange"),
+        pl.when(pl.col("kdCensor") == "below")
+        .then(pl.lit("CensoredBelow"))
+        .otherwise(pl.col("affinityClass"))
+        .alias("affinityClass"),
+    )
 
 
 def _build_outputs(
@@ -318,6 +362,8 @@ def run(
     antigen_column_ref: str | None = None,
     sort_fraction_col: str | None = None,
     cell_count_col: str | None = None,
+    bin_fluorescence_col: str | None = None,
+    gate_width_col: str | None = None,
     samples: pl.DataFrame | None = None,
 ) -> dict[str, pl.DataFrame]:
     """Execute the full pipeline on an in-memory reads frame.
@@ -325,6 +371,14 @@ def run(
     `cell_count_col` names the cells sorted into each sample (C_bc in Adams 2016 eq. E4). In bin mode
     with the default poisson_log model it is required (or `sort_fraction_col`, which loses the
     reads-exceed-cells rescale), unless `params.allow_uncorrected` is set.
+
+    `bin_fluorescence_col` names the measured mean log10 fluorescence of each sample's gate. Bound,
+    it replaces the fixed `bin_width * (label - 1)` scale with one value per bin per concentration.
+    Unbound, nothing changes.
+
+    `gate_width_col` names the FACS gate width in decades, per sample. Bound, it supplies the bin
+    width in place of the configured one; every sort report carries it and nobody can state a
+    plateau fraction by hand.
 
     `sort_fraction_col`, when set, activates the Adams, Mora, Walczak, Kinney 2016
     eq. A3 correction inside `compute_mean_bin`. The column must be present in
@@ -370,12 +424,39 @@ def run(
         log(f"sort_fraction validated: {n_conc} concentrations, all sums within 1e-3 of 1.0")
         log(f"Mean-bin correction: FACS-weighted (column '{sort_fraction_col}')")
     elif has_bin:
-        if poisson and not params.allow_uncorrected:
-            raise InputValidationError(
-                "bin mode needs the cells sorted into each sample (cell counts or sort fractions); "
-                "without them every bin is assumed to hold the same number of cells"
+        log(
+            "WARN: Mean-bin correction: uncorrected — every bin is assumed to hold the same number "
+            "of cells. Supplying the cells sorted into each sample unlocks the measurement model."
+        )
+
+    if gate_width_col is not None and has_bin:
+        if gate_width_col not in reads.columns:
+            log(f"WARN: gate-width column '{gate_width_col}' missing from reads; keeping the configured bin width")
+        else:
+            widths = (
+                reads.select(COL_SAMPLE, gate_width_col)
+                .unique()[gate_width_col]
+                .cast(pl.Float64, strict=False)
+                .drop_nulls()
             )
-        log("WARN: Mean-bin correction: uncorrected — assumes equal cells per bin")
+            width = float(widths.median()) if widths.len() else 0.0
+            if width > 0:
+                log(f"Bin width from FACS gate width: {width:.4f} decades")
+                params = replace(params, bin_width_decades=width)
+            else:
+                log("WARN: gate-width column holds no usable positive value; keeping the configured bin width")
+    elif gate_width_col is not None:
+        log("WARN: FACS gate width needs a FACS bin column; ignoring it")
+
+    if bin_fluorescence_col is not None and has_bin:
+        issues = validate_bin_fluorescence(reads, bin_fluorescence_col)
+        for w in issues:
+            log(f"WARN: {w}")
+        if issues:
+            bin_fluorescence_col = None
+    elif bin_fluorescence_col is not None:
+        log("WARN: measured bin fluorescence needs a FACS bin column; ignoring it")
+        bin_fluorescence_col = None
 
     mbl = max_bin_label(reads) if has_bin else None
 
@@ -396,7 +477,13 @@ def run(
     if poisson:
         cell_col = cell_count_col if cell_count_col is not None else sort_fraction_col
         per_clonotype, fitted = fit_poisson(
-            reads, signal_frame, insufficient_map, params, cell_col, cells_absolute=cell_count_col is not None
+            reads,
+            signal_frame,
+            insufficient_map,
+            params,
+            cell_col,
+            cells_absolute=cell_count_col is not None,
+            bin_fluorescence_col=bin_fluorescence_col,
         )
         log("Assembling output frames")
         outputs = _build_outputs(per_clonotype, fitted, signal_frame, reads, flag_range=False)
@@ -418,9 +505,11 @@ def run(
             zip(insufficient[COL_CLONOTYPE].to_list(), insufficient["insufficient_reason"].to_list())
         )
 
-    log("Detecting hook effect")
-    hook = detect_hook_effect(fit_points, bin_mode=has_bin, params=params)
-    hook_map = dict(zip(hook[COL_CLONOTYPE].to_list(), hook["hook_flag"].to_list()))
+    hook_map: dict[str, bool] = {}
+    if params.hook_detector_enabled:
+        log("Detecting hook effect")
+        hook = detect_hook_effect(fit_points, bin_mode=has_bin, params=params)
+        hook_map = dict(zip(hook[COL_CLONOTYPE].to_list(), hook["hook_flag"].to_list()))
 
     per_clonotype, fitted = _fit_all_clonotypes(
         fit_points,
@@ -433,8 +522,12 @@ def run(
         params=params,
     )
 
+    pos = reads.filter(pl.col(COL_CONC_VAL) > 0)[COL_CONC_VAL]
+    if has_bin and pos.len():
+        per_clonotype = _clamp_and_censor(per_clonotype, float(pos.min()), float(pos.max()))
+
     log("Assembling output frames")
-    outputs = _build_outputs(per_clonotype, fitted, signal_frame, reads)
+    outputs = _build_outputs(per_clonotype, fitted, signal_frame, reads, flag_range=not (has_bin and pos.len()))
     log(
         f"Pipeline done: per_clonotype={outputs['per_clonotype'].height}, "
         f"mean_bin={outputs['mean_bin'].height}, "

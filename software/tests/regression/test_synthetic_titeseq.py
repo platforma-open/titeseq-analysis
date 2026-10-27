@@ -185,8 +185,10 @@ def test_poisson_titeseq_kd_recovery():
     reads = build_poisson_reads(cfg)
     out = run(reads, params=LINEAR_HILL)
     pc = out["per_clonotype"]
+    # Good and Partial are the classes a measured K_D lands in; CensoredBelow is a bound, not a
+    # measurement, so it is excluded from a recovery rate.
     good = pc.filter(pl.col("affinityClass").is_in(["Good", "Partial"]))
-    # Fraction recovered (not Failed) — deep regression alarm, not a calibration bound.
+    # Fraction carrying a measured K_D — deep regression alarm, not a calibration bound.
     frac = good.height / pc.height
     assert frac >= 0.5, f"only {frac:.0%} non-failed (regression alarm, expected >= 50%)"
 

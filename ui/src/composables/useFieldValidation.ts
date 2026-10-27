@@ -80,9 +80,12 @@ const validatePositive = (v: number | undefined | null, optional = false): strin
   return undefined;
 };
 
-// Number strictly between 0 and 1.
-const validateOpenFraction = (v: number | undefined | null): string | undefined => {
-  if (isMissing(v)) return REQUIRED;
+// Number strictly between 0 and 1; optional when `optional` (an empty field means "not set").
+const validateOpenFraction = (
+  v: number | undefined | null,
+  optional = false,
+): string | undefined => {
+  if (isMissing(v)) return optional ? undefined : REQUIRED;
   if (!((v as number) > 0 && (v as number) < 1)) return "Must be between 0 and 1, exclusive";
   return undefined;
 };
@@ -140,6 +143,9 @@ export function useFieldValidation() {
   const plateauError = computed(() => validateOpenFraction(app.model.data.minPlateauFraction));
   const kdSdGoodError = computed(() => validatePositive(app.model.data.kdSdGood));
   const baselineError = computed(() => validatePositive(app.model.data.baselineFluorescence, true));
+  const amplitudePriorError = computed(() =>
+    validateOpenFraction(app.model.data.amplitudePriorQ, true),
+  );
 
   return {
     minReadsError,
@@ -155,5 +161,6 @@ export function useFieldValidation() {
     plateauError,
     kdSdGoodError,
     baselineError,
+    amplitudePriorError,
   };
 }

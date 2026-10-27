@@ -9,7 +9,7 @@ from contextlib import redirect_stdout
 import numpy as np
 import polars as pl
 import pytest
-from helpers import SimulatedExperiment, simulate_titeseq
+from helpers import SimulatedExperiment, hill_reads, simulate_titeseq
 
 from constants import DEFAULT_PARAMS, FitParams
 from io_layer import InputValidationError
@@ -31,7 +31,7 @@ def _run(
 def fitted(simulated_library: SimulatedExperiment) -> tuple[dict[str, pl.DataFrame], dict[str, dict]]:
     out = _run(
         simulated_library.reads,
-        params=FitParams(allow_computed_baseline=True, bin_width_decades=0.7),
+        params=FitParams(bin_width_decades=0.7),
         cell_count_col="cells",
     )
     pc = out["per_clonotype"].with_columns(pl.col("kd").log10().alias("log10_kd"))
@@ -74,32 +74,44 @@ def test_kd_bounds_are_flagged_out_of_range(fitted, key):
 
 
 def test_binder_tighter_than_the_lowest_concentration_is_a_lower_bound(fitted):
+    # The clamped value is the lowest titrated concentration, and CensoredBelow says it is a bound.
+    # Its own class, outside the ["Good", "Partial"] default, so a block of equal bounds cannot head
+    # a downstream ranking.
     _, rows = fitted
     tight = rows["TIGHT"]
     assert tight["kdCensor"] == "below"
     assert tight["log10_kd"] == pytest.approx(-10.0)
-    assert tight["affinityClass"] == "Good"
+    assert tight["affinityClass"] == "CensoredBelow"
+    assert tight["fitFailureReason"] is None
 
 
 def test_flat_curve_is_reported_as_above_the_range_not_as_a_binder(fitted):
     # Without the amplitude prior a flat curve fits as a very tight binder (Adams 2016 deviation D5).
+    # The above-range row is clamped and flagged, never failed: failing it strips the weak-binder
+    # tail out of the table. It takes the normal Good/Partial decision from kd_sd_good.
     _, rows = fitted
     nb = rows["NONBINDER"]
     assert nb["kdCensor"] == "above"
+    assert nb["kdOutOfRange"] is True
     assert nb["log10_kd"] == pytest.approx(-5.5)
-    assert (nb["affinityClass"], nb["fitFailureReason"]) == ("Failed", "kd_above_range")
+    assert nb["affinityClass"] in ("Good", "Partial")
+    assert nb["fitFailureReason"] is None
 
 
-def test_fitted_curve_is_emitted_only_for_non_failed_and_stays_within_bins(fitted):
+def test_fitted_curve_is_emitted_for_every_fit_and_stays_within_bins(fitted):
     out, rows = fitted
     fmb = out["fitted_mean_bin"]
-    assert "NONBINDER" not in set(fmb["clonotypeKey"].to_list())
-    assert {"B00", "TIGHT"} <= set(fmb["clonotypeKey"].to_list())
+    # Nothing failed in this library, so every clonotype carries a curve — bounds included.
+    assert set(fmb["clonotypeKey"].to_list()) == set(rows)
     assert fmb["fittedMeanBin"].min() >= 1.0 and fmb["fittedMeanBin"].max() <= 4.0
     # The curve tracks the observed mean bin: noise on the simulated library is about 0.2 bins.
+    # A clamped K_D is a bound, so its curve is not required to track the data it was clamped away
+    # from; only the in-range fits are held to the residual.
     both = fmb.join(out["mean_bin"], on=["clonotypeKey", "concentrationStr"])
     assert both.height == fmb.height
-    assert (both["fittedMeanBin"] - both["meanBin"]).abs().max() < 0.3
+    in_range = [k for k, r in rows.items() if r["kdCensor"] is None]
+    tracked = both.filter(pl.col("clonotypeKey").is_in(in_range))
+    assert (tracked["fittedMeanBin"] - tracked["meanBin"]).abs().max() < 0.3
 
 
 def test_sort_fractions_give_the_same_kd_when_reads_do_not_exceed_cells():
@@ -110,7 +122,7 @@ def test_sort_fractions_give_the_same_kd_when_reads_do_not_exceed_cells():
         (pl.col("cells") / pl.col("cells").sum().over("concentrationStr")).alias("frac")
     )
     reads = sim.reads.join(per_sample.select("sampleId", "frac"), on="sampleId")
-    params = FitParams(allow_computed_baseline=True, bin_width_decades=0.7, min_concentration_points=3)
+    params = FitParams(bin_width_decades=0.7, min_concentration_points=3)
     by_cells = _run(reads, params=params, cell_count_col="cells")["per_clonotype"]
     by_frac = _run(reads.drop("cells"), params=params, sort_fraction_col="frac")["per_clonotype"]
     assert by_cells["kd"].to_list() == pytest.approx(by_frac["kd"].to_list())
@@ -121,13 +133,24 @@ class TestInputsTheModelNeeds:
     def small(self) -> pl.DataFrame:
         return simulate_titeseq({"A": (-8.0, 60.0), "N": (-2.0, 60.0)}, seed=5).reads
 
-    def test_uncorrected_runs_only_when_asked_and_says_so(self, small, capsys):
-        out = run(small.drop("cells"), params=FitParams(allow_computed_baseline=True, allow_uncorrected=True))
+    # Bin mode no longer refuses to run without the cells sorted into each sample: it warns and
+    # proceeds on the uncorrected mean bin.
+    def test_bin_mode_without_cells_runs_and_warns(self, small, capsys):
+        out = run(small.drop("cells"), params=FitParams())
         assert out["per_clonotype"].height == 2
-        assert "uncorrected" in capsys.readouterr().out
+        assert out["per_clonotype"]["kd"].is_not_null().all()
+        warning = capsys.readouterr().out
+        assert "WARN" in warning and "uncorrected" in warning
+
+    # The 0 M baseline is computed whenever a 0 M sample exists and no explicit one is given; there
+    # is no opt-in to withhold.
+    def test_zero_control_baseline_is_computed_without_an_opt_in(self, small, capsys):
+        out = run(small, params=FitParams(), cell_count_col="cells")
+        assert out["per_clonotype"]["kd"].is_not_null().all()
+        assert "0 M baseline computed from" in capsys.readouterr().out
 
     def test_baseline_override_replaces_the_zero_control(self, small):
-        params = FitParams(allow_computed_baseline=True, bin_width_decades=0.7, baseline_fluorescence=2.5)
+        params = FitParams(bin_width_decades=0.7, baseline_fluorescence=2.5)
         out = _run(small.filter(pl.col("concentration") > 0), params=params, cell_count_col="cells")
         a = out["per_clonotype"].filter(pl.col("clonotypeKey") == "A")
         assert np.log10(a["kd"][0]) == pytest.approx(-8.0, abs=0.25)
@@ -135,7 +158,6 @@ class TestInputsTheModelNeeds:
     @pytest.mark.parametrize(
         "corrupt, kwargs, message",
         [
-            pytest.param(lambda df: df.drop("cells"), {}, "cells sorted into each sample", id="bin-mode-without-cells"),
             pytest.param(
                 lambda df: df.filter(pl.col("concentration") > 0),
                 {"cell_count_col": "cells"},
@@ -144,14 +166,8 @@ class TestInputsTheModelNeeds:
             ),
             pytest.param(
                 lambda df: df,
-                {"cell_count_col": "cells"},
-                "designed library member",
-                id="computed-baseline-needs-opt-in",
-            ),
-            pytest.param(
-                lambda df: df,
                 {
-                    "params": FitParams(allow_computed_baseline=True, min_plateau_fraction=0.05),
+                    "params": FitParams(min_plateau_fraction=0.05),
                     "cell_count_col": "cells",
                 },
                 "min_plateau_fraction",
@@ -160,7 +176,7 @@ class TestInputsTheModelNeeds:
             pytest.param(
                 lambda df: df,
                 {
-                    "params": FitParams(allow_computed_baseline=True, baseline_fluorescence=0.0),
+                    "params": FitParams(baseline_fluorescence=0.0),
                     "cell_count_col": "cells",
                 },
                 "0 M baseline",
@@ -169,7 +185,7 @@ class TestInputsTheModelNeeds:
             pytest.param(
                 lambda df: df,
                 {
-                    "params": FitParams(allow_computed_baseline=True, min_plateau_fraction=0.0),
+                    "params": FitParams(min_plateau_fraction=0.0),
                     "cell_count_col": "cells",
                 },
                 r"must be in \(0, 1\)",
@@ -177,14 +193,14 @@ class TestInputsTheModelNeeds:
             ),
             pytest.param(
                 lambda df: df,
-                {"params": FitParams(allow_computed_baseline=True, bin_width_decades=0.0), "cell_count_col": "cells"},
+                {"params": FitParams(bin_width_decades=0.0), "cell_count_col": "cells"},
                 "bin_width_decades",
                 id="zero-bin-width",
             ),
             pytest.param(
                 lambda df: df,
                 {
-                    "params": FitParams(allow_computed_baseline=True, min_plateau_fraction=1.0),
+                    "params": FitParams(min_plateau_fraction=1.0),
                     "cell_count_col": "cells",
                 },
                 "min_plateau_fraction",
@@ -217,18 +233,87 @@ class TestInputsTheModelNeeds:
             _run(corrupt(small), **kwargs)
 
 
+class TestMeasuredBinFluorescence:
+    """Change 8: the optional per-sample gate fluorescence. It only ever refines the fit, so a
+    column the model cannot use warns and the fixed bin scale stands in."""
+
+    @pytest.fixture(scope="class")
+    def dense(self) -> pl.DataFrame:
+        # Every (concentration, bin) sample is present, so the only thing a variant below changes
+        # is the bin_fluorescence column.
+        concs = [0.0, 1e-10, 1e-9, 1e-8, 1e-7, 1e-6]
+        rows = hill_reads("A", 1e-8, concs, [1, 2, 3, 4], cells=lambda b: 1000.0)
+        rows += hill_reads("B", 1e-7, concs, [1, 2, 3, 4], cells=lambda b: 1000.0)
+        return pl.DataFrame(rows)
+
+    @pytest.mark.parametrize(
+        "corrupt, fragment",
+        [
+            pytest.param(lambda df: df, "missing from reads", id="column-absent"),
+            pytest.param(
+                lambda df: df.with_columns(
+                    pl.when(pl.col("bin") == 2).then(None).otherwise(0.65 * (pl.col("bin") - 1)).alias("bf")
+                ),
+                "missing or non-finite",
+                id="null-values",
+            ),
+            pytest.param(
+                lambda df: df.with_columns(
+                    pl.when(pl.col("clonotypeKey") == "A").then(1.0).otherwise(0.65 * (pl.col("bin") - 1)).alias("bf")
+                ),
+                "one value per sample",
+                id="two-values-in-one-sample",
+            ),
+            pytest.param(
+                lambda df: df.with_columns((-0.65 * (pl.col("bin") - 1)).alias("bf")),
+                "does not increase across bins",
+                id="gates-not-ordered",
+            ),
+        ],
+    )
+    def test_a_column_the_model_cannot_use_warns_and_keeps_the_fixed_scale(self, dense, corrupt, fragment, capsys):
+        reference = _run(dense, cell_count_col="cells")["per_clonotype"]
+        capsys.readouterr()
+        out = run(corrupt(dense), params=DEFAULT_PARAMS, cell_count_col="cells", bin_fluorescence_col="bf")
+        captured = capsys.readouterr().out
+        assert "WARN" in captured and fragment in captured
+        assert out["per_clonotype"].equals(reference)
+
+    def test_no_bin_mode_ignores_the_column_and_says_so(self, dense, capsys):
+        no_bin = (
+            dense.drop("bin")
+            .group_by(["clonotypeKey", "sampleId", "concentrationStr", "concentration"])
+            .agg(pl.col("reads").sum())
+        )
+        run(no_bin, params=DEFAULT_PARAMS, bin_fluorescence_col="bf")
+        assert "needs a FACS bin column" in capsys.readouterr().out
+
+
 def test_uncertain_in_range_kd_is_partial(simulated_library):
-    # kd_sd_good is the Good/Partial line: with a zero tolerance every in-range K_D is Partial,
-    # while bounds keep their own classes.
+    # kd_sd_good is the Good/Partial line: with a zero tolerance every in-range K_D is Partial, and
+    # an above-range K_D takes the same decision. Only the below-range bound keeps its own class.
     out = _run(
         simulated_library.reads,
-        params=FitParams(allow_computed_baseline=True, bin_width_decades=0.7, kd_sd_good=0.0),
+        params=FitParams(bin_width_decades=0.7, kd_sd_good=0.0),
         cell_count_col="cells",
     )
     rows = {r["clonotypeKey"]: r for r in out["per_clonotype"].iter_rows(named=True)}
     assert rows["B30"]["affinityClass"] == "Partial"
-    assert rows["TIGHT"]["affinityClass"] == "Good"
-    assert rows["NONBINDER"]["affinityClass"] == "Failed"
+    assert rows["TIGHT"]["affinityClass"] == "CensoredBelow"
+    assert rows["NONBINDER"]["affinityClass"] == "Partial"
+    assert out["per_clonotype"].filter(pl.col("affinityClass") == "Failed").height == 0
+
+
+def test_kd_is_clamped_to_the_titrated_range_on_both_edges(simulated_library, fitted):
+    # The clamp is the contract: outside the titrated concentrations the fitted K_D is an
+    # extrapolation, so the reported value is the limit it was clamped to.
+    _, rows = fitted
+    positive = [c for c in simulated_library.reads["concentration"].unique().to_list() if c > 0]
+    assert rows["TIGHT"]["kd"] == pytest.approx(min(positive))
+    assert rows["NONBINDER"]["kd"] == pytest.approx(max(positive))
+    for key, row in rows.items():
+        assert min(positive) <= row["kd"] <= max(positive), key
+        assert row["kdOutOfRange"] is (row["kdCensor"] is not None), key
 
 
 def test_clonotype_seen_at_too_few_concentrations_is_not_fitted():
@@ -238,7 +323,7 @@ def test_clonotype_seen_at_too_few_concentrations_is_not_fitted():
     keep = pl.col("clonotypeKey").ne("A") | pl.col("concentration").is_in(concs[:4])
     out = _run(
         sim.reads.filter(keep),
-        params=FitParams(allow_computed_baseline=True, bin_width_decades=0.7),
+        params=FitParams(bin_width_decades=0.7),
         cell_count_col="cells",
     )
     a = out["per_clonotype"].filter(pl.col("clonotypeKey") == "A")
@@ -255,7 +340,7 @@ def test_unsorted_zero_control_does_not_change_the_fit():
     unsorted = reads.filter(pl.col("sampleId") == "c0_b1").with_columns(
         pl.lit("c0_unsorted").alias("sampleId"), pl.lit(None, dtype=pl.Int64).alias("bin")
     )
-    params = FitParams(allow_computed_baseline=True, bin_width_decades=0.7)
+    params = FitParams(bin_width_decades=0.7)
     plain = _run(reads, params=params, cell_count_col="cells")["per_clonotype"].sort("clonotypeKey")
     with_unsorted = _run(pl.concat([reads, unsorted]), params=params, cell_count_col="cells")
     assert with_unsorted["per_clonotype"].sort("clonotypeKey").equals(plain)
@@ -264,7 +349,7 @@ def test_unsorted_zero_control_does_not_change_the_fit():
 def test_control_only_data_reports_every_clonotype_failed():
     # Only 0 M samples: nothing to titrate, so every clonotype is Failed with a reason, not a crash.
     reads = simulate_titeseq({"A": (-8.0, 60.0), "N": (-2.0, 60.0)}, seed=13).reads.filter(pl.col("concentration") == 0)
-    out = _run(reads, params=FitParams(allow_computed_baseline=True, bin_width_decades=0.7), cell_count_col="cells")
+    out = _run(reads, params=FitParams(bin_width_decades=0.7), cell_count_col="cells")
     pc = out["per_clonotype"]
     assert set(pc["clonotypeKey"].to_list()) == {"A", "N"}
     assert (pc["affinityClass"] == "Failed").all()
@@ -282,7 +367,7 @@ def test_presort_library_sample_without_cell_count_does_not_change_the_fit():
         pl.lit(None, dtype=pl.Int64).alias("bin"),
         pl.lit(None, dtype=pl.Float64).alias("cells"),
     )
-    params = FitParams(allow_computed_baseline=True, bin_width_decades=0.7)
+    params = FitParams(bin_width_decades=0.7)
     plain = _run(reads, params=params, cell_count_col="cells")["per_clonotype"].sort("clonotypeKey")
     with_presort = _run(pl.concat([reads, presort]), params=params, cell_count_col="cells")
     assert with_presort["per_clonotype"].sort("clonotypeKey").equals(plain)

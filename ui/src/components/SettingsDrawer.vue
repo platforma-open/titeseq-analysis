@@ -19,6 +19,7 @@ const open = defineModel<boolean>({ required: true });
 const app = useApp();
 
 const {
+  amplitudePriorError,
   minReadsError,
   minConcPointsError,
   r2GoodError,
@@ -49,23 +50,22 @@ const warnings = computed(() => app.model.outputs.validationWarnings ?? []);
 // Settings follow the unsaved bin choice; `outputs.binMode` is the mode of the results on screen.
 const binMode = computed(() => app.model.data.binColumnRef !== undefined);
 
-// Bin mode fits the Adams 2016 model unless the linear Hill is chosen; no-bin mode always uses the
-// linear Hill, so its R², Hill-coefficient and hook settings apply there too.
-const adamsModel = computed(() => binMode.value && app.model.data.fitModel === "poisson_log");
+// The model the block routed to, from the model layer, so the drawer and the fit cannot disagree.
+// Undefined only before the first output lands; the ranking fit is the safe thing to show then.
+const resolvedModel = computed(() => app.model.outputs.resolvedFitModel ?? "hill_free_n");
+const adamsModel = computed(() => resolvedModel.value === "poisson_log");
 
-const fitModelOptions = [
-  { value: "poisson_log" as const, label: "Adams 2016 (log fluorescence, n = 1)" },
-  { value: "hill_free_n" as const, label: "Linear Hill, free n" },
-];
-
-// Cell counts are what .args() waits for under the Adams model, unless sort fractions stand in or
-// the operator accepted an uncorrected fit.
-const cellCountsRequired = computed(
-  () =>
-    adamsModel.value &&
-    app.model.data.sortFractionColumnRef === undefined &&
-    !app.model.data.allowUncorrected,
+const modelDescription = computed(() =>
+  adamsModel.value
+    ? "Adams 2016 measurement model: Poisson likelihood on reads, log fluorescence, Hill n = 1."
+    : "Ranking fit: linear Hill on mean bin. Orders candidates; does not measure them.",
 );
+
+const fitModelOverrideOptions = [
+  { value: undefined, label: "Automatic (from the columns bound)" },
+  { value: "poisson_log" as const, label: "Adams 2016 (log fluorescence, n = 1)" },
+  { value: "hill_free_n" as const, label: "Linear Hill" },
+];
 
 const targetAntigenOptions = computed(() =>
   (app.model.outputs.targetAntigenValues ?? []).map((v) => ({ value: v, label: v })),
@@ -106,6 +106,8 @@ watch(
     if (binRef === undefined) {
       app.model.data.sortFractionColumnRef = undefined;
       app.model.data.cellCountColumnRef = undefined;
+      app.model.data.binFluorescenceColumnRef = undefined;
+      app.model.data.gateWidthColumnRef = undefined;
     }
   },
 );
@@ -154,13 +156,13 @@ watch(
       v-model="app.model.data.cellCountColumnRef"
       :options="app.model.outputs.cellCountOptions"
       label="Sorted cell counts"
-      :required="cellCountsRequired"
       clearable
     >
       <template #tooltip>
         Per-sample number of cells FACS sorted into that sample's (concentration, bin) — C_bc in
         Adams, Mora, Walczak, Kinney 2016. Weights each bin by the cells it holds and caps a bin's
-        reads at its cell count. Required by the Adams 2016 model unless sort fractions are given.
+        reads at its cell count. Optional: supplying it switches the block from ranking candidates
+        to measuring them.
       </template>
     </PlDropdownRef>
     <PlDropdownRef
@@ -206,17 +208,51 @@ watch(
       {{ w.message }}
     </PlAlert>
 
-    <PlAccordionSection v-if="binMode" label="Curve model">
-      <PlDropdown v-model="app.model.data.fitModel" :options="fitModelOptions" label="Model">
+    <PlAccordionSection v-if="binMode" label="FACS refinements (optional)">
+      <PlDropdownRef
+        v-model="app.model.data.binFluorescenceColumnRef"
+        :options="app.model.outputs.binFluorescenceOptions"
+        label="Measured bin fluorescence"
+        clearable
+      >
         <template #tooltip>
-          Adams 2016 (default) is the published Tite-Seq estimator: a Poisson likelihood on read
-          counts, mean log fluorescence log10(B + A·c/(c + Kd)) with Hill n = 1, and a minimum
-          plateau that reads flat curves as Kd above the range. Linear Hill fits mean bin directly
-          with a free n; it does not reproduce published Tite-Seq values.
+          Per-sample mean log10 fluorescence of the cells sorted into that gate, from the sort
+          report. Bound, each bin's fluorescence is read per concentration instead of from one fixed
+          gate spacing. A gate's real mean moves with concentration, because at low concentration
+          the cells in the high gates sit at the bottom of the gate, and a fixed value makes every
+          midpoint read tighter than it is.
+        </template>
+      </PlDropdownRef>
+      <PlDropdownRef
+        v-model="app.model.data.gateWidthColumnRef"
+        :options="app.model.outputs.gateWidthOptions"
+        label="FACS gate width (decades)"
+        clearable
+      >
+        <template #tooltip>
+          Per-sample width of one FACS gate in log10 fluorescence. Bound, it supplies the bin width
+          below. Every sort report carries it.
+        </template>
+      </PlDropdownRef>
+    </PlAccordionSection>
+
+    <PlAccordionSection v-if="binMode" label="Curve model">
+      <PlAlert type="info">{{ modelDescription }}</PlAlert>
+      <PlDropdown
+        v-model="app.model.data.fitModelOverride"
+        :options="fitModelOverrideOptions"
+        label="Model"
+      >
+        <template #tooltip>
+          Automatic picks the measurement model when the cells sorted into each sample are bound and
+          the ranking fit otherwise. Feeding uncorrected bins to the measurement model is measurably
+          worse than ranking them, which is why more data has to switch the model rather than only
+          refine it. Override to reproduce an older project's numbers by hand.
         </template>
       </PlDropdown>
       <template v-if="adamsModel">
         <PlNumberField
+          v-if="app.model.data.gateWidthColumnRef === undefined"
           v-model="app.model.data.binWidthDecades"
           label="Bin width (decades of fluorescence)"
           :min-value="0"
@@ -272,10 +308,42 @@ watch(
             Leave empty to compute it from the 0 M samples, which are then required.
           </template>
         </PlNumberField>
-        <PlCheckbox v-model="app.model.data.allowUncorrected">
-          Fit without cell counts (assume equal cells per bin)
-        </PlCheckbox>
       </template>
+    </PlAccordionSection>
+
+    <PlAccordionSection label="Advanced fit">
+      <PlCheckbox v-model="app.model.data.pinHillExponent">
+        Fix the Hill exponent at 1
+        <template #tooltip>
+          The Adams 2016 model fixes it at 1. Fitting it instead costs rank agreement — 0.909 down
+          to 0.816 on Adams 2016 replicate 1 — and is what makes the hook-effect check necessary.
+          Clear it only to inspect the exponent itself.
+        </template>
+      </PlCheckbox>
+      <PlCheckbox v-model="app.model.data.hookDetectorEnabled">
+        Discard non-monotonic (hook effect) curves
+        <template #tooltip>
+          Off by default. With the exponent fixed at 1 the curves it catches fail to converge on
+          their own, and leaving it on discarded 44, 99 and 73 of the 250 tightest binders on the
+          three Adams 2016 replicates while buying no rank agreement.
+        </template>
+      </PlCheckbox>
+      <PlNumberField
+        v-model="app.model.data.amplitudePriorQ"
+        label="Amplitude floor (fraction of bin range)"
+        :min-value="0"
+        :max-value="1"
+        :step="0.05"
+        :error-message="amplitudePriorError"
+        clearable
+      >
+        <template #tooltip>
+          Empty by default. Raising it makes every variant assumed able to reach this fraction of
+          the bin range at saturation. It deletes rows rather than reordering them: a genuinely
+          tight binder that displays poorly has a real plateau that is simply low, and raising the
+          floor cut 21, 13 and 3 of the 250 tightest binders on the three Adams 2016 replicates.
+        </template>
+      </PlNumberField>
     </PlAccordionSection>
 
     <PlAccordionSection label="Read coverage">
@@ -364,7 +432,10 @@ watch(
       </PlNumberField>
     </PlAccordionSection>
 
-    <PlAccordionSection v-if="!adamsModel" label="Hook effect">
+    <PlAccordionSection
+      v-if="!adamsModel && app.model.data.hookDetectorEnabled"
+      label="Hook effect"
+    >
       <PlNumberField
         v-if="binMode"
         v-model="app.model.data.hookEffectThresholdBin"

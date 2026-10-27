@@ -88,7 +88,7 @@ def _amplitude_upper_bound(bin_mode: bool, max_bin_label: int | None) -> float:
     return math.log(0.95)
 
 
-def _failure() -> FitResult:
+def _failure(reason: str = "convergence_failure") -> FitResult:
     return FitResult(
         kd=None,
         n=None,
@@ -97,7 +97,7 @@ def _failure() -> FitResult:
         r2_w=None,
         y_hat=None,
         converged=False,
-        reason="convergence_failure",
+        reason=reason,
     )
 
 
@@ -109,13 +109,21 @@ def fit_one_clonotype(
     *,
     bin_mode: bool,
     max_bin_label: int | None,
+    pin_n: bool = False,
+    amp_prior_q: float | None = None,
 ) -> FitResult:
     """Single-clonotype Hill fit. Pure numpy inputs; no polars involvement.
 
-    Returns FitResult with `converged=False, reason="convergence_failure"` on:
-      - scipy.curve_fit raising
-      - top − baseline < mode-specific δ after fit (bin: 0.5, no-bin: 0.05)
-      - a flat signal (weighted R² undefined)
+    `pin_n` fixes the Hill exponent at 1, as the Adams 2016 model does. `amp_prior_q` raises the
+    amplitude lower bound to that fraction of the bin range; None leaves it at δ.
+
+    The amplitude floor bounds the optimiser. A fit that still lands on it had no dynamic range to
+    measure, and is reported as `insufficient_dynamic_range` rather than as a bad fit.
+
+    Returns FitResult with `converged=False` on:
+      - scipy.curve_fit raising, or a flat signal with an undefined weighted R²
+        (reason "convergence_failure")
+      - a fit sitting on the amplitude floor (reason "insufficient_dynamic_range")
     """
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=float)
@@ -127,6 +135,11 @@ def fit_one_clonotype(
     delta = DELTA_BIN if bin_mode else DELTA_NO_BIN
     amp_hi = _amplitude_upper_bound(bin_mode, max_bin_label)
     amp_lo = math.log(delta)
+    if amp_prior_q is not None and bin_mode and max_bin_label and max_bin_label > 1:
+        span = float(max_bin_label) - 1.0
+        # Plateau fraction q of the bin range implies a saturated mean bin of 1 + q*span.
+        thr = span * amp_prior_q if baseline_fixed is None else (1.0 + span * amp_prior_q) - float(baseline_fixed)
+        amp_lo = math.log(min(max(thr, 1e-6), math.exp(amp_hi) * 0.999))
 
     baseline_known = baseline_fixed is not None
     anchor_for_guesses = baseline_fixed if baseline_known else float(np.min(y))
@@ -138,7 +151,14 @@ def fit_one_clonotype(
     n0 = min(max(n0, N_LO), N_HI)
     amp0 = min(max(amp0, amp_lo), amp_hi)
 
-    if baseline_known:
+    if baseline_known and pin_n:
+        p0 = [log_kd0, amp0]
+        lo = [log_kd_lo, amp_lo]
+        hi = [log_kd_hi, amp_hi]
+
+        def model(x_: np.ndarray, log_kd: float, amp: float) -> np.ndarray:
+            return _hill(x_, log_kd, 1.0, amp, baseline_fixed)
+    elif baseline_known:
         p0 = [log_kd0, n0, amp0]
         lo = [log_kd_lo, N_LO, amp_lo]
         hi = [log_kd_hi, N_HI, amp_hi]
@@ -152,15 +172,24 @@ def fit_one_clonotype(
         #   no-bin: baseline ∈ [0,   0.95]
         if bin_mode and max_bin_label:
             base_lo = 1.0
-            base_hi = float(max_bin_label) - 0.5
+            # Keep `top ≤ max_bin_label` reachable once the amplitude floor rises above δ.
+            base_hi = max(base_lo, min(float(max_bin_label) - 0.5, float(max_bin_label) - math.exp(amp_lo)))
         else:
             base_lo = 0.0
             base_hi = 0.95
         base0 = min(max(anchor_for_guesses, base_lo), base_hi)
-        p0 = [log_kd0, n0, amp0, base0]
-        lo = [log_kd_lo, N_LO, amp_lo, base_lo]
-        hi = [log_kd_hi, N_HI, amp_hi, base_hi]
-        model = _hill
+        if pin_n:
+            p0 = [log_kd0, amp0, base0]
+            lo = [log_kd_lo, amp_lo, base_lo]
+            hi = [log_kd_hi, amp_hi, base_hi]
+
+            def model(x_: np.ndarray, log_kd: float, amp: float, base: float) -> np.ndarray:
+                return _hill(x_, log_kd, 1.0, amp, base)
+        else:
+            p0 = [log_kd0, n0, amp0, base0]
+            lo = [log_kd_lo, N_LO, amp_lo, base_lo]
+            hi = [log_kd_hi, N_HI, amp_hi, base_hi]
+            model = _hill
 
     try:
         # Promote OptimizeWarning to an exception. scipy emits it (not raises) when
@@ -182,17 +211,29 @@ def fit_one_clonotype(
     except (RuntimeError, ValueError, OptimizeWarning):
         return _failure()
 
-    if baseline_known:
+    if baseline_known and pin_n:
+        log_kd, amp = popt
+        n, baseline_out = 1.0, baseline_fixed
+    elif baseline_known:
         log_kd, n, amp = popt
         baseline_out = baseline_fixed
+    elif pin_n:
+        log_kd, amp, baseline_out = popt
+        n = 1.0
     else:
         log_kd, n, amp, baseline_out = popt
     y_hat = _hill(x, log_kd, n, amp, baseline_out)
 
-    # A fit pinned at amp_lo (within FP tolerance) means the data wanted a
-    # dynamic range below δ; spec says reject as convergence_failure.
+    # A fit sitting on the amplitude floor has no dynamic range to measure: the assay could not
+    # separate this clonotype from background at any concentration. That is a statement about the
+    # data, not a verdict on the fit, so it is reported as its own reason rather than as a bad fit.
+    #
+    # Measured on the three Adams 2016 replicates at the default rung: admitting these rows instead
+    # roughly doubles the table (1,706 -> 3,566 on replicate 1) and costs rank agreement
+    # 0.909 -> 0.779, 0.889 -> 0.803 and 0.946 -> 0.863, buying 4, 3 and 0 of the 250 tightest.
     if amp <= amp_lo + 1e-6:
-        return _failure()
+        return _failure("insufficient_dynamic_range")
+
     top_minus_base = math.exp(amp)
     r2 = weighted_r2(y, y_hat, w)
     # A flat signal has no variance to explain: R² is 0/0 and K_D is unconstrained.

@@ -5,16 +5,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-AffinityClass = Literal["Good", "Partial", "Failed"]
+# "CensoredBelow": K_D sits at or under the lowest titrated concentration, so the reported value is
+# an upper bound on affinity, not a measurement. Its own class, outside the ["Good","Partial"]
+# default cutoff, because the bound value is the smallest in the table and would otherwise sort to
+# the top of any downstream ranking as an unorderable block.
+AffinityClass = Literal["Good", "Partial", "CensoredBelow", "Failed"]
 
+# A converged fit is never Failed. Every reason below is a refusal to fit at all.
 FailureReason = Literal[
     "insufficient_reads",
-    "kd_above_range",
     "insufficient_points",
     "non_monotonic_signal",
     "convergence_failure",
-    "low_r2",
-    "n_out_of_range",
+    "insufficient_dynamic_range",
 ]
 
 # Minimum dynamic range between top and baseline (R10).
@@ -42,21 +45,26 @@ class FitParams:
     hook_effect_threshold_bin: float = 0.2
     hook_effect_threshold_no_bin: float = 0.02
     hook_effect_min_reads: int = 20
+    # R9b hook detector. Off by default: with the Hill exponent pinned at 1 the fits it flags fail to
+    # converge instead, and leaving it on costs 44/99/73 of the 250 tightest binders on the three
+    # Adams 2016 replicates while buying no rank agreement.
+    hook_detector_enabled: bool = False
+    # Fix the Hill exponent at 1, as the Adams 2016 model does. Free n costs rank agreement
+    # (0.909 -> 0.816 on Adams replicate 1) and is the condition under which the hook detector is
+    # redundant. Turn off to fit n.
+    pin_hill_exponent: bool = True
     fit_model: FitModel = "poisson_log"
     # Width of one FACS bin in decades of fluorescence (gate spacing). Adams 2016: 0.61-0.71.
     bin_width_decades: float = 0.65
     # Amplitude prior: every clonotype must be able to reach this fraction of the bin range at
     # saturation. Adams 2016 used 0.63-0.70. Flat curves then fit as K_D above the titration range.
     min_plateau_fraction: float = 0.65
-    # Mean fluorescence at 0 M in units of bin-1 fluorescence. None: computed from the 0 M samples,
-    # which needs allow_computed_baseline because the estimate assumes a designed library.
+    # Mean fluorescence at 0 M in units of bin-1 fluorescence. None: computed from the 0 M samples.
     baseline_fluorescence: float | None = None
-    # Compute the 0 M baseline when none is given. The estimate is the mean over clonotypes, so it
-    # is only right when every clonotype is a designed library member: sequencing-error clonotypes
-    # each carry equal weight and inflate it several-fold. Off unless asked for.
-    allow_computed_baseline: bool = False
-    # Without cell counts every bin is assumed to hold the same number of cells. Off unless asked for.
-    allow_uncorrected: bool = False
+    # Amplitude floor as a fraction of the bin range, applied inside the Hill fit bounds. None keeps
+    # the floor at DELTA_BIN. Raising it deletes rows whose plateau is low for reasons unrelated to
+    # affinity, so it trades retention for the average quality of what remains.
+    amplitude_prior_q: float | None = None
     # Posterior SD of log10 K_D at or below which an in-range K_D is classed Good.
     kd_sd_good: float = 0.5
 
@@ -86,3 +94,6 @@ COL_SORT_FRACTION = "sort_fraction"
 # Column name for cells sorted into the sample (absolute count). Same contract as COL_SORT_FRACTION:
 # must match the string passed to --cell-count-column.
 COL_CELL_COUNT = "cell_count"
+# Column name for the mean log10 fluorescence of the cells sorted into the sample. Same contract as
+# COL_SORT_FRACTION: must match the string passed to --bin-fluorescence-column.
+COL_BIN_FLUORESCENCE = "bin_fluorescence"

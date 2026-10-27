@@ -1,4 +1,3 @@
-//tengo:hash_override 77908597-6847-408F-8ACE-D9BAEB858310
 // Entry template for the Tite-Seq Analysis block.
 // Joins the abundance PColumn with per-sample metadata into one long-format reads TSV,
 // runs the Python fit-curves binary, and imports its three outputs as traced PFrames.
@@ -33,6 +32,12 @@ wf.prepare(func(args) {
 	if !is_undefined(args.cellCountColumnRef) {
 		bb.addAnchor("cellCount", args.cellCountColumnRef)
 	}
+	if !is_undefined(args.binFluorescenceColumnRef) {
+		bb.addAnchor("binFluorescence", args.binFluorescenceColumnRef)
+	}
+	if !is_undefined(args.gateWidthColumnRef) {
+		bb.addAnchor("gateWidth", args.gateWidthColumnRef)
+	}
 
 	return { columns: bb.build() }
 })
@@ -52,6 +57,11 @@ wf.body(func(args) {
 	hasSortFraction := !is_undefined(args.sortFractionColumnRef) && hasBin
 	// Cells sorted per sample (Adams 2016 eq. E4, C_bc). Supersedes sort fractions when both are set.
 	hasCellCount := !is_undefined(args.cellCountColumnRef) && hasBin
+	// Measured mean log10 fluorescence of each sample's gate (Adams 2016 eq. E5, l_bc). Optional:
+	// unbound, every concentration shares one fixed bin scale.
+	hasBinFluorescence := !is_undefined(args.binFluorescenceColumnRef) && hasBin
+	// FACS gate width in decades, per sample. Optional: unbound, the configured bin width stands.
+	hasGateWidth := !is_undefined(args.gateWidthColumnRef) && hasBin
 
 	unitLabel := ""
 	if !is_undefined(concSpec.annotations) && !is_undefined(concSpec.annotations["pl7.app/label"]) {
@@ -78,6 +88,12 @@ wf.body(func(args) {
 	}
 	if hasCellCount {
 		readsBuilder.add(columns.getColumn("cellCount"), { header: "cell_count" })
+	}
+	if hasBinFluorescence {
+		readsBuilder.add(columns.getColumn("binFluorescence"), { header: "bin_fluorescence" })
+	}
+	if hasGateWidth {
+		readsBuilder.add(columns.getColumn("gateWidth"), { header: "gate_width" })
 	}
 	readsBuilder.mem("16GiB")
 	readsBuilder.cpu(1)
@@ -114,11 +130,15 @@ wf.body(func(args) {
 		fit_model: args.fitModel,
 		bin_width_decades: args.binWidthDecades,
 		min_plateau_fraction: args.minPlateauFraction,
-		allow_uncorrected: args.allowUncorrected,
+		hook_detector_enabled: args.hookDetectorEnabled,
+		pin_hill_exponent: args.pinHillExponent,
 		kd_sd_good: args.kdSdGood
 	}
 	if !is_undefined(args.baselineFluorescence) {
 		paramsPayload.baseline_fluorescence = args.baselineFluorescence
+	}
+	if !is_undefined(args.amplitudePriorQ) {
+		paramsPayload.amplitude_prior_q = args.amplitudePriorQ
 	}
 	// FACS-correction status flows via the --sort-fraction-column CLI arg; the
 	// Python pipeline logs "Mean-bin correction: ..." unconditionally so stdout
@@ -162,6 +182,13 @@ wf.body(func(args) {
 		execBuilder.arg("--cell-count-column").arg("cell_count")
 	} else if hasSortFraction {
 		execBuilder.arg("--sort-fraction-column").arg("sort_fraction")
+	}
+
+	if hasBinFluorescence {
+		execBuilder.arg("--bin-fluorescence-column").arg("bin_fluorescence")
+	}
+	if hasGateWidth {
+		execBuilder.arg("--gate-width-column").arg("gate_width")
 	}
 
 	fit := execBuilder.run()
@@ -275,8 +302,13 @@ wf.body(func(args) {
 						"pl7.app/label": "Affinity class",
 						"pl7.app/isScore": "true",
 						"pl7.app/isDiscreteFilter": "true",
-						"pl7.app/discreteValues": "[\"Good\",\"Partial\",\"Failed\"]",
+						// Spelled out, never built with json.encode over a map: Tengo map order is
+						// not stable across renders and would break pure-template dedup.
+						"pl7.app/discreteValues": "[\"Good\",\"Partial\",\"CensoredBelow\",\"Failed\"]",
 						"pl7.app/score/rankingOrder": "decreasing",
+						// CensoredBelow is outside the cutoff on purpose. Its Kd,app is the floor of
+						// the titrated range, the smallest value in the table, so inside the cutoff it
+						// would head any downstream ranking as an unorderable block of bounds.
 						"pl7.app/score/defaultCutoff": "[\"Good\",\"Partial\"]",
 						"pl7.app/table/visibility": "default",
 						"pl7.app/table/orderPriority": "202"

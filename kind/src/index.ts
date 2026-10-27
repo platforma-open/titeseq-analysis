@@ -23,8 +23,11 @@ import { name, version } from "../package.json" with { type: "json" };
  */
 /**
  * Bin-mode curve model. `poisson_log` is Adams, Mora, Walczak, Kinney 2016 Appendix E (Poisson
- * likelihood on reads, log-fluorescence Hill with n = 1); `hill_free_n` is the linear Hill with a
- * free coefficient fitted to mean bin. No-bin mode always uses the linear Hill.
+ * likelihood on reads, log-fluorescence Hill with n = 1); `hill_free_n` is the linear Hill fitted
+ * to mean bin. No-bin mode always uses the linear Hill.
+ *
+ * The block derives the model from which columns are bound. `fitModelOverride` forces one instead,
+ * and exists so a project configured before routing can reproduce its old numbers by hand.
  */
 export type FitModel = "poisson_log" | "hill_free_n";
 
@@ -35,11 +38,15 @@ export type BlockParams = {
   antigenColumnRef?: PlRef;
   sortFractionColumnRef?: PlRef;
   cellCountColumnRef?: PlRef;
-  fitModel?: FitModel;
+  binFluorescenceColumnRef?: PlRef;
+  gateWidthColumnRef?: PlRef;
+  fitModelOverride?: FitModel;
   binWidthDecades?: number;
   minPlateauFraction?: number;
   baselineFluorescence?: number;
-  allowUncorrected?: boolean;
+  amplitudePriorQ?: number;
+  hookDetectorEnabled?: boolean;
+  pinHillExponent?: boolean;
   kdSdGood?: number;
   targetAntigen?: string;
   minReadsPerConcentration?: number;
@@ -62,8 +69,7 @@ export type BlockParams = {
  *
  * Rules that span two fields are not checked here: that `nMin` is below `nMax`, that the failed
  * R² threshold is at or below the good one, that a target antigen is named once an antigen column
- * is picked, that a FACS sort fraction or cell count needs a bin column, that `poisson_log` needs
- * cell counts or sort fractions. Every one of those is a state the
+ * is picked, that a FACS sort fraction or cell count needs a bin column. Every one of those is a state the
  * settings drawer leaves behind mid-edit, and `.args()` already refuses them when the block tries
  * to run. Refusing them here would mean a block the scientist can reach by hand cannot be carried
  * by a template.
@@ -137,11 +143,15 @@ const CONTRACT = {
   antigenColumnRef: check(isPlRef, "a reference to an antigen column"),
   sortFractionColumnRef: check(isPlRef, "a reference to a FACS sort fraction column"),
   cellCountColumnRef: check(isPlRef, "a reference to a sorted-cell-count column"),
-  fitModel: check(isFitModel, '"poisson_log" or "hill_free_n"'),
+  binFluorescenceColumnRef: check(isPlRef, "a reference to a measured bin-fluorescence column"),
+  gateWidthColumnRef: check(isPlRef, "a reference to a FACS gate-width column"),
+  fitModelOverride: check(isFitModel, '"poisson_log" or "hill_free_n"'),
   binWidthDecades: check(isPositive, "a number above 0"),
   minPlateauFraction: check(isOpenFraction, "a number between 0 and 1, exclusive"),
   baselineFluorescence: check(isPositive, "a number above 0"),
-  allowUncorrected: check(isBoolean, "true or false"),
+  amplitudePriorQ: check(isOpenFraction, "a number between 0 and 1, exclusive"),
+  hookDetectorEnabled: check(isBoolean, "true or false"),
+  pinHillExponent: check(isBoolean, "true or false"),
   kdSdGood: check(isPositive, "a number above 0"),
   targetAntigen: check(isString, "a string"),
   minReadsPerConcentration: check(isNumberFrom(1), "a number of 1 or more"),

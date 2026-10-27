@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 
 import polars as pl
+import pytest
 from helpers import LINEAR_HILL, hill_reads
 
 from pipeline import run
@@ -16,7 +17,8 @@ BINS = [1, 2, 3, 4]
 
 # Spec edge case: every clonotype fails → block completes without error.
 def test_all_clonotypes_failed_completes():
-    # Equal reads in every bin give a flat mean bin of 2.5 (below δ) → all convergence_failure.
+    # Equal reads in every bin give a flat mean bin of 2.5, so every fit lands on the amplitude
+    # floor → insufficient_dynamic_range.
     rows = [
         {
             "clonotypeKey": f"C{k}",
@@ -33,8 +35,37 @@ def test_all_clonotypes_failed_completes():
     pc = run(pl.DataFrame(rows), params=LINEAR_HILL)["per_clonotype"]
     assert pc.height == 3
     assert (pc["affinityClass"] == "Failed").all()
+    assert (pc["fitFailureReason"] == "insufficient_dynamic_range").all()
     # Spec requires output file still written; kd column all null.
     assert pc["kd"].null_count() == 3
+
+
+# Bin mode clamps K_D into the titrated range on both edges. Neither edge is failed: the
+# above-range row keeps the weak-binder tail in the table, and the below-range row gets its own
+# class so a block of equal bounds cannot head a downstream ranking.
+def test_kd_is_clamped_and_censored_on_both_titration_edges():
+    concs = [0.0, *CONCS, 3e-7]
+    rows = hill_reads("WEAK", 1.5e-6, concs, BINS, baseline=1.0, amplitude=math.log(2.5), per_conc=800)
+    rows += hill_reads("MID", 1e-8, concs, BINS, baseline=1.0, amplitude=math.log(2.5), per_conc=800)
+    rows += hill_reads("TIGHT", 1e-12, concs, BINS, baseline=1.0, amplitude=math.log(2.5), per_conc=800)
+    out = run(pl.DataFrame(rows), params=LINEAR_HILL)
+    by_key = {row["clonotypeKey"]: row for row in out["per_clonotype"].iter_rows(named=True)}
+
+    lo, hi = min(c for c in concs if c > 0), max(concs)
+    assert by_key["WEAK"]["kd"] == pytest.approx(hi)
+    assert by_key["WEAK"]["kdCensor"] == "above"
+    assert by_key["WEAK"]["affinityClass"] not in ("Failed", "CensoredBelow")
+    assert by_key["TIGHT"]["kd"] == pytest.approx(lo)
+    assert by_key["TIGHT"]["kdCensor"] == "below"
+    assert by_key["TIGHT"]["affinityClass"] == "CensoredBelow"
+    assert by_key["MID"]["kdCensor"] is None
+
+    for key, row in by_key.items():
+        assert row["fitFailureReason"] is None, key
+        assert lo <= row["kd"] <= hi, key
+        assert row["kdOutOfRange"] is (row["kdCensor"] is not None), key
+    # Every row carries a curve, bounds included.
+    assert set(out["fitted_mean_bin"]["clonotypeKey"].to_list()) == set(by_key)
 
 
 # FACS sort-fraction correction, end to end. Bin 1 is over-represented at low concentrations and bin 4

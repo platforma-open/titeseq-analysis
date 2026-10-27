@@ -14,6 +14,7 @@ Run from blocks/titeseq-analysis/software/:
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import polars as pl
@@ -23,6 +24,10 @@ from helpers import LINEAR_HILL
 from pipeline import run
 
 # The corpus was generated from the linear Hill model on mean bin, so it runs with LINEAR_HILL.
+# Every other parameter is left at its shipped default: the Hill exponent pinned at 1 and the hook
+# detector off. The two cases whose intent needs a non-default knob get their own tests below.
+FREE_N = replace(LINEAR_HILL, pin_hill_exponent=False)
+HOOK_ON = replace(LINEAR_HILL, hook_detector_enabled=True)
 
 CORPUS_DIR = Path(__file__).resolve().parent.parent / "data" / "corpus"
 MANIFEST = json.loads((CORPUS_DIR / "manifest.json").read_text())
@@ -159,6 +164,35 @@ def test_kd_out_of_range_flag(outputs_by_section, section, key, entry):
     assert row["kdOutOfRange"] == entry["kd_out_of_range"]
 
 
+# kdCensor names the titration edge a clamped K_D hit. Bin mode sets it on both edges; no-bin mode
+# never clamps, so every no-bin entry declares null.
+@pytest.mark.parametrize(
+    "section,key,entry",
+    ALL_ENTRIES,
+    ids=[f"{s}-{k}" for s, k, _ in ALL_ENTRIES],
+)
+def test_kd_censor_matches_manifest(outputs_by_section, section, key, entry):
+    row = _row_for(outputs_by_section[section]["per_clonotype"], key)
+    assert row["kdCensor"] == entry["kd_censor"]
+    # kdOutOfRange is true exactly when kdCensor is set, on every row that carries a bin-mode fit.
+    if section != "no_bin_mode" and row["kd"] is not None:
+        assert row["kdOutOfRange"] is (entry["kd_censor"] is not None)
+
+
+# A converged fit is reported whatever its R². These entries replace the deleted low_r2 verdict:
+# the fit is kept, and the manifest pins how bad the R² still is.
+@pytest.mark.parametrize(
+    "section,key,entry",
+    [(s, k, e) for s, k, e in ALL_ENTRIES if e.get("r2_below") is not None],
+    ids=[f"{s}-{k}" for s, k, e in ALL_ENTRIES if e.get("r2_below") is not None],
+)
+def test_bad_r2_fit_is_reported_not_discarded(outputs_by_section, section, key, entry):
+    row = _row_for(outputs_by_section[section]["per_clonotype"], key)
+    assert row["affinityClass"] != "Failed"
+    assert row["fitFailureReason"] is None
+    assert row["r2"] is not None and row["r2"] < entry["r2_below"]
+
+
 # R17: null kd → kdPlotPosition = max_conc * 10; null n → hillPlotPosition = -1.0.
 @pytest.mark.parametrize(
     "section,key,entry",
@@ -177,6 +211,37 @@ def test_r17_sentinel_values(outputs_by_section, section, key, entry):
 # ---------------------------------------------------------------------------
 # Cross-section invariants — one-off assertions that aren't per-clonotype.
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Opt-in knobs — the corpus cases whose intent needs a non-default parameter.
+# ---------------------------------------------------------------------------
+
+
+class TestOptInFitParameters:
+    """hook_detector_enabled and pin_hill_exponent, on the corpus cases built for them."""
+
+    # The detector still works; it just no longer runs unless asked.
+    @pytest.mark.parametrize(
+        "parquet,key", [("reads_bin_mode", "F_HOOK"), ("reads_no_bin_mode", "NB_HOOK")], ids=["bin", "no-bin"]
+    )
+    def test_hook_detector_fails_the_hook_cases_when_enabled(self, parquet, key):
+        out = run(pl.read_parquet(CORPUS_DIR / f"{parquet}.parquet"), params=HOOK_ON)
+        row = _row_for(out["per_clonotype"], key)
+        assert (row["affinityClass"], row["fitFailureReason"]) == ("Failed", "non_monotonic_signal")
+        assert row["kd"] is None
+        assert key not in set(out["fitted_mean_bin"]["clonotypeKey"].to_list())
+
+    # P_N_HIGH is a true n=4 sigmoid: with the exponent free the fit reads it back above n_max.
+    def test_free_hill_exponent_recovers_the_steep_slope(self):
+        out = run(pl.read_parquet(CORPUS_DIR / "reads_bin_mode.parquet"), params=FREE_N)
+        row = _row_for(out["per_clonotype"], "P_N_HIGH")
+        assert row["hillCoefficient"] > 2.0
+        assert row["affinityClass"] == "Partial"
+
+    def test_hill_exponent_is_pinned_at_one_by_default(self, bin_outputs):
+        fitted_n = bin_outputs["per_clonotype"]["hillCoefficient"].drop_nulls().to_list()
+        assert fitted_n and all(n == 1.0 for n in fitted_n)
 
 
 class TestFittedMeanBinMembership:
