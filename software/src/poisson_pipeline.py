@@ -22,6 +22,7 @@ from normalization import CLONOTYPE_READS_AT_CONC, SIGNAL
 from output_build import FITTED_MEAN_BIN_SCHEMA, PER_CLONOTYPE_SCHEMA
 from poisson_fit import (
     BASELINE_CONTAMINATION_RATIO,
+    BIN_FLUORESCENCE_MAX_TOP_SPREAD,
     GridFit,
     baseline,
     exposure,
@@ -140,6 +141,17 @@ def _bin_log_fluorescence(t: CountTensors, params: FitParams) -> tuple[np.ndarra
         log(
             "WARN: measured bin fluorescence does not increase across bins at every concentration; "
             "the gates must be ordered low to high. Falling back to the fixed bin scale."
+        )
+        return fixed, False
+    top_spread = float(m[:, -1].max() - m[:, -1].min())
+    if top_spread > BIN_FLUORESCENCE_MAX_TOP_SPREAD:
+        log(
+            f"WARN: the measured top gate moves {top_spread:.2f} decades across concentrations "
+            f"({m[:, -1].min():.2f} to {m[:, -1].max():.2f}). At the concentrations where it sits "
+            f"low, a saturated binder's fluorescence is above the top gate, which the model cannot "
+            f"represent, so the tightest binders would be unfittable and the ranking would invert. "
+            f"Falling back to the fixed bin scale. Measured gate values need gates whose own mean "
+            f"does not depend on which cells occupy them."
         )
         return fixed, False
     log(f"Bin fluorescence: measured per sample, range {m.min():.3f} to {m.max():.3f} (log10)")

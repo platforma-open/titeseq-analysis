@@ -39,6 +39,14 @@ concentration; a gate's real mean moves with concentration, and a fixed value re
 tighter than it is. `gateWidthColumnRef` supplies the bin width. Either one, if unusable, warns and
 falls back rather than failing.
 
+The measured scale is refused when the top gate's own mean moves more than half a decade across
+concentrations. The model gives one fluorescence per gate per concentration, shared by every
+clonotype, which holds only while a gate's occupants are representative. Once the top gate's mean
+collapses at low concentration, a saturated binder's fluorescence sits above it, the likelihood
+reads that as impossible, and no tight binder can be fitted at all. Measured on a combinatorial
+library whose top gate falls 1.46 decades, rank agreement against the published values went from
++0.960 to -0.726, so this case falls back to the fixed scale with a warning.
+
 **Removed:** the two hard stops (Adams model without cell counts, computed baseline without opt-in),
 the `allowUncorrected` setting and the `--allow-computed-baseline` flag. In their place the block
 warns about what it did and what one more input would buy.

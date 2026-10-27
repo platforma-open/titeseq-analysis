@@ -279,6 +279,37 @@ class TestMeasuredBinFluorescence:
         assert "WARN" in captured and fragment in captured
         assert out["per_clonotype"].equals(reference)
 
+    def test_a_top_gate_that_collapses_warns_and_keeps_the_fixed_scale(self, dense, capsys):
+        # Measured on CR6261 (Phillips 2021): the top gate's mean falls from 4.34 at 1e-7 M to 2.87
+        # at the lowest concentrations, because the cells sitting there are background rather than
+        # bound. A saturated binder's fluorescence is then above the top gate, the profile
+        # likelihood reads that as impossible, and rank agreement against the published values goes
+        # from +0.960 to -0.726. The scale is refused rather than used.
+        collapsing = dense.with_columns(
+            (0.65 * (pl.col("bin") - 1) * pl.when(pl.col("concentration") < 1e-8).then(0.2).otherwise(1.0)).alias("bf")
+        )
+        reference = _run(dense, cell_count_col="cells")["per_clonotype"]
+        capsys.readouterr()
+        out = run(collapsing, params=DEFAULT_PARAMS, cell_count_col="cells", bin_fluorescence_col="bf")
+        captured = capsys.readouterr().out
+        assert "WARN" in captured and "top gate moves" in captured
+        assert out["per_clonotype"].equals(reference)
+
+    def test_a_stable_top_gate_is_used(self, dense, capsys):
+        # A gate scale that drifts slightly with concentration is exactly what the input is for.
+        drifting = dense.with_columns(
+            (0.65 * (pl.col("bin") - 1) * (1.0 + 0.02 * pl.col("concentration").rank("dense").cast(pl.Float64))).alias(
+                "bf"
+            )
+        )
+        reference = _run(dense, cell_count_col="cells")["per_clonotype"]
+        capsys.readouterr()
+        out = run(drifting, params=DEFAULT_PARAMS, cell_count_col="cells", bin_fluorescence_col="bf")
+        captured = capsys.readouterr().out
+        assert "measured per sample" in captured
+        assert "WARN" not in captured
+        assert not out["per_clonotype"].equals(reference)
+
     def test_no_bin_mode_ignores_the_column_and_says_so(self, dense, capsys):
         no_bin = (
             dense.drop("bin")

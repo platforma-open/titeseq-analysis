@@ -43,6 +43,14 @@ BASELINE_MEDIAN_DIVISOR = 30.0
 # Clean Adams 2016 replicates span 0.79 to 1.26; one-fold contamination starts at 2.03.
 BASELINE_CONTAMINATION_RATIO = 1.5
 
+# Largest spread, in decades, the measured top gate may show across concentrations before the
+# measured scale is refused. The model gives one fluorescence per (gate, concentration), shared by
+# every clonotype. That holds while a gate's occupants are representative. Once the top gate's own
+# mean collapses at low concentration — because the cells sitting there are background rather than
+# bound — a saturated binder's mean lies above the top gate, the profile likelihood reads that as
+# impossible, and no tight binder can be fitted at all.
+BIN_FLUORESCENCE_MAX_TOP_SPREAD = 0.5
+
 
 @dataclass(frozen=True)
 class BaselineEstimate:
@@ -345,7 +353,14 @@ def fit_titration(
 
     theta = conc[:, None] / (conc[:, None] + 10.0 ** logk[None, :])  # (C, K)
     m = np.log10(baseline_fluorescence + A[None, None, :] * theta[:, :, None])  # (C, K, A)
-    outside = (m < m_grid[0]) | (m > m_grid[-1])
+    # A model mean outside the bins' own fluorescence range contributes nothing to the likelihood,
+    # as in the authors' code, where it falls outside the interpolation grid. The range is taken per
+    # concentration: with measured gates a sample's top gate can sit well below the global maximum,
+    # and testing against the global range instead would make a saturated tight binder infeasible at
+    # exactly the low concentrations where the model says it is saturated, inverting the ranking.
+    lo_c = (log_values.min(1) + 1e-4)[:, None, None]
+    hi_c = (log_values.max(1) - 1e-4)[:, None, None]
+    outside = (m < lo_c) | (m > hi_c)
     frac = np.interp(m, m_grid, np.arange(m_grid.size))
     i0 = np.clip(np.floor(frac).astype(int), 0, m_grid.size - 2)
     w = frac - i0
