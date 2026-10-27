@@ -133,7 +133,7 @@ blockTest(
     expect(loaded.metadataIds.concentration).toBeDefined();
     expect(loaded.metadataIds.bin).toBeDefined();
 
-    const abundanceRef = idleOutputs.abundanceOptions[0].ref;
+    const abundanceRef = idleOutputs.abundanceOptions[0].primary.ref;
     const concentrationRef = idleOutputs.concentrationOptions.find(
       (o) => o.label === "antigen_conc_M",
     )!.ref;
@@ -374,7 +374,7 @@ blockTest(
     const sortFractionLabels = idleOutputs.sortFractionOptions?.map((o) => o.label) ?? [];
     expect(sortFractionLabels).toEqual(expect.arrayContaining(["sort_fraction"]));
 
-    const abundanceRef = idleOutputs.abundanceOptions[0].ref;
+    const abundanceRef = idleOutputs.abundanceOptions[0].primary.ref;
     const concentrationRef = idleOutputs.concentrationOptions.find(
       (o) => o.label === "antigen_conc_M",
     )!.ref;

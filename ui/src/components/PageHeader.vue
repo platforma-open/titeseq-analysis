@@ -18,7 +18,8 @@ onMounted(() => {
 // deriveLabels() downstream has a stable disambiguator:
 //   1. targetAntigen — per-instance selector in multi-antigen studies
 //   2. antigenColumn label — fallback when targetAntigen is unset
-//   3. abundance label — distinguishes datasets / chains
+//   3. abundance label — distinguishes datasets / chains; the subset's label when one is
+//      picked (it already carries the dataset as a prefix)
 // Bin and concentration columns are dropped: identical across instances on
 // the same dataset, so they crowd out the differentiator without adding signal.
 watchEffect(() => {
@@ -33,9 +34,16 @@ watchEffect(() => {
     if (antigenLabel) parts.push(antigenLabel);
   }
 
-  const abundanceLabel = app.model.outputs.abundanceOptions?.find(
-    (o) => app.model.data.abundanceRef && plRefsEqual(o.ref, app.model.data.abundanceRef),
-  )?.label;
+  const { abundanceRef, filterRef } = app.model.data;
+  const option = abundanceRef
+    ? app.model.outputs.abundanceOptions?.find((o) =>
+        plRefsEqual(o.primary.ref, abundanceRef, true),
+      )
+    : undefined;
+  const filter = filterRef
+    ? option?.filters?.find((f) => plRefsEqual(f.ref, filterRef, true))
+    : undefined;
+  const abundanceLabel = (filter ?? option?.primary)?.label;
   if (abundanceLabel) parts.push(abundanceLabel);
 
   app.model.data.defaultBlockLabel = parts.join(" - ") || "Tite-Seq Analysis";
@@ -50,7 +58,7 @@ watchEffect(() => {
     </template>
   </PlBtnGhost>
   <PlBtnGhost @click.stop="app.model.data.settingsOpen = true">
-    Inputs
+    Settings
     <template #append>
       <PlMaskIcon24 name="settings" />
     </template>

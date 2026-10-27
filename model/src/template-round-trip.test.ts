@@ -22,6 +22,7 @@ const ref = (name: string): PlRef => ({ __isRef: true, blockId: "b1", name });
 const configured: BlockData = {
   ...initBlockData(),
   abundanceRef: ref("abundance"),
+  filterRef: ref("filter"),
   concentrationColumnRef: ref("concentration"),
   binColumnRef: ref("bin"),
   antigenColumnRef: ref("antigen"),

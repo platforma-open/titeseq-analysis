@@ -7,7 +7,8 @@ import { name, version } from "../package.json" with { type: "json" };
 
 /**
  * This block's init-params contract — what a creator or a project template supplies to seed a
- * new instance: the columns a titration is read from, the fit's tuning, and the user's own label.
+ * new instance: the columns a titration is read from (and an optional subset of the dataset), the
+ * fit's tuning, and the user's own label.
  *
  * Excluded on purpose:
  *   * `defaultBlockLabel` — derived from the target antigen and the abundance column's label, and
@@ -23,6 +24,8 @@ import { name, version } from "../package.json" with { type: "json" };
  */
 export type BlockParams = {
   abundanceRef?: PlRef;
+  /** A subset column (`pl7.app/isSubset`) the input is restricted to before the analysis. */
+  filterRef?: PlRef;
   concentrationColumnRef?: PlRef;
   binColumnRef?: PlRef;
   antigenColumnRef?: PlRef;
@@ -110,6 +113,7 @@ const isFraction: Guard<number> = (v): v is number => isFiniteNumber(v) && v >= 
  */
 const CONTRACT = {
   abundanceRef: check(isPlRef, "a reference to an abundance column"),
+  filterRef: check(isPlRef, "a reference to a subset column"),
   concentrationColumnRef: check(isPlRef, "a reference to a concentration column"),
   binColumnRef: check(isPlRef, "a reference to a FACS bin column"),
   antigenColumnRef: check(isPlRef, "a reference to an antigen column"),

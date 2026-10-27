@@ -8,6 +8,7 @@ const ref = (name: string): PlRef => ({ __isRef: true, blockId: "b1", name });
 
 const COLUMN_REFS = [
   "abundanceRef",
+  "filterRef",
   "concentrationColumnRef",
   "binColumnRef",
   "antigenColumnRef",

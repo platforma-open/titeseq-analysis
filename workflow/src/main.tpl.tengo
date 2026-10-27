@@ -11,6 +11,7 @@ pframes := import("@platforma-sdk/workflow-tengo:pframes")
 pSpec := import("@platforma-sdk/workflow-tengo:pframes.spec")
 canonical := import("@platforma-sdk/workflow-tengo:canonical")
 maps := import("@platforma-sdk/workflow-tengo:maps")
+json := import("json")
 
 fitCurvesSw := assets.importSoftware("@platforma-open/platforma-open.titeseq-analysis.software:fit-curves")
 
@@ -29,6 +30,10 @@ wf.prepare(func(args) {
 	}
 	if !is_undefined(args.sortFractionColumnRef) {
 		bb.addAnchor("sortFraction", args.sortFractionColumnRef)
+	}
+	// Optional subset column picked alongside the abundance (PlDatasetSelector)
+	if !is_undefined(args.inputFilter) {
+		bb.addRef(json.decode(args.inputFilter))
 	}
 
 	return { columns: bb.build() }
@@ -53,23 +58,47 @@ wf.body(func(args) {
 		unitLabel = concSpec.annotations["pl7.app/label"]
 	}
 
+	// Optional subset: only its clonotypes enter the fit. The trace roots in the filter
+	// so downstream labels name it.
+	filterColumn := undefined
+	traceSpec := abundanceSpec
+	if !is_undefined(args.inputFilter) {
+		f := columns.getColumn(json.decode(args.inputFilter))
+		filterColumn = { spec: f.spec, data: f.data }
+		traceSpec = f.spec
+	}
+
 	// Build long-format reads.tsv.
 	// The tsvFileBuilder joins all columns on their shared axes, so adding
 	// abundance ([sampleId][clonotypeKey]) + concentration ([sampleId]) + bin/antigen ([sampleId])
 	// produces one row per (sampleId, clonotypeKey) with aligned metadata.
-	readsBuilder := pframes.tsvFileBuilder()
+	// With a subset, the abundance is the filtered primary and the per-sample columns fill its rows.
+	readsBuilder := undefined
+	addReadsColumn := undefined
+	if is_undefined(filterColumn) {
+		readsBuilder = pframes.tsvFileBuilder()
+		readsBuilder.add(columns.getColumn("abundance"), { header: "reads" })
+		addReadsColumn = readsBuilder.add
+	} else {
+		readsBuilder = pframes.tableBuilder("tsv").setColumnJoin("left")
+		readsBuilder.addPrimary("main", {
+			__isPrimaryRef: "v1",
+			column: columns.getColumn("abundance"),
+			filter: filterColumn
+		}, { header: "reads" })
+		addReadsColumn = readsBuilder.addColumn
+	}
 	readsBuilder.setAxisHeader(abundanceSpec.axesSpec[0].name, "sampleId")
 	readsBuilder.setAxisHeader(abundanceSpec.axesSpec[1].name, "clonotypeKey")
-	readsBuilder.add(columns.getColumn("abundance"), { header: "reads" })
-	readsBuilder.add(columns.getColumn("concentration"), { header: "concentration" })
+	addReadsColumn(columns.getColumn("concentration"), { header: "concentration" })
 	if hasBin {
-		readsBuilder.add(columns.getColumn("bin"), { header: "bin" })
+		addReadsColumn(columns.getColumn("bin"), { header: "bin" })
 	}
 	if hasAntigen {
-		readsBuilder.add(columns.getColumn("antigen"), { header: "antigen" })
+		addReadsColumn(columns.getColumn("antigen"), { header: "antigen" })
 	}
 	if hasSortFraction {
-		readsBuilder.add(columns.getColumn("sortFraction"), { header: "sort_fraction" })
+		addReadsColumn(columns.getColumn("sortFraction"), { header: "sort_fraction" })
 	}
 	readsBuilder.mem("16GiB")
 	readsBuilder.cpu(1)
@@ -395,7 +424,7 @@ wf.body(func(args) {
 	if traceLabel == "" {
 		traceLabel = args.defaultBlockLabel
 	}
-	trace := pSpec.makeTrace(abundanceSpec, {
+	trace := pSpec.makeTrace(traceSpec, {
 		type: "milaboratories.titeseq-analysis",
 		importance: 30,
 		label: traceLabel
@@ -413,7 +442,12 @@ wf.body(func(args) {
 			for k in maps.getKeys(src) {
 				if excluded[k] { continue }
 				v := src[k]
-				pfb.add(k, trace.inject(v.spec), v.data)
+				spec := trace.inject(v.spec)
+				// A run on a subset says so: its outputs cover only the subset's clonotypes.
+				if !is_undefined(filterColumn) {
+					spec.domain["pl7.app/inputSubset"] = args.inputFilter
+				}
+				pfb.add(k, spec, v.data)
 			}
 		}
 		return pfb.build()
