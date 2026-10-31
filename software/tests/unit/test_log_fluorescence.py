@@ -5,9 +5,10 @@ from __future__ import annotations
 import math
 
 import numpy as np
+import polars as pl
 import pytest
 
-from constants import GATE_RANGE_DECADES, GATE_WIDTH_DECADES, LF_RISE_THRESHOLD_DECADES
+from constants import GATE_RANGE_DECADES, GATE_WIDTH_DECADES, LF_RISE_THRESHOLD_DECADES, FitParams
 from log_fluorescence import (
     GateScale,
     build_gate_scale,
@@ -196,3 +197,100 @@ class TestPin:
 
     def test_censored_low_reports_the_highest_concentration(self):
         assert pin_kd(0.0, curve_class="Censored Low", lo=LOG_LO, hi=LOG_HI) == (LOG_HI, "above")
+
+
+class TestMeasuredGatePositions:
+    """The R4 input: a measured mean log10 fluorescence a (concentration, gate).
+
+    Without it the fit assumes gate b sits at (b-1) * GATE_WIDTH_DECADES. The bake-off scored
+    CR6261 with the measured column, so a block that cannot read one cannot reproduce it.
+    """
+
+    CONCS = [1e-10, 1e-9, 1e-8, 1e-7, 1e-6]
+    TRUE_KD = 1e-8
+
+    @classmethod
+    def _reads(cls, positions):
+        """A titration whose K_D sits mid-range, so neither fit pins to a boundary.
+
+        The mean gate follows a Hill curve from gate 1 to gate 4. Reads are split between the two
+        gates either side of that mean, which is how a fractional mean gate arises in real data.
+
+        A flat background clonotype carries the rest of each sample's depth. Without it every
+        per-gate frequency is reads/reads = 1, the signal is flat at the mean gate position, and
+        the fit pins to the titration edge whatever the gate scale says.
+        """
+        rows = []
+        for i, c in enumerate(cls.CONCS):
+            mean_gate = 1.0 + 3.0 * c / (c + cls.TRUE_KD)
+            lo = int(mean_gate)
+            frac = mean_gate - lo
+            share = {lo: 1.0 - frac, min(lo + 1, 4): frac}
+            for b in (1, 2, 3, 4):
+                reads = int(round(400 * share.get(b, 0.0))) + 1
+                rows.append(
+                    {
+                        "clonotypeKey": "C0",
+                        "sampleId": f"s{i}_{b}",
+                        "concentrationStr": str(c),
+                        "concentration": float(c),
+                        "bin": b,
+                        "reads": reads,
+                        "bin_fluorescence": positions[b],
+                    }
+                )
+                rows.append(
+                    {
+                        "clonotypeKey": "REST",
+                        "sampleId": f"s{i}_{b}",
+                        "concentrationStr": str(c),
+                        "concentration": float(c),
+                        "bin": b,
+                        "reads": 400,
+                        "bin_fluorescence": positions[b],
+                    }
+                )
+        return pl.DataFrame(rows)
+
+    def test_measured_positions_change_the_fit(self):
+        import pipeline
+
+        even = self._reads({1: 0.0, 2: 0.65, 3: 1.30, 4: 1.95})
+        skewed = self._reads({1: 0.0, 2: 0.10, 3: 0.20, 4: 2.60})
+        params = FitParams(equation="log_fluorescence")
+
+        kd_even = pipeline.run(even, params=params)["per_clonotype"]["kd"][0]
+        kd_skewed = pipeline.run(skewed, params=params)["per_clonotype"]["kd"][0]
+
+        assert kd_even is not None
+        assert kd_skewed is not None
+        # Same reads, same concentrations, different gate positions. The signal is a weighted
+        # mean of those positions, so the scale moves the answer: evenly spaced gates give an
+        # in-range measurement, and a skewed scale drives the same reads past the titration edge.
+        assert kd_even != kd_skewed
+
+    def test_evenly_spaced_measurements_match_the_assumed_scale(self):
+        """Measured positions at exactly the assumed spacing reproduce the no-column result."""
+        import pipeline
+
+        params = FitParams(equation="log_fluorescence")
+        measured = self._reads({1: 0.0, 2: 0.65, 3: 1.30, 4: 1.95})
+        assumed = measured.drop("bin_fluorescence")
+
+        kd_measured = pipeline.run(measured, params=params)["per_clonotype"]["kd"][0]
+        kd_assumed = pipeline.run(assumed, params=params)["per_clonotype"]["kd"][0]
+
+        assert kd_measured == pytest.approx(kd_assumed, rel=1e-9)
+
+    def test_the_other_equation_ignores_the_column(self):
+        """ "hill_gate_index" is frozen: the column must not reach it."""
+        import pipeline
+
+        params = FitParams(equation="hill_gate_index")
+        measured = self._reads({1: 0.0, 2: 0.10, 3: 0.20, 4: 2.60})
+        without = measured.drop("bin_fluorescence")
+
+        a = pipeline.run(measured, params=params)["per_clonotype"]
+        b = pipeline.run(without, params=params)["per_clonotype"]
+        assert a["kd"].to_list() == b["kd"].to_list()
+        assert a["affinityClass"].to_list() == b["affinityClass"].to_list()

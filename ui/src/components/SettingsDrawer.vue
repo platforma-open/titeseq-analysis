@@ -237,6 +237,20 @@ function discardImportedSettings(): void {
       </template>
     </PlDropdownRef>
     <PlDropdownRef
+      v-if="isLogFluorescence && app.model.data.binColumnRef !== undefined"
+      v-model="app.model.data.binFluorescenceColumnRef"
+      :options="app.model.outputs.binFluorescenceOptions"
+      label="Gate fluorescence (optional)"
+      clearable
+    >
+      <template #tooltip>
+        Optional. Per-sample numerical metadata column giving that gate's measured mean log10
+        fluorescence. Without it the fit assumes the gates sit an equal distance apart, which is a
+        poorer description of a real sorter. Supply it to reproduce a study that published its gate
+        positions.
+      </template>
+    </PlDropdownRef>
+    <PlDropdownRef
       v-model="app.model.data.antigenColumnRef"
       :options="app.model.outputs.antigenOptions"
       label="Antigen label"

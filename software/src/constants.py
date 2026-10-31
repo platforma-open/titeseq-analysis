@@ -94,3 +94,8 @@ COL_READS = "reads"
 # --sort-fraction-column. Do not change without a simultaneous change
 # to workflow/src/main.tpl.tengo.
 COL_SORT_FRACTION = "sort_fraction"
+# Column name emitted by the Tengo workflow when binFluorescenceColumnRef is bound: the gate's
+# measured mean log10 fluorescence, one value per (concentration, gate). Must match the string
+# passed to --bin-fluorescence-column. Read by "log_fluorescence" only. Absent means the gates
+# are assumed evenly spaced at GATE_WIDTH_DECADES.
+COL_BIN_FLUORESCENCE = "bin_fluorescence"

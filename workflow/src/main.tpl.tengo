@@ -35,6 +35,9 @@ wf.prepare(func(args) {
 	if !is_undefined(args.sortFractionColumnRef) {
 		bb.addAnchor("sortFraction", args.sortFractionColumnRef)
 	}
+	if !is_undefined(args.binFluorescenceColumnRef) {
+		bb.addAnchor("binFluorescence", args.binFluorescenceColumnRef)
+	}
 	// Optional subset column picked alongside the abundance (PlDatasetSelector)
 	if !is_undefined(args.inputFilter) {
 		bb.addRef(json.decode(args.inputFilter))
@@ -56,6 +59,9 @@ wf.body(func(args) {
 	// The model gates this on hasBin, but we re-check here so the workflow is
 	// safe if called with a sort-fraction ref and no bin ref.
 	hasSortFraction := !is_undefined(args.sortFractionColumnRef) && hasBin
+	// The gate's measured mean log10 fluorescence. Only "log_fluorescence" reads it, and only
+	// with gates. Python detects it by the column's presence, as it does the bin column.
+	hasBinFluorescence := !is_undefined(args.binFluorescenceColumnRef) && hasBin
 
 	unitLabel := ""
 	if !is_undefined(concSpec.annotations) && !is_undefined(concSpec.annotations["pl7.app/label"]) {
@@ -103,6 +109,9 @@ wf.body(func(args) {
 	}
 	if hasSortFraction {
 		addReadsColumn(columns.getColumn("sortFraction"), { header: "sort_fraction" })
+	}
+	if hasBinFluorescence {
+		addReadsColumn(columns.getColumn("binFluorescence"), { header: "bin_fluorescence" })
 	}
 	readsBuilder.mem("16GiB")
 	readsBuilder.cpu(1)

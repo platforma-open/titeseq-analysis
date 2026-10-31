@@ -47,10 +47,12 @@ from classify import classify, classify_log_fluorescence
 from constants import (
     COL_ANTIGEN,
     COL_BIN,
+    COL_BIN_FLUORESCENCE,
     COL_CLONOTYPE,
     COL_CONC_STR,
     COL_CONC_VAL,
     DEFAULT_PARAMS,
+    GATE_WIDTH_DECADES,
     HILL_EXPONENT_FIXED,
     LF_MIN_CONCENTRATION_POINTS,
     LF_MIN_READS_PER_CONCENTRATION,
@@ -73,6 +75,7 @@ from log import log
 from log_fluorescence import (
     GateScale,
     build_gate_scale,
+    build_measured_gate_scale,
     classify_curve,
     decades_to_gate_index,
     fit_one,
@@ -467,8 +470,14 @@ def _run_log_fluorescence(
     params: FitParams,
     has_bin: bool,
     max_bin: int | None,
+    gates_measured: bool = False,
 ) -> dict[str, pl.DataFrame]:
-    """The "log_fluorescence" branch, from the mean-gate-index signal frame to the output dict."""
+    """The "log_fluorescence" branch, from the mean-gate-index signal frame to the output dict.
+
+    `gates_measured` says the signal frame already carries mean log10 fluorescence, because the
+    caller passed measured gate positions to `normalize`. The affine conversion below is then
+    skipped, and the gate scale comes from the measured positions rather than the gate labels.
+    """
     if not has_bin:
         raise ValueError(
             "equation 'log_fluorescence' needs gates: the reads table has no bin column. "
@@ -482,13 +491,16 @@ def _run_log_fluorescence(
         raise ValueError("equation 'log_fluorescence' needs at least one non-zero concentration.")
     log_lo, log_hi = math.log10(log_lo), math.log10(log_hi)
 
-    scale = build_gate_scale(max_bin)
+    if gates_measured:
+        scale = build_measured_gate_scale(reads)
+        lf_frame = signal_frame
+    else:
+        scale = build_gate_scale(max_bin)
+        # The gate index and the log fluorescence differ by one affine map, so the observed
+        # signal is converted rather than recomputed.
+        lf_frame = signal_frame.with_columns(gate_index_to_decades(pl.col(SIGNAL)).alias(SIGNAL))
     log(f"Gate scale: {scale.floor:.3f} to {scale.top:.3f} log10, {scale.range_decades:.3f} decades")
     log(f"Plateau floor: {params.plateau_floor:.4f} of the gate range")
-
-    # The gate index and the log fluorescence differ by one affine map, so the observed signal is
-    # converted rather than recomputed. Output frames stay on the gate-index scale.
-    lf_frame = signal_frame.with_columns(gate_index_to_decades(pl.col(SIGNAL)).alias(SIGNAL))
 
     # The equation ignores the user's read floor and point count and uses its own constants.
     gate_params = replace(
@@ -603,16 +615,37 @@ def run(
     reads = apply_antigen_filter(reads, target_antigen)
     mbl = max_bin_label(reads) if has_bin else None
 
+    # Measured gate positions are read by "log_fluorescence" only, and only in bin mode. They must
+    # enter here, before the gates collapse into one number a concentration, because a position
+    # varies per gate per concentration.
+    measured_gates = (
+        COL_BIN_FLUORESCENCE
+        if has_bin and params.equation == "log_fluorescence" and COL_BIN_FLUORESCENCE in reads.columns
+        else None
+    )
+    if measured_gates is not None:
+        log(f"Gate positions: measured (column '{COL_BIN_FLUORESCENCE}')")
+    elif params.equation == "log_fluorescence":
+        log(f"Gate positions: assumed, {GATE_WIDTH_DECADES} decades a gate")
+
     log("Normalizing signals")
     signal_frame = normalize(
         reads,
         bin_mode=has_bin,
         sort_fraction_col=sort_fraction_col if has_bin else None,
+        gate_position_col=measured_gates,
     )
 
     log(f"Equation: {params.equation}")
     if params.equation == "log_fluorescence":
-        return _run_log_fluorescence(signal_frame, reads, params=params, has_bin=has_bin, max_bin=mbl)
+        return _run_log_fluorescence(
+            signal_frame,
+            reads,
+            params=params,
+            has_bin=has_bin,
+            max_bin=mbl,
+            gates_measured=measured_gates is not None,
+        )
 
     log("Applying floor and weights")
     floor_frame = apply_floor_and_weights(signal_frame, params)

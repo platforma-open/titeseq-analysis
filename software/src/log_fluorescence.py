@@ -26,9 +26,15 @@ from dataclasses import dataclass
 from typing import Literal
 
 import numpy as np
+import polars as pl
 from scipy.optimize import OptimizeWarning, curve_fit
 
-from constants import GATE_RANGE_DECADES, GATE_WIDTH_DECADES, LF_RISE_THRESHOLD_DECADES
+from constants import (
+    COL_BIN_FLUORESCENCE,
+    GATE_RANGE_DECADES,
+    GATE_WIDTH_DECADES,
+    LF_RISE_THRESHOLD_DECADES,
+)
 from fit_stats import weighted_r2
 
 # K may sit this many decades beyond the titrated range before the optimiser is stopped. The value
@@ -79,6 +85,25 @@ def build_gate_scale(max_gate_label: int | None) -> GateScale:
     """
     floor = 0.0
     top = gate_index_to_decades(float(max_gate_label)) if max_gate_label else floor
+    if not top > floor:
+        top = floor + GATE_RANGE_DECADES
+    return GateScale(floor=floor, top=top)
+
+
+def build_measured_gate_scale(reads: pl.DataFrame) -> GateScale:
+    """The scale the measured gate positions span, in the log10 units they are supplied in.
+
+    The signal is a weighted mean of these positions, so it cannot leave their range. Gates that
+    all report one position measure no range, and the declared constant stands in.
+    """
+    stats = reads.select(
+        pl.col(COL_BIN_FLUORESCENCE).min().alias("lo"),
+        pl.col(COL_BIN_FLUORESCENCE).max().alias("hi"),
+    ).row(0)
+    lo, hi = stats
+    if lo is None or hi is None:
+        raise ValueError(f"column '{COL_BIN_FLUORESCENCE}' holds no gate positions.")
+    floor, top = float(lo), float(hi)
     if not top > floor:
         top = floor + GATE_RANGE_DECADES
     return GateScale(floor=floor, top=top)

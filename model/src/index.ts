@@ -47,6 +47,11 @@ type FitInputs = {
   binColumnRef?: PlRef;
   antigenColumnRef?: PlRef;
   sortFractionColumnRef?: PlRef;
+  /**
+   * The gate's measured mean log10 fluorescence, one value a (concentration, gate). Read by
+   * `log_fluorescence` only, which otherwise assumes the gates sit an equal distance apart.
+   */
+  binFluorescenceColumnRef?: PlRef;
   targetAntigen?: string;
 };
 
@@ -368,6 +373,7 @@ export const deriveArgs = (data: BlockData): BlockArgs => {
     binColumnRef: data.binColumnRef,
     antigenColumnRef: data.antigenColumnRef,
     sortFractionColumnRef: data.sortFractionColumnRef,
+    binFluorescenceColumnRef: data.binFluorescenceColumnRef,
     targetAntigen: data.targetAntigen,
     minReadsPerConcentration: data.minReadsPerConcentration,
     minConcentrationPoints: data.minConcentrationPoints,
@@ -477,6 +483,20 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
   // Disambiguate from concentration by data, not column name: cross-exclude
   // the picked concentration column, then require every value in [0, 1].
   // Molar concentrations (all < 1) still need the cross-exclude to clear.
+  // Gate fluorescence is per-sample numeric metadata of the same shape as the sort fraction, so
+  // the same filter serves. It is not cross-excluded against the sort fraction: a project may
+  // legitimately carry both, and neither constrains the other's values.
+  .output("binFluorescenceOptions", (ctx) =>
+    filterPopulatedOptions(
+      ctx,
+      (spec) =>
+        isPColumnSpec(spec) &&
+        isFloatValueType(spec.valueType) &&
+        spec.axesSpec.length === 1 &&
+        spec.axesSpec[0].name === "pl7.app/sampleId",
+      { excludeRef: ctx.data.concentrationColumnRef },
+    ),
+  )
   .output("sortFractionOptions", (ctx) =>
     filterPopulatedOptions(
       ctx,

@@ -41,6 +41,8 @@ export type BlockParams = {
   binColumnRef?: PlRef;
   antigenColumnRef?: PlRef;
   sortFractionColumnRef?: PlRef;
+  /** The gate's measured mean log10 fluorescence. Read by the log-fluorescence fit only. */
+  binFluorescenceColumnRef?: PlRef;
   targetAntigen?: string;
   equation?: Equation;
   /** The fraction of the gate range a curve must reach to count as saturated. Read by
@@ -139,6 +141,7 @@ const CONTRACT = {
   binColumnRef: check(isPlRef, "a reference to a FACS bin column"),
   antigenColumnRef: check(isPlRef, "a reference to an antigen column"),
   sortFractionColumnRef: check(isPlRef, "a reference to a FACS sort fraction column"),
+  binFluorescenceColumnRef: check(isPlRef, "a reference to a gate fluorescence column"),
   targetAntigen: check(isString, "a string"),
   equation: check(isEquation, `one of ${EQUATIONS.map((e) => `"${e}"`).join(" or ")}`),
   plateauFloor: check(isPositiveFraction, "a number above 0 and at most 1"),
