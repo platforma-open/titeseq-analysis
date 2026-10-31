@@ -602,6 +602,11 @@ def run(
         antigen_column_ref=antigen_column_ref,
     )
 
+    if target_antigen is not None:
+        log(f"Applying antigen filter: {target_antigen}")
+    reads = apply_antigen_filter(reads, target_antigen)
+
+    # Sort fractions sum to 1 within one antigen's sorts, so the check reads the filtered frame.
     if sort_fraction_col is not None and has_bin:
         validate_sort_fraction(reads, sort_fraction_col)
         n_conc = reads.select(COL_CONC_STR).n_unique()
@@ -609,10 +614,6 @@ def run(
         log(f"Mean-bin correction: FACS-weighted (column '{sort_fraction_col}')")
     elif has_bin:
         log("Mean-bin correction: uncorrected")
-
-    if target_antigen is not None:
-        log(f"Applying antigen filter: {target_antigen}")
-    reads = apply_antigen_filter(reads, target_antigen)
     mbl = max_bin_label(reads) if has_bin else None
 
     # Measured gate positions are read by "log_fluorescence" only, and only in bin mode. They must
