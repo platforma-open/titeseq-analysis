@@ -187,29 +187,50 @@ def fit_one(
     # sigma = 1/sqrt(w); a zero-weight point is treated as very uncertain rather than dropped.
     sigma = np.where(w > 0, 1.0 / np.sqrt(np.maximum(w, 1e-12)), 1e12)
 
-    p0 = [log_kd0, top0, base0]
     lo = [log_kd_lo, top_lo, base_lo]
     hi = [log_kd_hi, top_hi, base_hi]
 
-    try:
-        # OptimizeWarning is NOT promoted to an error here. scipy emits it when the covariance
-        # cannot be estimated, which is exactly what a fit pinned at a bound does — and a pinned fit
-        # is a bound the rating reports as Partial, not a failure.
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", OptimizeWarning)
-            popt, pcov = curve_fit(
-                _model,
-                c,
-                y,
-                p0=p0,
-                sigma=sigma,
-                absolute_sigma=False,
-                bounds=(lo, hi),
-                method="trf",
-                maxfev=10_000,
-            )
-    except (RuntimeError, ValueError):
+    # The surface has local minima in log K, so one start is not enough: a single start costs 0.008
+    # decades on the Adams median and 0.078 at the 90th percentile. Start from the half-max crossing
+    # and from three points spanning the titration, and keep the lowest weighted residual.
+    span_lo = math.log10(float(positive.min()))
+    span_hi = math.log10(float(positive.max()))
+    mid = (span_lo + span_hi) / 2.0
+    seeds = [log_kd0, span_lo + 0.25, mid, span_hi - 0.25]
+
+    best_popt = best_pcov = None
+    best_cost = math.inf
+    for seed in seeds:
+        p0 = [min(max(seed, log_kd_lo), log_kd_hi), top0, base0]
+        try:
+            # OptimizeWarning is NOT promoted to an error here. scipy emits it when the covariance
+            # cannot be estimated, which is exactly what a fit pinned at a bound does — and a pinned
+            # fit is a bound the rating reports as Partial, not a failure.
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", OptimizeWarning)
+                popt, pcov = curve_fit(
+                    _model,
+                    c,
+                    y,
+                    p0=p0,
+                    sigma=sigma,
+                    absolute_sigma=False,
+                    bounds=(lo, hi),
+                    method="trf",
+                    maxfev=10_000,
+                )
+        except (RuntimeError, ValueError):
+            continue
+        residual = (_model(c, *popt) - y) / sigma
+        if not np.all(np.isfinite(residual)):
+            continue
+        cost = float(np.sum(residual**2))
+        if cost < best_cost:
+            best_cost, best_popt, best_pcov = cost, popt, pcov
+
+    if best_popt is None:
         return _failure()
+    popt, pcov = best_popt, best_pcov
 
     log10_kd = float(popt[0])
     log10_top = float(popt[1])
