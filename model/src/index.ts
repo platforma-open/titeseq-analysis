@@ -426,9 +426,8 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     if (ctx.data.importFileHandle === undefined) return { status: "none" } satisfies SettingsImport;
     const content = ctx.prerun?.traverse({ field: "importedFile" })?.getFileContentAsString();
     if (content === undefined) return { status: "loading" } satisfies SettingsImport;
-    return content.map(
-      (text): SettingsImport =>
-        text === undefined ? { status: "loading" } : readSettingsFile(text),
+    return content.map((text): SettingsImport =>
+      text === undefined ? { status: "loading" } : readSettingsFile(text),
     );
   })
 
