@@ -6,6 +6,17 @@ import { isNumber } from "es-toolkit/compat";
 import { name, version } from "../package.json" with { type: "json" };
 
 /**
+ * The equations the block fits.
+ *
+ * `log_fluorescence` is a Hill fit on the log gate fluorescence with the exponent fixed at 1,
+ * weighted least squares. `hill_gate_index` is the fit the block shipped through 2.4.0: a Hill
+ * fit on the read-weighted mean gate index with a free exponent, graded on R² and the exponent.
+ */
+export const EQUATIONS = ["log_fluorescence", "hill_gate_index"] as const;
+
+export type Equation = (typeof EQUATIONS)[number];
+
+/**
  * This block's init-params contract — what a creator or a project template supplies to seed a
  * new instance: the columns a titration is read from (and an optional subset of the dataset), the
  * fit's tuning, and the user's own label.
@@ -31,6 +42,10 @@ export type BlockParams = {
   antigenColumnRef?: PlRef;
   sortFractionColumnRef?: PlRef;
   targetAntigen?: string;
+  equation?: Equation;
+  /** The fraction of the gate range a curve must reach to count as saturated. Read by
+   *  `log_fluorescence` only. */
+  plateauFloor?: number;
   minReadsPerConcentration?: number;
   minConcentrationPoints?: number;
   r2ThresholdGood?: number;
@@ -101,6 +116,12 @@ function isNumberFrom(min: number): Guard<number> {
 
 const isFraction: Guard<number> = (v): v is number => isFiniteNumber(v) && v >= 0 && v <= 1;
 
+/** A fraction with zero excluded: a plateau floor of 0 asks for no rise at all. */
+const isPositiveFraction: Guard<number> = (v): v is number => isFiniteNumber(v) && v > 0 && v <= 1;
+
+const isEquation: Guard<Equation> = (v): v is Equation =>
+  isString(v) && (EQUATIONS as readonly string[]).includes(v);
+
 /**
  * The runtime half of the contract. The `satisfies` clause is what stops it drifting: every
  * field `BlockParams` declares must appear here, and each guard must narrow to that field's own
@@ -119,6 +140,8 @@ const CONTRACT = {
   antigenColumnRef: check(isPlRef, "a reference to an antigen column"),
   sortFractionColumnRef: check(isPlRef, "a reference to a FACS sort fraction column"),
   targetAntigen: check(isString, "a string"),
+  equation: check(isEquation, `one of ${EQUATIONS.map((e) => `"${e}"`).join(" or ")}`),
+  plateauFloor: check(isPositiveFraction, "a number above 0 and at most 1"),
   minReadsPerConcentration: check(isNumberFrom(1), "a number of 1 or more"),
   minConcentrationPoints: check(isNumberFrom(3), "a number of 3 or more"),
   r2ThresholdGood: check(isFraction, "a number between 0 and 1"),

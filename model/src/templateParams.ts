@@ -7,7 +7,9 @@ import type { BlockData } from "./index";
  * but not to this function is silently dropped from every template exported afterwards.
  *
  * The fields `BlockParams` leaves out are left out here for the reasons the contract records:
- * the derived label, the settings drawer's own open flag, and view state.
+ * the derived label, the settings drawer's own open flag, and view state. `appliedPreset` and
+ * `importFileHandle` join them — the first names where settings came from rather than what they
+ * are, the second points at a file on one machine.
  */
 export function deriveTemplateParams(data: BlockData): BlockParams {
   return {
@@ -18,6 +20,8 @@ export function deriveTemplateParams(data: BlockData): BlockParams {
     antigenColumnRef: data.antigenColumnRef,
     sortFractionColumnRef: data.sortFractionColumnRef,
     targetAntigen: data.targetAntigen,
+    equation: data.equation,
+    plateauFloor: data.plateauFloor,
     minReadsPerConcentration: data.minReadsPerConcentration,
     minConcentrationPoints: data.minConcentrationPoints,
     r2ThresholdGood: data.r2ThresholdGood,

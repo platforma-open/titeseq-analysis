@@ -67,3 +67,21 @@ def test_precomputed_reason_wins(precomputed):
     result = classify(0.99, 1.0, True, DEFAULT_PARAMS, precomputed_reason=precomputed)
     assert result.affinity_class == "Failed"
     assert result.failure_reason == precomputed
+
+
+# A signal with no variance makes weighted_r2's denominator zero, so it returns NaN. NaN
+# compares False against every threshold, so before this guard the row fell through to the
+# n-in-range branch and was reported Partial with whatever K_D the fitter returned — on the
+# flat case that is a K_D of 28 M against a titration topping out at 1e-6.
+@pytest.mark.parametrize("n", [1.0, 1.293359766304497, 5.0])
+def test_non_finite_r2_fails(n):
+    result = classify(float("nan"), n, True, DEFAULT_PARAMS)
+    assert result.affinity_class == "Failed"
+    assert result.failure_reason == "low_r2"
+
+
+@pytest.mark.parametrize("r2", [float("inf"), float("-inf")])
+def test_infinite_r2_fails(r2):
+    result = classify(r2, 1.0, True, DEFAULT_PARAMS)
+    assert result.affinity_class == "Failed"
+    assert result.failure_reason == "low_r2"

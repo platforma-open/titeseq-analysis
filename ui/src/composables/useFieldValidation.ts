@@ -66,6 +66,14 @@ const validateNonNegWithStrict = (
   return undefined;
 };
 
+// Fraction of the gate range in (0, 1]. A floor of 0 demands no rise at all; above 1 it sits
+// outside the gate range and no variant can reach it.
+const validatePlateauFloor = (v: number | undefined | null): string | undefined => {
+  if (v === undefined || v === null || Number.isNaN(v)) return REQUIRED;
+  if (v <= 0 || v > 1) return "Must be greater than 0 and at most 1";
+  return undefined;
+};
+
 // Plain non-negative float, no cross-field bound (hookEffectThreshold*).
 const validateNonNeg = (v: number | undefined | null): string | undefined => {
   if (isMissing(v)) return REQUIRED;
@@ -122,8 +130,10 @@ export function useFieldValidation() {
     validateNonNeg(app.model.data.hookEffectThresholdNoBin),
   );
   const hookMinReadsError = computed(() => validateInteger(app.model.data.hookEffectMinReads, 0));
+  const plateauFloorError = computed(() => validatePlateauFloor(app.model.data.plateauFloor));
 
   return {
+    plateauFloorError,
     minReadsError,
     minConcPointsError,
     r2GoodError,
