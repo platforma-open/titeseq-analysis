@@ -59,11 +59,10 @@ export type BlockArgs = FitInputs &
   BlockLabels &
   Omit<FitSettings, "equation" | "plateauFloor"> & {
     /**
-     * Absent means `hill_gate_index` on the wire — deliberately NOT the default a new block
-     * takes in `BlockData`, which is `log_fluorescence`. A project that ran before the equation
-     * existed projects exactly the args it always projected, so the upgrade does not stale it
-     * into re-running a fit that reproduces its own numbers. The workflow and the Python
-     * `FitParams` read an absent key the same way.
+     * An absent key means `hill_gate_index`. The workflow and the Python `FitParams` read it
+     * the same way. A new block's `BlockData` default is `log_fluorescence`, so the two differ
+     * on purpose: a project from before this release projects the args it always projected,
+     * and the upgrade does not stale it.
      */
     equation?: Equation;
     /** Sent only under `log_fluorescence`; no other equation reads a plateau floor. */
@@ -228,14 +227,14 @@ export const initBlockData = (params?: BlockParams): BlockData => ({
 });
 
 /**
- * v1 -> v2. A project created before this release ran the gate-index fit, so it is pinned to it
- * by name. Writing the field is the whole point: an absent `equation` would pick up a new
- * block's default, `log_fluorescence`, and every released project would silently change which
- * equation it fits. The plateau floor comes along at a new block's value and stays unread —
- * `hill_gate_index` has no plateau floor.
+ * v1 -> v2. A project from before this release ran the gate-index fit, so name it.
  *
- * Nothing else moves. Every stored setting, column reference, label and piece of view state is
- * carried across untouched, so a re-run reproduces the numbers the project already holds.
+ * Writing the field is the point. An absent `equation` reads as a new block's default,
+ * `log_fluorescence`, and every released project would change the equation it fits.
+ *
+ * The plateau floor arrives at a new block's value and stays unread. `hill_gate_index` does
+ * not read one. Nothing else moves: every setting, reference, label and piece of view state
+ * crosses untouched, so a re-run reproduces the numbers the project already holds.
  */
 export const migrateV1ToV2 = (v1: BlockDataV1): BlockData => ({
   ...v1,
@@ -315,10 +314,9 @@ export const deriveArgs = (data: BlockData): BlockArgs => {
       "FACS sort fraction requires a FACS bin column — the correction only applies in bin mode",
     );
 
-  // Reject undefined on the numeric tuning params before any range comparisons
-  // run. Without these guards, `undefined < 1` (and friends) silently returns
-  // false, so a stored block missing one of these fields would pass validation
-  // and produce args with undefined values — breaking the Python fit at runtime.
+  // Reject undefined before any range comparison runs. `undefined < 1` returns false, so a
+  // stored block that lacks one of these fields would pass validation and send undefined to
+  // the Python fit.
   if (data.equation === undefined) throw new Error("Equation is required");
   if (data.plateauFloor === undefined) throw new Error("Plateau floor is required");
   if (data.plateauFloor <= 0 || data.plateauFloor > 1)
@@ -358,9 +356,9 @@ export const deriveArgs = (data: BlockData): BlockArgs => {
   if (data.minReadsPerConcentration < 1) throw new Error("Min reads per concentration must be ≥ 1");
   if (data.minConcentrationPoints < 3) throw new Error("Min concentration points must be ≥ 3");
   return {
-    // Canonicalization, not a shortcut: `hill_gate_index` is what an absent `equation` means
-    // on the wire, so a project that stores it projects the bytes v2.4.0 projected and the
-    // upgrade does not stale it. The plateau floor rides with the one equation that reads it.
+    // Canonicalization, not a shortcut. An absent `equation` means `hill_gate_index`, so a
+    // project that stores it projects the bytes v2.4.0 projected and the upgrade does not
+    // stale it. The plateau floor travels with the one equation that reads it.
     ...(data.equation !== "hill_gate_index" && {
       equation: data.equation,
       plateauFloor: data.plateauFloor,
@@ -404,10 +402,10 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
   // reads it straight away, without staling the block or waiting on an abundance column.
   .prerunArgs((data) => ({ importFileHandle: data.importFileHandle }))
 
-  // isActive forces this output to be evaluated even when nothing subscribes to it. That
-  // evaluation is what drives the upload: getImportProgress() causes the underlying context to
-  // begin the transfer for each pending ImportFileHandle. Without isActive the output never
-  // renders, the upload never starts, and the prerun never resolves — with no error anywhere.
+  // isActive evaluates this output even when nothing subscribes to it. That evaluation starts
+  // the upload: getImportProgress() makes the context transfer each pending ImportFileHandle.
+  // Without isActive the output never renders, the upload never starts, and the prerun never
+  // resolves. No error appears anywhere.
   .output(
     "prerunFileImports",
     (ctx) =>

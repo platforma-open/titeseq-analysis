@@ -4,8 +4,9 @@
 so any change to the shared pipeline shows up here as a diff, not as a silent re-analysis.
 
 Values were read off `main` @ ac1da53 (v2.4.0) and must not be regenerated to make a change pass.
-Classes and reasons are exact; the three floats carry a 1e-6 relative tolerance for last-bit
-platform noise in scipy's optimiser.
+Classes and reasons are exact. K_D and R-squared carry a 1e-6 relative tolerance for last-bit
+platform noise in scipy's optimiser. The Hill exponent of a Failed row is not pinned at all, for
+the reason given in `_assert_row`.
 """
 
 from __future__ import annotations
@@ -65,8 +66,15 @@ def _assert_row(row: dict, expected: tuple) -> None:
     for name, want in (("kd", kd), ("hillCoefficient", hill), ("r2", r2)):
         if want is None:
             assert row[name] is None, name
-        else:
-            assert row[name] == pytest.approx(want, rel=1e-6, abs=1e-12), name
+            continue
+        # A rejected fit explains none of the signal, so its exponent is unconstrained and
+        # scipy stops at a different value on each platform: NB_FILLER reads 5.03 on arm64
+        # macOS and 6.19 on x86_64 linux. K_D and R-squared stay put on both. Pin the exponent
+        # only where the block reports a usable fit.
+        if name == "hillCoefficient" and affinity == "Failed":
+            assert row[name] is not None, name
+            continue
+        assert row[name] == pytest.approx(want, rel=1e-6, abs=1e-12), name
 
 
 @pytest.mark.parametrize("key,expected", sorted(BIN_MODE.items()))

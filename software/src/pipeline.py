@@ -258,10 +258,10 @@ def _fit_all_clonotypes(
 
     for fit, (i, clonotype, cs, x) in zip(fits, contexts):
         cls = classify(fit.r2_w, fit.n, fit.converged, params)
-        # A signal with no variance leaves R² undefined, and the curve the fitter returns is
-        # an artefact of the amplitude lower bound rather than a measurement — on a flat bin
-        # mean it reports a K_D of 28 M against a titration topping out at 1e-6. Report the
-        # row with no numbers, as for a fit that never converged.
+        # A signal with no variance leaves R² undefined. The curve the fitter returns is then
+        # an artefact of the amplitude lower bound, not a measurement: on a flat bin mean it
+        # reports a K_D of 28 M against a titration that stops at 1e-6. Report no numbers, as
+        # for a fit that never converged.
         no_information = fit.r2_w is not None and not math.isfinite(fit.r2_w)
         kd_col[i] = None if no_information else fit.kd
         n_col[i] = None if no_information else fit.n

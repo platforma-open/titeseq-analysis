@@ -47,8 +47,8 @@ def classify(
     n_in_range = params.n_min <= n <= params.n_max
 
     # A signal with no variance gives a zero denominator, so weighted_r2 returns NaN. Every
-    # comparison below is False against NaN, so without this the row reaches the n-in-range
-    # branch and is reported Partial carrying whatever K_D the fitter returned.
+    # comparison below reads False against NaN. Without this guard the row reaches the
+    # n-in-range branch and reports Partial, carrying whatever K_D the fitter returned.
     if not math.isfinite(r2):
         return Classification("Failed", "low_r2")
     if r2 < params.r2_threshold_failed:
