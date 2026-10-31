@@ -2,11 +2,14 @@
 import { PlAlert, PlBlockPage } from "@platforma-sdk/ui-vue";
 import { computed } from "vue";
 import { useApp } from "../app";
+import { useFitSummary } from "../composables/useFitSummary";
 import PageHeader from "./PageHeader.vue";
 
 defineProps<{ title: string; mode: "graph" | "table" }>();
 
 const app = useApp();
+
+const { fitSummary } = useFitSummary();
 
 // Page-level alerts cover spec-based checks with no field-level home —
 // concentration column label format, sort-fraction without a bin column.
@@ -25,6 +28,9 @@ const warnings = computed(() => app.model.outputs.validationWarnings ?? []);
     <template #append>
       <PageHeader />
     </template>
+    <PlAlert type="info" class="titeseq-page-alert">
+      {{ fitSummary }}
+    </PlAlert>
     <PlAlert
       v-for="(w, i) in warnings"
       :key="i"

@@ -1,6 +1,6 @@
 import type { PlRef } from "@platforma-sdk/model";
 import { describe, expect, it } from "vitest";
-import { kind } from "./index";
+import { EQUATIONS, kind } from "./index";
 
 const parse = (v: unknown) => kind.parseInitializationParams(v);
 
@@ -70,6 +70,30 @@ describe("the bounded settings", () => {
 
   it.each(["r2ThresholdGood", "r2ThresholdFailed"])("refuses a value outside 0..1 for %s", (f) => {
     for (const v of [-0.01, 1.01, 2]) expect(() => parse({ [f]: v })).toThrow(`'${f}' must be`);
+  });
+});
+
+describe("the equation", () => {
+  it.each(EQUATIONS)("accepts %s", (equation) => {
+    expect(parse({ equation })).toEqual({ equation });
+  });
+
+  it.each(["", "log_fluorescence_wls", "poisson", "integer_mean_bin", "LOG_FLUORESCENCE", 1, null])(
+    "refuses %o",
+    (v) => {
+      expect(() => parse({ equation: v })).toThrow("'equation' must be");
+    },
+  );
+});
+
+describe("the plateau floor", () => {
+  it.each([0.0001, 0.4, 2 / 3, 1])("accepts %o", (v) => {
+    expect(parse({ plateauFloor: v })).toEqual({ plateauFloor: v });
+  });
+
+  // A floor of 0 asks for no rise at all, and anything above 1 asks for more than the gate range.
+  it.each([0, -0.1, 1.01, Number.NaN, Number.POSITIVE_INFINITY, "0.5"])("refuses %o", (v) => {
+    expect(() => parse({ plateauFloor: v })).toThrow("'plateauFloor' must be");
   });
 });
 

@@ -9,10 +9,25 @@ from pathlib import Path
 
 import polars as pl
 
-from constants import DEFAULT_PARAMS, FitParams
+from constants import DEFAULT_PARAMS, EQUATIONS, FitParams
 from io_layer import read_reads_table
 from log import log
 from pipeline import run
+
+
+def _parse_params(path: str) -> FitParams:
+    """Parse the params JSON into FitParams, rejecting the whole file on any bad field.
+
+    Only `equation` is checked here: it selects the code path, and a typo would otherwise run the
+    wrong fit silently. Every other field is range-checked by the stage that reads it. An absent
+    `equation` means a pre-existing project on v2.4.0's fit — see FitParams.
+    """
+    with open(path) as f:
+        raw = json.load(f)
+    equation = raw.get("equation")
+    if equation is not None and equation not in EQUATIONS:
+        raise ValueError(f"unknown equation {equation!r}; expected one of {', '.join(EQUATIONS)}")
+    return FitParams(**raw)
 
 
 def _write_frame(frame: pl.DataFrame, path: str) -> None:
@@ -36,8 +51,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--sort-fraction-column",
         default=None,
-        help="Column name in reads.tsv carrying sort fraction C_bc/C_c per sample. "
-        "Absent ⇒ no FACS correction.",
+        help="Column name in reads.tsv carrying sort fraction C_bc/C_c per sample. Absent ⇒ no FACS correction.",
     )
     args = parser.parse_args(argv)
 
@@ -46,8 +60,7 @@ def main(argv: list[str] | None = None) -> int:
     log(f"Loaded {reads.height} rows, {len(reads.columns)} columns")
     params = DEFAULT_PARAMS
     if args.params:
-        with open(args.params) as f:
-            params = FitParams(**json.load(f))
+        params = _parse_params(args.params)
         log(f"Loaded custom params from {args.params}")
 
     outputs = run(
