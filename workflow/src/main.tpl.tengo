@@ -15,10 +15,6 @@ json := import("json")
 
 fitCurvesSw := assets.importSoftware("@platforma-open/platforma-open.titeseq-analysis.software:fit-curves")
 
-prerunTpl := assets.importTemplate(":prerun")
-
-wf.setPreRun(prerunTpl)
-
 wf.prepare(func(args) {
 	bb := wf.createPBundleBuilder()
 	bb.ignoreMissingDomains()
@@ -487,9 +483,15 @@ wf.body(func(args) {
 	// vs Fit Quality scatter (nulls parked at max_conc*10 and -1.0) that would
 	// otherwise appear as spurious Kd,app / Hill coefficient siblings in
 	// downstream pickers.
+	// "log_fluorescence" fixes the Hill exponent at 1, so its hillCoefficient is a constant and is
+	// not exported. The block's own table keeps it.
+	exportExcluded := ["kdPlotPosition", "hillPlotPosition"]
+	if args.equation == "log_fluorescence" {
+		exportExcluded = append(exportExcluded, "hillCoefficient")
+	}
 	exportPf := buildTracedPf(
 		[summaryImported, meanBinImported, fittedMeanBinImported, concValueImported],
-		["kdPlotPosition", "hillPlotPosition"]
+		exportExcluded
 	)
 
 	return {

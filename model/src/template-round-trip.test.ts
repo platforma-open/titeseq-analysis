@@ -82,7 +82,7 @@ describe("the template round trip", () => {
     expect(initBlockData().equation).toBe("log_fluorescence");
   });
 
-  it("does not carry the derived label, the drawer flag, view state or the import handle", () => {
+  it("does not carry the derived label, the drawer flag, view state or the applied preset", () => {
     const restored = roundTrip({
       ...configured,
       defaultBlockLabel: "CD19 - Abundance",
@@ -90,7 +90,6 @@ describe("the template round trip", () => {
       appliedPreset: "starr",
     });
     expect(restored.appliedPreset).toBeUndefined();
-    expect(restored.importFileHandle).toBeUndefined();
     // Re-derived from the antigen and abundance labels by a `watchEffect` on mount.
     expect(restored.defaultBlockLabel).toBe("Tite-Seq Analysis");
     expect(restored.settingsOpen).toBe(false);

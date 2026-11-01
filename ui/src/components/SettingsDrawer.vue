@@ -1,19 +1,12 @@
 <script setup lang="ts">
-import type { SettingsImport } from "@platforma-open/platforma-open.titeseq-analysis.model";
-import {
-  SETTINGS_FILE_NAME,
-  writeSettingsFile,
-} from "@platforma-open/platforma-open.titeseq-analysis.model";
 import type { DatasetSelection } from "@platforma-sdk/model";
 import { createDatasetSelection, createPrimaryRef } from "@platforma-sdk/model";
 import {
   PlAccordionSection,
   PlAlert,
-  PlBtnSecondary,
   PlDatasetSelector,
   PlDropdown,
   PlDropdownRef,
-  PlFileInput,
   PlNumberField,
   PlSlideModal,
 } from "@platforma-sdk/ui-vue";
@@ -21,12 +14,7 @@ import { computed, watch } from "vue";
 import { useApp } from "../app";
 import { useFieldValidation } from "../composables/useFieldValidation";
 import { useFitSettings } from "../composables/useFitSettings";
-import {
-  EQUATION_OPTIONS,
-  NUMBER_SETTINGS,
-  SETTINGS_FIELD_LABELS,
-  equationLabel,
-} from "../fitSettings";
+import { EQUATION_OPTIONS } from "../fitSettings";
 
 const open = defineModel<boolean>({ required: true });
 
@@ -59,7 +47,7 @@ const {
   hookMinReadsError,
 } = useFieldValidation();
 
-const { applySettings, presetOptions, selectedPreset } = useFitSettings();
+const { presetOptions, selectedPreset } = useFitSettings();
 
 watch(
   () => app.model.outputs.isRunning,
@@ -75,8 +63,8 @@ const warnings = computed(() => app.model.outputs.validationWarnings ?? []);
 
 const binMode = computed(() => app.model.outputs.binMode === true);
 
-// The log-fluorescence fit never reads the v2.4.0 settings, and the mean gate index fit never
-// reads the plateau floor. Hiding is display-only: the stored values stay as they are.
+// The log-fluorescence fit never reads the v2.4.0 settings, and the mean bin fit never reads the
+// plateau floor. Hiding is display-only: the stored values stay as they are.
 const isLogFluorescence = computed(() => app.model.data.equation === "log_fluorescence");
 
 const targetAntigenOptions = computed(() =>
@@ -116,73 +104,6 @@ watch(
     if (binRef === undefined) app.model.data.sortFractionColumnRef = undefined;
   },
 );
-
-// ── Settings file ─────────────────────────────────────────────────────────────
-
-function exportSettings(): void {
-  const blob = new Blob([writeSettingsFile(app.model.data)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = SETTINGS_FILE_NAME;
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
-
-// The file is read and checked in the model. The output is undefined only before the model has
-// derived it, which is "loading" once a file is picked and "none" before that.
-const settingsImport = computed<SettingsImport>(() => {
-  const imported = app.model.outputs.importedSettings;
-  if (imported !== undefined) return imported;
-  return app.model.data.importFileHandle === undefined ? { status: "none" } : { status: "loading" };
-});
-
-const importError = computed(() => {
-  const imported = settingsImport.value;
-  if (imported.status === "unparsable") {
-    return `Could not read the file as JSON: ${imported.reason}`;
-  }
-  if (imported.status === "rejected") return imported.reason;
-  return undefined;
-});
-
-const pendingSettings = computed(() =>
-  settingsImport.value.status === "ready" ? settingsImport.value.settings : undefined,
-);
-
-const pendingChanges = computed<string[]>(() => {
-  const settings = pendingSettings.value;
-  if (settings === undefined) return [];
-  const changes: string[] = [];
-  if (settings.equation !== app.model.data.equation) {
-    changes.push(
-      `${SETTINGS_FIELD_LABELS.equation}: ${equationLabel(app.model.data.equation)} → ${equationLabel(settings.equation)}`,
-    );
-  }
-  for (const name of NUMBER_SETTINGS) {
-    const incoming = settings[name];
-    if (incoming === undefined) continue;
-    const current = app.model.data[name];
-    if (current !== incoming) {
-      changes.push(`${SETTINGS_FIELD_LABELS[name]}: ${current} → ${incoming}`);
-    }
-  }
-  return changes;
-});
-
-// The one place an imported file reaches block data, and only on the user's click.
-function applyImportedSettings(): void {
-  const settings = pendingSettings.value;
-  if (settings === undefined) return;
-  applySettings(settings);
-  // A file is not a preset, whatever values it carries.
-  app.model.data.appliedPreset = undefined;
-  app.model.data.importFileHandle = undefined;
-}
-
-function discardImportedSettings(): void {
-  app.model.data.importFileHandle = undefined;
-}
 </script>
 
 <template>
@@ -244,10 +165,9 @@ function discardImportedSettings(): void {
       clearable
     >
       <template #tooltip>
-        Optional. Per-sample numerical metadata column giving that gate's measured mean log10
-        fluorescence. Without it the fit assumes the gates sit an equal distance apart, which is a
-        poorer description of a real sorter. Supply it to reproduce a study that published its gate
-        positions.
+        Optional. A per-sample number column with the measured mean log10 fluorescence of each gate.
+        If you do not select a column, the fit assumes equal distances between the gates. This
+        assumption is less accurate for a real sorter.
       </template>
     </PlDropdownRef>
     <PlDropdownRef
@@ -287,23 +207,21 @@ function discardImportedSettings(): void {
         clearable
       >
         <template #tooltip>
-          Fills the settings a published study used. A preset is a starting point, not a lock —
-          change any setting afterwards and the selector marks it as modified. Clear and re-select
-          to return to the published values.
+          Sets the fit settings to the values that a published study used. You can change each
+          setting after you select a preset. The selector then shows "(modified)". To use the
+          published values again, clear the preset and select it again.
         </template>
       </PlDropdown>
       <PlDropdown v-model="app.model.data.equation" :options="EQUATION_OPTIONS" label="Equation">
         <template #tooltip>
-          Log fluorescence fit — fits the log of the gated fluorescence signal with the Hill
-          exponent fixed at 1. Reproduces Adams 2016 and Phillips 2021 CR6261. The default for new
-          projects.
+          Log fluorescence fit: fits a Hill curve to the mean log10 fluorescence of each clonotype.
+          The Hill exponent is fixed at 1. New blocks use this fit.
           <br /><br />
-          Mean gate index fit — the method this block used before, a Hill curve on the read-weighted
-          mean gate index with a free exponent. Reproduces Starr 2020 and 2022. Projects created
-          before this release keep it.
+          Mean bin fit: fits a Hill curve to the read-weighted mean bin of each clonotype. The Hill
+          exponent is free. Blocks created before the equation choice existed keep this fit.
           <br /><br />
-          Fit quality is equation-relative: Good means an in-range measurement this equation could
-          identify, never accuracy to within a stated error.
+          Each equation rates fit quality in its own way. "Good" means that the equation found a
+          Kd,app inside the titrated range. It does not give an error bound.
         </template>
       </PlDropdown>
       <PlNumberField
@@ -317,9 +235,9 @@ function discardImportedSettings(): void {
         required
       >
         <template #tooltip>
-          The saturated plateau every clonotype must be able to reach, as a fraction of the gate
-          range. Default 2/3 suits a screening library; a lead-optimisation library, where most
-          clonotypes bind, wants 0.4.
+          The plateau that each clonotype must be able to reach at saturation, as a fraction of the
+          gate range. The default is 2/3, for a screening library. For a library in which most
+          clonotypes bind, use a lower value, for example 0.4.
         </template>
       </PlNumberField>
     </PlAccordionSection>
@@ -452,47 +370,6 @@ function discardImportedSettings(): void {
           this. Below the floor, a signal drop is more likely noise than a real hook. Default 20.
         </template>
       </PlNumberField>
-    </PlAccordionSection>
-
-    <PlAccordionSection label="Settings file">
-      <PlBtnSecondary :style="{ width: '100%' }" @click="exportSettings">
-        Export settings
-      </PlBtnSecondary>
-      <PlFileInput
-        v-model="app.model.data.importFileHandle"
-        label="Import settings"
-        :extensions="['json']"
-        :error="importError"
-        placeholder="Select JSON file"
-      >
-        <template #tooltip>
-          Fit settings only — no input columns, no labels, no view state. The file is applied in
-          full or not at all.
-        </template>
-      </PlFileInput>
-      <PlAlert v-if="pendingSettings !== undefined" type="info">
-        <template v-if="pendingChanges.length > 0">
-          Applying this file changes:
-          <ul>
-            <li v-for="change in pendingChanges" :key="change">{{ change }}</li>
-          </ul>
-        </template>
-        <template v-else> This file matches the current settings. </template>
-      </PlAlert>
-      <PlBtnSecondary
-        v-if="pendingSettings !== undefined"
-        :style="{ width: '100%' }"
-        @click="applyImportedSettings"
-      >
-        Apply these settings
-      </PlBtnSecondary>
-      <PlBtnSecondary
-        v-if="pendingSettings !== undefined"
-        :style="{ width: '100%' }"
-        @click="discardImportedSettings"
-      >
-        Discard
-      </PlBtnSecondary>
     </PlAccordionSection>
   </PlSlideModal>
 </template>

@@ -90,5 +90,5 @@ export function useFitSettings() {
     },
   });
 
-  return { applySettings, presetOptions, selectedPreset, isModified };
+  return { presetOptions, selectedPreset, isModified };
 }
