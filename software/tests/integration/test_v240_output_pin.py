@@ -7,6 +7,12 @@ Values were read off `main` @ ac1da53 (v2.4.0) and must not be regenerated to ma
 Classes and reasons are exact. K_D and R-squared carry a 1e-6 relative tolerance for last-bit
 platform noise in scipy's optimiser. The Hill exponent of a Failed row is not pinned at all, for
 the reason given in `_assert_row`.
+
+The other three frames (meanBin, fittedMeanBin, concentration value) are pinned whole against
+frames v2.4.0 wrote on the same corpus, stored in tests/data/v240_reference/. Row order is part of
+the pin, because the workflow deduplicates on the bytes.
+
+One departure from v2.4.0 is intended and pinned on its own: a signal with no variance.
 """
 
 from __future__ import annotations
@@ -15,11 +21,14 @@ from pathlib import Path
 
 import polars as pl
 import pytest
+from polars.testing import assert_frame_equal
 
 from constants import FitParams
 from pipeline import run
 
 CORPUS_DIR = Path(__file__).resolve().parent.parent / "data" / "corpus"
+REFERENCE_DIR = Path(__file__).resolve().parent.parent / "data" / "v240_reference"
+OTHER_FRAMES = ("mean_bin", "fitted_mean_bin", "concentration_value")
 HILL = FitParams(equation="hill_gate_index")
 
 # clonotypeKey -> (kd, hillCoefficient, r2, affinityClass, fitFailureReason, kdOutOfRange)
@@ -47,15 +56,23 @@ NO_BIN_MODE = {
 
 
 @pytest.fixture(scope="module")
-def bin_rows() -> dict[str, dict]:
-    reads = pl.read_parquet(CORPUS_DIR / "reads_bin_mode.parquet")
-    return {r["clonotypeKey"]: r for r in run(reads, params=HILL)["per_clonotype"].iter_rows(named=True)}
+def bin_outputs() -> dict[str, pl.DataFrame]:
+    return run(pl.read_parquet(CORPUS_DIR / "reads_bin_mode.parquet"), params=HILL)
 
 
 @pytest.fixture(scope="module")
-def no_bin_rows() -> dict[str, dict]:
-    reads = pl.read_parquet(CORPUS_DIR / "reads_no_bin_mode.parquet")
-    return {r["clonotypeKey"]: r for r in run(reads, params=HILL)["per_clonotype"].iter_rows(named=True)}
+def no_bin_outputs() -> dict[str, pl.DataFrame]:
+    return run(pl.read_parquet(CORPUS_DIR / "reads_no_bin_mode.parquet"), params=HILL)
+
+
+@pytest.fixture(scope="module")
+def bin_rows(bin_outputs) -> dict[str, dict]:
+    return {r["clonotypeKey"]: r for r in bin_outputs["per_clonotype"].iter_rows(named=True)}
+
+
+@pytest.fixture(scope="module")
+def no_bin_rows(no_bin_outputs) -> dict[str, dict]:
+    return {r["clonotypeKey"]: r for r in no_bin_outputs["per_clonotype"].iter_rows(named=True)}
 
 
 def _assert_row(row: dict, expected: tuple) -> None:
@@ -90,3 +107,45 @@ def test_no_bin_mode_row_is_unchanged(no_bin_rows, key, expected):
 def test_the_corpus_carries_no_extra_clonotypes(bin_rows, no_bin_rows):
     assert set(bin_rows) == set(BIN_MODE)
     assert set(no_bin_rows) == set(NO_BIN_MODE)
+
+
+@pytest.mark.parametrize("frame", OTHER_FRAMES)
+def test_bin_mode_frame_is_unchanged(bin_outputs, frame):
+    expected = pl.read_parquet(REFERENCE_DIR / f"bin_mode_{frame}.parquet")
+    assert_frame_equal(bin_outputs[frame], expected, check_exact=False, rel_tol=1e-6, abs_tol=1e-12)
+
+
+@pytest.mark.parametrize("frame", OTHER_FRAMES)
+def test_no_bin_mode_frame_is_unchanged(no_bin_outputs, frame):
+    expected = pl.read_parquet(REFERENCE_DIR / f"no_bin_mode_{frame}.parquet")
+    assert_frame_equal(no_bin_outputs[frame], expected, check_exact=False, rel_tol=1e-6, abs_tol=1e-12)
+
+
+def test_a_flat_signal_is_failed_with_no_kd():
+    """The intended departure from v2.4.0, which rated this Partial with a K_D of 28.39 M.
+
+    Equal reads in every gate give a flat mean bin. The fit converges on the amplitude bound, R² is
+    undefined (no variance), and the curve is an artefact: no K_D, exponent or R² is reported.
+    """
+    concs = [1e-10, 1e-9, 1e-8, 1e-7, 1e-6]
+    reads = pl.DataFrame(
+        [
+            {
+                "clonotypeKey": "FLAT",
+                "sampleId": f"s_c{i}_b{b}",
+                "concentrationStr": str(c),
+                "concentration": c,
+                "bin": b,
+                "reads": 25,
+            }
+            for i, c in enumerate(concs)
+            for b in (1, 2, 3, 4)
+        ]
+    )
+    out = run(reads, params=HILL)
+    row = out["per_clonotype"].row(0, named=True)
+    assert (row["affinityClass"], row["fitFailureReason"]) == ("Failed", "low_r2")
+    assert row["kd"] is None
+    assert row["hillCoefficient"] is None
+    assert row["r2"] is None
+    assert out["fitted_mean_bin"].height == 0

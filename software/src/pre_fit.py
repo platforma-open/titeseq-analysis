@@ -87,11 +87,13 @@ def compute_read_weighted_baseline(c0_points: pl.DataFrame) -> float | None:
     """Mean signal at c=0, each clonotype weighted by its reads at c=0.
 
     The "log_fluorescence" baseline. A clonotype with few reads has a noisy 0 M signal and counts
-    for little. Returns None if the frame is empty or holds no reads.
+    for little. A null signal (a 0 M point whose gates carry no weight) is left out of both sums.
+    Returns None if no 0 M point carries a signal and reads.
     """
-    if c0_points.height == 0:
+    with_signal = c0_points.filter(pl.col(SIGNAL).is_not_null())
+    if with_signal.height == 0:
         return None
-    num, den = c0_points.select(
+    num, den = with_signal.select(
         (pl.col(SIGNAL) * pl.col(WEIGHT)).sum().alias("num"),
         pl.col(WEIGHT).sum().alias("den"),
     ).row(0)

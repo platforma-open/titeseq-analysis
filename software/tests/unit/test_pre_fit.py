@@ -423,3 +423,23 @@ class TestReadWeightedBaseline:
             schema={"clonotypeKey": pl.Utf8, "concentrationStr": pl.Utf8, "signal": pl.Float64, "weight": pl.Float64},
         )
         assert compute_read_weighted_baseline(df) is None
+
+    def test_a_null_signal_is_left_out_of_both_sums(self):
+        # A 0 M point whose gates carry no weight has a null mean. Its reads must not dilute the rest.
+        df = pl.DataFrame(
+            {
+                "clonotypeKey": ["A", "B"],
+                "concentrationStr": ["0", "0"],
+                "signal": [1.0, None],
+                "weight": [100.0, 100.0],
+            },
+            schema={"clonotypeKey": pl.Utf8, "concentrationStr": pl.Utf8, "signal": pl.Float64, "weight": pl.Float64},
+        )
+        assert compute_read_weighted_baseline(df) == pytest.approx(1.0)
+
+    def test_only_null_signals_give_none(self):
+        df = pl.DataFrame(
+            {"clonotypeKey": ["A"], "concentrationStr": ["0"], "signal": [None], "weight": [100.0]},
+            schema={"clonotypeKey": pl.Utf8, "concentrationStr": pl.Utf8, "signal": pl.Float64, "weight": pl.Float64},
+        )
+        assert compute_read_weighted_baseline(df) is None

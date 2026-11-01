@@ -35,7 +35,7 @@ from constants import (
     GATE_WIDTH_DECADES,
     LF_RISE_THRESHOLD_DECADES,
 )
-from fit_stats import weighted_r2
+from hill_fit import weighted_r2
 
 # K may sit this many decades beyond the titrated range before the optimiser is stopped. The value
 # is a numerical guard, not a scientific claim: anything outside the range is reported as a bound.
@@ -181,7 +181,8 @@ def fit_one(
 
     y_min, y_max = float(np.min(y)), float(np.max(y))
     top0 = min(max(y_max, top_lo), top_hi)
-    base0 = min(max(y_min, base_lo), base_hi)
+    # A given baseline is where the curve starts, so the half-max crossing is measured from it.
+    base0 = min(max(y_min, base_lo), base_hi) if baseline is None else baseline
     half = base0 + (top0 - base0) / 2.0
     above = np.where(y >= half)[0]
     kd0 = float(c[above[0]]) if above.size and c[above[0]] > 0 else float(np.median(positive))
