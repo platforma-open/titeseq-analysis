@@ -1,4 +1,8 @@
-import type { FitSettings, PresetId } from "@platforma-open/platforma-open.titeseq-analysis.model";
+import type {
+  Equation,
+  FitSettings,
+  PresetId,
+} from "@platforma-open/platforma-open.titeseq-analysis.model";
 import {
   PRESETS,
   matchesPreset,
@@ -23,7 +27,7 @@ export function useFitSettings() {
   // written here. Each writer skips the setting its source leaves out.
   const writers: Record<keyof FitSettings, (settings: PartialSettings) => void> = {
     equation: ({ equation }) => {
-      if (equation !== undefined) app.model.data.equation = equation;
+      if (equation !== undefined) setEquation(equation);
     },
     plateauFloor: ({ plateauFloor }) => {
       if (plateauFloor !== undefined) app.model.data.plateauFloor = plateauFloor;
@@ -61,6 +65,22 @@ export function useFitSettings() {
     },
   };
 
+  /**
+   * Writes the equation and the Affinity vs Fit Quality y-axis scale. The y column is the SE under
+   * log_fluorescence (log scale) and hillPlotPosition under hill_gate_index (linear: it holds -1).
+   */
+  function setEquation(equation: Equation): void {
+    app.model.data.equation = equation;
+    const graph = app.model.data.graphStateAffinityVsFit;
+    graph.axesSettings = {
+      ...graph.axesSettings,
+      axisY: {
+        ...graph.axesSettings?.axisY,
+        scale: equation === "log_fluorescence" ? "log" : "linear",
+      },
+    };
+  }
+
   /** Writes every setting the argument names, and leaves the rest as they are. */
   function applySettings(settings: PartialSettings): void {
     for (const write of Object.values(writers)) write(settings);
@@ -90,5 +110,5 @@ export function useFitSettings() {
     },
   });
 
-  return { presetOptions, selectedPreset, isModified };
+  return { presetOptions, selectedPreset, isModified, setEquation };
 }

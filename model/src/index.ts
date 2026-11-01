@@ -119,6 +119,8 @@ const AFFINITY_VS_FIT_DEFAULT_STATE: GraphMakerState = {
   },
   axesSettings: {
     axisX: { scale: "log" },
+    // New blocks use log_fluorescence, whose y is the SE. useFitSettings sets y per equation.
+    axisY: { scale: "log" },
   },
   optionsState: {
     type: "scatterplot",

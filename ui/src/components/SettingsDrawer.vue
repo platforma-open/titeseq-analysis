@@ -47,7 +47,7 @@ const {
   hookMinReadsError,
 } = useFieldValidation();
 
-const { presetOptions, selectedPreset } = useFitSettings();
+const { presetOptions, selectedPreset, setEquation } = useFitSettings();
 
 watch(
   () => app.model.outputs.isRunning,
@@ -213,7 +213,12 @@ function setBinColumn(ref: PlRef | undefined): void {
           published values again, clear the preset and select it again.
         </template>
       </PlDropdown>
-      <PlDropdown v-model="app.model.data.equation" :options="EQUATION_OPTIONS" label="Equation">
+      <PlDropdown
+        :model-value="app.model.data.equation"
+        :options="EQUATION_OPTIONS"
+        label="Equation"
+        @update:model-value="(eq) => eq && setEquation(eq)"
+      >
         <template #tooltip>
           Log fluorescence fit: fits a Hill curve to the mean log10 fluorescence of each clonotype.
           The Hill exponent is fixed at 1. New blocks use this fit.
