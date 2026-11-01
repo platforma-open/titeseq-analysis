@@ -39,6 +39,7 @@ import os
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import replace
 from functools import partial
+from pathlib import Path
 
 import numpy as np
 import polars as pl
@@ -130,6 +131,38 @@ def _validate_inputs(
 _PARALLEL_FIT_MIN_SURVIVORS = 50
 
 
+def _host_cpus() -> int:
+    """CPUs this process may be scheduled on: the affinity set where the OS reports one."""
+    if hasattr(os, "sched_getaffinity"):
+        return len(os.sched_getaffinity(0))
+    return os.cpu_count() or 1
+
+
+def _cgroup_cpu_quota(cgroup_root: Path) -> int | None:
+    """The container's CPU limit in whole CPUs, rounded up; None when unlimited or unreadable."""
+    v2 = cgroup_root / "cpu.max"
+    if v2.is_file():
+        quota, period = v2.read_text().split()
+        if quota == "max":
+            return None
+        return math.ceil(int(quota) / int(period))
+    v1_quota = cgroup_root / "cpu" / "cpu.cfs_quota_us"
+    v1_period = cgroup_root / "cpu" / "cpu.cfs_period_us"
+    if v1_quota.is_file() and v1_period.is_file():
+        quota = int(v1_quota.read_text())
+        if quota <= 0:
+            return None
+        return math.ceil(quota / int(v1_period.read_text()))
+    return None
+
+
+def available_cpus(cgroup_root: Path = Path("/sys/fs/cgroup")) -> int:
+    """CPUs the job was granted. In a container os.cpu_count() reports the host's cores."""
+    host = _host_cpus()
+    quota = _cgroup_cpu_quota(cgroup_root)
+    return max(1, host if quota is None else min(host, quota))
+
+
 def _execute_fits(
     worker,
     xs: list[np.ndarray],
@@ -150,8 +183,7 @@ def _execute_fits(
     if n_survivors == 0:
         return []
 
-    cpu_count = os.cpu_count() or 1
-    max_workers = min(cpu_count, n_survivors)
+    max_workers = min(available_cpus(), n_survivors)
     if max_workers > 1 and n_survivors >= _PARALLEL_FIT_MIN_SURVIVORS:
         # chunksize trades IPC overhead against load balancing. ~4 chunks per
         # worker keeps stragglers from stalling at the tail while batching
