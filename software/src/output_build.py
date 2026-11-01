@@ -23,6 +23,8 @@ PER_CLONOTYPE_SCHEMA: dict[str, pl.DataType] = {
     "affinityClass": pl.Utf8,
     "fitFailureReason": pl.Utf8,
     "kdOutOfRange": pl.Boolean,
+    # SE of log10 K_D. Written by "log_fluorescence" only; null under "hill_gate_index".
+    "kdLog10Se": pl.Float64,
 }
 
 
@@ -49,10 +51,7 @@ def add_diagnostic_plot_columns(frame: pl.DataFrame, max_concentration: float) -
     clonotypes. Both columns are diagnostic — not for reporting — and never null.
     """
     return frame.with_columns(
-        pl.when(pl.col("kd").is_null())
-        .then(max_concentration * 10.0)
-        .otherwise(pl.col("kd"))
-        .alias("kdPlotPosition"),
+        pl.when(pl.col("kd").is_null()).then(max_concentration * 10.0).otherwise(pl.col("kd")).alias("kdPlotPosition"),
         pl.when(pl.col("hillCoefficient").is_null())
         .then(-1.0)
         .otherwise(pl.col("hillCoefficient"))

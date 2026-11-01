@@ -319,6 +319,7 @@ def _fit_all_clonotypes(
             "affinityClass": affinity_col,
             "fitFailureReason": reason_col,
             "kdOutOfRange": [None] * n_clon,
+            "kdLog10Se": [None] * n_clon,
         },
         schema=PER_CLONOTYPE_SCHEMA,
     )
@@ -400,6 +401,7 @@ def _fit_all_log_fluorescence(
     affinity_col: list[str] = [""] * n_clon
     reason_col: list[str | None] = [None] * n_clon
     out_of_range_col: list[bool | None] = [None] * n_clon
+    se_col: list[float | None] = [None] * n_clon
 
     xs: list[np.ndarray] = []
     ys: list[np.ndarray] = []
@@ -460,6 +462,9 @@ def _fit_all_log_fluorescence(
         affinity_col[i] = cls.affinity_class
         reason_col[i] = cls.failure_reason
         out_of_range_col[i] = censor is not None
+        # A pinned K_D is a bound, and the fit's SE describes the unpinned estimate, not the bound.
+        se = fit.log10_kd_se
+        se_col[i] = se if censor is None and se is not None and math.isfinite(se) else None
 
         if fit.y_hat is not None and cls.affinity_class != "Failed":
             k = x.shape[0]
@@ -476,6 +481,7 @@ def _fit_all_log_fluorescence(
             "affinityClass": affinity_col,
             "fitFailureReason": reason_col,
             "kdOutOfRange": out_of_range_col,
+            "kdLog10Se": se_col,
         },
         schema=PER_CLONOTYPE_SCHEMA,
     )

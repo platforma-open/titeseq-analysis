@@ -25,14 +25,19 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
   const failureReason = pCols.find(
     (p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/fitFailureReason",
   );
-  if (!kdPlot || !hillPlot || !failureReason) return undefined;
+  const kdSe = pCols.find((p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/kdLog10Se");
+  // Each equation's fit quality on y: the SE of log10 Kd,app for log fluorescence, the Hill
+  // coefficient for the mean bin fit. Rows with no SE (failed or pinned fits) do not plot.
+  // GraphMaker re-applies these defaults when they change, so switching equation moves y.
+  const ySource = app.model.data.equation === "log_fluorescence" && kdSe ? kdSe : hillPlot;
+  if (!kdPlot || !ySource || !failureReason) return undefined;
 
   const options: PredefinedGraphOption<"scatterplot">[] = [
     { inputName: "x", selectedSource: kdPlot.spec },
-    { inputName: "y", selectedSource: hillPlot.spec },
+    { inputName: "y", selectedSource: ySource.spec },
     { inputName: "grouping", selectedSource: failureReason.spec },
   ];
-  if (hillCoef) {
+  if (ySource === hillPlot && hillCoef) {
     options.push({
       inputName: "filters",
       selectedSource: hillCoef.spec,

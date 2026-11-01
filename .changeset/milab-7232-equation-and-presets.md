@@ -16,7 +16,9 @@ it, the gates are assumed equally spaced. `hill_gate_index` ("Mean bin fit") is 
 shipped through 2.4.0, unchanged. Three presets name the published analyses each reproduces —
 Adams 2016, Phillips 2021 (CR6261), and Starr 2020/2022 — and write the settings that reproduce
 them. Under `log_fluorescence` the Hill coefficient is a constant 1, so downstream blocks do not
-receive it; the block's own table still shows it.
+receive it; the block's own table still shows it. Instead it outputs `pl7.app/vdj/kdLog10Se`, the
+standard error of log10 Kd,app that rates its fits, and the Affinity vs Fit Quality page plots
+Kd,app against it.
 
 A project created before this release is pinned to `hill_gate_index` by a migration that writes the
 equation into the project's own data, so nothing about an existing fit moves. It also projects the
