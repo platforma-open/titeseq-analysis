@@ -63,8 +63,7 @@ const warnings = computed(() => app.model.outputs.validationWarnings ?? []);
 
 const binMode = computed(() => app.model.outputs.binMode === true);
 
-// The log-fluorescence fit never reads the v2.4.0 settings, and the mean bin fit never reads the
-// plateau floor. Hiding is display-only: the stored values stay as they are.
+// Each equation reads only its own settings. A hidden setting keeps its stored value.
 const isLogFluorescence = computed(() => app.model.data.equation === "log_fluorescence");
 
 const targetAntigenOptions = computed(() =>
@@ -88,9 +87,8 @@ const targetAntigenLabel = computed(() =>
     : "Target antigen",
 );
 
-// Dependent fields are cleared in the pickers' own change handlers, never by a watcher on data:
-// a watcher also fires when the webview loads or another client patches data, and wiped
-// targetAntigen that way.
+// Clear dependent fields in the change handlers, not in a watcher on data. A watcher also fires
+// when the webview loads and when another client patches data.
 
 // A target antigen belongs to one antigen column.
 function setAntigenColumn(ref: PlRef | undefined): void {
@@ -100,8 +98,7 @@ function setAntigenColumn(ref: PlRef | undefined): void {
   if (!unchanged) app.model.data.targetAntigen = undefined;
 }
 
-// Sort-fraction correction applies in bin mode only. The model rejects a sort fraction without a
-// bin column, so clearing the bin column clears the sort fraction too.
+// The model rejects a sort fraction without a bin column.
 function setBinColumn(ref: PlRef | undefined): void {
   app.model.data.binColumnRef = ref;
   if (ref === undefined) app.model.data.sortFractionColumnRef = undefined;

@@ -8,10 +8,8 @@ defineProps<{ title: string; mode: "graph" | "table" }>();
 
 const app = useApp();
 
-// Page-level alerts cover spec-based checks with no field-level home, such as a
-// sort fraction without a bin column. Issues scoped to "settings" show in the
-// settings drawer only. Numeric-field violations show inline on each
-// PlNumberField (see useFieldValidation).
+// Checks with no field of their own. Issues scoped to "settings" show in the drawer only.
+// Numeric-field errors show on each PlNumberField (see useFieldValidation).
 const warnings = computed(() =>
   (app.model.outputs.validationWarnings ?? []).filter((w) => w.scope === "everywhere"),
 );

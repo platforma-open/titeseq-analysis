@@ -462,7 +462,7 @@ def _fit_all_log_fluorescence(
         affinity_col[i] = cls.affinity_class
         reason_col[i] = cls.failure_reason
         out_of_range_col[i] = censor is not None
-        # A pinned K_D is a bound, and the fit's SE describes the unpinned estimate, not the bound.
+        # A pinned K_D is a bound. The fit's SE describes the unpinned estimate, so a bound gets none.
         se = fit.log10_kd_se
         se_col[i] = se if censor is None and se is not None and math.isfinite(se) else None
 

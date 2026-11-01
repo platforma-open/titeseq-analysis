@@ -355,8 +355,7 @@ wf.body(func(args) {
 			}
 		}
 	]
-	// The SE of log10 K_D is what "log_fluorescence" rates fit quality on. "hill_gate_index" writes
-	// none, so its column set stays the one v2.4.0 shipped.
+	// Only "log_fluorescence" writes the SE of log10 K_D. "hill_gate_index" keeps the v2.4.0 columns.
 	if args.equation == "log_fluorescence" {
 		summaryColumns = append(summaryColumns, {
 			column: "kdLog10Se",
@@ -504,8 +503,8 @@ wf.body(func(args) {
 	// vs Fit Quality scatter (nulls parked at max_conc*10 and -1.0) that would
 	// otherwise appear as spurious Kd,app / Hill coefficient siblings in
 	// downstream pickers.
-	// "log_fluorescence" fixes the Hill exponent at 1, so its hillCoefficient is a constant and is
-	// not exported. The block's own table keeps it.
+	// "log_fluorescence" fixes the Hill exponent at 1. Its hillCoefficient is not exported. The
+	// block's own table keeps it.
 	exportExcluded := ["kdPlotPosition", "hillPlotPosition"]
 	if args.equation == "log_fluorescence" {
 		exportExcluded = append(exportExcluded, "hillCoefficient")

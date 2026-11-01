@@ -26,16 +26,12 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
     (p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/fitFailureReason",
   );
   const kdSe = pCols.find((p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/kdLog10Se");
-  // Each equation's fit quality on y: the SE of log10 Kd,app for log fluorescence, the Hill
-  // coefficient for the mean bin fit. Rows with no SE (failed or pinned fits) do not plot.
-  // GraphMaker re-applies these defaults when they change, so switching equation moves y.
+  // y is the measure each equation rates fit quality on: SE of log10 Kd,app, or Hill coefficient.
   const ySource = app.model.data.equation === "log_fluorescence" && kdSe ? kdSe : hillPlot;
   if (!kdPlot || !ySource || !failureReason) return undefined;
 
-  // Under log fluorescence a failed fit has no Kd,app and no SE, so the page shows the fits that
-  // produced one, coloured by affinity class. The mean bin fit keeps its failed-fit diagnostic.
-  // GraphMaker replaces only the inputs a default names, so the filter is named here to displace
-  // the saved Failed-only filter.
+  // A failed or pinned log-fluorescence fit has no SE. GraphMaker replaces only the inputs a
+  // default names, so the filter is named here to replace the saved Failed-only filter.
   if (ySource === kdSe) {
     const options: PredefinedGraphOption<"scatterplot">[] = [
       { inputName: "x", selectedSource: kdPlot.spec },
