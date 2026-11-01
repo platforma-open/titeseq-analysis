@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DatasetSelection } from "@platforma-sdk/model";
-import { createDatasetSelection, createPrimaryRef } from "@platforma-sdk/model";
+import { createDatasetSelection, createPrimaryRef, plRefsEqual } from "@platforma-sdk/model";
 import {
   PlAccordionSection,
   PlAlert,
@@ -88,10 +88,13 @@ const targetAntigenLabel = computed(() =>
     : "Target antigen",
 );
 
+// A data patch from any client replaces the ref object, so compare by value: clear the target
+// only when the antigen column itself changed.
 watch(
   () => app.model.data.antigenColumnRef,
-  () => {
-    app.model.data.targetAntigen = undefined;
+  (next, prev) => {
+    const same = next === undefined || prev === undefined ? next === prev : plRefsEqual(next, prev);
+    if (!same) app.model.data.targetAntigen = undefined;
   },
 );
 
