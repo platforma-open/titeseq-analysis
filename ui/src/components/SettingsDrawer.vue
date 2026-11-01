@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { DatasetSelection } from "@platforma-sdk/model";
+import type { DatasetSelection, PlRef } from "@platforma-sdk/model";
 import { createDatasetSelection, createPrimaryRef, plRefsEqual } from "@platforma-sdk/model";
 import {
   PlAccordionSection,
@@ -88,25 +88,24 @@ const targetAntigenLabel = computed(() =>
     : "Target antigen",
 );
 
-// A data patch from any client replaces the ref object, so compare by value: clear the target
-// only when the antigen column itself changed.
-watch(
-  () => app.model.data.antigenColumnRef,
-  (next, prev) => {
-    const same = next === undefined || prev === undefined ? next === prev : plRefsEqual(next, prev);
-    if (!same) app.model.data.targetAntigen = undefined;
-  },
-);
+// Dependent fields are cleared in the pickers' own change handlers, never by a watcher on data:
+// a watcher also fires when the webview loads or another client patches data, and wiped
+// targetAntigen that way.
 
-// Sort-fraction correction only applies in bin mode. Clearing the bin column
-// would leave an orphaned sortFractionColumnRef that the model validator would
-// then reject, so drop it here in lock-step with the bin column.
-watch(
-  () => app.model.data.binColumnRef,
-  (binRef) => {
-    if (binRef === undefined) app.model.data.sortFractionColumnRef = undefined;
-  },
-);
+// A target antigen belongs to one antigen column.
+function setAntigenColumn(ref: PlRef | undefined): void {
+  const prev = app.model.data.antigenColumnRef;
+  app.model.data.antigenColumnRef = ref;
+  const unchanged = ref !== undefined && prev !== undefined && plRefsEqual(ref, prev);
+  if (!unchanged) app.model.data.targetAntigen = undefined;
+}
+
+// Sort-fraction correction applies in bin mode only. The model rejects a sort fraction without a
+// bin column, so clearing the bin column clears the sort fraction too.
+function setBinColumn(ref: PlRef | undefined): void {
+  app.model.data.binColumnRef = ref;
+  if (ref === undefined) app.model.data.sortFractionColumnRef = undefined;
+}
 </script>
 
 <template>
@@ -137,8 +136,9 @@ watch(
       </template>
     </PlDropdownRef>
     <PlDropdownRef
-      v-model="app.model.data.binColumnRef"
+      :model-value="app.model.data.binColumnRef"
       :options="app.model.outputs.binOptions"
+      @update:model-value="setBinColumn"
       label="FACS bin"
       clearable
     >
@@ -174,8 +174,9 @@ watch(
       </template>
     </PlDropdownRef>
     <PlDropdownRef
-      v-model="app.model.data.antigenColumnRef"
+      :model-value="app.model.data.antigenColumnRef"
       :options="app.model.outputs.antigenOptions"
+      @update:model-value="setAntigenColumn"
       label="Antigen label"
       clearable
     >
