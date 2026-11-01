@@ -18,7 +18,10 @@ Choose the fit equation, with presets that reproduce published studies.
 - Presets set the values that Adams 2016, Phillips 2021 (CR6261) and Starr 2020/2022 used.
 - Under `log_fluorescence` the block outputs `pl7.app/vdj/kdLog10Se`, the SE of log10 Kd,app. The
   Affinity vs Fit Quality page plots Kd,app against it, on a log y-axis. The Hill coefficient is a
-  constant 1 and is not exported.
+  constant 1, hidden in the table and not exported. With measured gate fluorescence, the titration
+  curves plot mean log10 fluorescence.
+- Each equation's workflow arguments carry only the settings that equation reads. A setting the
+  drawer hides can neither disable Run nor make the block stale.
 - A migration keeps existing projects on `hill_gate_index`. Their workflow arguments do not change,
   so the upgrade does not make them stale.
 - The fit starts one worker per granted CPU, not one per host core.

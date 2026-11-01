@@ -77,6 +77,24 @@ describe("the template round trip", () => {
     expect(roundTrip(initBlockData())).toEqual(initBlockData());
   });
 
+  it("keeps a template exported before the equation existed on the fit it ran", () => {
+    // A v2.4.0 template has no `equation` or `plateauFloor`. The JSON hop drops both keys.
+    const v240Params: unknown = JSON.parse(
+      JSON.stringify({
+        ...deriveTemplateParams(configured),
+        equation: undefined,
+        plateauFloor: undefined,
+      }),
+    );
+    const created = initBlockData(kind.parseInitializationParams(v240Params));
+    expect(created.equation).toBe("hill_gate_index");
+  });
+
+  it("gives a partial seed with no fit settings a new block's equation", () => {
+    const created = initBlockData(kind.parseInitializationParams({ abundanceRef: ref("a") }));
+    expect(created.equation).toBe("log_fluorescence");
+  });
+
   it("carries a template's equation rather than a new block's default", () => {
     expect(roundTrip(configured).equation).toBe("hill_gate_index");
     expect(initBlockData().equation).toBe("log_fluorescence");

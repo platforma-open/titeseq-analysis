@@ -26,17 +26,19 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
     (p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/fitFailureReason",
   );
   const kdSe = pCols.find((p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/kdLog10Se");
-  // y is the measure each equation rates fit quality on: SE of log10 Kd,app, or Hill coefficient.
-  const ySource = app.model.data.equation === "log_fluorescence" && kdSe ? kdSe : hillPlot;
-  if (!kdPlot || !ySource || !failureReason) return undefined;
+  if (!kdPlot || !hillPlot || !failureReason) return undefined;
+
+  // y is the measure the equation that produced these results rates fit quality on: SE of
+  // log10 Kd,app (present only under log_fluorescence), or the Hill coefficient. Read from the
+  // results, not from `data.equation`, which runs ahead of them until the block is re-run.
+  const options: PredefinedGraphOption<"scatterplot">[] = [
+    { inputName: "x", selectedSource: kdPlot.spec },
+    { inputName: "y", selectedSource: (kdSe ?? hillPlot).spec },
+  ];
 
   // A failed or pinned log-fluorescence fit has no SE. GraphMaker replaces only the inputs a
   // default names, so the filter is named here to replace the saved Failed-only filter.
-  if (ySource === kdSe) {
-    const options: PredefinedGraphOption<"scatterplot">[] = [
-      { inputName: "x", selectedSource: kdPlot.spec },
-      { inputName: "y", selectedSource: kdSe.spec },
-    ];
+  if (kdSe) {
     if (affinityClass) {
       options.push(
         { inputName: "grouping", selectedSource: affinityClass.spec },
@@ -51,12 +53,8 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
     return options;
   }
 
-  const options: PredefinedGraphOption<"scatterplot">[] = [
-    { inputName: "x", selectedSource: kdPlot.spec },
-    { inputName: "y", selectedSource: ySource.spec },
-    { inputName: "grouping", selectedSource: failureReason.spec },
-  ];
-  if (ySource === hillPlot && hillCoef) {
+  options.push({ inputName: "grouping", selectedSource: failureReason.spec });
+  if (hillCoef) {
     options.push({
       inputName: "filters",
       selectedSource: hillCoef.spec,

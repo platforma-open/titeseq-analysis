@@ -11,8 +11,6 @@ import {
 import { computed } from "vue";
 import { useApp } from "../app";
 
-type PartialSettings = Readonly<Partial<FitSettings>>;
-
 /**
  * Writing fit settings into block data, and preset selection over the model's one preset table.
  *
@@ -22,48 +20,6 @@ type PartialSettings = Readonly<Partial<FitSettings>>;
  */
 export function useFitSettings() {
   const app = useApp();
-
-  // Exhaustive over FitSettings: a setting added to the model fails to compile until it can be
-  // written here. Each writer skips the setting its source leaves out.
-  const writers: Record<keyof FitSettings, (settings: PartialSettings) => void> = {
-    equation: ({ equation }) => {
-      if (equation !== undefined) setEquation(equation);
-    },
-    plateauFloor: ({ plateauFloor }) => {
-      if (plateauFloor !== undefined) app.model.data.plateauFloor = plateauFloor;
-    },
-    minReadsPerConcentration: ({ minReadsPerConcentration }) => {
-      if (minReadsPerConcentration !== undefined)
-        app.model.data.minReadsPerConcentration = minReadsPerConcentration;
-    },
-    minConcentrationPoints: ({ minConcentrationPoints }) => {
-      if (minConcentrationPoints !== undefined)
-        app.model.data.minConcentrationPoints = minConcentrationPoints;
-    },
-    r2ThresholdGood: ({ r2ThresholdGood }) => {
-      if (r2ThresholdGood !== undefined) app.model.data.r2ThresholdGood = r2ThresholdGood;
-    },
-    r2ThresholdFailed: ({ r2ThresholdFailed }) => {
-      if (r2ThresholdFailed !== undefined) app.model.data.r2ThresholdFailed = r2ThresholdFailed;
-    },
-    nMin: ({ nMin }) => {
-      if (nMin !== undefined) app.model.data.nMin = nMin;
-    },
-    nMax: ({ nMax }) => {
-      if (nMax !== undefined) app.model.data.nMax = nMax;
-    },
-    hookEffectThresholdBin: ({ hookEffectThresholdBin }) => {
-      if (hookEffectThresholdBin !== undefined)
-        app.model.data.hookEffectThresholdBin = hookEffectThresholdBin;
-    },
-    hookEffectThresholdNoBin: ({ hookEffectThresholdNoBin }) => {
-      if (hookEffectThresholdNoBin !== undefined)
-        app.model.data.hookEffectThresholdNoBin = hookEffectThresholdNoBin;
-    },
-    hookEffectMinReads: ({ hookEffectMinReads }) => {
-      if (hookEffectMinReads !== undefined) app.model.data.hookEffectMinReads = hookEffectMinReads;
-    },
-  };
 
   /**
    * Writes the equation and the Affinity vs Fit Quality y-axis scale. The y column is the SE under
@@ -82,8 +38,9 @@ export function useFitSettings() {
   }
 
   /** Writes every setting the argument names, and leaves the rest as they are. */
-  function applySettings(settings: PartialSettings): void {
-    for (const write of Object.values(writers)) write(settings);
+  function applySettings({ equation, ...rest }: Readonly<Partial<FitSettings>>): void {
+    Object.assign(app.model.data, rest);
+    if (equation !== undefined) setEquation(equation);
   }
 
   const isModified = computed(() => {
