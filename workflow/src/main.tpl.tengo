@@ -145,6 +145,7 @@ wf.body(func(args) {
 	// Exec Python fit-curves.
 	execBuilder := exec.builder().
 		software(fitCurvesSw).
+		name("titeseq-fit-curves").
 		mem("16GiB").
 		cpu(4).
 		writeFile("params.json", canonical.encode(paramsPayload)).
