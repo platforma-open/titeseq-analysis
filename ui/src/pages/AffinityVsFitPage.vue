@@ -32,6 +32,29 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
   const ySource = app.model.data.equation === "log_fluorescence" && kdSe ? kdSe : hillPlot;
   if (!kdPlot || !ySource || !failureReason) return undefined;
 
+  // Under log fluorescence a failed fit has no Kd,app and no SE, so the page shows the fits that
+  // produced one, coloured by affinity class. The mean bin fit keeps its failed-fit diagnostic.
+  // GraphMaker replaces only the inputs a default names, so the filter is named here to displace
+  // the saved Failed-only filter.
+  if (ySource === kdSe) {
+    const options: PredefinedGraphOption<"scatterplot">[] = [
+      { inputName: "x", selectedSource: kdPlot.spec },
+      { inputName: "y", selectedSource: kdSe.spec },
+    ];
+    if (affinityClass) {
+      options.push(
+        { inputName: "grouping", selectedSource: affinityClass.spec },
+        {
+          inputName: "filters",
+          selectedSource: affinityClass.spec,
+          filterType: "equals",
+          selectedFilterValues: ["Good", "Partial"],
+        },
+      );
+    }
+    return options;
+  }
+
   const options: PredefinedGraphOption<"scatterplot">[] = [
     { inputName: "x", selectedSource: kdPlot.spec },
     { inputName: "y", selectedSource: ySource.spec },
