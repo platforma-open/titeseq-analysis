@@ -1,3 +1,161 @@
+---
+lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    configDependencies: {}
+    packageManagerDependencies:
+      pnpm:
+        specifier: 12.16.1
+        version: 12.16.1
+
+packages:
+
+  '@pnpm/exe.android-arm64@12.16.1':
+    resolution: {integrity: sha512-PKf78Ew+i0CBYf0Xc+eMcqQiqyBT+u8XCVg1F5roc98/6wWfdYlWhrUMmEBiKWaJ3JqHxrtt8l1NwZ7qfJt2/Q==}
+    cpu: [arm64]
+    os: [android]
+
+  '@pnpm/exe.android-x64@12.16.1':
+    resolution: {integrity: sha512-xdu7gMbB98pdvhwMeA6612Of515FDlRUtfA/1f7nWPZfPLnEdSRBO2u+1N0XBtQ/ennhPH/lrxB1gC6gnR/cdg==}
+    cpu: [x64]
+    os: [android]
+
+  '@pnpm/exe.darwin-arm64@12.16.1':
+    resolution: {integrity: sha512-pVbmIIbhixiLvADLu1WA3TaW8FZy/D72R1De27WbbFx8/2mxvnsTyFVm4fO9kjpjMY7RzJd48CiQ96p8fO3ebQ==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@pnpm/exe.darwin-x64@12.16.1':
+    resolution: {integrity: sha512-xZvQBFqcZjO7vFKTK3XsJpqY6lnBL9EWSLCzVUPq3kZ94+D96gwJCa76xxGNK8Cj32f4eeM91Qg+yNRR4sRpDw==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@pnpm/exe.freebsd-x64@12.16.1':
+    resolution: {integrity: sha512-zTtunfi9mBhRXiXEJYfwiJj0tk7MgTSfqDSRh+Az9FZ9THazVIiQiVNS8jpcsftDOqu7LKNffQdjmgwHDThfUg==}
+    cpu: [x64]
+    os: [freebsd]
+
+  '@pnpm/exe.linux-arm64-musl@12.16.1':
+    resolution: {integrity: sha512-BJ3mOmcmQgcUo92Ee/WfEOt1pRiv3y2MMAkhEiYHd85UiPpHTfFhv+SpCbALmfExzXk3UlaRtMYwHlkQymc4VA==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [musl]
+
+  '@pnpm/exe.linux-arm64@12.16.1':
+    resolution: {integrity: sha512-JaRd5gNxwdNGBBkrZFt8bknrK4YmHVJBW0JMhUQ0fJ0dEYp6C2GT9ExaCqOO8EwYEyqM+jpKgJIK+8WFaJy3ew==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  '@pnpm/exe.linux-ppc64@12.16.1':
+    resolution: {integrity: sha512-FnSV0Jv40S1cMv7vFNWwvu0X567Lec4L4HCRead3CFcD6zQDNbGw81s8N5bcKPahtPD9ApVuhsbmFCx4rw6RMw==}
+    cpu: [ppc64]
+    os: [linux]
+    libc: [glibc]
+
+  '@pnpm/exe.linux-riscv64@12.16.1':
+    resolution: {integrity: sha512-C1Sww4FN5IttD4atRRhAKmQtSGWVp04ZAKNxO8pfu2bkRPwOW+7v+2DH1Xs1W+kZYYpO86BYDvUcadefF+AgaQ==}
+    cpu: [riscv64]
+    os: [linux]
+    libc: [glibc]
+
+  '@pnpm/exe.linux-s390x@12.16.1':
+    resolution: {integrity: sha512-kn2fautsTcxIMODoovQVqZyfpDRdNgGkoeVqNdrKqbeBBvrEl+fXLkmZiq5xDht1LMr4sYiCNcsMfNMT6JPFmg==}
+    cpu: [s390x]
+    os: [linux]
+    libc: [glibc]
+
+  '@pnpm/exe.linux-x64-musl@12.16.1':
+    resolution: {integrity: sha512-PM6ccHCOe/O9SsTflTJTYWfwogJZa6EmUvpnwZgiPguJBddh20wDQKgxUPXf48rDsPm9vMsIij0uHswwwbXL8g==}
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
+
+  '@pnpm/exe.linux-x64@12.16.1':
+    resolution: {integrity: sha512-RK//8ZLcXGW8A2k8bQOXZDBN1Qu92zN4dYnG1bzj1zoQ1fkZ6jNzZ1AvXtsfGVma795CJtvoaF5bLXf4l/FIUw==}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@pnpm/exe.win32-arm64@12.16.1':
+    resolution: {integrity: sha512-Ox3kNNVxtGw6pK7SVejmeOUgHhUTZgAM7NQQ6cU7frPw3ix9+j7d2MGbRg3fyEFAaKWq8ZAZLTQGcDyLnAu+qA==}
+    cpu: [arm64]
+    os: [win32]
+
+  '@pnpm/exe.win32-x64@12.16.1':
+    resolution: {integrity: sha512-k+FhRJ0ttphFoFIVB1Sk4v76YJAulafmA/Ly57cysesUhhIzVlApeOShUz0jXubKx317TThlEfpQrukldnqORA==}
+    cpu: [x64]
+    os: [win32]
+
+  pnpm@12.16.1:
+    resolution: {integrity: sha512-CR0d7nknV1Zhsl2rPCrjHK/BxU1rce1qZgDPDByxBDSkR+rhQBXxsj4ua+3u1535SpMuIWTSgyKA3OP7MvZW0Q==}
+    engines: {node: '>=18'}
+    hasBin: true
+
+snapshots:
+
+  '@pnpm/exe.android-arm64@12.16.1':
+    optional: true
+
+  '@pnpm/exe.android-x64@12.16.1':
+    optional: true
+
+  '@pnpm/exe.darwin-arm64@12.16.1':
+    optional: true
+
+  '@pnpm/exe.darwin-x64@12.16.1':
+    optional: true
+
+  '@pnpm/exe.freebsd-x64@12.16.1':
+    optional: true
+
+  '@pnpm/exe.linux-arm64-musl@12.16.1':
+    optional: true
+
+  '@pnpm/exe.linux-arm64@12.16.1':
+    optional: true
+
+  '@pnpm/exe.linux-ppc64@12.16.1':
+    optional: true
+
+  '@pnpm/exe.linux-riscv64@12.16.1':
+    optional: true
+
+  '@pnpm/exe.linux-s390x@12.16.1':
+    optional: true
+
+  '@pnpm/exe.linux-x64-musl@12.16.1':
+    optional: true
+
+  '@pnpm/exe.linux-x64@12.16.1':
+    optional: true
+
+  '@pnpm/exe.win32-arm64@12.16.1':
+    optional: true
+
+  '@pnpm/exe.win32-x64@12.16.1':
+    optional: true
+
+  pnpm@12.16.1:
+    optionalDependencies:
+      '@pnpm/exe.android-arm64': 12.16.1
+      '@pnpm/exe.android-x64': 12.16.1
+      '@pnpm/exe.darwin-arm64': 12.16.1
+      '@pnpm/exe.darwin-x64': 12.16.1
+      '@pnpm/exe.freebsd-x64': 12.16.1
+      '@pnpm/exe.linux-arm64': 12.16.1
+      '@pnpm/exe.linux-arm64-musl': 12.16.1
+      '@pnpm/exe.linux-ppc64': 12.16.1
+      '@pnpm/exe.linux-riscv64': 12.16.1
+      '@pnpm/exe.linux-s390x': 12.16.1
+      '@pnpm/exe.linux-x64': 12.16.1
+      '@pnpm/exe.linux-x64-musl': 12.16.1
+      '@pnpm/exe.win32-arm64': 12.16.1
+      '@pnpm/exe.win32-x64': 12.16.1
+
+---
 lockfileVersion: '9.0'
 
 settings:
@@ -95,10 +253,13 @@ importers:
         version: 2.29.8(@types/node@25.3.2)
       '@milaboratories/ts-builder':
         specifier: 'catalog:'
-        version: 1.7.3(@microsoft/api-extractor@7.57.6(@types/node@25.3.2))(@types/node@25.3.2)(@volar/typescript@2.4.28)(@vue/language-core@3.3.10)(rollup@4.53.3)(vue@3.5.44(typescript@7.0.2))(yaml@2.9.1)
+        version: 1.7.3(@microsoft/api-extractor@7.57.6(@types/node@25.3.2))(@types/node@25.3.2)(@volar/typescript@2.4.28(typescript@7.0.2))(@vue/language-core@3.3.10)(rollup@4.53.3)(supports-color@7.2.0)(vue@3.5.44(typescript@7.0.2))(yaml@2.9.1)
       '@platforma-sdk/block-tools':
         specifier: 'catalog:'
         version: 2.17.0(@types/node@25.3.2)
+      node:
+        specifier: runtime:24.22.1
+        version: runtime:24.22.1
       shx:
         specifier: 'catalog:'
         version: 0.4.0
@@ -110,7 +271,7 @@ importers:
     devDependencies:
       '@milaboratories/ts-builder':
         specifier: 'catalog:'
-        version: 1.7.3(@microsoft/api-extractor@7.57.6(@types/node@25.3.2))(@types/node@25.3.2)(@volar/typescript@2.4.28)(@vue/language-core@3.3.10)(rollup@4.53.3)(vue@3.5.44(typescript@5.6.3))(yaml@2.9.1)
+        version: 1.7.3(@microsoft/api-extractor@7.57.6(@types/node@25.3.2))(@types/node@25.3.2)(@volar/typescript@2.4.28(typescript@5.6.3))(@vue/language-core@3.3.10)(rollup@4.53.3)(supports-color@8.1.1)(vue@3.5.44(typescript@5.6.3))(yaml@2.9.1)
       '@milaboratories/ts-configs':
         specifier: 'catalog:'
         version: 1.4.0
@@ -155,11 +316,11 @@ importers:
         version: 1.41.0
       typescript:
         specifier: '*'
-        version: 7.0.2
+        version: 5.6.3
     devDependencies:
       '@milaboratories/ts-builder':
         specifier: 'catalog:'
-        version: 1.7.3(@microsoft/api-extractor@7.57.6(@types/node@25.3.2))(@types/node@25.3.2)(@volar/typescript@2.4.28)(@vue/language-core@3.3.10)(rollup@4.53.3)(vue@3.5.44(typescript@7.0.2))(yaml@2.9.1)
+        version: 1.7.3(@microsoft/api-extractor@7.57.6(@types/node@25.3.2))(@types/node@25.3.2)(@volar/typescript@2.4.28(typescript@5.6.3))(@vue/language-core@3.3.10)(rollup@4.53.3)(supports-color@8.1.1)(vue@3.5.44(typescript@5.6.3))(yaml@2.9.1)
       '@milaboratories/ts-configs':
         specifier: 'catalog:'
         version: 1.4.0
@@ -174,7 +335,7 @@ importers:
     dependencies:
       '@milaboratories/graph-maker':
         specifier: 'catalog:'
-        version: 1.3.1(@milaboratories/pl-model-common@1.54.1)(@platforma-sdk/model@1.86.3)(@platforma-sdk/ui-vue@1.86.3(@bytecodealliance/preview2-shim@0.17.8)(typescript@5.6.3))(d3-dispatch@3.0.1)(d3-path@3.1.0)(d3-scale-chromatic@3.1.0)(typescript@5.6.3)
+        version: 1.3.1(@milaboratories/pl-model-common@1.54.1)(@platforma-sdk/model@1.86.3)(@platforma-sdk/ui-vue@1.86.3(@bytecodealliance/preview2-shim@0.30.0)(typescript@5.6.3))(d3-dispatch@3.0.1)(d3-path@3.1.0)(d3-scale-chromatic@3.1.0)(supports-color@8.1.1)(typescript@5.6.3)
       '@milaboratories/helpers':
         specifier: 'catalog:'
         version: 1.14.6
@@ -190,7 +351,7 @@ importers:
     devDependencies:
       '@milaboratories/ts-builder':
         specifier: 'catalog:'
-        version: 1.7.3(@microsoft/api-extractor@7.57.6(@types/node@25.3.2))(@types/node@25.3.2)(@volar/typescript@2.4.28)(@vue/language-core@3.3.10)(rollup@4.53.3)(vue@3.5.25(typescript@5.6.3))(yaml@2.9.1)
+        version: 1.7.3(@microsoft/api-extractor@7.57.6(@types/node@25.3.2))(@types/node@25.3.2)(@volar/typescript@2.4.28(typescript@5.6.3))(@vue/language-core@3.3.10)(rollup@4.53.3)(supports-color@8.1.1)(vue@3.5.44(typescript@5.6.3))(yaml@2.9.1)
       '@milaboratories/ts-configs':
         specifier: 'catalog:'
         version: 1.4.0
@@ -217,7 +378,7 @@ importers:
     dependencies:
       '@platforma-open/milaboratories.import-vdj':
         specifier: 'catalog:'
-        version: 1.6.1(typescript@7.0.2)
+        version: 1.6.1(typescript@5.6.3)
       '@platforma-open/milaboratories.import-vdj.model':
         specifier: 'catalog:'
         version: 1.10.0
@@ -238,20 +399,20 @@ importers:
         version: link:../block
       typescript:
         specifier: '*'
-        version: 7.0.2
+        version: 5.6.3
     devDependencies:
       '@milaboratories/ts-builder':
         specifier: 'catalog:'
-        version: 1.7.3(@microsoft/api-extractor@7.57.6(@types/node@25.3.2))(@types/node@25.3.2)(@volar/typescript@2.4.28)(@vue/language-core@3.3.10)(rollup@4.53.3)(vue@3.5.25(typescript@7.0.2))(yaml@2.9.1)
+        version: 1.7.3(@microsoft/api-extractor@7.57.6(@types/node@25.3.2))(@types/node@25.3.2)(@volar/typescript@2.4.28(typescript@5.6.3))(@vue/language-core@3.3.10)(rollup@4.53.3)(supports-color@8.1.1)(vue@3.5.44(typescript@5.6.3))(yaml@2.9.1)
       '@milaboratories/ts-configs':
         specifier: 'catalog:'
         version: 1.4.0
       '@platforma-sdk/test':
         specifier: 'catalog:'
-        version: 1.86.4(@bytecodealliance/preview2-shim@0.17.8)(@types/node@25.3.2)(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1))
+        version: 1.86.4(@bytecodealliance/preview2-shim@0.30.0)(@types/node@25.3.2)(supports-color@8.1.1)(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1))
       eslint:
         specifier: 'catalog:'
-        version: 9.39.4
+        version: 9.39.4(supports-color@8.1.1)
       vitest:
         specifier: 'catalog:'
         version: 4.1.4(@types/node@25.3.2)(@vitest/coverage-istanbul@4.1.12)(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1))
@@ -260,7 +421,7 @@ importers:
     dependencies:
       '@milaboratories/graph-maker':
         specifier: 'catalog:'
-        version: 1.3.1(@milaboratories/pl-model-common@1.54.1)(@platforma-sdk/model@1.86.3)(@platforma-sdk/ui-vue@1.86.3(@bytecodealliance/preview2-shim@0.17.8)(typescript@5.6.3))(d3-dispatch@3.0.1)(d3-path@3.1.0)(d3-scale-chromatic@3.1.0)(typescript@5.6.3)
+        version: 1.3.1(@milaboratories/pl-model-common@1.54.1)(@platforma-sdk/model@1.86.3)(@platforma-sdk/ui-vue@1.86.3(@bytecodealliance/preview2-shim@0.30.0)(typescript@5.6.3))(d3-dispatch@3.0.1)(d3-path@3.1.0)(d3-scale-chromatic@3.1.0)(supports-color@8.1.1)(typescript@5.6.3)
       '@platforma-open/platforma-open.titeseq-analysis.model':
         specifier: workspace:*
         version: link:../model
@@ -269,7 +430,7 @@ importers:
         version: 1.86.3
       '@platforma-sdk/ui-vue':
         specifier: 'catalog:'
-        version: 1.86.3(@bytecodealliance/preview2-shim@0.17.8)(typescript@5.6.3)
+        version: 1.86.3(@bytecodealliance/preview2-shim@0.30.0)(typescript@5.6.3)
       '@types/node':
         specifier: '*'
         version: 25.3.2
@@ -282,7 +443,7 @@ importers:
     devDependencies:
       '@milaboratories/ts-builder':
         specifier: 'catalog:'
-        version: 1.7.3(@microsoft/api-extractor@7.57.6(@types/node@25.3.2))(@types/node@25.3.2)(@volar/typescript@2.4.28)(@vue/language-core@3.3.10)(rollup@4.53.3)(vue@3.5.44(typescript@5.6.3))(yaml@2.9.1)
+        version: 1.7.3(@microsoft/api-extractor@7.57.6(@types/node@25.3.2))(@types/node@25.3.2)(@volar/typescript@2.4.28(typescript@5.6.3))(@vue/language-core@3.3.10)(rollup@4.53.3)(supports-color@8.1.1)(vue@3.5.44(typescript@5.6.3))(yaml@2.9.1)
       '@milaboratories/ts-configs':
         specifier: 'catalog:'
         version: 1.4.0
@@ -301,7 +462,7 @@ importers:
         version: 4.1.14
       '@platforma-sdk/test':
         specifier: 'catalog:'
-        version: 1.86.4(@bytecodealliance/preview2-shim@0.17.8)(@types/node@25.3.2)(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1))
+        version: 1.86.4(@bytecodealliance/preview2-shim@0.30.0)(@types/node@25.3.2)(supports-color@8.1.1)(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1))
       shx:
         specifier: 'catalog:'
         version: 0.4.0
@@ -545,8 +706,64 @@ packages:
   '@bufbuild/protoplugin@2.7.0':
     resolution: {integrity: sha512-yUdg8hXzFGR6K8ren7aXly2hT9BxClId814VB142YeZPatY0wqD3c0D8KfIz5nIeMdoPt0/Pm/RycFJCNGMD6w==}
 
-  '@bytecodealliance/preview2-shim@0.17.8':
-    resolution: {integrity: sha512-wS5kg8u0KCML1UeHQPJ1IuOI24x/XLentCzsqPER1+gDNC5Cz2hG4G2blLOZap+3CEGhIhnJ9mmZYj6a2W0Lww==}
+  '@bytecodealliance/jco-node-fs-darwin-arm64@0.3.2':
+    resolution: {integrity: sha512-WXQq1tRVUWhbK+ImH0G8Kni2AR0sdokLf/KyXRw5P6n4A9ZbgMHOuPfN/PEsYgw4eosuTAonutK0xILk/hA81A==}
+    engines: {node: '>=20'}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@bytecodealliance/jco-node-fs-darwin-x64@0.3.2':
+    resolution: {integrity: sha512-Fy/OjHnto7hNE5ksewVkmAMXG/uXyj+RAKFZWQFTzFkp73UyT5vuPjKq3nvx9KolUGWBG37BudEMb4ZAoD9TbQ==}
+    engines: {node: '>=20'}
+    cpu: [x64]
+    os: [darwin]
+
+  '@bytecodealliance/jco-node-fs-linux-arm64-gnu@0.3.2':
+    resolution: {integrity: sha512-OafRtRu3tfOFQARfkia/LDEqSo2R3yAL1xPwzf4RcRW6JqkOY7qKWsUS5+LPVo/aFaSkMX7F7bdFGpFPmcoZJg==}
+    engines: {node: '>=20'}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  '@bytecodealliance/jco-node-fs-linux-arm64-musl@0.3.2':
+    resolution: {integrity: sha512-JblDiwD7+Y+w0d/tjaNDX4QdGvh5lyuDc+S/jDeT7sYA1caA9yiwIjLa8PC/lm2xudqSxD+Cuy4AosXvl+qI0g==}
+    engines: {node: '>=20'}
+    cpu: [arm64]
+    os: [linux]
+    libc: [musl]
+
+  '@bytecodealliance/jco-node-fs-linux-x64-gnu@0.3.2':
+    resolution: {integrity: sha512-6FzmHoLOsa6b4X9AuFLsvlpNF66Dt4sRRftZHaT1I1pYzCWrJkkpgNJhRXxf67ZPmOwBZJT4dan/g752Rx4xRw==}
+    engines: {node: '>=20'}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@bytecodealliance/jco-node-fs-linux-x64-musl@0.3.2':
+    resolution: {integrity: sha512-SbAJG2PDV8YAHBESHU9sVSckOitJyvlezdF4CGP5/mOp01JnijVkLVXzGK62yVSfa5TpAybbSd1rk+v36NAW/Q==}
+    engines: {node: '>=20'}
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
+
+  '@bytecodealliance/jco-node-fs-win32-arm64-msvc@0.3.2':
+    resolution: {integrity: sha512-nUWYdFysRQJGsIOCk0KAYN2smkNYiHG7rZ7m+0ZXqP+5wqWxKEjkDsORwXiBjdaWFLVww0anZ3SBxrju6P7hXQ==}
+    engines: {node: '>=20'}
+    cpu: [arm64]
+    os: [win32]
+
+  '@bytecodealliance/jco-node-fs-win32-x64-msvc@0.3.2':
+    resolution: {integrity: sha512-RsPj2t8TvltsMWK7/Z7JcVC/IWPMi07/AJkNLiNTCuGTdT/sseqTThJJwhuz3sjFw7dJdxA+bSGT+23y/KT0fw==}
+    engines: {node: '>=20'}
+    cpu: [x64]
+    os: [win32]
+
+  '@bytecodealliance/jco-node-fs@0.3.2':
+    resolution: {integrity: sha512-yxvqQreNcOQdMsEKZomkSqThtkxrAz3f1Cmy8BsV0UHi9saa2/D1KDB14IAXPYwDq/maS6lCzS+MuMQx6QkUgA==}
+    engines: {node: '>=20'}
+
+  '@bytecodealliance/preview2-shim@0.30.0':
+    resolution: {integrity: sha512-Op+uxOJPCnW4jp5Jg3kJvFpB5GZGJGxBMX5PvMffksyonpTciILDDSSJQr1ficHAhm1H6X5+Qwx3q21p7Hjr1Q==}
 
   '@changesets/apply-release-plan@7.0.14':
     resolution: {integrity: sha512-ddBvf9PHdy2YY0OUiEl3TV78mH9sckndJR14QAt87KLEbIov81XO0q0QAmvooBxXlqRRP8I9B7XOzZwQG7JkWA==}
@@ -2096,56 +2313,67 @@ packages:
     resolution: {integrity: sha512-k9oD15soC/Ln6d2Wv/JOFPzZXIAIFLp6B+i14KhxAfnq76ajt0EhYc5YPeX6W1xJkAdItcVT+JhKl1QZh44/qw==}
     cpu: [arm]
     os: [linux]
+    libc: [glibc]
 
   '@rollup/rollup-linux-arm-musleabihf@4.53.3':
     resolution: {integrity: sha512-vTNlKq+N6CK/8UktsrFuc+/7NlEYVxgaEgRXVUVK258Z5ymho29skzW1sutgYjqNnquGwVUObAaxae8rZ6YMhg==}
     cpu: [arm]
     os: [linux]
+    libc: [musl]
 
   '@rollup/rollup-linux-arm64-gnu@4.53.3':
     resolution: {integrity: sha512-RGrFLWgMhSxRs/EWJMIFM1O5Mzuz3Xy3/mnxJp/5cVhZ2XoCAxJnmNsEyeMJtpK+wu0FJFWz+QF4mjCA7AUQ3w==}
     cpu: [arm64]
     os: [linux]
+    libc: [glibc]
 
   '@rollup/rollup-linux-arm64-musl@4.53.3':
     resolution: {integrity: sha512-kASyvfBEWYPEwe0Qv4nfu6pNkITLTb32p4yTgzFCocHnJLAHs+9LjUu9ONIhvfT/5lv4YS5muBHyuV84epBo/A==}
     cpu: [arm64]
     os: [linux]
+    libc: [musl]
 
   '@rollup/rollup-linux-loong64-gnu@4.53.3':
     resolution: {integrity: sha512-JiuKcp2teLJwQ7vkJ95EwESWkNRFJD7TQgYmCnrPtlu50b4XvT5MOmurWNrCj3IFdyjBQ5p9vnrX4JM6I8OE7g==}
     cpu: [loong64]
     os: [linux]
+    libc: [glibc]
 
   '@rollup/rollup-linux-ppc64-gnu@4.53.3':
     resolution: {integrity: sha512-EoGSa8nd6d3T7zLuqdojxC20oBfNT8nexBbB/rkxgKj5T5vhpAQKKnD+h3UkoMuTyXkP5jTjK/ccNRmQrPNDuw==}
     cpu: [ppc64]
     os: [linux]
+    libc: [glibc]
 
   '@rollup/rollup-linux-riscv64-gnu@4.53.3':
     resolution: {integrity: sha512-4s+Wped2IHXHPnAEbIB0YWBv7SDohqxobiiPA1FIWZpX+w9o2i4LezzH/NkFUl8LRci/8udci6cLq+jJQlh+0g==}
     cpu: [riscv64]
     os: [linux]
+    libc: [glibc]
 
   '@rollup/rollup-linux-riscv64-musl@4.53.3':
     resolution: {integrity: sha512-68k2g7+0vs2u9CxDt5ktXTngsxOQkSEV/xBbwlqYcUrAVh6P9EgMZvFsnHy4SEiUl46Xf0IObWVbMvPrr2gw8A==}
     cpu: [riscv64]
     os: [linux]
+    libc: [musl]
 
   '@rollup/rollup-linux-s390x-gnu@4.53.3':
     resolution: {integrity: sha512-VYsFMpULAz87ZW6BVYw3I6sWesGpsP9OPcyKe8ofdg9LHxSbRMd7zrVrr5xi/3kMZtpWL/wC+UIJWJYVX5uTKg==}
     cpu: [s390x]
     os: [linux]
+    libc: [glibc]
 
   '@rollup/rollup-linux-x64-gnu@4.53.3':
     resolution: {integrity: sha512-3EhFi1FU6YL8HTUJZ51imGJWEX//ajQPfqWLI3BQq4TlvHy4X0MOr5q3D2Zof/ka0d5FNdPwZXm3Yyib/UEd+w==}
     cpu: [x64]
     os: [linux]
+    libc: [glibc]
 
   '@rollup/rollup-linux-x64-musl@4.53.3':
     resolution: {integrity: sha512-eoROhjcc6HbZCJr+tvVT8X4fW3/5g/WkGvvmwz/88sDtSJzO7r/blvoBDgISDiCjDRZmHpwud7h+6Q9JxFwq1Q==}
     cpu: [x64]
     os: [linux]
+    libc: [musl]
 
   '@rollup/rollup-openharmony-arm64@4.53.3':
     resolution: {integrity: sha512-OueLAWgrNSPGAdUdIjSWXw+u/02BRTcnfw9PN41D2vq/JSEPnJnVuBgw18VkN8wcd4fjUs+jFHVM4t9+kBSNLw==}
@@ -4181,6 +4409,11 @@ packages:
 
   '@volar/typescript@2.4.28':
     resolution: {integrity: sha512-Ja6yvWrbis2QtN4ClAKreeUZPVYMARDYZl9LMEv1iQ1QdepB6wn0jTRxA9MftYmYa4DQ4k/DaSZpFPUfxl8giw==}
+    peerDependencies:
+      typescript: '*'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
 
   '@vue/compiler-core@3.5.25':
     resolution: {integrity: sha512-vay5/oQJdsNHmliWoZfHPoVZZRmnSWhug0BYT34njkYTPqClh3DNWLkZNJBVSjsNMrg0CCrBfoKkjZQPM/QVUw==}
@@ -5043,6 +5276,7 @@ packages:
   eslint@9.39.4:
     resolution: {integrity: sha512-XoMjdBOwe/esVgEvLmNsD3IRHkm7fbKIUGvrleloJXUZgDHig2IPWNniv+GwjyJXzuNqVjlr5+4yVUZjycJwfQ==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    deprecated: This version is no longer supported. Please see https://eslint.org/version-support for other options.
     hasBin: true
     peerDependencies:
       jiti: '*'
@@ -5686,6 +5920,138 @@ packages:
 
   node-releases@2.0.27:
     resolution: {integrity: sha512-nmh3lCkYZ3grZvqcCH+fjmQ7X+H0OeZgP40OierEaAptX4XofMh5kwNbWh7lBduUzCcV/8kZ+NDLCwm2iorIlA==}
+
+  node@runtime:24.22.1:
+    resolution:
+      type: variations
+      variants:
+        - resolution:
+            archive: tarball
+            bin:
+              node: bin/node
+            integrity: sha256-9ie20HmCnmSKS4AP+oidN9viORNQcDADDbhaqGFZGiY=
+            type: binary
+            url: https://nodejs.org/download/release/v24.22.1/node-v24.22.1-aix-ppc64.tar.gz
+          targets:
+            - cpu: ppc64
+              os: aix
+        - resolution:
+            archive: tarball
+            bin:
+              node: bin/node
+            integrity: sha256-icaCWT12zUQjP6U7FWMmTn3py7GJytFpE1xbT637wKc=
+            type: binary
+            url: https://nodejs.org/download/release/v24.22.1/node-v24.22.1-darwin-arm64.tar.gz
+          targets:
+            - cpu: arm64
+              os: darwin
+        - resolution:
+            archive: tarball
+            bin:
+              node: bin/node
+            integrity: sha256-0TJVfn7iuFrwiwyMNDOOZcZDDyI40B9ydyjvQtyDsDU=
+            type: binary
+            url: https://nodejs.org/download/release/v24.22.1/node-v24.22.1-darwin-x64.tar.gz
+          targets:
+            - cpu: x64
+              os: darwin
+        - resolution:
+            archive: tarball
+            bin:
+              node: bin/node
+            integrity: sha256-M8N74jS6i+4EGWEEexkWD019DxZOjiRveL3RD+/xSLM=
+            type: binary
+            url: https://nodejs.org/download/release/v24.22.1/node-v24.22.1-linux-arm64.tar.gz
+          targets:
+            - cpu: arm64
+              os: linux
+        - resolution:
+            archive: tarball
+            bin:
+              node: bin/node
+            integrity: sha256-nOVyhEUBaynkmtCY96M2Bhql93DRd9knJ4vCb9Ym5kM=
+            type: binary
+            url: https://nodejs.org/download/release/v24.22.1/node-v24.22.1-linux-ppc64le.tar.gz
+          targets:
+            - cpu: ppc64le
+              os: linux
+        - resolution:
+            archive: tarball
+            bin:
+              node: bin/node
+            integrity: sha256-cZea6xw4W8jugxANODo7HsClIC4D35+ZanBAMwnK/7U=
+            type: binary
+            url: https://nodejs.org/download/release/v24.22.1/node-v24.22.1-linux-s390x.tar.gz
+          targets:
+            - cpu: s390x
+              os: linux
+        - resolution:
+            archive: tarball
+            bin:
+              node: bin/node
+            integrity: sha256-myUNKdariuON0jAZ4sBKbWspFqsdrXIcX24dorKQHGo=
+            type: binary
+            url: https://nodejs.org/download/release/v24.22.1/node-v24.22.1-linux-x64-musl.tar.gz
+          targets:
+            - cpu: x64
+              os: linux
+              libc: musl
+        - resolution:
+            archive: tarball
+            bin:
+              node: bin/node
+            integrity: sha256-62co53xXajUWLBIsRcyt8iTYn/AKvI2uRswol8YALXw=
+            type: binary
+            url: https://nodejs.org/download/release/v24.22.1/node-v24.22.1-linux-x64.tar.gz
+          targets:
+            - cpu: x64
+              os: linux
+        - resolution:
+            archive: zip
+            bin:
+              node: node.exe
+            integrity: sha256-oMgHMZ/t4kxKDY+EVkyCphm9MTsWsQwAfDg8JgnpkXE=
+            prefix: node-v24.22.1-win-arm64
+            type: binary
+            url: https://nodejs.org/download/release/v24.22.1/node-v24.22.1-win-arm64.zip
+          targets:
+            - cpu: arm64
+              os: win32
+        - resolution:
+            archive: zip
+            bin:
+              node: node.exe
+            integrity: sha256-0gRtKMLD3NIRrFFFwL8w4gR++d+zBmk8jG4uzNi5X6U=
+            prefix: node-v24.22.1-win-x64
+            type: binary
+            url: https://nodejs.org/download/release/v24.22.1/node-v24.22.1-win-x64.zip
+          targets:
+            - cpu: x64
+              os: win32
+        - resolution:
+            archive: tarball
+            bin:
+              node: bin/node
+            integrity: sha256-glQSWCWj5eg0vYomDatMgwP3IEZKdBUG7CeYm5uhdps=
+            type: binary
+            url: https://unofficial-builds.nodejs.org/download/release/v24.22.1/node-v24.22.1-linux-arm64-musl.tar.gz
+          targets:
+            - cpu: arm64
+              os: linux
+              libc: musl
+        - resolution:
+            archive: tarball
+            bin:
+              node: bin/node
+            integrity: sha256-Cp7dzi0ujzrdvpT6RtdRMlstdPf9HOYylhZNNrbfxuU=
+            type: binary
+            url: https://unofficial-builds.nodejs.org/download/release/v24.22.1/node-v24.22.1-linux-x64-musl.tar.gz
+          targets:
+            - cpu: x64
+              os: linux
+              libc: musl
+    version: 24.22.1
+    hasBin: true
 
   nopt@7.2.1:
     resolution: {integrity: sha512-taM24ViiimT/XntxbPyJQzCG+p4EKOpgD3mxFwW38mGjVUrfERQOeY4EDHjdnptttfHuHQXFx+lTP08Q+mLa/w==}
@@ -6977,20 +7343,20 @@ snapshots:
 
   '@babel/compat-data@7.29.0': {}
 
-  '@babel/core@7.29.0':
+  '@babel/core@7.29.0(supports-color@8.1.1)':
     dependencies:
       '@babel/code-frame': 7.29.0
       '@babel/generator': 7.29.1
       '@babel/helper-compilation-targets': 7.28.6
-      '@babel/helper-module-transforms': 7.28.6(@babel/core@7.29.0)
+      '@babel/helper-module-transforms': 7.28.6(@babel/core@7.29.0(supports-color@8.1.1))(supports-color@8.1.1)
       '@babel/helpers': 7.28.6
       '@babel/parser': 7.29.0
       '@babel/template': 7.28.6
-      '@babel/traverse': 7.29.0
+      '@babel/traverse': 7.29.0(supports-color@8.1.1)
       '@babel/types': 7.29.0
       '@jridgewell/remapping': 2.3.5
       convert-source-map: 2.0.0
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@8.1.1)
       gensync: 1.0.0-beta.2
       json5: 2.2.3
       semver: 6.3.1
@@ -7015,19 +7381,19 @@ snapshots:
 
   '@babel/helper-globals@7.28.0': {}
 
-  '@babel/helper-module-imports@7.28.6':
+  '@babel/helper-module-imports@7.28.6(supports-color@8.1.1)':
     dependencies:
-      '@babel/traverse': 7.29.0
+      '@babel/traverse': 7.29.0(supports-color@8.1.1)
       '@babel/types': 7.29.0
     transitivePeerDependencies:
       - supports-color
 
-  '@babel/helper-module-transforms@7.28.6(@babel/core@7.29.0)':
+  '@babel/helper-module-transforms@7.28.6(@babel/core@7.29.0(supports-color@8.1.1))(supports-color@8.1.1)':
     dependencies:
-      '@babel/core': 7.29.0
-      '@babel/helper-module-imports': 7.28.6
+      '@babel/core': 7.29.0(supports-color@8.1.1)
+      '@babel/helper-module-imports': 7.28.6(supports-color@8.1.1)
       '@babel/helper-validator-identifier': 7.28.5
-      '@babel/traverse': 7.29.0
+      '@babel/traverse': 7.29.0(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
@@ -7064,7 +7430,7 @@ snapshots:
       '@babel/parser': 7.29.0
       '@babel/types': 7.29.0
 
-  '@babel/traverse@7.29.0':
+  '@babel/traverse@7.29.0(supports-color@8.1.1)':
     dependencies:
       '@babel/code-frame': 7.29.0
       '@babel/generator': 7.29.1
@@ -7072,7 +7438,7 @@ snapshots:
       '@babel/parser': 7.29.0
       '@babel/template': 7.28.6
       '@babel/types': 7.29.0
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
@@ -7088,15 +7454,52 @@ snapshots:
 
   '@bufbuild/protobuf@2.7.0': {}
 
-  '@bufbuild/protoplugin@2.7.0':
+  '@bufbuild/protoplugin@2.7.0(supports-color@8.1.1)':
     dependencies:
       '@bufbuild/protobuf': 2.7.0
-      '@typescript/vfs': 1.6.1(typescript@5.4.5)
+      '@typescript/vfs': 1.6.1(supports-color@8.1.1)(typescript@5.4.5)
       typescript: 5.4.5
     transitivePeerDependencies:
       - supports-color
 
-  '@bytecodealliance/preview2-shim@0.17.8': {}
+  '@bytecodealliance/jco-node-fs-darwin-arm64@0.3.2':
+    optional: true
+
+  '@bytecodealliance/jco-node-fs-darwin-x64@0.3.2':
+    optional: true
+
+  '@bytecodealliance/jco-node-fs-linux-arm64-gnu@0.3.2':
+    optional: true
+
+  '@bytecodealliance/jco-node-fs-linux-arm64-musl@0.3.2':
+    optional: true
+
+  '@bytecodealliance/jco-node-fs-linux-x64-gnu@0.3.2':
+    optional: true
+
+  '@bytecodealliance/jco-node-fs-linux-x64-musl@0.3.2':
+    optional: true
+
+  '@bytecodealliance/jco-node-fs-win32-arm64-msvc@0.3.2':
+    optional: true
+
+  '@bytecodealliance/jco-node-fs-win32-x64-msvc@0.3.2':
+    optional: true
+
+  '@bytecodealliance/jco-node-fs@0.3.2':
+    optionalDependencies:
+      '@bytecodealliance/jco-node-fs-darwin-arm64': 0.3.2
+      '@bytecodealliance/jco-node-fs-darwin-x64': 0.3.2
+      '@bytecodealliance/jco-node-fs-linux-arm64-gnu': 0.3.2
+      '@bytecodealliance/jco-node-fs-linux-arm64-musl': 0.3.2
+      '@bytecodealliance/jco-node-fs-linux-x64-gnu': 0.3.2
+      '@bytecodealliance/jco-node-fs-linux-x64-musl': 0.3.2
+      '@bytecodealliance/jco-node-fs-win32-arm64-msvc': 0.3.2
+      '@bytecodealliance/jco-node-fs-win32-x64-msvc': 0.3.2
+
+  '@bytecodealliance/preview2-shim@0.30.0':
+    dependencies:
+      '@bytecodealliance/jco-node-fs': 0.3.2
 
   '@changesets/apply-release-plan@7.0.14':
     dependencies:
@@ -7311,17 +7714,17 @@ snapshots:
       enabled: 2.0.0
       kuler: 2.0.0
 
-  '@eslint-community/eslint-utils@4.9.1(eslint@9.39.4)':
+  '@eslint-community/eslint-utils@4.9.1(eslint@9.39.4(supports-color@8.1.1))':
     dependencies:
-      eslint: 9.39.4
+      eslint: 9.39.4(supports-color@8.1.1)
       eslint-visitor-keys: 3.4.3
 
   '@eslint-community/regexpp@4.12.2': {}
 
-  '@eslint/config-array@0.21.2':
+  '@eslint/config-array@0.21.2(supports-color@8.1.1)':
     dependencies:
       '@eslint/object-schema': 2.1.7
-      debug: 4.4.0
+      debug: 4.4.0(supports-color@8.1.1)
       minimatch: 3.1.5
     transitivePeerDependencies:
       - supports-color
@@ -7334,10 +7737,10 @@ snapshots:
     dependencies:
       '@types/json-schema': 7.0.15
 
-  '@eslint/eslintrc@3.3.5':
+  '@eslint/eslintrc@3.3.5(supports-color@8.1.1)':
     dependencies:
       ajv: 6.14.0
-      debug: 4.4.0
+      debug: 4.4.0(supports-color@8.1.1)
       espree: 10.4.0
       globals: 14.0.0
       ignore: 5.3.2
@@ -7580,11 +7983,11 @@ snapshots:
       globby: 11.1.0
       read-yaml-file: 1.1.0
 
-  '@mapbox/node-pre-gyp@2.0.3':
+  '@mapbox/node-pre-gyp@2.0.3(supports-color@8.1.1)':
     dependencies:
       consola: 3.2.3
       detect-libc: 2.0.3
-      https-proxy-agent: 7.0.6
+      https-proxy-agent: 7.0.6(supports-color@8.1.1)
       node-fetch: 2.7.0
       nopt: 8.1.0
       semver: 7.7.4
@@ -7645,14 +8048,14 @@ snapshots:
       '@types/node': 24.19.2
       utility-types: 3.11.0
 
-  '@milaboratories/graph-maker@1.3.1(@milaboratories/pl-model-common@1.54.1)(@platforma-sdk/model@1.86.3)(@platforma-sdk/ui-vue@1.86.3(@bytecodealliance/preview2-shim@0.17.8)(typescript@5.6.3))(d3-dispatch@3.0.1)(d3-path@3.1.0)(d3-scale-chromatic@3.1.0)(typescript@5.6.3)':
+  '@milaboratories/graph-maker@1.3.1(@milaboratories/pl-model-common@1.54.1)(@platforma-sdk/model@1.86.3)(@platforma-sdk/ui-vue@1.86.3(@bytecodealliance/preview2-shim@0.30.0)(typescript@5.6.3))(d3-dispatch@3.0.1)(d3-path@3.1.0)(d3-scale-chromatic@3.1.0)(supports-color@8.1.1)(typescript@5.6.3)':
     dependencies:
       '@ag-grid-community/core': 32.3.9
       '@milaboratories/helpers': 1.14.6
-      '@milaboratories/miplots4': 1.1.0(d3-dispatch@3.0.1)(d3-path@3.1.0)(d3-scale-chromatic@3.1.0)
+      '@milaboratories/miplots4': 1.1.0(d3-dispatch@3.0.1)(d3-path@3.1.0)(d3-scale-chromatic@3.1.0)(supports-color@8.1.1)
       '@milaboratories/pf-plots': 1.2.1(@milaboratories/pl-model-common@1.54.1)(@platforma-sdk/model@1.86.3)
       '@platforma-sdk/model': 1.86.3
-      '@platforma-sdk/ui-vue': 1.86.3(@bytecodealliance/preview2-shim@0.17.8)(typescript@5.6.3)
+      '@platforma-sdk/ui-vue': 1.86.3(@bytecodealliance/preview2-shim@0.30.0)(typescript@5.6.3)
       '@types/d3-hierarchy': 3.1.7
       '@types/d3-scale': 4.0.9
       '@vueuse/core': 13.8.0(vue@3.5.25(typescript@5.6.3))
@@ -7677,18 +8080,18 @@ snapshots:
 
   '@milaboratories/helpers@1.14.6': {}
 
-  '@milaboratories/miplots4@1.1.0(d3-dispatch@3.0.1)(d3-path@3.1.0)(d3-scale-chromatic@3.1.0)':
+  '@milaboratories/miplots4@1.1.0(d3-dispatch@3.0.1)(d3-path@3.1.0)(d3-scale-chromatic@3.1.0)(supports-color@8.1.1)':
     dependencies:
       '@d3fc/d3fc-chart': 5.1.9(d3-array@3.2.4)(d3-path@3.1.0)(d3-scale-chromatic@3.1.0)(d3-scale@4.0.2)(d3-selection@3.0.0)(d3-shape@3.2.0)
       '@d3fc/d3fc-pointer': 3.0.3(d3-dispatch@3.0.1)(d3-selection@3.0.0)
       '@d3fc/d3fc-series': 6.1.3(d3-array@3.2.4)(d3-path@3.1.0)(d3-scale-chromatic@3.1.0)(d3-scale@4.0.2)(d3-selection@3.0.0)(d3-shape@3.2.0)
       '@d3fc/d3fc-webgl': 3.2.1(d3-scale@4.0.2)(d3-shape@3.2.0)
-      '@stdlib/stats-anova1': 0.2.3
-      '@stdlib/stats-base-dists-f-cdf': 0.2.3
-      '@stdlib/stats-kruskal-test': 0.2.3
-      '@stdlib/stats-ttest': 0.2.3
-      '@stdlib/stats-ttest2': 0.2.3
-      '@stdlib/stats-wilcoxon': 0.2.3
+      '@stdlib/stats-anova1': 0.2.3(supports-color@8.1.1)
+      '@stdlib/stats-base-dists-f-cdf': 0.2.3(supports-color@8.1.1)
+      '@stdlib/stats-kruskal-test': 0.2.3(supports-color@8.1.1)
+      '@stdlib/stats-ttest': 0.2.3(supports-color@8.1.1)
+      '@stdlib/stats-ttest2': 0.2.3(supports-color@8.1.1)
+      '@stdlib/stats-wilcoxon': 0.2.3(supports-color@8.1.1)
       comlink: 4.4.2
       d3-array: 3.2.4
       d3-axis: 3.0.0
@@ -7715,11 +8118,11 @@ snapshots:
       - d3-scale-chromatic
       - supports-color
 
-  '@milaboratories/pf-driver@1.9.11(@bytecodealliance/preview2-shim@0.17.8)':
+  '@milaboratories/pf-driver@1.9.11(@bytecodealliance/preview2-shim@0.30.0)(supports-color@8.1.1)':
     dependencies:
       '@milaboratories/helpers': 1.14.6
-      '@milaboratories/pf-spec': 1.0.11(@bytecodealliance/preview2-shim@0.17.8)
-      '@milaboratories/pframes-rs-node': 1.2.0(@milaboratories/pl-model-common@1.54.1)(@milaboratories/pl-model-middle-layer@1.34.5)
+      '@milaboratories/pf-spec': 1.0.11(@bytecodealliance/preview2-shim@0.30.0)
+      '@milaboratories/pframes-rs-node': 1.2.0(@milaboratories/pl-model-common@1.54.1)(@milaboratories/pl-model-middle-layer@1.34.5)(supports-color@8.1.1)
       '@milaboratories/pl-model-common': 1.54.1
       '@milaboratories/pl-model-middle-layer': 1.34.5
       '@milaboratories/ts-helpers': 1.9.0
@@ -7737,24 +8140,24 @@ snapshots:
       canonicalize: 2.1.0
       lodash: 4.17.23
 
-  '@milaboratories/pf-spec-driver@1.5.11(@bytecodealliance/preview2-shim@0.17.8)':
+  '@milaboratories/pf-spec-driver@1.5.11(@bytecodealliance/preview2-shim@0.30.0)':
     dependencies:
       '@milaboratories/helpers': 1.14.6
-      '@milaboratories/pf-spec': 1.0.11(@bytecodealliance/preview2-shim@0.17.8)
+      '@milaboratories/pf-spec': 1.0.11(@bytecodealliance/preview2-shim@0.30.0)
       '@milaboratories/pl-model-common': 1.54.1
       '@noble/hashes': 2.2.0
     transitivePeerDependencies:
       - '@bytecodealliance/preview2-shim'
 
-  '@milaboratories/pf-spec@1.0.11(@bytecodealliance/preview2-shim@0.17.8)':
+  '@milaboratories/pf-spec@1.0.11(@bytecodealliance/preview2-shim@0.30.0)':
     dependencies:
-      '@bytecodealliance/preview2-shim': 0.17.8
+      '@bytecodealliance/preview2-shim': 0.30.0
       '@milaboratories/pl-model-common': 1.54.1
       '@milaboratories/pl-model-middle-layer': 1.34.5
 
-  '@milaboratories/pframes-rs-node@1.2.0(@milaboratories/pl-model-common@1.54.1)(@milaboratories/pl-model-middle-layer@1.34.5)':
+  '@milaboratories/pframes-rs-node@1.2.0(@milaboratories/pl-model-common@1.54.1)(@milaboratories/pl-model-middle-layer@1.34.5)(supports-color@8.1.1)':
     dependencies:
-      '@mapbox/node-pre-gyp': 2.0.3
+      '@mapbox/node-pre-gyp': 2.0.3(supports-color@8.1.1)
       '@milaboratories/helpers': 1.14.5
       '@milaboratories/pframes-rs-serv': 1.2.0(@milaboratories/pl-model-common@1.54.1)(@milaboratories/pl-model-middle-layer@1.34.5)
       '@milaboratories/pl-model-common': 1.54.1
@@ -7816,7 +8219,7 @@ snapshots:
       yaml: 2.9.1
       zod: 3.25.76
 
-  '@milaboratories/pl-drivers@1.16.37':
+  '@milaboratories/pl-drivers@1.16.37(supports-color@8.1.1)':
     dependencies:
       '@grpc/grpc-js': 1.14.7
       '@milaboratories/computable': 2.9.9
@@ -7826,7 +8229,7 @@ snapshots:
       '@milaboratories/pl-tree': 1.16.6
       '@milaboratories/ts-helpers': 1.9.0
       '@protobuf-ts/grpc-transport': 2.11.1(@grpc/grpc-js@1.14.7)
-      '@protobuf-ts/plugin': 2.11.1
+      '@protobuf-ts/plugin': 2.11.1(supports-color@8.1.1)
       '@protobuf-ts/runtime': 2.11.1
       '@protobuf-ts/runtime-rpc': 2.11.1
       denque: 2.1.0
@@ -7877,18 +8280,18 @@ snapshots:
     dependencies:
       undici: 7.30.1
 
-  '@milaboratories/pl-middle-layer@1.74.13(@bytecodealliance/preview2-shim@0.17.8)(@types/node@25.3.2)':
+  '@milaboratories/pl-middle-layer@1.74.13(@bytecodealliance/preview2-shim@0.30.0)(@types/node@25.3.2)(supports-color@8.1.1)':
     dependencies:
       '@milaboratories/columns-collection-driver': 0.2.11
       '@milaboratories/computable': 2.9.9
       '@milaboratories/helpers': 1.14.6
-      '@milaboratories/pf-driver': 1.9.11(@bytecodealliance/preview2-shim@0.17.8)
-      '@milaboratories/pf-spec-driver': 1.5.11(@bytecodealliance/preview2-shim@0.17.8)
-      '@milaboratories/pframes-rs-node': 1.2.0(@milaboratories/pl-model-common@1.54.1)(@milaboratories/pl-model-middle-layer@1.34.5)
+      '@milaboratories/pf-driver': 1.9.11(@bytecodealliance/preview2-shim@0.30.0)(supports-color@8.1.1)
+      '@milaboratories/pf-spec-driver': 1.5.11(@bytecodealliance/preview2-shim@0.30.0)
+      '@milaboratories/pframes-rs-node': 1.2.0(@milaboratories/pl-model-common@1.54.1)(@milaboratories/pl-model-middle-layer@1.34.5)(supports-color@8.1.1)
       '@milaboratories/pl-client': 3.19.2
       '@milaboratories/pl-crash-recorder': 0.3.7
       '@milaboratories/pl-deployments': 3.0.23
-      '@milaboratories/pl-drivers': 1.16.37
+      '@milaboratories/pl-drivers': 1.16.37(supports-color@8.1.1)
       '@milaboratories/pl-errors': 1.4.54
       '@milaboratories/pl-http': 1.2.5
       '@milaboratories/pl-model-backend': 1.4.39
@@ -7988,105 +8391,7 @@ snapshots:
 
   '@milaboratories/tengo-tester@1.6.4': {}
 
-  '@milaboratories/ts-builder@1.7.3(@microsoft/api-extractor@7.57.6(@types/node@25.3.2))(@types/node@25.3.2)(@volar/typescript@2.4.28)(@vue/language-core@3.3.10)(rollup@4.53.3)(vue@3.5.25(typescript@5.6.3))(yaml@2.9.1)':
-    dependencies:
-      '@milaboratories/ts-configs': 1.4.0
-      '@typescript/typescript6': 6.0.2
-      '@vitejs/plugin-vue': 6.0.10(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1))(vue@3.5.25(typescript@5.6.3))
-      commander: 15.0.0
-      jsonc-parser: 3.3.1
-      oxfmt: 0.75.0
-      oxlint: 1.63.0
-      oxlint-plugin-eslint: 1.63.0
-      rolldown: 1.2.8
-      rolldown-plugin-dts: 0.28.5(@volar/typescript@2.4.28)(rolldown@1.2.8)(typescript@7.0.2)(vue-tsc@3.3.10(typescript@7.0.2))
-      rollup-plugin-copy: 3.5.0
-      rollup-plugin-sourcemaps2: 0.5.6(@types/node@25.3.2)(rollup@4.53.3)
-      typescript: 7.0.2
-      vite: 8.3.5(@types/node@25.3.2)(yaml@2.9.1)
-      vite-plugin-commonjs: 0.10.4
-      vite-plugin-dts: 5.1.2(@microsoft/api-extractor@7.57.6(@types/node@25.3.2))(@vue/language-core@3.3.10)(rolldown@1.2.8)(rollup@4.53.3)(typescript@7.0.2)(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1))
-      vite-plugin-externalize-deps: 0.10.0(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1))
-      vite-plugin-lib-inject-css: 2.2.2(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1))
-      vue-tsc: 3.3.10(typescript@7.0.2)
-    transitivePeerDependencies:
-      - '@astrojs/compiler-rs'
-      - '@microsoft/api-extractor'
-      - '@rspack/core'
-      - '@types/node'
-      - '@typescript/native-preview'
-      - '@vitejs/devtools'
-      - '@volar/typescript'
-      - '@vue/language-core'
-      - esbuild
-      - jiti
-      - less
-      - oxc-resolver
-      - oxlint-tsgolint
-      - rollup
-      - sass
-      - sass-embedded
-      - stylus
-      - sugarss
-      - supports-color
-      - svelte
-      - terser
-      - tsx
-      - vite-plus
-      - vue
-      - webpack
-      - yaml
-
-  '@milaboratories/ts-builder@1.7.3(@microsoft/api-extractor@7.57.6(@types/node@25.3.2))(@types/node@25.3.2)(@volar/typescript@2.4.28)(@vue/language-core@3.3.10)(rollup@4.53.3)(vue@3.5.25(typescript@7.0.2))(yaml@2.9.1)':
-    dependencies:
-      '@milaboratories/ts-configs': 1.4.0
-      '@typescript/typescript6': 6.0.2
-      '@vitejs/plugin-vue': 6.0.10(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1))(vue@3.5.25(typescript@7.0.2))
-      commander: 15.0.0
-      jsonc-parser: 3.3.1
-      oxfmt: 0.75.0
-      oxlint: 1.63.0
-      oxlint-plugin-eslint: 1.63.0
-      rolldown: 1.2.8
-      rolldown-plugin-dts: 0.28.5(@volar/typescript@2.4.28)(rolldown@1.2.8)(typescript@7.0.2)(vue-tsc@3.3.10(typescript@7.0.2))
-      rollup-plugin-copy: 3.5.0
-      rollup-plugin-sourcemaps2: 0.5.6(@types/node@25.3.2)(rollup@4.53.3)
-      typescript: 7.0.2
-      vite: 8.3.5(@types/node@25.3.2)(yaml@2.9.1)
-      vite-plugin-commonjs: 0.10.4
-      vite-plugin-dts: 5.1.2(@microsoft/api-extractor@7.57.6(@types/node@25.3.2))(@vue/language-core@3.3.10)(rolldown@1.2.8)(rollup@4.53.3)(typescript@7.0.2)(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1))
-      vite-plugin-externalize-deps: 0.10.0(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1))
-      vite-plugin-lib-inject-css: 2.2.2(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1))
-      vue-tsc: 3.3.10(typescript@7.0.2)
-    transitivePeerDependencies:
-      - '@astrojs/compiler-rs'
-      - '@microsoft/api-extractor'
-      - '@rspack/core'
-      - '@types/node'
-      - '@typescript/native-preview'
-      - '@vitejs/devtools'
-      - '@volar/typescript'
-      - '@vue/language-core'
-      - esbuild
-      - jiti
-      - less
-      - oxc-resolver
-      - oxlint-tsgolint
-      - rollup
-      - sass
-      - sass-embedded
-      - stylus
-      - sugarss
-      - supports-color
-      - svelte
-      - terser
-      - tsx
-      - vite-plus
-      - vue
-      - webpack
-      - yaml
-
-  '@milaboratories/ts-builder@1.7.3(@microsoft/api-extractor@7.57.6(@types/node@25.3.2))(@types/node@25.3.2)(@volar/typescript@2.4.28)(@vue/language-core@3.3.10)(rollup@4.53.3)(vue@3.5.44(typescript@5.6.3))(yaml@2.9.1)':
+  '@milaboratories/ts-builder@1.7.3(@microsoft/api-extractor@7.57.6(@types/node@25.3.2))(@types/node@25.3.2)(@volar/typescript@2.4.28(typescript@5.6.3))(@vue/language-core@3.3.10)(rollup@4.53.3)(supports-color@8.1.1)(vue@3.5.44(typescript@5.6.3))(yaml@2.9.1)':
     dependencies:
       '@milaboratories/ts-configs': 1.4.0
       '@typescript/typescript6': 6.0.2
@@ -8097,13 +8402,13 @@ snapshots:
       oxlint: 1.63.0
       oxlint-plugin-eslint: 1.63.0
       rolldown: 1.2.8
-      rolldown-plugin-dts: 0.28.5(@volar/typescript@2.4.28)(rolldown@1.2.8)(typescript@7.0.2)(vue-tsc@3.3.10(typescript@7.0.2))
+      rolldown-plugin-dts: 0.28.5(@volar/typescript@2.4.28(typescript@5.6.3))(rolldown@1.2.8)(typescript@7.0.2)(vue-tsc@3.3.10(typescript@7.0.2))
       rollup-plugin-copy: 3.5.0
       rollup-plugin-sourcemaps2: 0.5.6(@types/node@25.3.2)(rollup@4.53.3)
       typescript: 7.0.2
       vite: 8.3.5(@types/node@25.3.2)(yaml@2.9.1)
       vite-plugin-commonjs: 0.10.4
-      vite-plugin-dts: 5.1.2(@microsoft/api-extractor@7.57.6(@types/node@25.3.2))(@vue/language-core@3.3.10)(rolldown@1.2.8)(rollup@4.53.3)(typescript@7.0.2)(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1))
+      vite-plugin-dts: 5.1.2(@microsoft/api-extractor@7.57.6(@types/node@25.3.2))(@vue/language-core@3.3.10)(rolldown@1.2.8)(rollup@4.53.3)(supports-color@8.1.1)(typescript@7.0.2)(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1))
       vite-plugin-externalize-deps: 0.10.0(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1))
       vite-plugin-lib-inject-css: 2.2.2(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1))
       vue-tsc: 3.3.10(typescript@7.0.2)
@@ -8135,7 +8440,7 @@ snapshots:
       - webpack
       - yaml
 
-  '@milaboratories/ts-builder@1.7.3(@microsoft/api-extractor@7.57.6(@types/node@25.3.2))(@types/node@25.3.2)(@volar/typescript@2.4.28)(@vue/language-core@3.3.10)(rollup@4.53.3)(vue@3.5.44(typescript@7.0.2))(yaml@2.9.1)':
+  '@milaboratories/ts-builder@1.7.3(@microsoft/api-extractor@7.57.6(@types/node@25.3.2))(@types/node@25.3.2)(@volar/typescript@2.4.28(typescript@7.0.2))(@vue/language-core@3.3.10)(rollup@4.53.3)(supports-color@7.2.0)(vue@3.5.44(typescript@7.0.2))(yaml@2.9.1)':
     dependencies:
       '@milaboratories/ts-configs': 1.4.0
       '@typescript/typescript6': 6.0.2
@@ -8146,13 +8451,13 @@ snapshots:
       oxlint: 1.63.0
       oxlint-plugin-eslint: 1.63.0
       rolldown: 1.2.8
-      rolldown-plugin-dts: 0.28.5(@volar/typescript@2.4.28)(rolldown@1.2.8)(typescript@7.0.2)(vue-tsc@3.3.10(typescript@7.0.2))
+      rolldown-plugin-dts: 0.28.5(@volar/typescript@2.4.28(typescript@7.0.2))(rolldown@1.2.8)(typescript@7.0.2)(vue-tsc@3.3.10(typescript@7.0.2))
       rollup-plugin-copy: 3.5.0
       rollup-plugin-sourcemaps2: 0.5.6(@types/node@25.3.2)(rollup@4.53.3)
       typescript: 7.0.2
       vite: 8.3.5(@types/node@25.3.2)(yaml@2.9.1)
       vite-plugin-commonjs: 0.10.4
-      vite-plugin-dts: 5.1.2(@microsoft/api-extractor@7.57.6(@types/node@25.3.2))(@vue/language-core@3.3.10)(rolldown@1.2.8)(rollup@4.53.3)(typescript@7.0.2)(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1))
+      vite-plugin-dts: 5.1.2(@microsoft/api-extractor@7.57.6(@types/node@25.3.2))(@vue/language-core@3.3.10)(rolldown@1.2.8)(rollup@4.53.3)(supports-color@7.2.0)(typescript@7.0.2)(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1))
       vite-plugin-externalize-deps: 0.10.0(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1))
       vite-plugin-lib-inject-css: 2.2.2(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1))
       vue-tsc: 3.3.10(typescript@7.0.2)
@@ -8193,7 +8498,7 @@ snapshots:
       denque: 2.1.0
       yauzl: 3.4.0
 
-  '@milaboratories/uikit@2.10.37(typescript@7.0.2)':
+  '@milaboratories/uikit@2.10.37(typescript@5.6.3)':
     dependencies:
       '@milaboratories/helpers': 1.13.5
       '@platforma-sdk/model': 1.58.5
@@ -8203,8 +8508,8 @@ snapshots:
       '@types/d3-selection': 3.0.11
       '@types/sortablejs': 1.15.8
       '@vue/test-utils': 2.4.6
-      '@vueuse/core': 13.8.0(vue@3.5.25(typescript@7.0.2))
-      '@vueuse/integrations': 13.8.0(sortablejs@1.15.6)(vue@3.5.25(typescript@7.0.2))
+      '@vueuse/core': 13.8.0(vue@3.5.25(typescript@5.6.3))
+      '@vueuse/integrations': 13.8.0(sortablejs@1.15.6)(vue@3.5.25(typescript@5.6.3))
       canonicalize: 2.1.0
       d3-array: 3.2.4
       d3-axis: 3.0.0
@@ -8212,7 +8517,7 @@ snapshots:
       d3-selection: 3.0.0
       resize-observer-polyfill: 1.5.1
       sortablejs: 1.15.6
-      vue: 3.5.25(typescript@7.0.2)
+      vue: 3.5.25(typescript@5.6.3)
     transitivePeerDependencies:
       - async-validator
       - axios
@@ -8608,12 +8913,12 @@ snapshots:
     dependencies:
       '@platforma-sdk/model': 1.58.5
 
-  '@platforma-open/milaboratories.import-vdj.ui@1.11.0(typescript@7.0.2)':
+  '@platforma-open/milaboratories.import-vdj.ui@1.11.0(typescript@5.6.3)':
     dependencies:
       '@platforma-open/milaboratories.import-vdj.model': 1.10.0
       '@platforma-sdk/model': 1.58.5
-      '@platforma-sdk/ui-vue': 1.58.8(typescript@7.0.2)
-      vue: 3.5.25(typescript@7.0.2)
+      '@platforma-sdk/ui-vue': 1.58.8(typescript@5.6.3)
+      vue: 3.5.25(typescript@5.6.3)
     transitivePeerDependencies:
       - async-validator
       - axios
@@ -8632,10 +8937,10 @@ snapshots:
     dependencies:
       '@platforma-sdk/workflow-tengo': 5.10.1
 
-  '@platforma-open/milaboratories.import-vdj@1.6.1(typescript@7.0.2)':
+  '@platforma-open/milaboratories.import-vdj@1.6.1(typescript@5.6.3)':
     dependencies:
       '@platforma-open/milaboratories.import-vdj.model': 1.10.0
-      '@platforma-open/milaboratories.import-vdj.ui': 1.11.0(typescript@7.0.2)
+      '@platforma-open/milaboratories.import-vdj.ui': 1.11.0(typescript@5.6.3)
       '@platforma-open/milaboratories.import-vdj.workflow': 1.15.1
       '@platforma-sdk/model': 1.59.3
     transitivePeerDependencies:
@@ -8895,14 +9200,14 @@ snapshots:
       commander: 15.0.0
       winston: 3.17.0
 
-  '@platforma-sdk/test@1.86.4(@bytecodealliance/preview2-shim@0.17.8)(@types/node@25.3.2)(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1))':
+  '@platforma-sdk/test@1.86.4(@bytecodealliance/preview2-shim@0.30.0)(@types/node@25.3.2)(supports-color@8.1.1)(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1))':
     dependencies:
       '@milaboratories/computable': 2.9.9
       '@milaboratories/pl-client': 3.19.2
-      '@milaboratories/pl-middle-layer': 1.74.13(@bytecodealliance/preview2-shim@0.17.8)(@types/node@25.3.2)
+      '@milaboratories/pl-middle-layer': 1.74.13(@bytecodealliance/preview2-shim@0.30.0)(@types/node@25.3.2)(supports-color@8.1.1)
       '@milaboratories/pl-tree': 1.16.6
       '@platforma-sdk/model': 1.86.3
-      '@vitest/coverage-istanbul': 4.1.12(vitest@4.1.4)
+      '@vitest/coverage-istanbul': 4.1.12(supports-color@8.1.1)(vitest@4.1.12)
       vitest: 4.1.12(@types/node@25.3.2)(@vitest/coverage-istanbul@4.1.12)(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1))
     transitivePeerDependencies:
       - '@bytecodealliance/preview2-shim'
@@ -8921,23 +9226,23 @@ snapshots:
       - supports-color
       - vite
 
-  '@platforma-sdk/ui-vue@1.58.8(typescript@7.0.2)':
+  '@platforma-sdk/ui-vue@1.58.8(typescript@5.6.3)':
     dependencies:
-      '@milaboratories/uikit': 2.10.37(typescript@7.0.2)
+      '@milaboratories/uikit': 2.10.37(typescript@5.6.3)
       '@platforma-sdk/model': 1.58.5
       '@types/d3-format': 3.0.4
       '@types/node': 24.5.2
       '@types/semver': 7.7.0
-      '@vueuse/core': 13.8.0(vue@3.5.25(typescript@7.0.2))
+      '@vueuse/core': 13.8.0(vue@3.5.25(typescript@5.6.3))
       '@zip.js/zip.js': 2.8.11
       ag-grid-enterprise: 34.1.2
-      ag-grid-vue3: 34.1.2(vue@3.5.25(typescript@7.0.2))
+      ag-grid-vue3: 34.1.2(vue@3.5.25(typescript@5.6.3))
       canonicalize: 2.1.0
       d3-format: 3.1.0
       es-toolkit: 1.42.0
       fast-json-patch: 3.1.1
       lru-cache: 11.2.4
-      vue: 3.5.25(typescript@7.0.2)
+      vue: 3.5.25(typescript@5.6.3)
       zod: 3.23.8
     transitivePeerDependencies:
       - async-validator
@@ -8953,10 +9258,10 @@ snapshots:
       - typescript
       - universal-cookie
 
-  '@platforma-sdk/ui-vue@1.86.3(@bytecodealliance/preview2-shim@0.17.8)(typescript@5.6.3)':
+  '@platforma-sdk/ui-vue@1.86.3(@bytecodealliance/preview2-shim@0.30.0)(typescript@5.6.3)':
     dependencies:
       '@milaboratories/columns-collection-driver': 0.2.11
-      '@milaboratories/pf-spec-driver': 1.5.11(@bytecodealliance/preview2-shim@0.17.8)
+      '@milaboratories/pf-spec-driver': 1.5.11(@bytecodealliance/preview2-shim@0.30.0)
       '@milaboratories/pl-model-common': 1.54.1
       '@milaboratories/uikit': 2.16.1(typescript@5.6.3)
       '@platforma-sdk/model': 1.86.3
@@ -9018,10 +9323,10 @@ snapshots:
       '@protobuf-ts/runtime': 2.11.1
       '@protobuf-ts/runtime-rpc': 2.11.1
 
-  '@protobuf-ts/plugin@2.11.1':
+  '@protobuf-ts/plugin@2.11.1(supports-color@8.1.1)':
     dependencies:
       '@bufbuild/protobuf': 2.7.0
-      '@bufbuild/protoplugin': 2.7.0
+      '@bufbuild/protoplugin': 2.7.0(supports-color@8.1.1)
       '@protobuf-ts/protoc': 2.11.1
       '@protobuf-ts/runtime': 2.11.1
       '@protobuf-ts/runtime-rpc': 2.11.1
@@ -9227,7 +9532,7 @@ snapshots:
     dependencies:
       ajv: 8.18.0
       ajv-draft-04: 1.0.0(ajv@8.18.0)
-      ajv-formats: 3.0.1(ajv@8.18.0)
+      ajv-formats: 3.0.1
       fs-extra: 11.3.3
       import-lazy: 4.0.0
       jju: 1.4.0
@@ -9306,24 +9611,24 @@ snapshots:
 
   '@stdlib/array-base-accessor-setter@0.2.3': {}
 
-  '@stdlib/array-base-arraylike2object@0.2.2':
+  '@stdlib/array-base-arraylike2object@0.2.2(supports-color@8.1.1)':
     dependencies:
       '@stdlib/array-base-accessor-getter': 0.2.3
       '@stdlib/array-base-accessor-setter': 0.2.3
       '@stdlib/array-base-assert-is-accessor-array': 0.2.3
       '@stdlib/array-base-getter': 0.2.3
       '@stdlib/array-base-setter': 0.2.3
-      '@stdlib/array-dtype': 0.3.1
+      '@stdlib/array-dtype': 0.3.1(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/array-base-assert-contains@0.2.3':
+  '@stdlib/array-base-assert-contains@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/array-base-accessor-getter': 0.2.3
       '@stdlib/array-base-assert-is-accessor-array': 0.2.3
       '@stdlib/array-base-getter': 0.2.3
-      '@stdlib/array-dtype': 0.3.1
-      '@stdlib/assert-is-collection': 0.2.3
+      '@stdlib/array-dtype': 0.3.1(supports-color@8.1.1)
+      '@stdlib/assert-is-collection': 0.2.3(supports-color@8.1.1)
       '@stdlib/error-tools-fmtprodmsg': 0.2.3
       '@stdlib/string-format': 0.2.3
       '@stdlib/utils-define-nonenumerable-read-only-property': 0.2.3
@@ -9344,21 +9649,21 @@ snapshots:
 
   '@stdlib/array-base-getter@0.2.3': {}
 
-  '@stdlib/array-base-incrspace@0.2.3':
+  '@stdlib/array-base-incrspace@0.2.3(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/math-base-special-ceil': 0.2.3
+      '@stdlib/math-base-special-ceil': 0.2.3(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/array-base-index-of-same-value@0.1.1':
+  '@stdlib/array-base-index-of-same-value@0.1.1(supports-color@8.1.1)':
     dependencies:
       '@stdlib/array-base-assert-is-booleanarray': 0.0.3
       '@stdlib/array-base-assert-is-complex-typed-array': 0.1.3
-      '@stdlib/array-base-resolve-getter': 0.2.3
-      '@stdlib/assert-is-accessor-array': 0.2.3
+      '@stdlib/array-base-resolve-getter': 0.2.3(supports-color@8.1.1)
+      '@stdlib/assert-is-accessor-array': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-is-boolean': 0.2.3
       '@stdlib/assert-is-complex-like': 0.2.4
-      '@stdlib/assert-is-same-value': 0.2.3
+      '@stdlib/assert-is-same-value': 0.2.3(supports-color@8.1.1)
       '@stdlib/complex-float64-imag': 0.1.2
       '@stdlib/complex-float64-real': 0.1.2
       '@stdlib/strided-base-reinterpret-boolean': 0.0.3
@@ -9366,12 +9671,12 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/array-base-resolve-getter@0.2.3':
+  '@stdlib/array-base-resolve-getter@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/array-base-accessor-getter': 0.2.3
       '@stdlib/array-base-assert-is-accessor-array': 0.2.3
       '@stdlib/array-base-getter': 0.2.3
-      '@stdlib/array-dtype': 0.3.1
+      '@stdlib/array-dtype': 0.3.1(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
@@ -9381,7 +9686,7 @@ snapshots:
     dependencies:
       '@stdlib/array-base-filled': 0.2.3
 
-  '@stdlib/array-bool@0.1.2':
+  '@stdlib/array-bool@0.1.2(supports-color@8.1.1)':
     dependencies:
       '@stdlib/array-base-accessor-getter': 0.2.3
       '@stdlib/array-base-getter': 0.2.3
@@ -9389,16 +9694,16 @@ snapshots:
       '@stdlib/assert-has-iterator-symbol-support': 0.2.3
       '@stdlib/assert-is-arraybuffer': 0.2.3
       '@stdlib/assert-is-boolean': 0.2.3
-      '@stdlib/assert-is-collection': 0.2.3
+      '@stdlib/assert-is-collection': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-is-function': 0.2.3
-      '@stdlib/assert-is-integer': 0.2.3
-      '@stdlib/assert-is-nonnegative-integer': 0.2.3
+      '@stdlib/assert-is-integer': 0.2.3(supports-color@8.1.1)
+      '@stdlib/assert-is-nonnegative-integer': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-is-object': 0.2.3
       '@stdlib/assert-is-string': 0.2.3
       '@stdlib/assert-is-string-array': 0.2.3
       '@stdlib/boolean-ctor': 0.2.3
       '@stdlib/error-tools-fmtprodmsg': 0.2.3
-      '@stdlib/math-base-special-floor': 0.2.4
+      '@stdlib/math-base-special-floor': 0.2.4(supports-color@8.1.1)
       '@stdlib/string-format': 0.2.3
       '@stdlib/symbol-iterator': 0.2.3
       '@stdlib/utils-define-nonenumerable-read-only-accessor': 0.2.4
@@ -9406,7 +9711,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/array-complex128@0.3.2':
+  '@stdlib/array-complex128@0.3.2(supports-color@8.1.1)':
     dependencies:
       '@stdlib/array-base-accessor-getter': 0.2.3
       '@stdlib/array-base-assert-is-complex128array': 0.2.3
@@ -9415,12 +9720,12 @@ snapshots:
       '@stdlib/array-float64': 0.2.3
       '@stdlib/assert-has-iterator-symbol-support': 0.2.3
       '@stdlib/assert-is-array': 0.2.3
-      '@stdlib/assert-is-array-like-object': 0.2.3
+      '@stdlib/assert-is-array-like-object': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-is-arraybuffer': 0.2.3
-      '@stdlib/assert-is-collection': 0.2.3
+      '@stdlib/assert-is-collection': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-is-complex-like': 0.2.4
       '@stdlib/assert-is-function': 0.2.3
-      '@stdlib/assert-is-nonnegative-integer': 0.2.3
+      '@stdlib/assert-is-nonnegative-integer': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-is-object': 0.2.3
       '@stdlib/assert-is-string': 0.2.3
       '@stdlib/assert-is-string-array': 0.2.3
@@ -9428,9 +9733,9 @@ snapshots:
       '@stdlib/complex-float64-imag': 0.1.2
       '@stdlib/complex-float64-real': 0.1.2
       '@stdlib/error-tools-fmtprodmsg': 0.2.3
-      '@stdlib/math-base-assert-is-even': 0.2.5
-      '@stdlib/math-base-assert-is-integer': 0.2.7
-      '@stdlib/math-base-special-floor': 0.2.4
+      '@stdlib/math-base-assert-is-even': 0.2.5(supports-color@8.1.1)
+      '@stdlib/math-base-assert-is-integer': 0.2.7(supports-color@8.1.1)
+      '@stdlib/math-base-special-floor': 0.2.4(supports-color@8.1.1)
       '@stdlib/strided-base-reinterpret-complex128': 0.2.3
       '@stdlib/strided-base-reinterpret-complex64': 0.2.2
       '@stdlib/string-format': 0.2.3
@@ -9440,7 +9745,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/array-complex64@0.3.2':
+  '@stdlib/array-complex64@0.3.2(supports-color@8.1.1)':
     dependencies:
       '@stdlib/array-base-accessor-getter': 0.2.3
       '@stdlib/array-base-assert-is-complex128array': 0.2.3
@@ -9449,12 +9754,12 @@ snapshots:
       '@stdlib/array-float32': 0.2.3
       '@stdlib/assert-has-iterator-symbol-support': 0.2.3
       '@stdlib/assert-is-array': 0.2.3
-      '@stdlib/assert-is-array-like-object': 0.2.3
+      '@stdlib/assert-is-array-like-object': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-is-arraybuffer': 0.2.3
-      '@stdlib/assert-is-collection': 0.2.3
+      '@stdlib/assert-is-collection': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-is-complex-like': 0.2.4
       '@stdlib/assert-is-function': 0.2.3
-      '@stdlib/assert-is-nonnegative-integer': 0.2.3
+      '@stdlib/assert-is-nonnegative-integer': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-is-object': 0.2.3
       '@stdlib/assert-is-string': 0.2.3
       '@stdlib/assert-is-string-array': 0.2.3
@@ -9462,9 +9767,9 @@ snapshots:
       '@stdlib/complex-float32-imag': 0.1.2
       '@stdlib/complex-float32-real': 0.1.2
       '@stdlib/error-tools-fmtprodmsg': 0.2.3
-      '@stdlib/math-base-assert-is-even': 0.2.5
-      '@stdlib/math-base-assert-is-integer': 0.2.7
-      '@stdlib/math-base-special-floor': 0.2.4
+      '@stdlib/math-base-assert-is-even': 0.2.5(supports-color@8.1.1)
+      '@stdlib/math-base-assert-is-integer': 0.2.7(supports-color@8.1.1)
+      '@stdlib/math-base-special-floor': 0.2.4(supports-color@8.1.1)
       '@stdlib/strided-base-reinterpret-complex128': 0.2.3
       '@stdlib/strided-base-reinterpret-complex64': 0.2.2
       '@stdlib/string-format': 0.2.3
@@ -9474,11 +9779,11 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/array-dtype@0.3.1':
+  '@stdlib/array-dtype@0.3.1(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/array-bool': 0.1.2
-      '@stdlib/array-complex128': 0.3.2
-      '@stdlib/array-complex64': 0.3.2
+      '@stdlib/array-bool': 0.1.2(supports-color@8.1.1)
+      '@stdlib/array-complex128': 0.3.2(supports-color@8.1.1)
+      '@stdlib/array-complex64': 0.3.2(supports-color@8.1.1)
       '@stdlib/array-float32': 0.2.3
       '@stdlib/array-float64': 0.2.3
       '@stdlib/array-int16': 0.2.3
@@ -9530,11 +9835,11 @@ snapshots:
     dependencies:
       '@stdlib/assert-has-uint8clampedarray-support': 0.2.3
 
-  '@stdlib/assert-contains@0.3.1':
+  '@stdlib/assert-contains@0.3.1(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/array-base-index-of-same-value': 0.1.1
-      '@stdlib/assert-is-collection': 0.2.3
-      '@stdlib/assert-is-integer': 0.2.3
+      '@stdlib/array-base-index-of-same-value': 0.1.1(supports-color@8.1.1)
+      '@stdlib/assert-is-collection': 0.2.3(supports-color@8.1.1)
+      '@stdlib/assert-is-integer': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-is-string': 0.2.3
       '@stdlib/error-tools-fmtprodmsg': 0.2.3
       '@stdlib/string-format': 0.2.3
@@ -9609,35 +9914,35 @@ snapshots:
     dependencies:
       '@stdlib/assert-is-uint8clampedarray': 0.2.3
 
-  '@stdlib/assert-is-accessor-array@0.2.3':
+  '@stdlib/assert-is-accessor-array@0.2.3(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/assert-is-collection': 0.2.3
+      '@stdlib/assert-is-collection': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-is-function': 0.2.3
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/assert-is-arguments@0.2.3':
+  '@stdlib/assert-is-arguments@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/assert-has-own-property': 0.2.3
       '@stdlib/assert-is-array': 0.2.3
-      '@stdlib/assert-is-enumerable-property': 0.2.3
+      '@stdlib/assert-is-enumerable-property': 0.2.3(supports-color@8.1.1)
       '@stdlib/constants-uint32-max': 0.2.3
-      '@stdlib/math-base-assert-is-integer': 0.2.7
+      '@stdlib/math-base-assert-is-integer': 0.2.7(supports-color@8.1.1)
       '@stdlib/utils-native-class': 0.2.3
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/assert-is-array-like-object@0.2.3':
+  '@stdlib/assert-is-array-like-object@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-array-max-array-length': 0.2.3
-      '@stdlib/math-base-assert-is-integer': 0.2.7
+      '@stdlib/math-base-assert-is-integer': 0.2.7(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/assert-is-array-like@0.2.3':
+  '@stdlib/assert-is-array-like@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-array-max-array-length': 0.2.3
-      '@stdlib/math-base-assert-is-integer': 0.2.7
+      '@stdlib/math-base-assert-is-integer': 0.2.7(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
@@ -9665,10 +9970,10 @@ snapshots:
     dependencies:
       '@stdlib/assert-is-object-like': 0.2.3
 
-  '@stdlib/assert-is-collection@0.2.3':
+  '@stdlib/assert-is-collection@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-array-max-typed-array-length': 0.2.3
-      '@stdlib/math-base-assert-is-integer': 0.2.7
+      '@stdlib/math-base-assert-is-integer': 0.2.7(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
@@ -9677,10 +9982,10 @@ snapshots:
       '@stdlib/complex-float32-ctor': 0.1.1
       '@stdlib/complex-float64-ctor': 0.1.2
 
-  '@stdlib/assert-is-enumerable-property@0.2.3':
+  '@stdlib/assert-is-enumerable-property@0.2.3(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/assert-is-integer': 0.2.3
-      '@stdlib/assert-is-nan': 0.2.3
+      '@stdlib/assert-is-integer': 0.2.3(supports-color@8.1.1)
+      '@stdlib/assert-is-nan': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-is-string': 0.2.3
     transitivePeerDependencies:
       - supports-color
@@ -9709,12 +10014,12 @@ snapshots:
     dependencies:
       '@stdlib/utils-native-class': 0.2.3
 
-  '@stdlib/assert-is-integer@0.2.3':
+  '@stdlib/assert-is-integer@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/assert-is-number': 0.2.3
       '@stdlib/constants-float64-ninf': 0.2.3
       '@stdlib/constants-float64-pinf': 0.2.3
-      '@stdlib/math-base-assert-is-integer': 0.2.7
+      '@stdlib/math-base-assert-is-integer': 0.2.7(supports-color@8.1.1)
       '@stdlib/utils-define-nonenumerable-read-only-property': 0.2.3
     transitivePeerDependencies:
       - supports-color
@@ -9724,25 +10029,25 @@ snapshots:
       '@stdlib/array-uint16': 0.2.3
       '@stdlib/array-uint8': 0.2.3
 
-  '@stdlib/assert-is-nan@0.2.3':
+  '@stdlib/assert-is-nan@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/assert-is-number': 0.2.3
-      '@stdlib/math-base-assert-is-nan': 0.2.3
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
       '@stdlib/utils-define-nonenumerable-read-only-property': 0.2.3
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/assert-is-nonnegative-integer@0.2.3':
+  '@stdlib/assert-is-nonnegative-integer@0.2.3(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/assert-is-integer': 0.2.3
+      '@stdlib/assert-is-integer': 0.2.3(supports-color@8.1.1)
       '@stdlib/utils-define-nonenumerable-read-only-property': 0.2.3
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/assert-is-number-array@0.2.3':
+  '@stdlib/assert-is-number-array@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/assert-is-number': 0.2.3
-      '@stdlib/assert-tools-array-like-function': 0.2.3
+      '@stdlib/assert-tools-array-like-function': 0.2.3(supports-color@8.1.1)
       '@stdlib/utils-define-nonenumerable-read-only-property': 0.2.3
     transitivePeerDependencies:
       - supports-color
@@ -9771,9 +10076,9 @@ snapshots:
       '@stdlib/utils-get-prototype-of': 0.2.3
       '@stdlib/utils-native-class': 0.2.3
 
-  '@stdlib/assert-is-positive-integer@0.2.3':
+  '@stdlib/assert-is-positive-integer@0.2.3(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/assert-is-integer': 0.2.3
+      '@stdlib/assert-is-integer': 0.2.3(supports-color@8.1.1)
       '@stdlib/utils-define-nonenumerable-read-only-property': 0.2.3
     transitivePeerDependencies:
       - supports-color
@@ -9783,10 +10088,10 @@ snapshots:
       '@stdlib/assert-has-tostringtag-support': 0.2.3
       '@stdlib/utils-native-class': 0.2.3
 
-  '@stdlib/assert-is-same-value@0.2.3':
+  '@stdlib/assert-is-same-value@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/assert-is-complex-like': 0.2.4
-      '@stdlib/complex-float64-base-assert-is-same-value': 0.0.3
+      '@stdlib/complex-float64-base-assert-is-same-value': 0.0.3(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
@@ -9802,9 +10107,9 @@ snapshots:
       '@stdlib/utils-define-nonenumerable-read-only-property': 0.2.3
       '@stdlib/utils-native-class': 0.2.3
 
-  '@stdlib/assert-is-typed-array-like@0.2.3':
+  '@stdlib/assert-is-typed-array-like@0.2.3(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/assert-is-nonnegative-integer': 0.2.3
+      '@stdlib/assert-is-nonnegative-integer': 0.2.3(supports-color@8.1.1)
       '@stdlib/constants-array-max-typed-array-length': 0.2.3
     transitivePeerDependencies:
       - supports-color
@@ -9825,32 +10130,32 @@ snapshots:
     dependencies:
       '@stdlib/utils-native-class': 0.2.3
 
-  '@stdlib/assert-napi-equal-typedarray-types@0.2.3':
+  '@stdlib/assert-napi-equal-typedarray-types@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/assert-napi-status-ok': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/assert-napi-equal-types@0.2.3':
+  '@stdlib/assert-napi-equal-types@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/assert-napi-status-ok': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/assert-napi-is-type@0.2.3':
+  '@stdlib/assert-napi-is-type@0.2.3(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/assert-napi-equal-types': 0.2.3
+      '@stdlib/assert-napi-equal-types': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-napi-status-ok': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/assert-napi-is-typedarray@0.2.3':
+  '@stdlib/assert-napi-is-typedarray@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/assert-napi-status-ok': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
@@ -9862,33 +10167,33 @@ snapshots:
       '@stdlib/error-tools-fmtprodmsg': 0.2.3
       '@stdlib/string-format': 0.2.3
 
-  '@stdlib/assert-tools-array-like-function@0.2.3':
+  '@stdlib/assert-tools-array-like-function@0.2.3(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/assert-is-array-like': 0.2.3
+      '@stdlib/assert-is-array-like': 0.2.3(supports-color@8.1.1)
       '@stdlib/error-tools-fmtprodmsg': 0.2.3
       '@stdlib/string-format': 0.2.3
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/blas-base-gcopy@0.2.3':
+  '@stdlib/blas-base-gcopy@0.2.3(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/array-base-arraylike2object': 0.2.2
+      '@stdlib/array-base-arraylike2object': 0.2.2(supports-color@8.1.1)
       '@stdlib/utils-define-nonenumerable-read-only-property': 0.2.3
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/blas-ext-base-gapxsumpw@0.3.1':
+  '@stdlib/blas-ext-base-gapxsumpw@0.3.1(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/blas-ext-base-gsumpw': 0.3.1
+      '@stdlib/blas-ext-base-gsumpw': 0.3.1(supports-color@8.1.1)
       '@stdlib/strided-base-stride2offset': 0.1.1
       '@stdlib/utils-define-nonenumerable-read-only-property': 0.2.3
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/blas-ext-base-gsumpw@0.3.1':
+  '@stdlib/blas-ext-base-gsumpw@0.3.1(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/array-base-arraylike2object': 0.2.2
-      '@stdlib/math-base-special-floor': 0.2.4
+      '@stdlib/array-base-arraylike2object': 0.2.2(supports-color@8.1.1)
+      '@stdlib/math-base-special-floor': 0.2.4(supports-color@8.1.1)
       '@stdlib/strided-base-stride2offset': 0.1.1
       '@stdlib/utils-define-nonenumerable-read-only-property': 0.2.3
     transitivePeerDependencies:
@@ -9918,11 +10223,11 @@ snapshots:
       '@stdlib/array-float32': 0.2.3
       '@stdlib/complex-float32-ctor': 0.1.1
 
-  '@stdlib/complex-float64-base-assert-is-same-value@0.0.3':
+  '@stdlib/complex-float64-base-assert-is-same-value@0.0.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/complex-float64-ctor': 0.1.2
       '@stdlib/complex-float64-reim': 0.1.4
-      '@stdlib/number-float64-base-assert-is-same-value': 0.2.2
+      '@stdlib/number-float64-base-assert-is-same-value': 0.2.2(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
@@ -10110,318 +10415,318 @@ snapshots:
 
   '@stdlib/function-ctor@0.2.3': {}
 
-  '@stdlib/math-base-assert-is-even@0.2.5':
+  '@stdlib/math-base-assert-is-even@0.2.5(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/math-base-assert-is-integer': 0.2.7
+      '@stdlib/math-base-assert-is-integer': 0.2.7(supports-color@8.1.1)
       '@stdlib/napi-argv': 0.2.3
-      '@stdlib/napi-argv-double': 0.2.2
-      '@stdlib/napi-create-int32': 0.0.3
+      '@stdlib/napi-argv-double': 0.2.2(supports-color@8.1.1)
+      '@stdlib/napi-create-int32': 0.0.3(supports-color@8.1.1)
       '@stdlib/napi-export': 0.3.1
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-assert-is-finite@0.2.3':
+  '@stdlib/math-base-assert-is-finite@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-ninf': 0.2.3
       '@stdlib/constants-float64-pinf': 0.2.3
       '@stdlib/napi-argv': 0.2.3
-      '@stdlib/napi-argv-double': 0.2.2
-      '@stdlib/napi-create-int32': 0.0.3
+      '@stdlib/napi-argv-double': 0.2.2(supports-color@8.1.1)
+      '@stdlib/napi-create-int32': 0.0.3(supports-color@8.1.1)
       '@stdlib/napi-export': 0.3.1
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-assert-is-finitef@0.2.3':
+  '@stdlib/math-base-assert-is-finitef@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float32-ninf': 0.2.3
       '@stdlib/constants-float32-pinf': 0.2.3
       '@stdlib/napi-argv': 0.2.3
-      '@stdlib/napi-argv-float': 0.2.3
-      '@stdlib/napi-create-int32': 0.0.3
+      '@stdlib/napi-argv-float': 0.2.3(supports-color@8.1.1)
+      '@stdlib/napi-create-int32': 0.0.3(supports-color@8.1.1)
       '@stdlib/napi-export': 0.3.1
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-assert-is-infinite@0.2.3':
+  '@stdlib/math-base-assert-is-infinite@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-ninf': 0.2.3
       '@stdlib/constants-float64-pinf': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-assert-is-integer@0.2.7':
+  '@stdlib/math-base-assert-is-integer@0.2.7(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/math-base-special-floor': 0.2.4
+      '@stdlib/math-base-special-floor': 0.2.4(supports-color@8.1.1)
       '@stdlib/napi-argv': 0.2.3
-      '@stdlib/napi-argv-double': 0.2.2
-      '@stdlib/napi-create-int32': 0.0.3
+      '@stdlib/napi-argv-double': 0.2.2(supports-color@8.1.1)
+      '@stdlib/napi-create-int32': 0.0.3(supports-color@8.1.1)
       '@stdlib/napi-export': 0.3.1
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-assert-is-nan@0.2.3':
+  '@stdlib/math-base-assert-is-nan@0.2.3(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-assert-is-nanf@0.2.3':
+  '@stdlib/math-base-assert-is-nanf@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/napi-argv': 0.2.3
-      '@stdlib/napi-argv-float': 0.2.3
-      '@stdlib/napi-create-int32': 0.0.3
+      '@stdlib/napi-argv-float': 0.2.3(supports-color@8.1.1)
+      '@stdlib/napi-create-int32': 0.0.3(supports-color@8.1.1)
       '@stdlib/napi-export': 0.3.1
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-assert-is-negative-zero@0.2.3':
+  '@stdlib/math-base-assert-is-negative-zero@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-ninf': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-assert-is-odd@0.3.2':
+  '@stdlib/math-base-assert-is-odd@0.3.2(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/math-base-assert-is-even': 0.2.5
+      '@stdlib/math-base-assert-is-even': 0.2.5(supports-color@8.1.1)
       '@stdlib/napi-argv': 0.2.3
-      '@stdlib/napi-argv-double': 0.2.2
-      '@stdlib/napi-create-int32': 0.0.3
+      '@stdlib/napi-argv-double': 0.2.2(supports-color@8.1.1)
+      '@stdlib/napi-create-int32': 0.0.3(supports-color@8.1.1)
       '@stdlib/napi-export': 0.3.1
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-assert-is-positive-integer@0.3.2':
+  '@stdlib/math-base-assert-is-positive-integer@0.3.2(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/math-base-special-floor': 0.2.4
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-special-floor': 0.2.4(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-assert-is-positive-zero@0.2.3':
+  '@stdlib/math-base-assert-is-positive-zero@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-pinf': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-napi-binary@0.3.3':
+  '@stdlib/math-base-napi-binary@0.3.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/complex-float32-ctor': 0.1.1
       '@stdlib/complex-float32-reim': 0.1.4
       '@stdlib/complex-float64-ctor': 0.1.2
       '@stdlib/complex-float64-reim': 0.1.4
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-napi-ternary@0.3.2':
+  '@stdlib/math-base-napi-ternary@0.3.2(supports-color@8.1.1)':
     dependencies:
       '@stdlib/complex-float32-ctor': 0.1.1
       '@stdlib/complex-float32-reim': 0.1.4
       '@stdlib/complex-float64-ctor': 0.1.2
       '@stdlib/complex-float64-reim': 0.1.4
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-napi-unary@0.2.7':
+  '@stdlib/math-base-napi-unary@0.2.7(supports-color@8.1.1)':
     dependencies:
       '@stdlib/complex-float32-ctor': 0.1.1
       '@stdlib/complex-float32-reim': 0.1.4
       '@stdlib/complex-float64-ctor': 0.1.2
       '@stdlib/complex-float64-reim': 0.1.4
-      '@stdlib/number-float16-base-to-float64': 0.1.2
-      '@stdlib/number-float16-ctor': 0.1.2
-      '@stdlib/number-float64-base-to-float16': 0.1.2
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/number-float16-base-to-float64': 0.1.2(supports-color@8.1.1)
+      '@stdlib/number-float16-ctor': 0.1.2(supports-color@8.1.1)
+      '@stdlib/number-float64-base-to-float16': 0.1.2(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-abs@0.2.3':
+  '@stdlib/math-base-special-abs@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-high-word-abs-mask': 0.2.3
-      '@stdlib/math-base-napi-unary': 0.2.7
-      '@stdlib/number-float64-base-to-words': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-napi-unary': 0.2.7(supports-color@8.1.1)
+      '@stdlib/number-float64-base-to-words': 0.2.3(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-absf@0.2.3':
+  '@stdlib/math-base-special-absf@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float32-abs-mask': 0.2.3
-      '@stdlib/math-base-napi-unary': 0.2.7
-      '@stdlib/number-float32-base-to-word': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-napi-unary': 0.2.7(supports-color@8.1.1)
+      '@stdlib/number-float32-base-to-word': 0.2.3(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-acos@0.2.4':
+  '@stdlib/math-base-special-acos@0.2.4(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-fourth-pi': 0.2.3
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-napi-unary': 0.2.7
-      '@stdlib/math-base-special-asin': 0.2.4
-      '@stdlib/math-base-special-sqrt': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-napi-unary': 0.2.7(supports-color@8.1.1)
+      '@stdlib/math-base-special-asin': 0.2.4(supports-color@8.1.1)
+      '@stdlib/math-base-special-sqrt': 0.2.3(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-asin@0.2.4':
+  '@stdlib/math-base-special-asin@0.2.4(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-fourth-pi': 0.2.3
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-napi-unary': 0.2.7
-      '@stdlib/math-base-special-sqrt': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-napi-unary': 0.2.7(supports-color@8.1.1)
+      '@stdlib/math-base-special-sqrt': 0.2.3(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-beta@0.3.1':
+  '@stdlib/math-base-special-beta@0.3.1(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-e': 0.2.3
       '@stdlib/constants-float64-eps': 0.2.3
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-napi-binary': 0.3.3
-      '@stdlib/math-base-special-abs': 0.2.3
-      '@stdlib/math-base-special-exp': 0.2.5
-      '@stdlib/math-base-special-log1p': 0.2.4
-      '@stdlib/math-base-special-pow': 0.3.1
-      '@stdlib/math-base-special-sqrt': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-napi-binary': 0.3.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-abs': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-exp': 0.2.5(supports-color@8.1.1)
+      '@stdlib/math-base-special-log1p': 0.2.4(supports-color@8.1.1)
+      '@stdlib/math-base-special-pow': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-sqrt': 0.2.3(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-betainc@0.2.3':
+  '@stdlib/math-base-special-betainc@0.2.3(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/math-base-special-kernel-betainc': 0.2.3
+      '@stdlib/math-base-special-kernel-betainc': 0.2.3(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-binomcoef@0.3.1':
+  '@stdlib/math-base-special-binomcoef@0.3.1(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-max-safe-integer': 0.2.3
       '@stdlib/constants-float64-pinf': 0.2.3
-      '@stdlib/math-base-assert-is-integer': 0.2.7
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-assert-is-odd': 0.3.2
-      '@stdlib/math-base-napi-binary': 0.3.3
-      '@stdlib/math-base-special-floor': 0.2.4
-      '@stdlib/math-base-special-gcd': 0.3.2
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-assert-is-integer': 0.2.7(supports-color@8.1.1)
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-assert-is-odd': 0.3.2(supports-color@8.1.1)
+      '@stdlib/math-base-napi-binary': 0.3.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-floor': 0.2.4(supports-color@8.1.1)
+      '@stdlib/math-base-special-gcd': 0.3.2(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-ceil@0.2.3':
+  '@stdlib/math-base-special-ceil@0.2.3(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/math-base-napi-unary': 0.2.7
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-napi-unary': 0.2.7(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-copysign@0.2.3':
+  '@stdlib/math-base-special-copysign@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-high-word-abs-mask': 0.2.3
       '@stdlib/constants-float64-high-word-sign-mask': 0.2.1
-      '@stdlib/math-base-napi-binary': 0.3.3
-      '@stdlib/number-float64-base-from-words': 0.2.3
-      '@stdlib/number-float64-base-get-high-word': 0.2.3
-      '@stdlib/number-float64-base-to-words': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-napi-binary': 0.3.3(supports-color@8.1.1)
+      '@stdlib/number-float64-base-from-words': 0.2.3(supports-color@8.1.1)
+      '@stdlib/number-float64-base-get-high-word': 0.2.3(supports-color@8.1.1)
+      '@stdlib/number-float64-base-to-words': 0.2.3(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-cos@0.3.1':
+  '@stdlib/math-base-special-cos@0.3.1(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-high-word-abs-mask': 0.2.3
       '@stdlib/constants-float64-high-word-exponent-mask': 0.2.3
-      '@stdlib/math-base-napi-unary': 0.2.7
-      '@stdlib/math-base-special-kernel-cos': 0.2.4
-      '@stdlib/math-base-special-kernel-sin': 0.2.4
-      '@stdlib/math-base-special-rempio2': 0.3.1
-      '@stdlib/number-float64-base-get-high-word': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-napi-unary': 0.2.7(supports-color@8.1.1)
+      '@stdlib/math-base-special-kernel-cos': 0.2.4(supports-color@8.1.1)
+      '@stdlib/math-base-special-kernel-sin': 0.2.4(supports-color@8.1.1)
+      '@stdlib/math-base-special-rempio2': 0.3.1(supports-color@8.1.1)
+      '@stdlib/number-float64-base-get-high-word': 0.2.3(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-erfc@0.2.5':
+  '@stdlib/math-base-special-erfc@0.2.5(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-ninf': 0.2.3
       '@stdlib/constants-float64-pinf': 0.2.3
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-napi-unary': 0.2.7
-      '@stdlib/math-base-special-exp': 0.2.5
-      '@stdlib/number-float64-base-set-low-word': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-napi-unary': 0.2.7(supports-color@8.1.1)
+      '@stdlib/math-base-special-exp': 0.2.5(supports-color@8.1.1)
+      '@stdlib/number-float64-base-set-low-word': 0.2.3(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-erfcinv@0.2.4':
+  '@stdlib/math-base-special-erfcinv@0.2.4(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-ninf': 0.2.3
       '@stdlib/constants-float64-pinf': 0.2.3
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-napi-unary': 0.2.7
-      '@stdlib/math-base-special-ln': 0.2.5
-      '@stdlib/math-base-special-sqrt': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-napi-unary': 0.2.7(supports-color@8.1.1)
+      '@stdlib/math-base-special-ln': 0.2.5(supports-color@8.1.1)
+      '@stdlib/math-base-special-sqrt': 0.2.3(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-exp@0.2.5':
+  '@stdlib/math-base-special-exp@0.2.5(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-ninf': 0.2.3
       '@stdlib/constants-float64-pinf': 0.2.3
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-napi-unary': 0.2.7
-      '@stdlib/math-base-special-ldexp': 0.2.5
-      '@stdlib/math-base-special-trunc': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-napi-unary': 0.2.7(supports-color@8.1.1)
+      '@stdlib/math-base-special-ldexp': 0.2.5(supports-color@8.1.1)
+      '@stdlib/math-base-special-trunc': 0.2.3(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-expm1@0.2.4':
+  '@stdlib/math-base-special-expm1@0.2.4(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-exponent-bias': 0.2.3
       '@stdlib/constants-float64-half-ln-two': 0.2.3
       '@stdlib/constants-float64-ninf': 0.2.3
       '@stdlib/constants-float64-pinf': 0.2.3
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-napi-unary': 0.2.7
-      '@stdlib/number-float64-base-from-words': 0.2.3
-      '@stdlib/number-float64-base-get-high-word': 0.2.3
-      '@stdlib/number-float64-base-set-high-word': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-napi-unary': 0.2.7(supports-color@8.1.1)
+      '@stdlib/number-float64-base-from-words': 0.2.3(supports-color@8.1.1)
+      '@stdlib/number-float64-base-get-high-word': 0.2.3(supports-color@8.1.1)
+      '@stdlib/number-float64-base-set-high-word': 0.2.3(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-factorial@0.3.2':
+  '@stdlib/math-base-special-factorial@0.3.2(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-max-nth-factorial': 0.1.1
       '@stdlib/constants-float64-pinf': 0.2.3
-      '@stdlib/math-base-assert-is-integer': 0.2.7
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-napi-unary': 0.2.7
-      '@stdlib/math-base-special-gamma': 0.3.1
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-assert-is-integer': 0.2.7(supports-color@8.1.1)
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-napi-unary': 0.2.7(supports-color@8.1.1)
+      '@stdlib/math-base-special-gamma': 0.3.1(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-floor@0.2.4':
+  '@stdlib/math-base-special-floor@0.2.4(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/math-base-napi-unary': 0.2.7
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-napi-unary': 0.2.7(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-fmod@0.1.1':
+  '@stdlib/math-base-special-fmod@0.1.1(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-exponent-bias': 0.2.3
       '@stdlib/constants-float64-high-word-abs-mask': 0.2.3
@@ -10429,80 +10734,80 @@ snapshots:
       '@stdlib/constants-float64-high-word-sign-mask': 0.2.1
       '@stdlib/constants-float64-high-word-significand-mask': 0.2.3
       '@stdlib/constants-float64-min-base2-exponent': 0.2.3
-      '@stdlib/math-base-napi-binary': 0.3.3
-      '@stdlib/number-float64-base-from-words': 0.2.3
-      '@stdlib/number-float64-base-to-words': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-napi-binary': 0.3.3(supports-color@8.1.1)
+      '@stdlib/number-float64-base-from-words': 0.2.3(supports-color@8.1.1)
+      '@stdlib/number-float64-base-to-words': 0.2.3(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-gamma-delta-ratio@0.3.1':
+  '@stdlib/math-base-special-gamma-delta-ratio@0.3.1(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-e': 0.2.3
       '@stdlib/constants-float64-eps': 0.2.3
       '@stdlib/constants-float64-gamma-lanczos-g': 0.2.3
       '@stdlib/constants-float64-max-nth-factorial': 0.1.1
-      '@stdlib/math-base-napi-binary': 0.3.3
-      '@stdlib/math-base-special-abs': 0.2.3
-      '@stdlib/math-base-special-exp': 0.2.5
-      '@stdlib/math-base-special-factorial': 0.3.2
-      '@stdlib/math-base-special-floor': 0.2.4
-      '@stdlib/math-base-special-gamma': 0.3.1
-      '@stdlib/math-base-special-gamma-lanczos-sum': 0.3.2
-      '@stdlib/math-base-special-log1p': 0.2.4
-      '@stdlib/math-base-special-pow': 0.3.1
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-napi-binary': 0.3.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-abs': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-exp': 0.2.5(supports-color@8.1.1)
+      '@stdlib/math-base-special-factorial': 0.3.2(supports-color@8.1.1)
+      '@stdlib/math-base-special-floor': 0.2.4(supports-color@8.1.1)
+      '@stdlib/math-base-special-gamma': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-gamma-lanczos-sum': 0.3.2(supports-color@8.1.1)
+      '@stdlib/math-base-special-log1p': 0.2.4(supports-color@8.1.1)
+      '@stdlib/math-base-special-pow': 0.3.1(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-gamma-lanczos-sum-expg-scaled@0.2.2':
+  '@stdlib/math-base-special-gamma-lanczos-sum-expg-scaled@0.2.2(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/math-base-napi-unary': 0.2.7
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-napi-unary': 0.2.7(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-gamma-lanczos-sum@0.3.2':
+  '@stdlib/math-base-special-gamma-lanczos-sum@0.3.2(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/math-base-napi-unary': 0.2.7
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-napi-unary': 0.2.7(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-gamma1pm1@0.3.1':
+  '@stdlib/math-base-special-gamma1pm1@0.3.1(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-eps': 0.2.3
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-napi-unary': 0.2.7
-      '@stdlib/math-base-special-expm1': 0.2.4
-      '@stdlib/math-base-special-gamma': 0.3.1
-      '@stdlib/math-base-special-ln': 0.2.5
-      '@stdlib/math-base-special-log1p': 0.2.4
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-napi-unary': 0.2.7(supports-color@8.1.1)
+      '@stdlib/math-base-special-expm1': 0.2.4(supports-color@8.1.1)
+      '@stdlib/math-base-special-gamma': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-ln': 0.2.5(supports-color@8.1.1)
+      '@stdlib/math-base-special-log1p': 0.2.4(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-gamma@0.3.1':
+  '@stdlib/math-base-special-gamma@0.3.1(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-eulergamma': 0.2.3
       '@stdlib/constants-float64-ninf': 0.2.3
       '@stdlib/constants-float64-pi': 0.2.3
       '@stdlib/constants-float64-pinf': 0.2.3
       '@stdlib/constants-float64-sqrt-two-pi': 0.2.3
-      '@stdlib/math-base-assert-is-integer': 0.2.7
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-assert-is-negative-zero': 0.2.3
-      '@stdlib/math-base-napi-unary': 0.2.7
-      '@stdlib/math-base-special-abs': 0.2.3
-      '@stdlib/math-base-special-exp': 0.2.5
-      '@stdlib/math-base-special-floor': 0.2.4
-      '@stdlib/math-base-special-pow': 0.3.1
-      '@stdlib/math-base-special-sin': 0.3.1
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-assert-is-integer': 0.2.7(supports-color@8.1.1)
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-assert-is-negative-zero': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-napi-unary': 0.2.7(supports-color@8.1.1)
+      '@stdlib/math-base-special-abs': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-exp': 0.2.5(supports-color@8.1.1)
+      '@stdlib/math-base-special-floor': 0.2.4(supports-color@8.1.1)
+      '@stdlib/math-base-special-pow': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-sin': 0.3.1(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-gammainc@0.3.1':
+  '@stdlib/math-base-special-gammainc@0.3.1(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float32-smallest-normal': 0.2.3
       '@stdlib/constants-float64-e': 0.2.3
@@ -10517,35 +10822,35 @@ snapshots:
       '@stdlib/constants-float64-sqrt-eps': 0.2.3
       '@stdlib/constants-float64-sqrt-two-pi': 0.2.3
       '@stdlib/constants-float64-two-pi': 0.2.3
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-special-abs': 0.2.3
-      '@stdlib/math-base-special-erfc': 0.2.5
-      '@stdlib/math-base-special-exp': 0.2.5
-      '@stdlib/math-base-special-floor': 0.2.4
-      '@stdlib/math-base-special-gamma': 0.3.1
-      '@stdlib/math-base-special-gamma-lanczos-sum-expg-scaled': 0.2.2
-      '@stdlib/math-base-special-gamma1pm1': 0.3.1
-      '@stdlib/math-base-special-gammaln': 0.3.1
-      '@stdlib/math-base-special-ln': 0.2.5
-      '@stdlib/math-base-special-log1pmx': 0.2.4
-      '@stdlib/math-base-special-max': 0.3.1
-      '@stdlib/math-base-special-min': 0.2.4
-      '@stdlib/math-base-special-pow': 0.3.1
-      '@stdlib/math-base-special-powm1': 0.3.2
-      '@stdlib/math-base-special-sqrt': 0.2.3
-      '@stdlib/math-base-tools-continued-fraction': 0.2.3
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-abs': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-erfc': 0.2.5(supports-color@8.1.1)
+      '@stdlib/math-base-special-exp': 0.2.5(supports-color@8.1.1)
+      '@stdlib/math-base-special-floor': 0.2.4(supports-color@8.1.1)
+      '@stdlib/math-base-special-gamma': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-gamma-lanczos-sum-expg-scaled': 0.2.2(supports-color@8.1.1)
+      '@stdlib/math-base-special-gamma1pm1': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-gammaln': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-ln': 0.2.5(supports-color@8.1.1)
+      '@stdlib/math-base-special-log1pmx': 0.2.4(supports-color@8.1.1)
+      '@stdlib/math-base-special-max': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-min': 0.2.4(supports-color@8.1.1)
+      '@stdlib/math-base-special-pow': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-powm1': 0.3.2(supports-color@8.1.1)
+      '@stdlib/math-base-special-sqrt': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-tools-continued-fraction': 0.2.3(supports-color@8.1.1)
       '@stdlib/math-base-tools-evalpoly': 0.2.3
-      '@stdlib/math-base-tools-sum-series': 0.2.3
+      '@stdlib/math-base-tools-sum-series': 0.2.3(supports-color@8.1.1)
       '@stdlib/napi-argv': 0.2.3
-      '@stdlib/napi-argv-bool': 0.1.1
-      '@stdlib/napi-argv-double': 0.2.2
-      '@stdlib/napi-create-double': 0.0.3
+      '@stdlib/napi-argv-bool': 0.1.1(supports-color@8.1.1)
+      '@stdlib/napi-argv-double': 0.2.2(supports-color@8.1.1)
+      '@stdlib/napi-create-double': 0.0.3(supports-color@8.1.1)
       '@stdlib/napi-export': 0.3.1
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-gammaincinv@0.2.3':
+  '@stdlib/math-base-special-gammaincinv@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float32-max': 0.2.3
       '@stdlib/constants-float32-smallest-normal': 0.2.3
@@ -10553,51 +10858,51 @@ snapshots:
       '@stdlib/constants-float64-pinf': 0.2.3
       '@stdlib/constants-float64-sqrt-two-pi': 0.2.3
       '@stdlib/constants-float64-two-pi': 0.2.3
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-special-abs': 0.2.3
-      '@stdlib/math-base-special-erfcinv': 0.2.4
-      '@stdlib/math-base-special-exp': 0.2.5
-      '@stdlib/math-base-special-gamma': 0.3.1
-      '@stdlib/math-base-special-gammainc': 0.3.1
-      '@stdlib/math-base-special-gammaln': 0.3.1
-      '@stdlib/math-base-special-ln': 0.2.5
-      '@stdlib/math-base-special-min': 0.2.4
-      '@stdlib/math-base-special-pow': 0.3.1
-      '@stdlib/math-base-special-sqrt': 0.2.3
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-abs': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-erfcinv': 0.2.4(supports-color@8.1.1)
+      '@stdlib/math-base-special-exp': 0.2.5(supports-color@8.1.1)
+      '@stdlib/math-base-special-gamma': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-gammainc': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-gammaln': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-ln': 0.2.5(supports-color@8.1.1)
+      '@stdlib/math-base-special-min': 0.2.4(supports-color@8.1.1)
+      '@stdlib/math-base-special-pow': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-sqrt': 0.2.3(supports-color@8.1.1)
       '@stdlib/math-base-tools-evalpoly': 0.2.3
-      debug: 2.6.9
+      debug: 2.6.9(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-gammaln@0.3.1':
+  '@stdlib/math-base-special-gammaln@0.3.1(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-pi': 0.2.3
       '@stdlib/constants-float64-pinf': 0.2.3
-      '@stdlib/math-base-assert-is-infinite': 0.2.3
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-napi-unary': 0.2.7
-      '@stdlib/math-base-special-abs': 0.2.3
-      '@stdlib/math-base-special-ln': 0.2.5
-      '@stdlib/math-base-special-sinpi': 0.3.1
-      '@stdlib/math-base-special-trunc': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-assert-is-infinite': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-napi-unary': 0.2.7(supports-color@8.1.1)
+      '@stdlib/math-base-special-abs': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-ln': 0.2.5(supports-color@8.1.1)
+      '@stdlib/math-base-special-sinpi': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-trunc': 0.2.3(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-gcd@0.3.2':
+  '@stdlib/math-base-special-gcd@0.3.2(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-ninf': 0.2.3
       '@stdlib/constants-float64-pinf': 0.2.3
       '@stdlib/constants-int32-max': 0.3.1
-      '@stdlib/math-base-assert-is-integer': 0.2.7
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-napi-binary': 0.3.3
-      '@stdlib/math-base-special-fmod': 0.1.1
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-assert-is-integer': 0.2.7(supports-color@8.1.1)
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-napi-binary': 0.3.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-fmod': 0.1.1(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-kernel-betainc@0.2.3':
+  '@stdlib/math-base-special-kernel-betainc@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-e': 0.2.3
       '@stdlib/constants-float64-eps': 0.2.3
@@ -10609,35 +10914,35 @@ snapshots:
       '@stdlib/constants-float64-pi': 0.2.3
       '@stdlib/constants-float64-smallest-normal': 0.2.3
       '@stdlib/constants-int32-max': 0.3.1
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-special-abs': 0.2.3
-      '@stdlib/math-base-special-asin': 0.2.4
-      '@stdlib/math-base-special-beta': 0.3.1
-      '@stdlib/math-base-special-binomcoef': 0.3.1
-      '@stdlib/math-base-special-exp': 0.2.5
-      '@stdlib/math-base-special-expm1': 0.2.4
-      '@stdlib/math-base-special-factorial': 0.3.2
-      '@stdlib/math-base-special-floor': 0.2.4
-      '@stdlib/math-base-special-gamma': 0.3.1
-      '@stdlib/math-base-special-gamma-delta-ratio': 0.3.1
-      '@stdlib/math-base-special-gamma-lanczos-sum-expg-scaled': 0.2.2
-      '@stdlib/math-base-special-gammainc': 0.3.1
-      '@stdlib/math-base-special-gammaln': 0.3.1
-      '@stdlib/math-base-special-ln': 0.2.5
-      '@stdlib/math-base-special-log1p': 0.2.4
-      '@stdlib/math-base-special-max': 0.3.1
-      '@stdlib/math-base-special-maxabs': 0.3.1
-      '@stdlib/math-base-special-min': 0.2.4
-      '@stdlib/math-base-special-minabs': 0.2.4
-      '@stdlib/math-base-special-pow': 0.3.1
-      '@stdlib/math-base-special-sqrt': 0.2.3
-      '@stdlib/math-base-tools-continued-fraction': 0.2.3
-      '@stdlib/math-base-tools-sum-series': 0.2.3
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-abs': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-asin': 0.2.4(supports-color@8.1.1)
+      '@stdlib/math-base-special-beta': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-binomcoef': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-exp': 0.2.5(supports-color@8.1.1)
+      '@stdlib/math-base-special-expm1': 0.2.4(supports-color@8.1.1)
+      '@stdlib/math-base-special-factorial': 0.3.2(supports-color@8.1.1)
+      '@stdlib/math-base-special-floor': 0.2.4(supports-color@8.1.1)
+      '@stdlib/math-base-special-gamma': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-gamma-delta-ratio': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-gamma-lanczos-sum-expg-scaled': 0.2.2(supports-color@8.1.1)
+      '@stdlib/math-base-special-gammainc': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-gammaln': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-ln': 0.2.5(supports-color@8.1.1)
+      '@stdlib/math-base-special-log1p': 0.2.4(supports-color@8.1.1)
+      '@stdlib/math-base-special-max': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-maxabs': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-min': 0.2.4(supports-color@8.1.1)
+      '@stdlib/math-base-special-minabs': 0.2.4(supports-color@8.1.1)
+      '@stdlib/math-base-special-pow': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-sqrt': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-tools-continued-fraction': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-tools-sum-series': 0.2.3(supports-color@8.1.1)
       '@stdlib/utils-define-nonenumerable-read-only-property': 0.2.3
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-kernel-betaincinv@0.2.3':
+  '@stdlib/math-base-special-kernel-betaincinv@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-eps': 0.2.3
       '@stdlib/constants-float64-half-pi': 0.2.3
@@ -10646,48 +10951,48 @@ snapshots:
       '@stdlib/constants-float64-smallest-normal': 0.2.3
       '@stdlib/constants-float64-smallest-subnormal': 0.2.3
       '@stdlib/constants-float64-sqrt-two': 0.2.3
-      '@stdlib/math-base-special-abs': 0.2.3
-      '@stdlib/math-base-special-acos': 0.2.4
-      '@stdlib/math-base-special-asin': 0.2.4
-      '@stdlib/math-base-special-beta': 0.3.1
-      '@stdlib/math-base-special-betainc': 0.2.3
-      '@stdlib/math-base-special-cos': 0.3.1
-      '@stdlib/math-base-special-erfcinv': 0.2.4
-      '@stdlib/math-base-special-exp': 0.2.5
-      '@stdlib/math-base-special-expm1': 0.2.4
-      '@stdlib/math-base-special-floor': 0.2.4
-      '@stdlib/math-base-special-gamma-delta-ratio': 0.3.1
-      '@stdlib/math-base-special-gammaincinv': 0.2.3
-      '@stdlib/math-base-special-kernel-betainc': 0.2.3
-      '@stdlib/math-base-special-ldexp': 0.2.5
-      '@stdlib/math-base-special-ln': 0.2.5
-      '@stdlib/math-base-special-log1p': 0.2.4
-      '@stdlib/math-base-special-max': 0.3.1
-      '@stdlib/math-base-special-min': 0.2.4
-      '@stdlib/math-base-special-pow': 0.3.1
-      '@stdlib/math-base-special-round': 0.3.1
-      '@stdlib/math-base-special-signum': 0.2.3
-      '@stdlib/math-base-special-sin': 0.3.1
-      '@stdlib/math-base-special-sqrt': 0.2.3
+      '@stdlib/math-base-special-abs': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-acos': 0.2.4(supports-color@8.1.1)
+      '@stdlib/math-base-special-asin': 0.2.4(supports-color@8.1.1)
+      '@stdlib/math-base-special-beta': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-betainc': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-cos': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-erfcinv': 0.2.4(supports-color@8.1.1)
+      '@stdlib/math-base-special-exp': 0.2.5(supports-color@8.1.1)
+      '@stdlib/math-base-special-expm1': 0.2.4(supports-color@8.1.1)
+      '@stdlib/math-base-special-floor': 0.2.4(supports-color@8.1.1)
+      '@stdlib/math-base-special-gamma-delta-ratio': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-gammaincinv': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-kernel-betainc': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-ldexp': 0.2.5(supports-color@8.1.1)
+      '@stdlib/math-base-special-ln': 0.2.5(supports-color@8.1.1)
+      '@stdlib/math-base-special-log1p': 0.2.4(supports-color@8.1.1)
+      '@stdlib/math-base-special-max': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-min': 0.2.4(supports-color@8.1.1)
+      '@stdlib/math-base-special-pow': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-round': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-signum': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-sin': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-sqrt': 0.2.3(supports-color@8.1.1)
       '@stdlib/math-base-tools-evalpoly': 0.2.3
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-kernel-cos@0.2.4':
+  '@stdlib/math-base-special-kernel-cos@0.2.4(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/math-base-napi-binary': 0.3.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-napi-binary': 0.3.3(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-kernel-sin@0.2.4':
+  '@stdlib/math-base-special-kernel-sin@0.2.4(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/math-base-napi-binary': 0.3.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-napi-binary': 0.3.3(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-ldexp@0.2.5':
+  '@stdlib/math-base-special-ldexp@0.2.5(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-exponent-bias': 0.2.3
       '@stdlib/constants-float64-max-base2-exponent': 0.2.3
@@ -10695,93 +11000,93 @@ snapshots:
       '@stdlib/constants-float64-min-base2-exponent-subnormal': 0.2.1
       '@stdlib/constants-float64-ninf': 0.2.3
       '@stdlib/constants-float64-pinf': 0.2.3
-      '@stdlib/math-base-assert-is-infinite': 0.2.3
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-special-copysign': 0.2.3
-      '@stdlib/number-float64-base-exponent': 0.2.3
-      '@stdlib/number-float64-base-from-words': 0.2.3
-      '@stdlib/number-float64-base-normalize': 0.2.4
-      '@stdlib/number-float64-base-to-words': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-assert-is-infinite': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-copysign': 0.2.3(supports-color@8.1.1)
+      '@stdlib/number-float64-base-exponent': 0.2.3(supports-color@8.1.1)
+      '@stdlib/number-float64-base-from-words': 0.2.3(supports-color@8.1.1)
+      '@stdlib/number-float64-base-normalize': 0.2.4(supports-color@8.1.1)
+      '@stdlib/number-float64-base-to-words': 0.2.3(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-ln@0.2.5':
+  '@stdlib/math-base-special-ln@0.2.5(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-exponent-bias': 0.2.3
       '@stdlib/constants-float64-ninf': 0.2.3
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-napi-unary': 0.2.7
-      '@stdlib/number-float64-base-get-high-word': 0.2.3
-      '@stdlib/number-float64-base-set-high-word': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-napi-unary': 0.2.7(supports-color@8.1.1)
+      '@stdlib/number-float64-base-get-high-word': 0.2.3(supports-color@8.1.1)
+      '@stdlib/number-float64-base-set-high-word': 0.2.3(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-log1p@0.2.4':
+  '@stdlib/math-base-special-log1p@0.2.4(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-exponent-bias': 0.2.3
       '@stdlib/constants-float64-ninf': 0.2.3
       '@stdlib/constants-float64-pinf': 0.2.3
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-napi-unary': 0.2.7
-      '@stdlib/number-float64-base-get-high-word': 0.2.3
-      '@stdlib/number-float64-base-set-high-word': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-napi-unary': 0.2.7(supports-color@8.1.1)
+      '@stdlib/number-float64-base-get-high-word': 0.2.3(supports-color@8.1.1)
+      '@stdlib/number-float64-base-set-high-word': 0.2.3(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-log1pmx@0.2.4':
+  '@stdlib/math-base-special-log1pmx@0.2.4(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-eps': 0.2.3
-      '@stdlib/math-base-napi-unary': 0.2.7
-      '@stdlib/math-base-special-abs': 0.2.3
-      '@stdlib/math-base-special-ln': 0.2.5
-      '@stdlib/math-base-special-log1p': 0.2.4
-      '@stdlib/math-base-tools-sum-series': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-napi-unary': 0.2.7(supports-color@8.1.1)
+      '@stdlib/math-base-special-abs': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-ln': 0.2.5(supports-color@8.1.1)
+      '@stdlib/math-base-special-log1p': 0.2.4(supports-color@8.1.1)
+      '@stdlib/math-base-tools-sum-series': 0.2.3(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-max@0.3.1':
+  '@stdlib/math-base-special-max@0.3.1(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-pinf': 0.2.3
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-assert-is-positive-zero': 0.2.3
-      '@stdlib/math-base-napi-binary': 0.3.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-assert-is-positive-zero': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-napi-binary': 0.3.3(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-maxabs@0.3.1':
+  '@stdlib/math-base-special-maxabs@0.3.1(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/math-base-napi-binary': 0.3.3
-      '@stdlib/math-base-special-abs': 0.2.3
-      '@stdlib/math-base-special-max': 0.3.1
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-napi-binary': 0.3.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-abs': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-max': 0.3.1(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-min@0.2.4':
+  '@stdlib/math-base-special-min@0.2.4(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-ninf': 0.2.3
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-assert-is-negative-zero': 0.2.3
-      '@stdlib/math-base-napi-binary': 0.3.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-assert-is-negative-zero': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-napi-binary': 0.3.3(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-minabs@0.2.4':
+  '@stdlib/math-base-special-minabs@0.2.4(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/math-base-napi-binary': 0.3.3
-      '@stdlib/math-base-special-abs': 0.2.3
-      '@stdlib/math-base-special-min': 0.2.4
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-napi-binary': 0.3.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-abs': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-min': 0.2.4(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-pow@0.3.1':
+  '@stdlib/math-base-special-pow@0.3.1(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-exponent-bias': 0.2.3
       '@stdlib/constants-float64-high-word-abs-mask': 0.2.3
@@ -10790,144 +11095,144 @@ snapshots:
       '@stdlib/constants-float64-ninf': 0.2.3
       '@stdlib/constants-float64-num-high-word-significand-bits': 0.1.1
       '@stdlib/constants-float64-pinf': 0.2.3
-      '@stdlib/math-base-assert-is-infinite': 0.2.3
-      '@stdlib/math-base-assert-is-integer': 0.2.7
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-assert-is-odd': 0.3.2
-      '@stdlib/math-base-napi-binary': 0.3.3
-      '@stdlib/math-base-special-abs': 0.2.3
-      '@stdlib/math-base-special-copysign': 0.2.3
-      '@stdlib/math-base-special-ldexp': 0.2.5
-      '@stdlib/math-base-special-sqrt': 0.2.3
-      '@stdlib/number-float64-base-get-high-word': 0.2.3
-      '@stdlib/number-float64-base-set-high-word': 0.2.3
-      '@stdlib/number-float64-base-set-low-word': 0.2.3
-      '@stdlib/number-float64-base-to-words': 0.2.3
+      '@stdlib/math-base-assert-is-infinite': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-assert-is-integer': 0.2.7(supports-color@8.1.1)
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-assert-is-odd': 0.3.2(supports-color@8.1.1)
+      '@stdlib/math-base-napi-binary': 0.3.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-abs': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-copysign': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-ldexp': 0.2.5(supports-color@8.1.1)
+      '@stdlib/math-base-special-sqrt': 0.2.3(supports-color@8.1.1)
+      '@stdlib/number-float64-base-get-high-word': 0.2.3(supports-color@8.1.1)
+      '@stdlib/number-float64-base-set-high-word': 0.2.3(supports-color@8.1.1)
+      '@stdlib/number-float64-base-set-low-word': 0.2.3(supports-color@8.1.1)
+      '@stdlib/number-float64-base-to-words': 0.2.3(supports-color@8.1.1)
       '@stdlib/number-uint32-base-to-int32': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-powm1@0.3.2':
+  '@stdlib/math-base-special-powm1@0.3.2(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/math-base-assert-is-infinite': 0.2.3
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-napi-binary': 0.3.3
-      '@stdlib/math-base-special-abs': 0.2.3
-      '@stdlib/math-base-special-expm1': 0.2.4
-      '@stdlib/math-base-special-fmod': 0.1.1
-      '@stdlib/math-base-special-ln': 0.2.5
-      '@stdlib/math-base-special-pow': 0.3.1
-      '@stdlib/math-base-special-trunc': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-assert-is-infinite': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-napi-binary': 0.3.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-abs': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-expm1': 0.2.4(supports-color@8.1.1)
+      '@stdlib/math-base-special-fmod': 0.1.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-ln': 0.2.5(supports-color@8.1.1)
+      '@stdlib/math-base-special-pow': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-trunc': 0.2.3(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-rempio2@0.3.1':
+  '@stdlib/math-base-special-rempio2@0.3.1(supports-color@8.1.1)':
     dependencies:
       '@stdlib/array-base-zeros': 0.2.3
       '@stdlib/constants-float64-high-word-abs-mask': 0.2.3
       '@stdlib/constants-float64-high-word-exponent-mask': 0.2.3
       '@stdlib/constants-float64-high-word-significand-mask': 0.2.3
-      '@stdlib/math-base-special-floor': 0.2.4
-      '@stdlib/math-base-special-ldexp': 0.2.5
-      '@stdlib/math-base-special-round': 0.3.1
+      '@stdlib/math-base-special-floor': 0.2.4(supports-color@8.1.1)
+      '@stdlib/math-base-special-ldexp': 0.2.5(supports-color@8.1.1)
+      '@stdlib/math-base-special-round': 0.3.1(supports-color@8.1.1)
       '@stdlib/napi-argv': 0.2.3
-      '@stdlib/napi-argv-double': 0.2.2
-      '@stdlib/napi-argv-float64array': 0.2.3
-      '@stdlib/napi-create-double': 0.0.3
+      '@stdlib/napi-argv-double': 0.2.2(supports-color@8.1.1)
+      '@stdlib/napi-argv-float64array': 0.2.3(supports-color@8.1.1)
+      '@stdlib/napi-create-double': 0.0.3(supports-color@8.1.1)
       '@stdlib/napi-export': 0.3.1
-      '@stdlib/number-float64-base-from-words': 0.2.3
-      '@stdlib/number-float64-base-get-high-word': 0.2.3
-      '@stdlib/number-float64-base-get-low-word': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/number-float64-base-from-words': 0.2.3(supports-color@8.1.1)
+      '@stdlib/number-float64-base-get-high-word': 0.2.3(supports-color@8.1.1)
+      '@stdlib/number-float64-base-get-low-word': 0.2.3(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-round@0.3.1':
+  '@stdlib/math-base-special-round@0.3.1(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-assert-is-negative-zero': 0.2.3
-      '@stdlib/math-base-napi-unary': 0.2.7
-      '@stdlib/math-base-special-floor': 0.2.4
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-assert-is-negative-zero': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-napi-unary': 0.2.7(supports-color@8.1.1)
+      '@stdlib/math-base-special-floor': 0.2.4(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-roundn@0.2.3':
+  '@stdlib/math-base-special-roundn@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-max-base10-exponent': 0.2.3
       '@stdlib/constants-float64-max-safe-integer': 0.2.3
       '@stdlib/constants-float64-min-base10-exponent': 0.2.3
       '@stdlib/constants-float64-min-base10-exponent-subnormal': 0.2.1
-      '@stdlib/math-base-assert-is-infinite': 0.2.3
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-napi-binary': 0.3.3
-      '@stdlib/math-base-special-abs': 0.2.3
-      '@stdlib/math-base-special-pow': 0.3.1
-      '@stdlib/math-base-special-round': 0.3.1
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-assert-is-infinite': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-napi-binary': 0.3.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-abs': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-pow': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-round': 0.3.1(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-signum@0.2.3':
+  '@stdlib/math-base-special-signum@0.2.3(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-napi-unary': 0.2.7
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-napi-unary': 0.2.7(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-sin@0.3.1':
+  '@stdlib/math-base-special-sin@0.3.1(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-high-word-abs-mask': 0.2.3
       '@stdlib/constants-float64-high-word-exponent-mask': 0.2.3
-      '@stdlib/math-base-napi-unary': 0.2.7
-      '@stdlib/math-base-special-kernel-cos': 0.2.4
-      '@stdlib/math-base-special-kernel-sin': 0.2.4
-      '@stdlib/math-base-special-rempio2': 0.3.1
-      '@stdlib/number-float64-base-get-high-word': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-napi-unary': 0.2.7(supports-color@8.1.1)
+      '@stdlib/math-base-special-kernel-cos': 0.2.4(supports-color@8.1.1)
+      '@stdlib/math-base-special-kernel-sin': 0.2.4(supports-color@8.1.1)
+      '@stdlib/math-base-special-rempio2': 0.3.1(supports-color@8.1.1)
+      '@stdlib/number-float64-base-get-high-word': 0.2.3(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-sinpi@0.3.1':
+  '@stdlib/math-base-special-sinpi@0.3.1(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-pi': 0.2.3
-      '@stdlib/math-base-assert-is-infinite': 0.2.3
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-napi-unary': 0.2.7
-      '@stdlib/math-base-special-abs': 0.2.3
-      '@stdlib/math-base-special-copysign': 0.2.3
-      '@stdlib/math-base-special-cos': 0.3.1
-      '@stdlib/math-base-special-fmod': 0.1.1
-      '@stdlib/math-base-special-sin': 0.3.1
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-assert-is-infinite': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-napi-unary': 0.2.7(supports-color@8.1.1)
+      '@stdlib/math-base-special-abs': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-copysign': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-cos': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-fmod': 0.1.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-sin': 0.3.1(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-sqrt@0.2.3':
+  '@stdlib/math-base-special-sqrt@0.2.3(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/math-base-napi-unary': 0.2.7
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-napi-unary': 0.2.7(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-special-trunc@0.2.3':
+  '@stdlib/math-base-special-trunc@0.2.3(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/math-base-napi-unary': 0.2.7
-      '@stdlib/math-base-special-ceil': 0.2.3
-      '@stdlib/math-base-special-floor': 0.2.4
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-napi-unary': 0.2.7(supports-color@8.1.1)
+      '@stdlib/math-base-special-ceil': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-floor': 0.2.4(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/math-base-tools-continued-fraction@0.2.3':
+  '@stdlib/math-base-tools-continued-fraction@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/assert-has-generator-support': 0.2.3
       '@stdlib/constants-float32-smallest-normal': 0.2.3
       '@stdlib/constants-float64-eps': 0.2.3
-      '@stdlib/math-base-special-abs': 0.2.3
+      '@stdlib/math-base-special-abs': 0.2.3(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
@@ -10936,57 +11241,57 @@ snapshots:
       '@stdlib/function-ctor': 0.2.3
       '@stdlib/utils-define-nonenumerable-read-only-property': 0.2.3
 
-  '@stdlib/math-base-tools-sum-series@0.2.3':
+  '@stdlib/math-base-tools-sum-series@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/assert-has-generator-support': 0.2.3
       '@stdlib/constants-float64-eps': 0.2.3
-      '@stdlib/math-base-special-abs': 0.2.3
+      '@stdlib/math-base-special-abs': 0.2.3(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/napi-argv-bool@0.1.1':
+  '@stdlib/napi-argv-bool@0.1.1(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/assert-napi-is-type': 0.2.3
+      '@stdlib/assert-napi-is-type': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-napi-status-ok': 0.2.3
       '@stdlib/napi-argv': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/napi-argv-double@0.2.2':
+  '@stdlib/napi-argv-double@0.2.2(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/assert-napi-is-type': 0.2.3
+      '@stdlib/assert-napi-is-type': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-napi-status-ok': 0.2.3
       '@stdlib/napi-argv': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/napi-argv-float64array@0.2.3':
+  '@stdlib/napi-argv-float64array@0.2.3(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/assert-napi-equal-typedarray-types': 0.2.3
-      '@stdlib/assert-napi-is-typedarray': 0.2.3
+      '@stdlib/assert-napi-equal-typedarray-types': 0.2.3(supports-color@8.1.1)
+      '@stdlib/assert-napi-is-typedarray': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-napi-status-ok': 0.2.3
       '@stdlib/napi-argv': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/napi-argv-float@0.2.3':
+  '@stdlib/napi-argv-float@0.2.3(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/assert-napi-is-type': 0.2.3
+      '@stdlib/assert-napi-is-type': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-napi-status-ok': 0.2.3
       '@stdlib/napi-argv': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/napi-argv-int32@0.2.3':
+  '@stdlib/napi-argv-int32@0.2.3(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/assert-napi-is-type': 0.2.3
+      '@stdlib/assert-napi-is-type': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-napi-status-ok': 0.2.3
       '@stdlib/napi-argv': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
@@ -10994,21 +11299,21 @@ snapshots:
     dependencies:
       '@stdlib/assert-napi-status-ok': 0.2.3
 
-  '@stdlib/napi-create-double@0.0.3':
+  '@stdlib/napi-create-double@0.0.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/assert-napi-status-ok': 0.2.3
       '@stdlib/napi-argv': 0.2.3
-      '@stdlib/napi-argv-double': 0.2.2
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/napi-argv-double': 0.2.2(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/napi-create-int32@0.0.3':
+  '@stdlib/napi-create-int32@0.0.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/assert-napi-status-ok': 0.2.3
       '@stdlib/napi-argv': 0.2.3
-      '@stdlib/napi-argv-int32': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/napi-argv-int32': 0.2.3(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
@@ -11016,7 +11321,7 @@ snapshots:
 
   '@stdlib/number-ctor@0.2.3': {}
 
-  '@stdlib/number-float16-base-to-float32@0.1.2':
+  '@stdlib/number-float16-base-to-float32@0.1.2(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float16-exponent-bias': 0.3.1
       '@stdlib/constants-float16-exponent-mask': 0.1.1
@@ -11026,29 +11331,29 @@ snapshots:
       '@stdlib/constants-float32-exponent-bias': 0.2.3
       '@stdlib/constants-float32-exponent-mask': 0.2.3
       '@stdlib/constants-float32-num-significand-bits': 0.1.1
-      '@stdlib/number-float16-ctor': 0.1.2
-      '@stdlib/number-float32-base-to-float16': 0.1.1
-      '@stdlib/number-float64-base-to-float16': 0.1.2
+      '@stdlib/number-float16-ctor': 0.1.2(supports-color@8.1.1)
+      '@stdlib/number-float32-base-to-float16': 0.1.1(supports-color@8.1.1)
+      '@stdlib/number-float64-base-to-float16': 0.1.2(supports-color@8.1.1)
       '@stdlib/number-float64-base-to-float32': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/number-float16-base-to-float64@0.1.2':
+  '@stdlib/number-float16-base-to-float64@0.1.2(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/number-float16-base-to-float32': 0.1.2
-      '@stdlib/number-float16-ctor': 0.1.2
-      '@stdlib/number-float64-base-to-float16': 0.1.2
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/number-float16-base-to-float32': 0.1.2(supports-color@8.1.1)
+      '@stdlib/number-float16-ctor': 0.1.2(supports-color@8.1.1)
+      '@stdlib/number-float64-base-to-float16': 0.1.2(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/number-float16-ctor@0.1.2':
+  '@stdlib/number-float16-ctor@0.1.2(supports-color@8.1.1)':
     dependencies:
       '@stdlib/assert-has-to-primitive-symbol-support': 0.1.1
       '@stdlib/assert-is-number': 0.2.3
       '@stdlib/error-tools-fmtprodmsg': 0.2.3
-      '@stdlib/number-float64-base-to-float16': 0.1.2
+      '@stdlib/number-float64-base-to-float16': 0.1.2(supports-color@8.1.1)
       '@stdlib/string-format': 0.2.3
       '@stdlib/symbol-to-primitive': 0.1.2
       '@stdlib/utils-define-nonenumerable-read-only-property': 0.2.3
@@ -11056,16 +11361,16 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/number-float32-base-exponent@0.2.4':
+  '@stdlib/number-float32-base-exponent@0.2.4(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float32-exponent-bias': 0.2.3
       '@stdlib/constants-float32-exponent-mask': 0.2.3
-      '@stdlib/number-float32-base-to-word': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/number-float32-base-to-word': 0.2.3(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/number-float32-base-to-float16@0.1.1':
+  '@stdlib/number-float32-base-to-float16@0.1.1(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float16-eps': 0.2.3
       '@stdlib/constants-float16-max': 0.2.3
@@ -11076,115 +11381,115 @@ snapshots:
       '@stdlib/constants-float32-pinf': 0.2.3
       '@stdlib/constants-float32-sign-mask': 0.2.3
       '@stdlib/constants-float32-significand-mask': 0.2.4
-      '@stdlib/math-base-assert-is-finitef': 0.2.3
-      '@stdlib/math-base-assert-is-nanf': 0.2.3
-      '@stdlib/math-base-special-absf': 0.2.3
-      '@stdlib/number-float16-ctor': 0.1.2
-      '@stdlib/number-float32-base-exponent': 0.2.4
+      '@stdlib/math-base-assert-is-finitef': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-assert-is-nanf': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-absf': 0.2.3(supports-color@8.1.1)
+      '@stdlib/number-float16-ctor': 0.1.2(supports-color@8.1.1)
+      '@stdlib/number-float32-base-exponent': 0.2.4(supports-color@8.1.1)
       '@stdlib/number-float64-base-to-float32': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/number-float32-base-to-word@0.2.3':
+  '@stdlib/number-float32-base-to-word@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/array-float32': 0.2.3
       '@stdlib/array-uint32': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/number-float64-base-assert-is-same-value@0.2.2':
+  '@stdlib/number-float64-base-assert-is-same-value@0.2.2(supports-color@8.1.1)':
     dependencies:
       '@stdlib/napi-argv': 0.2.3
-      '@stdlib/napi-argv-double': 0.2.2
+      '@stdlib/napi-argv-double': 0.2.2(supports-color@8.1.1)
       '@stdlib/napi-export': 0.3.1
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/number-float64-base-exponent@0.2.3':
+  '@stdlib/number-float64-base-exponent@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-exponent-bias': 0.2.3
       '@stdlib/constants-float64-high-word-exponent-mask': 0.2.3
-      '@stdlib/number-float64-base-get-high-word': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/number-float64-base-get-high-word': 0.2.3(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/number-float64-base-from-words@0.2.3':
+  '@stdlib/number-float64-base-from-words@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/array-float64': 0.2.3
       '@stdlib/array-uint32': 0.2.3
       '@stdlib/assert-is-little-endian': 0.2.3
-      '@stdlib/number-float64-base-to-words': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/number-float64-base-to-words': 0.2.3(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/number-float64-base-get-high-word@0.2.3':
+  '@stdlib/number-float64-base-get-high-word@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/array-float64': 0.2.3
       '@stdlib/array-uint32': 0.2.3
       '@stdlib/assert-is-little-endian': 0.2.3
-      '@stdlib/number-float64-base-to-words': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/number-float64-base-to-words': 0.2.3(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/number-float64-base-get-low-word@0.2.3':
+  '@stdlib/number-float64-base-get-low-word@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/array-float64': 0.2.3
       '@stdlib/array-uint32': 0.2.3
       '@stdlib/assert-is-little-endian': 0.2.3
-      '@stdlib/number-float64-base-to-words': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/number-float64-base-to-words': 0.2.3(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/number-float64-base-normalize@0.2.4':
+  '@stdlib/number-float64-base-normalize@0.2.4(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-smallest-normal': 0.2.3
-      '@stdlib/math-base-assert-is-infinite': 0.2.3
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-special-abs': 0.2.3
+      '@stdlib/math-base-assert-is-infinite': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-abs': 0.2.3(supports-color@8.1.1)
       '@stdlib/utils-define-nonenumerable-read-only-property': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/number-float64-base-set-high-word@0.2.3':
+  '@stdlib/number-float64-base-set-high-word@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/array-float64': 0.2.3
       '@stdlib/array-uint32': 0.2.3
       '@stdlib/assert-is-little-endian': 0.2.3
-      '@stdlib/number-float64-base-to-words': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/number-float64-base-to-words': 0.2.3(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/number-float64-base-set-low-word@0.2.3':
+  '@stdlib/number-float64-base-set-low-word@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/array-float64': 0.2.3
       '@stdlib/array-uint32': 0.2.3
       '@stdlib/assert-is-little-endian': 0.2.3
-      '@stdlib/number-float64-base-to-words': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/number-float64-base-to-words': 0.2.3(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/number-float64-base-to-float16@0.1.2':
+  '@stdlib/number-float64-base-to-float16@0.1.2(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float16-eps': 0.2.3
       '@stdlib/constants-float16-max': 0.2.3
       '@stdlib/constants-float16-smallest-normal': 0.2.3
       '@stdlib/constants-float64-eps': 0.2.3
       '@stdlib/constants-float64-pinf': 0.2.3
-      '@stdlib/math-base-assert-is-finite': 0.2.3
-      '@stdlib/math-base-special-abs': 0.2.3
-      '@stdlib/number-float16-ctor': 0.1.2
-      '@stdlib/number-float32-base-to-float16': 0.1.1
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/math-base-assert-is-finite': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-abs': 0.2.3(supports-color@8.1.1)
+      '@stdlib/number-float16-ctor': 0.1.2(supports-color@8.1.1)
+      '@stdlib/number-float32-base-to-float16': 0.1.1(supports-color@8.1.1)
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
@@ -11192,7 +11497,7 @@ snapshots:
     dependencies:
       '@stdlib/array-float32': 0.2.3
 
-  '@stdlib/number-float64-base-to-words@0.2.3':
+  '@stdlib/number-float64-base-to-words@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/array-float64': 0.2.3
       '@stdlib/array-uint32': 0.2.3
@@ -11200,7 +11505,7 @@ snapshots:
       '@stdlib/os-byte-order': 0.2.3
       '@stdlib/os-float-word-order': 0.2.3
       '@stdlib/utils-define-nonenumerable-read-only-property': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
@@ -11227,161 +11532,161 @@ snapshots:
     dependencies:
       '@stdlib/utils-define-nonenumerable-read-only-property': 0.2.3
 
-  '@stdlib/stats-anova1@0.2.3':
+  '@stdlib/stats-anova1@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/assert-has-own-property': 0.2.3
       '@stdlib/assert-is-array': 0.2.3
       '@stdlib/assert-is-boolean': 0.2.3
-      '@stdlib/assert-is-nan': 0.2.3
+      '@stdlib/assert-is-nan': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-is-number': 0.2.3
-      '@stdlib/assert-is-number-array': 0.2.3
+      '@stdlib/assert-is-number-array': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-is-plain-object': 0.2.3
-      '@stdlib/assert-is-positive-integer': 0.2.3
-      '@stdlib/assert-is-typed-array-like': 0.2.3
+      '@stdlib/assert-is-positive-integer': 0.2.3(supports-color@8.1.1)
+      '@stdlib/assert-is-typed-array-like': 0.2.3(supports-color@8.1.1)
       '@stdlib/error-tools-fmtprodmsg': 0.2.3
-      '@stdlib/math-base-special-max': 0.3.1
-      '@stdlib/math-base-special-roundn': 0.2.3
-      '@stdlib/stats-base-dists-f-cdf': 0.2.3
-      '@stdlib/stats-incr-stdev': 0.2.3
+      '@stdlib/math-base-special-max': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-roundn': 0.2.3(supports-color@8.1.1)
+      '@stdlib/stats-base-dists-f-cdf': 0.2.3(supports-color@8.1.1)
+      '@stdlib/stats-incr-stdev': 0.2.3(supports-color@8.1.1)
       '@stdlib/string-format': 0.2.3
-      '@stdlib/string-repeat': 0.2.3
+      '@stdlib/string-repeat': 0.2.3(supports-color@8.1.1)
       '@stdlib/utils-define-read-only-property': 0.2.3
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/stats-base-dists-chisquare-cdf@0.3.1':
+  '@stdlib/stats-base-dists-chisquare-cdf@0.3.1(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/math-base-napi-binary': 0.3.3
-      '@stdlib/stats-base-dists-gamma-cdf': 0.3.1
+      '@stdlib/math-base-napi-binary': 0.3.3(supports-color@8.1.1)
+      '@stdlib/stats-base-dists-gamma-cdf': 0.3.1(supports-color@8.1.1)
       '@stdlib/utils-define-nonenumerable-read-only-property': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/stats-base-dists-degenerate-cdf@0.3.1':
+  '@stdlib/stats-base-dists-degenerate-cdf@0.3.1(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-napi-binary': 0.3.3
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-napi-binary': 0.3.3(supports-color@8.1.1)
       '@stdlib/utils-constant-function': 0.2.3
       '@stdlib/utils-define-nonenumerable-read-only-property': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/stats-base-dists-f-cdf@0.2.3':
+  '@stdlib/stats-base-dists-f-cdf@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-pinf': 0.2.3
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-special-betainc': 0.2.3
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-betainc': 0.2.3(supports-color@8.1.1)
       '@stdlib/utils-constant-function': 0.2.3
       '@stdlib/utils-define-nonenumerable-read-only-property': 0.2.3
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/stats-base-dists-gamma-cdf@0.3.1':
+  '@stdlib/stats-base-dists-gamma-cdf@0.3.1(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-pinf': 0.2.3
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-napi-ternary': 0.3.2
-      '@stdlib/math-base-special-gammainc': 0.3.1
-      '@stdlib/stats-base-dists-degenerate-cdf': 0.3.1
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-napi-ternary': 0.3.2(supports-color@8.1.1)
+      '@stdlib/math-base-special-gammainc': 0.3.1(supports-color@8.1.1)
+      '@stdlib/stats-base-dists-degenerate-cdf': 0.3.1(supports-color@8.1.1)
       '@stdlib/utils-constant-function': 0.2.3
       '@stdlib/utils-define-nonenumerable-read-only-property': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/stats-base-dists-normal-cdf@0.3.1':
+  '@stdlib/stats-base-dists-normal-cdf@0.3.1(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-napi-ternary': 0.3.2
-      '@stdlib/math-base-special-erfc': 0.2.5
-      '@stdlib/math-base-special-sqrt': 0.2.3
-      '@stdlib/stats-base-dists-degenerate-cdf': 0.3.1
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-napi-ternary': 0.3.2(supports-color@8.1.1)
+      '@stdlib/math-base-special-erfc': 0.2.5(supports-color@8.1.1)
+      '@stdlib/math-base-special-sqrt': 0.2.3(supports-color@8.1.1)
+      '@stdlib/stats-base-dists-degenerate-cdf': 0.3.1(supports-color@8.1.1)
       '@stdlib/utils-constant-function': 0.2.3
       '@stdlib/utils-define-nonenumerable-read-only-property': 0.2.3
-      '@stdlib/utils-library-manifest': 0.2.4
+      '@stdlib/utils-library-manifest': 0.2.4(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/stats-base-dists-signrank-cdf@0.2.3':
+  '@stdlib/stats-base-dists-signrank-cdf@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/constants-float64-ln-two': 0.2.3
-      '@stdlib/math-base-assert-is-finite': 0.2.3
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-assert-is-positive-integer': 0.3.2
-      '@stdlib/math-base-special-exp': 0.2.5
-      '@stdlib/math-base-special-round': 0.3.1
+      '@stdlib/math-base-assert-is-finite': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-assert-is-positive-integer': 0.3.2(supports-color@8.1.1)
+      '@stdlib/math-base-special-exp': 0.2.5(supports-color@8.1.1)
+      '@stdlib/math-base-special-round': 0.3.1(supports-color@8.1.1)
       '@stdlib/utils-constant-function': 0.2.3
       '@stdlib/utils-define-nonenumerable-read-only-property': 0.2.3
       '@stdlib/utils-memoize': 0.2.3
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/stats-base-dists-t-cdf@0.2.3':
+  '@stdlib/stats-base-dists-t-cdf@0.2.3(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-special-betainc': 0.2.3
-      '@stdlib/math-base-special-pow': 0.3.1
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-betainc': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-pow': 0.3.1(supports-color@8.1.1)
       '@stdlib/utils-constant-function': 0.2.3
       '@stdlib/utils-define-nonenumerable-read-only-property': 0.2.3
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/stats-base-dists-t-quantile@0.2.3':
+  '@stdlib/stats-base-dists-t-quantile@0.2.3(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-special-kernel-betaincinv': 0.2.3
-      '@stdlib/math-base-special-signum': 0.2.3
-      '@stdlib/math-base-special-sqrt': 0.2.3
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-kernel-betaincinv': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-signum': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-sqrt': 0.2.3(supports-color@8.1.1)
       '@stdlib/utils-constant-function': 0.2.3
       '@stdlib/utils-define-nonenumerable-read-only-property': 0.2.3
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/stats-incr-stdev@0.2.3':
+  '@stdlib/stats-incr-stdev@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/assert-is-number': 0.2.3
       '@stdlib/error-tools-fmtprodmsg': 0.2.3
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-special-sqrt': 0.2.3
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-sqrt': 0.2.3(supports-color@8.1.1)
       '@stdlib/string-format': 0.2.3
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/stats-kruskal-test@0.2.3':
+  '@stdlib/stats-kruskal-test@0.2.3(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/array-base-incrspace': 0.2.3
+      '@stdlib/array-base-incrspace': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-has-own-property': 0.2.3
       '@stdlib/assert-is-array': 0.2.3
       '@stdlib/assert-is-boolean': 0.2.3
-      '@stdlib/assert-is-collection': 0.2.3
-      '@stdlib/assert-is-nan': 0.2.3
+      '@stdlib/assert-is-collection': 0.2.3(supports-color@8.1.1)
+      '@stdlib/assert-is-nan': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-is-number': 0.2.3
       '@stdlib/assert-is-plain-object': 0.2.3
-      '@stdlib/assert-is-positive-integer': 0.2.3
+      '@stdlib/assert-is-positive-integer': 0.2.3(supports-color@8.1.1)
       '@stdlib/error-tools-fmtprodmsg': 0.2.3
-      '@stdlib/math-base-special-pow': 0.3.1
-      '@stdlib/math-base-special-roundn': 0.2.3
-      '@stdlib/stats-base-dists-chisquare-cdf': 0.3.1
-      '@stdlib/stats-ranks': 0.2.3
+      '@stdlib/math-base-special-pow': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-roundn': 0.2.3(supports-color@8.1.1)
+      '@stdlib/stats-base-dists-chisquare-cdf': 0.3.1(supports-color@8.1.1)
+      '@stdlib/stats-ranks': 0.2.3(supports-color@8.1.1)
       '@stdlib/string-format': 0.2.3
-      '@stdlib/utils-count-by': 0.2.3
+      '@stdlib/utils-count-by': 0.2.3(supports-color@8.1.1)
       '@stdlib/utils-define-read-only-property': 0.2.3
       '@stdlib/utils-identity-function': 0.2.3
-      '@stdlib/utils-keys': 0.2.3
+      '@stdlib/utils-keys': 0.2.3(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/stats-ranks@0.2.3':
+  '@stdlib/stats-ranks@0.2.3(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/array-base-assert-contains': 0.2.3
+      '@stdlib/array-base-assert-contains': 0.2.3(supports-color@8.1.1)
       '@stdlib/array-base-filled': 0.2.3
       '@stdlib/array-base-zeros': 0.2.3
-      '@stdlib/assert-contains': 0.3.1
+      '@stdlib/assert-contains': 0.3.1(supports-color@8.1.1)
       '@stdlib/assert-has-own-property': 0.2.3
       '@stdlib/assert-is-array': 0.2.3
-      '@stdlib/assert-is-collection': 0.2.3
+      '@stdlib/assert-is-collection': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-is-object': 0.2.3
       '@stdlib/assert-is-string': 0.2.3
       '@stdlib/error-tools-fmtprodmsg': 0.2.3
@@ -11389,119 +11694,119 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/stats-strided-mean@0.1.1':
+  '@stdlib/stats-strided-mean@0.1.1(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/stats-strided-meanpn': 0.1.1
+      '@stdlib/stats-strided-meanpn': 0.1.1(supports-color@8.1.1)
       '@stdlib/utils-define-nonenumerable-read-only-property': 0.2.3
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/stats-strided-meanpn@0.1.1':
+  '@stdlib/stats-strided-meanpn@0.1.1(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/array-base-arraylike2object': 0.2.2
-      '@stdlib/blas-ext-base-gapxsumpw': 0.3.1
-      '@stdlib/blas-ext-base-gsumpw': 0.3.1
+      '@stdlib/array-base-arraylike2object': 0.2.2(supports-color@8.1.1)
+      '@stdlib/blas-ext-base-gapxsumpw': 0.3.1(supports-color@8.1.1)
+      '@stdlib/blas-ext-base-gsumpw': 0.3.1(supports-color@8.1.1)
       '@stdlib/strided-base-stride2offset': 0.1.1
       '@stdlib/utils-define-nonenumerable-read-only-property': 0.2.3
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/stats-strided-variance@0.1.1':
+  '@stdlib/stats-strided-variance@0.1.1(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/stats-strided-variancepn': 0.1.1
+      '@stdlib/stats-strided-variancepn': 0.1.1(supports-color@8.1.1)
       '@stdlib/utils-define-nonenumerable-read-only-property': 0.2.3
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/stats-strided-variancepn@0.1.1':
+  '@stdlib/stats-strided-variancepn@0.1.1(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/array-base-arraylike2object': 0.2.2
-      '@stdlib/blas-ext-base-gsumpw': 0.3.1
+      '@stdlib/array-base-arraylike2object': 0.2.2(supports-color@8.1.1)
+      '@stdlib/blas-ext-base-gsumpw': 0.3.1(supports-color@8.1.1)
       '@stdlib/strided-base-stride2offset': 0.1.1
       '@stdlib/utils-define-nonenumerable-read-only-property': 0.2.3
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/stats-ttest2@0.2.3':
+  '@stdlib/stats-ttest2@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/assert-has-own-property': 0.2.3
       '@stdlib/assert-is-boolean': 0.2.3
-      '@stdlib/assert-is-nan': 0.2.3
+      '@stdlib/assert-is-nan': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-is-number': 0.2.3
-      '@stdlib/assert-is-number-array': 0.2.3
+      '@stdlib/assert-is-number-array': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-is-plain-object': 0.2.3
-      '@stdlib/assert-is-positive-integer': 0.2.3
+      '@stdlib/assert-is-positive-integer': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-is-string': 0.2.3
-      '@stdlib/assert-is-typed-array-like': 0.2.3
+      '@stdlib/assert-is-typed-array-like': 0.2.3(supports-color@8.1.1)
       '@stdlib/constants-float64-ninf': 0.2.3
       '@stdlib/constants-float64-pinf': 0.2.3
       '@stdlib/error-tools-fmtprodmsg': 0.2.3
-      '@stdlib/math-base-special-abs': 0.2.3
-      '@stdlib/math-base-special-pow': 0.3.1
-      '@stdlib/math-base-special-roundn': 0.2.3
-      '@stdlib/math-base-special-sqrt': 0.2.3
-      '@stdlib/stats-base-dists-t-cdf': 0.2.3
-      '@stdlib/stats-base-dists-t-quantile': 0.2.3
-      '@stdlib/stats-strided-mean': 0.1.1
-      '@stdlib/stats-strided-variance': 0.1.1
+      '@stdlib/math-base-special-abs': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-pow': 0.3.1(supports-color@8.1.1)
+      '@stdlib/math-base-special-roundn': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-sqrt': 0.2.3(supports-color@8.1.1)
+      '@stdlib/stats-base-dists-t-cdf': 0.2.3(supports-color@8.1.1)
+      '@stdlib/stats-base-dists-t-quantile': 0.2.3(supports-color@8.1.1)
+      '@stdlib/stats-strided-mean': 0.1.1(supports-color@8.1.1)
+      '@stdlib/stats-strided-variance': 0.1.1(supports-color@8.1.1)
       '@stdlib/string-format': 0.2.3
       '@stdlib/utils-define-read-only-property': 0.2.3
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/stats-ttest@0.2.3':
+  '@stdlib/stats-ttest@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/array-float64': 0.2.3
-      '@stdlib/assert-contains': 0.3.1
+      '@stdlib/assert-contains': 0.3.1(supports-color@8.1.1)
       '@stdlib/assert-has-own-property': 0.2.3
       '@stdlib/assert-is-boolean': 0.2.3
       '@stdlib/assert-is-number': 0.2.3
-      '@stdlib/assert-is-number-array': 0.2.3
+      '@stdlib/assert-is-number-array': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-is-plain-object': 0.2.3
-      '@stdlib/assert-is-positive-integer': 0.2.3
+      '@stdlib/assert-is-positive-integer': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-is-string': 0.2.3
-      '@stdlib/assert-is-typed-array-like': 0.2.3
-      '@stdlib/blas-base-gcopy': 0.2.3
+      '@stdlib/assert-is-typed-array-like': 0.2.3(supports-color@8.1.1)
+      '@stdlib/blas-base-gcopy': 0.2.3(supports-color@8.1.1)
       '@stdlib/constants-float64-ninf': 0.2.3
       '@stdlib/constants-float64-pinf': 0.2.3
       '@stdlib/error-tools-fmtprodmsg': 0.2.3
-      '@stdlib/math-base-assert-is-nan': 0.2.3
-      '@stdlib/math-base-special-abs': 0.2.3
-      '@stdlib/math-base-special-roundn': 0.2.3
-      '@stdlib/math-base-special-sqrt': 0.2.3
-      '@stdlib/stats-base-dists-t-cdf': 0.2.3
-      '@stdlib/stats-base-dists-t-quantile': 0.2.3
-      '@stdlib/stats-strided-mean': 0.1.1
-      '@stdlib/stats-strided-variance': 0.1.1
+      '@stdlib/math-base-assert-is-nan': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-abs': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-roundn': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-sqrt': 0.2.3(supports-color@8.1.1)
+      '@stdlib/stats-base-dists-t-cdf': 0.2.3(supports-color@8.1.1)
+      '@stdlib/stats-base-dists-t-quantile': 0.2.3(supports-color@8.1.1)
+      '@stdlib/stats-strided-mean': 0.1.1(supports-color@8.1.1)
+      '@stdlib/stats-strided-variance': 0.1.1(supports-color@8.1.1)
       '@stdlib/string-format': 0.2.3
       '@stdlib/utils-define-read-only-property': 0.2.3
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/stats-wilcoxon@0.2.3':
+  '@stdlib/stats-wilcoxon@0.2.3(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/array-base-assert-contains': 0.2.3
+      '@stdlib/array-base-assert-contains': 0.2.3(supports-color@8.1.1)
       '@stdlib/array-float64': 0.2.3
       '@stdlib/assert-has-own-property': 0.2.3
       '@stdlib/assert-is-boolean': 0.2.3
-      '@stdlib/assert-is-nan': 0.2.3
+      '@stdlib/assert-is-nan': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-is-number': 0.2.3
-      '@stdlib/assert-is-number-array': 0.2.3
+      '@stdlib/assert-is-number-array': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-is-plain-object': 0.2.3
-      '@stdlib/assert-is-positive-integer': 0.2.3
+      '@stdlib/assert-is-positive-integer': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-is-string': 0.2.3
-      '@stdlib/assert-is-typed-array-like': 0.2.3
+      '@stdlib/assert-is-typed-array-like': 0.2.3(supports-color@8.1.1)
       '@stdlib/error-tools-fmtprodmsg': 0.2.3
-      '@stdlib/math-base-special-abs': 0.2.3
-      '@stdlib/math-base-special-roundn': 0.2.3
-      '@stdlib/math-base-special-signum': 0.2.3
-      '@stdlib/math-base-special-sqrt': 0.2.3
-      '@stdlib/stats-base-dists-normal-cdf': 0.3.1
-      '@stdlib/stats-base-dists-signrank-cdf': 0.2.3
-      '@stdlib/stats-ranks': 0.2.3
+      '@stdlib/math-base-special-abs': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-roundn': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-signum': 0.2.3(supports-color@8.1.1)
+      '@stdlib/math-base-special-sqrt': 0.2.3(supports-color@8.1.1)
+      '@stdlib/stats-base-dists-normal-cdf': 0.3.1(supports-color@8.1.1)
+      '@stdlib/stats-base-dists-signrank-cdf': 0.2.3(supports-color@8.1.1)
+      '@stdlib/stats-ranks': 0.2.3(supports-color@8.1.1)
       '@stdlib/string-format': 0.2.3
       '@stdlib/utils-define-read-only-property': 0.2.3
-      '@stdlib/utils-tabulate': 0.2.3
+      '@stdlib/utils-tabulate': 0.2.3(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
@@ -11543,9 +11848,9 @@ snapshots:
       '@stdlib/string-base-format-interpolate': 0.2.4
       '@stdlib/string-base-format-tokenize': 0.2.4
 
-  '@stdlib/string-repeat@0.2.3':
+  '@stdlib/string-repeat@0.2.3(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/assert-is-nonnegative-integer': 0.2.3
+      '@stdlib/assert-is-nonnegative-integer': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-is-string': 0.2.3
       '@stdlib/error-tools-fmtprodmsg': 0.2.3
       '@stdlib/string-base-repeat': 0.2.3
@@ -11593,10 +11898,10 @@ snapshots:
       '@stdlib/string-format': 0.2.3
       '@stdlib/string-replace': 0.2.3
 
-  '@stdlib/utils-count-by@0.2.3':
+  '@stdlib/utils-count-by@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/assert-has-own-property': 0.2.3
-      '@stdlib/assert-is-collection': 0.2.3
+      '@stdlib/assert-is-collection': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-is-function': 0.2.3
       '@stdlib/assert-is-plain-object': 0.2.3
       '@stdlib/error-tools-fmtprodmsg': 0.2.3
@@ -11645,34 +11950,34 @@ snapshots:
 
   '@stdlib/utils-identity-function@0.2.3': {}
 
-  '@stdlib/utils-index-of@0.2.3':
+  '@stdlib/utils-index-of@0.2.3(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/assert-is-collection': 0.2.3
-      '@stdlib/assert-is-integer': 0.2.3
-      '@stdlib/assert-is-nan': 0.2.3
+      '@stdlib/assert-is-collection': 0.2.3(supports-color@8.1.1)
+      '@stdlib/assert-is-integer': 0.2.3(supports-color@8.1.1)
+      '@stdlib/assert-is-nan': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-is-string': 0.2.3
       '@stdlib/error-tools-fmtprodmsg': 0.2.3
       '@stdlib/string-format': 0.2.3
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/utils-keys@0.2.3':
+  '@stdlib/utils-keys@0.2.3(supports-color@8.1.1)':
     dependencies:
       '@stdlib/assert-has-own-property': 0.2.3
-      '@stdlib/assert-is-arguments': 0.2.3
-      '@stdlib/assert-is-enumerable-property': 0.2.3
+      '@stdlib/assert-is-arguments': 0.2.3(supports-color@8.1.1)
+      '@stdlib/assert-is-enumerable-property': 0.2.3(supports-color@8.1.1)
       '@stdlib/assert-is-object-like': 0.2.3
-      '@stdlib/utils-index-of': 0.2.3
+      '@stdlib/utils-index-of': 0.2.3(supports-color@8.1.1)
       '@stdlib/utils-noop': 0.2.3
       '@stdlib/utils-type-of': 0.2.3
     transitivePeerDependencies:
       - supports-color
 
-  '@stdlib/utils-library-manifest@0.2.4':
+  '@stdlib/utils-library-manifest@0.2.4(supports-color@8.1.1)':
     dependencies:
       '@stdlib/fs-resolve-parent-path': 0.2.3
       '@stdlib/utils-convert-path': 0.2.3
-      debug: 2.6.9
+      debug: 2.6.9(supports-color@8.1.1)
       resolve: 1.22.10
     transitivePeerDependencies:
       - supports-color
@@ -11694,12 +11999,12 @@ snapshots:
 
   '@stdlib/utils-noop@0.2.3': {}
 
-  '@stdlib/utils-tabulate@0.2.3':
+  '@stdlib/utils-tabulate@0.2.3(supports-color@8.1.1)':
     dependencies:
-      '@stdlib/assert-is-collection': 0.2.3
+      '@stdlib/assert-is-collection': 0.2.3(supports-color@8.1.1)
       '@stdlib/error-tools-fmtprodmsg': 0.2.3
       '@stdlib/string-format': 0.2.3
-      '@stdlib/utils-index-of': 0.2.3
+      '@stdlib/utils-index-of': 0.2.3(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
@@ -11857,24 +12162,12 @@ snapshots:
     dependencies:
       '@typescript/old': typescript@6.0.3
 
-  '@typescript/vfs@1.6.1(typescript@5.4.5)':
+  '@typescript/vfs@1.6.1(supports-color@8.1.1)(typescript@5.4.5)':
     dependencies:
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@8.1.1)
       typescript: 5.4.5
     transitivePeerDependencies:
       - supports-color
-
-  '@vitejs/plugin-vue@6.0.10(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1))(vue@3.5.25(typescript@5.6.3))':
-    dependencies:
-      '@rolldown/pluginutils': 1.0.1
-      vite: 8.3.5(@types/node@25.3.2)(yaml@2.9.1)
-      vue: 3.5.25(typescript@5.6.3)
-
-  '@vitejs/plugin-vue@6.0.10(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1))(vue@3.5.25(typescript@7.0.2))':
-    dependencies:
-      '@rolldown/pluginutils': 1.0.1
-      vite: 8.3.5(@types/node@25.3.2)(yaml@2.9.1)
-      vue: 3.5.25(typescript@7.0.2)
 
   '@vitejs/plugin-vue@6.0.10(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1))(vue@3.5.44(typescript@5.6.3))':
     dependencies:
@@ -11888,9 +12181,9 @@ snapshots:
       vite: 8.3.5(@types/node@25.3.2)(yaml@2.9.1)
       vue: 3.5.44(typescript@7.0.2)
 
-  '@vitest/coverage-istanbul@4.1.12(vitest@4.1.4)':
+  '@vitest/coverage-istanbul@4.1.12(supports-color@8.1.1)(vitest@4.1.12)':
     dependencies:
-      '@babel/core': 7.29.0
+      '@babel/core': 7.29.0(supports-color@8.1.1)
       '@istanbuljs/schema': 0.1.3
       '@jridgewell/gen-mapping': 0.3.13
       '@jridgewell/trace-mapping': 0.3.31
@@ -11900,13 +12193,13 @@ snapshots:
       magicast: 0.5.2
       obug: 2.2.1
       tinyrainbow: 3.1.0
-      vitest: 4.1.4(@types/node@25.3.2)(@vitest/coverage-istanbul@4.1.12)(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1))
+      vitest: 4.1.12(@types/node@25.3.2)(@vitest/coverage-istanbul@4.1.12)(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1))
     transitivePeerDependencies:
       - supports-color
 
-  '@vitest/coverage-istanbul@4.1.4(vitest@4.1.4)':
+  '@vitest/coverage-istanbul@4.1.4(supports-color@8.1.1)(vitest@4.1.4)':
     dependencies:
-      '@babel/core': 7.29.0
+      '@babel/core': 7.29.0(supports-color@8.1.1)
       '@istanbuljs/schema': 0.1.3
       '@jridgewell/gen-mapping': 0.3.13
       '@jridgewell/trace-mapping': 0.3.31
@@ -12009,11 +12302,22 @@ snapshots:
 
   '@volar/source-map@2.4.28': {}
 
-  '@volar/typescript@2.4.28':
+  '@volar/typescript@2.4.28(typescript@5.6.3)':
     dependencies:
       '@volar/language-core': 2.4.28
       path-browserify: 1.0.1
       vscode-uri: 3.1.0
+    optionalDependencies:
+      typescript: 5.6.3
+    optional: true
+
+  '@volar/typescript@2.4.28(typescript@7.0.2)':
+    dependencies:
+      '@volar/language-core': 2.4.28
+      path-browserify: 1.0.1
+      vscode-uri: 3.1.0
+    optionalDependencies:
+      typescript: 7.0.2
 
   '@vue/compiler-core@3.5.25':
     dependencies:
@@ -12123,12 +12427,6 @@ snapshots:
       '@vue/shared': 3.5.25
       vue: 3.5.25(typescript@5.6.3)
 
-  '@vue/server-renderer@3.5.25(vue@3.5.25(typescript@7.0.2))':
-    dependencies:
-      '@vue/compiler-ssr': 3.5.25
-      '@vue/shared': 3.5.25
-      vue: 3.5.25(typescript@7.0.2)
-
   '@vue/server-renderer@3.5.44':
     dependencies:
       '@vue/compiler-ssr': 3.5.44
@@ -12151,13 +12449,6 @@ snapshots:
       '@vueuse/shared': 13.8.0(vue@3.5.25(typescript@5.6.3))
       vue: 3.5.25(typescript@5.6.3)
 
-  '@vueuse/core@13.8.0(vue@3.5.25(typescript@7.0.2))':
-    dependencies:
-      '@types/web-bluetooth': 0.0.21
-      '@vueuse/metadata': 13.8.0
-      '@vueuse/shared': 13.8.0(vue@3.5.25(typescript@7.0.2))
-      vue: 3.5.25(typescript@7.0.2)
-
   '@vueuse/core@13.9.0(vue@3.5.44(typescript@5.6.3))':
     dependencies:
       '@types/web-bluetooth': 0.0.21
@@ -12165,11 +12456,11 @@ snapshots:
       '@vueuse/shared': 13.9.0(vue@3.5.44(typescript@5.6.3))
       vue: 3.5.44(typescript@5.6.3)
 
-  '@vueuse/integrations@13.8.0(sortablejs@1.15.6)(vue@3.5.25(typescript@7.0.2))':
+  '@vueuse/integrations@13.8.0(sortablejs@1.15.6)(vue@3.5.25(typescript@5.6.3))':
     dependencies:
-      '@vueuse/core': 13.8.0(vue@3.5.25(typescript@7.0.2))
-      '@vueuse/shared': 13.8.0(vue@3.5.25(typescript@7.0.2))
-      vue: 3.5.25(typescript@7.0.2)
+      '@vueuse/core': 13.8.0(vue@3.5.25(typescript@5.6.3))
+      '@vueuse/shared': 13.8.0(vue@3.5.25(typescript@5.6.3))
+      vue: 3.5.25(typescript@5.6.3)
     optionalDependencies:
       sortablejs: 1.15.6
 
@@ -12188,10 +12479,6 @@ snapshots:
   '@vueuse/shared@13.8.0(vue@3.5.25(typescript@5.6.3))':
     dependencies:
       vue: 3.5.25(typescript@5.6.3)
-
-  '@vueuse/shared@13.8.0(vue@3.5.25(typescript@7.0.2))':
-    dependencies:
-      vue: 3.5.25(typescript@7.0.2)
 
   '@vueuse/shared@13.9.0(vue@3.5.44(typescript@5.6.3))':
     dependencies:
@@ -12328,11 +12615,6 @@ snapshots:
       ag-grid-community: 34.1.2
       vue: 3.5.25(typescript@5.6.3)
 
-  ag-grid-vue3@34.1.2(vue@3.5.25(typescript@7.0.2)):
-    dependencies:
-      ag-grid-community: 34.1.2
-      vue: 3.5.25(typescript@7.0.2)
-
   ag-grid-vue3@34.1.2(vue@3.5.44(typescript@5.6.3)):
     dependencies:
       ag-grid-community: 34.1.2
@@ -12345,8 +12627,8 @@ snapshots:
       ajv: 8.18.0
     optional: true
 
-  ajv-formats@3.0.1(ajv@8.18.0):
-    optionalDependencies:
+  ajv-formats@3.0.1:
+    dependencies:
       ajv: 8.18.0
     optional: true
 
@@ -12705,17 +12987,29 @@ snapshots:
       d3-selection: 3.0.0
       d3-transition: 3.0.1(d3-selection@3.0.0)
 
-  debug@2.6.9:
+  debug@2.6.9(supports-color@8.1.1):
     dependencies:
       ms: 2.0.0
+    optionalDependencies:
+      supports-color: 8.1.1
 
-  debug@4.4.0:
+  debug@4.4.0(supports-color@8.1.1):
     dependencies:
       ms: 2.1.3
+    optionalDependencies:
+      supports-color: 8.1.1
 
-  debug@4.4.3:
+  debug@4.4.3(supports-color@7.2.0):
     dependencies:
       ms: 2.1.3
+    optionalDependencies:
+      supports-color: 7.2.0
+
+  debug@4.4.3(supports-color@8.1.1):
+    dependencies:
+      ms: 2.1.3
+    optionalDependencies:
+      supports-color: 8.1.1
 
   deep-is@0.1.4: {}
 
@@ -12785,14 +13079,14 @@ snapshots:
 
   eslint-visitor-keys@4.2.1: {}
 
-  eslint@9.39.4:
+  eslint@9.39.4(supports-color@8.1.1):
     dependencies:
-      '@eslint-community/eslint-utils': 4.9.1(eslint@9.39.4)
+      '@eslint-community/eslint-utils': 4.9.1(eslint@9.39.4(supports-color@8.1.1))
       '@eslint-community/regexpp': 4.12.2
-      '@eslint/config-array': 0.21.2
+      '@eslint/config-array': 0.21.2(supports-color@8.1.1)
       '@eslint/config-helpers': 0.4.2
       '@eslint/core': 0.17.0
-      '@eslint/eslintrc': 3.3.5
+      '@eslint/eslintrc': 3.3.5(supports-color@8.1.1)
       '@eslint/js': 9.39.4
       '@eslint/plugin-kit': 0.4.1
       '@humanfs/node': 0.16.8
@@ -12802,7 +13096,7 @@ snapshots:
       ajv: 6.14.0
       chalk: 4.1.2
       cross-spawn: 7.0.6
-      debug: 4.4.0
+      debug: 4.4.0(supports-color@8.1.1)
       escape-string-regexp: 4.0.0
       eslint-scope: 8.4.0
       eslint-visitor-keys: 4.2.1
@@ -13035,10 +13329,10 @@ snapshots:
 
   html-escaper@2.0.2: {}
 
-  https-proxy-agent@7.0.6:
+  https-proxy-agent@7.0.6(supports-color@8.1.1):
     dependencies:
       agent-base: 7.1.3
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
@@ -13396,6 +13690,8 @@ snapshots:
       whatwg-url: 5.0.0
 
   node-releases@2.0.27: {}
+
+  node@runtime:24.22.1: {}
 
   nopt@7.2.1:
     dependencies:
@@ -13770,7 +14066,7 @@ snapshots:
     dependencies:
       glob: 10.4.5
 
-  rolldown-plugin-dts@0.28.5(@volar/typescript@2.4.28)(rolldown@1.2.8)(typescript@7.0.2)(vue-tsc@3.3.10(typescript@7.0.2)):
+  rolldown-plugin-dts@0.28.5(@volar/typescript@2.4.28(typescript@5.6.3))(rolldown@1.2.8)(typescript@7.0.2)(vue-tsc@3.3.10(typescript@7.0.2)):
     dependencies:
       dts-resolver: 3.0.0
       get-tsconfig: 5.0.0-beta.6
@@ -13780,7 +14076,23 @@ snapshots:
       yuku-codegen: 0.9.5
       yuku-parser: 0.9.5
     optionalDependencies:
-      '@volar/typescript': 2.4.28
+      '@volar/typescript': 2.4.28(typescript@5.6.3)
+      typescript: 7.0.2
+      vue-tsc: 3.3.10(typescript@7.0.2)
+    transitivePeerDependencies:
+      - oxc-resolver
+
+  rolldown-plugin-dts@0.28.5(@volar/typescript@2.4.28(typescript@7.0.2))(rolldown@1.2.8)(typescript@7.0.2)(vue-tsc@3.3.10(typescript@7.0.2)):
+    dependencies:
+      dts-resolver: 3.0.0
+      get-tsconfig: 5.0.0-beta.6
+      obug: 2.2.1
+      rolldown: 1.2.8
+      yuku-ast: 0.9.5
+      yuku-codegen: 0.9.5
+      yuku-parser: 0.9.5
+    optionalDependencies:
+      '@volar/typescript': 2.4.28(typescript@7.0.2)
       typescript: 7.0.2
       vue-tsc: 3.3.10(typescript@7.0.2)
     transitivePeerDependencies:
@@ -14169,12 +14481,33 @@ snapshots:
   universalify@2.0.1:
     optional: true
 
-  unplugin-dts@1.1.2(@microsoft/api-extractor@7.57.6(@types/node@25.3.2))(@vue/language-core@3.3.10)(rolldown@1.2.8)(rollup@4.53.3)(typescript@7.0.2)(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1)):
+  unplugin-dts@1.1.2(@microsoft/api-extractor@7.57.6(@types/node@25.3.2))(@vue/language-core@3.3.10)(rolldown@1.2.8)(rollup@4.53.3)(supports-color@7.2.0)(typescript@7.0.2)(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1)):
     dependencies:
       '@rollup/pluginutils': 5.3.0(rollup@4.53.3)
-      '@volar/typescript': 2.4.28
+      '@volar/typescript': 2.4.28(typescript@7.0.2)
       compare-versions: 6.1.1
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@7.2.0)
+      glob-to-regexp: 0.4.1
+      kolorist: 1.8.0
+      local-pkg: 1.1.2
+      magic-string: 0.30.21
+      typescript: 7.0.2
+      unplugin: 2.3.11
+    optionalDependencies:
+      '@microsoft/api-extractor': 7.57.6(@types/node@25.3.2)
+      '@vue/language-core': 3.3.10
+      rolldown: 1.2.8
+      rollup: 4.53.3
+      vite: 8.3.5(@types/node@25.3.2)(yaml@2.9.1)
+    transitivePeerDependencies:
+      - supports-color
+
+  unplugin-dts@1.1.2(@microsoft/api-extractor@7.57.6(@types/node@25.3.2))(@vue/language-core@3.3.10)(rolldown@1.2.8)(rollup@4.53.3)(supports-color@8.1.1)(typescript@7.0.2)(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1)):
+    dependencies:
+      '@rollup/pluginutils': 5.3.0(rollup@4.53.3)
+      '@volar/typescript': 2.4.28(typescript@7.0.2)
+      compare-versions: 6.1.1
+      debug: 4.4.3(supports-color@8.1.1)
       glob-to-regexp: 0.4.1
       kolorist: 1.8.0
       local-pkg: 1.1.2
@@ -14219,9 +14552,25 @@ snapshots:
       magic-string: 0.30.21
       vite-plugin-dynamic-import: 1.6.0
 
-  vite-plugin-dts@5.1.2(@microsoft/api-extractor@7.57.6(@types/node@25.3.2))(@vue/language-core@3.3.10)(rolldown@1.2.8)(rollup@4.53.3)(typescript@7.0.2)(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1)):
+  vite-plugin-dts@5.1.2(@microsoft/api-extractor@7.57.6(@types/node@25.3.2))(@vue/language-core@3.3.10)(rolldown@1.2.8)(rollup@4.53.3)(supports-color@7.2.0)(typescript@7.0.2)(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1)):
     dependencies:
-      unplugin-dts: 1.1.2(@microsoft/api-extractor@7.57.6(@types/node@25.3.2))(@vue/language-core@3.3.10)(rolldown@1.2.8)(rollup@4.53.3)(typescript@7.0.2)(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1))
+      unplugin-dts: 1.1.2(@microsoft/api-extractor@7.57.6(@types/node@25.3.2))(@vue/language-core@3.3.10)(rolldown@1.2.8)(rollup@4.53.3)(supports-color@7.2.0)(typescript@7.0.2)(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1))
+    optionalDependencies:
+      '@microsoft/api-extractor': 7.57.6(@types/node@25.3.2)
+      rollup: 4.53.3
+      vite: 8.3.5(@types/node@25.3.2)(yaml@2.9.1)
+    transitivePeerDependencies:
+      - '@rspack/core'
+      - '@vue/language-core'
+      - esbuild
+      - rolldown
+      - supports-color
+      - typescript
+      - webpack
+
+  vite-plugin-dts@5.1.2(@microsoft/api-extractor@7.57.6(@types/node@25.3.2))(@vue/language-core@3.3.10)(rolldown@1.2.8)(rollup@4.53.3)(supports-color@8.1.1)(typescript@7.0.2)(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1)):
+    dependencies:
+      unplugin-dts: 1.1.2(@microsoft/api-extractor@7.57.6(@types/node@25.3.2))(@vue/language-core@3.3.10)(rolldown@1.2.8)(rollup@4.53.3)(supports-color@8.1.1)(typescript@7.0.2)(vite@8.3.5(@types/node@25.3.2)(yaml@2.9.1))
     optionalDependencies:
       '@microsoft/api-extractor': 7.57.6(@types/node@25.3.2)
       rollup: 4.53.3
@@ -14289,7 +14638,7 @@ snapshots:
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 25.3.2
-      '@vitest/coverage-istanbul': 4.1.12(vitest@4.1.4)
+      '@vitest/coverage-istanbul': 4.1.12(supports-color@8.1.1)(vitest@4.1.12)
     transitivePeerDependencies:
       - msw
 
@@ -14317,7 +14666,7 @@ snapshots:
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 25.3.2
-      '@vitest/coverage-istanbul': 4.1.12(vitest@4.1.4)
+      '@vitest/coverage-istanbul': 4.1.12(supports-color@8.1.1)(vitest@4.1.12)
     transitivePeerDependencies:
       - msw
 
@@ -14345,7 +14694,7 @@ snapshots:
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 25.3.2
-      '@vitest/coverage-istanbul': 4.1.4(vitest@4.1.4)
+      '@vitest/coverage-istanbul': 4.1.4(supports-color@8.1.1)(vitest@4.1.4)
     transitivePeerDependencies:
       - msw
 
@@ -14355,7 +14704,7 @@ snapshots:
 
   vue-tsc@3.3.10(typescript@7.0.2):
     dependencies:
-      '@volar/typescript': 2.4.28
+      '@volar/typescript': 2.4.28(typescript@7.0.2)
       '@vue/language-core': 3.3.10
       typescript: 7.0.2
 
@@ -14368,16 +14717,6 @@ snapshots:
       '@vue/shared': 3.5.25
     optionalDependencies:
       typescript: 5.6.3
-
-  vue@3.5.25(typescript@7.0.2):
-    dependencies:
-      '@vue/compiler-dom': 3.5.25
-      '@vue/compiler-sfc': 3.5.25
-      '@vue/runtime-dom': 3.5.25
-      '@vue/server-renderer': 3.5.25(vue@3.5.25(typescript@7.0.2))
-      '@vue/shared': 3.5.25
-    optionalDependencies:
-      typescript: 7.0.2
 
   vue@3.5.44(typescript@5.6.3):
     dependencies:
