@@ -97,6 +97,7 @@ from pre_fit import (
     apply_floor_and_weights,
     classify_insufficient,
     compute_global_baseline,
+    compute_read_weighted_baseline,
     detect_hook_effect,
     split_c0,
 )
@@ -382,6 +383,7 @@ def _fit_all_log_fluorescence(
     plateau_floor: float,
     log_lo: float,
     log_hi: float,
+    baseline: float | None = None,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Fit every clonotype with "log_fluorescence", then pin, rate and integrate.
 
@@ -426,7 +428,7 @@ def _fit_all_log_fluorescence(
         ws.append(sub[WEIGHT].to_numpy())
         contexts.append((i, clonotype, sub[COL_CONC_STR].to_numpy(), x))
 
-    worker = partial(fit_one, scale=scale, plateau_floor=plateau_floor)
+    worker = partial(fit_one, scale=scale, plateau_floor=plateau_floor, baseline=baseline)
     n_survivors = len(xs)
     gated = n_clon - n_survivors
     log(f"Fitting {n_survivors} clonotypes ({gated} pre-gated Failed)")
@@ -555,7 +557,14 @@ def _run_log_fluorescence(
     insufficient_map = dict(zip(insufficient[COL_CLONOTYPE].to_list(), insufficient["insufficient_reason"].to_list()))
 
     stats_map = _observed_statistics(floor_frame, scale)
-    _, fit_points = split_c0(floor_frame)
+    # One baseline for every clonotype: the read-weighted mean 0 M signal. Without 0 M samples,
+    # each clonotype fits its own.
+    c0_points, fit_points = split_c0(floor_frame)
+    baseline = compute_read_weighted_baseline(c0_points)
+    if baseline is None:
+        log("Baseline: fitted per clonotype (no 0 M samples)")
+    else:
+        log(f"Baseline: {baseline:.4f} log10, the read-weighted mean 0 M signal of {c0_points.height} clonotypes")
 
     per_clonotype, fitted = _fit_all_log_fluorescence(
         fit_points,
@@ -566,6 +575,7 @@ def _run_log_fluorescence(
         plateau_floor=params.plateau_floor,
         log_lo=log_lo,
         log_hi=log_hi,
+        baseline=baseline,
     )
 
     log("Assembling output frames")

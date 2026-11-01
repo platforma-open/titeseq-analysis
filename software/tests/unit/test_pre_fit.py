@@ -11,6 +11,7 @@ from pre_fit import (
     apply_floor_and_weights,
     classify_insufficient,
     compute_global_baseline,
+    compute_read_weighted_baseline,
     detect_hook_effect,
     split_c0,
 )
@@ -406,3 +407,19 @@ class TestHookEffectNoBinModeTop3:
         df = _build_fit_points_3(top3, top2, top1)
         result = detect_hook_effect(df, bin_mode=False, params=DEFAULT_PARAMS)
         assert bool(result.filter(pl.col("clonotypeKey") == "A")["hook_flag"][0]) is expected, case
+
+
+class TestReadWeightedBaseline:
+    def test_a_clonotype_counts_in_proportion_to_its_reads(self):
+        df = _c0([1.0, 3.0]).with_columns(pl.Series("weight", [300.0, 100.0]))
+        assert compute_read_weighted_baseline(df) == pytest.approx(1.5)
+
+    def test_equal_reads_give_the_plain_mean(self):
+        assert compute_read_weighted_baseline(_c0([1.0, 2.0, 3.0])) == pytest.approx(2.0)
+
+    def test_empty_returns_none(self):
+        df = pl.DataFrame(
+            {"clonotypeKey": [], "concentrationStr": [], "signal": [], "weight": []},
+            schema={"clonotypeKey": pl.Utf8, "concentrationStr": pl.Utf8, "signal": pl.Float64, "weight": pl.Float64},
+        )
+        assert compute_read_weighted_baseline(df) is None
