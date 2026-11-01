@@ -73,6 +73,27 @@ class TestFit:
         assert fit.log10_kd == pytest.approx(-8.0, abs=0.05)
         assert fit.log10_baseline == pytest.approx(math.log10(2.5), abs=0.05)
 
+    @pytest.mark.parametrize("log10_kd", [-9.0, -7.5])
+    def test_a_given_baseline_is_held_and_k_is_recovered(self, log10_kd):
+        fit = fit_one(
+            CONCS,
+            _curve(10**log10_kd),
+            np.full(CONCS.size, 1000.0),
+            scale=SCALE,
+            plateau_floor=FLOOR,
+            baseline=math.log10(2.0),
+        )
+        assert fit.converged
+        assert fit.log10_baseline == pytest.approx(math.log10(2.0))
+        assert fit.log10_kd == pytest.approx(log10_kd, abs=1e-3)
+
+    def test_a_given_baseline_stops_b_trading_against_k(self):
+        # Only the low half of the curve is titrated. A free baseline can lift B and move K; a
+        # given one cannot.
+        y = _curve(1e-7)[:5]
+        fit = fit_one(CONCS[:5], y, np.full(5, 1000.0), scale=SCALE, plateau_floor=FLOOR, baseline=math.log10(2.0))
+        assert fit.log10_kd == pytest.approx(-7.0, abs=1e-2)
+
     def test_the_exponent_is_fixed_at_one(self):
         # A curve with a steeper exponent cannot be matched, so the fit's own residuals carry it.
         y = np.log10(8.0 * CONCS**2 / (CONCS**2 + (1e-8) ** 2) + 2.0)

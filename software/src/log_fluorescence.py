@@ -146,12 +146,13 @@ def fit_one(
     *,
     scale: GateScale,
     plateau_floor: float,
+    baseline: float | None = None,
 ) -> FitResult:
     """Fit one clonotype. Pure numpy; no polars involvement.
 
     `c` is concentration, `y` the observed mean log10 fluorescence, `w` the reads behind each point.
-    The baseline is fitted per clonotype: without absolute cell counts the 0 M mean is not on a
-    scale the fit can consume.
+    `baseline`, when given, fixes log10 B for every clonotype and the fit has two parameters.
+    Without it, B is fitted per clonotype.
 
     A fit that lands on a bound still converges and is still reported. The caller decides, from
     where K landed relative to the titration, whether the answer is a measurement or a bound.
@@ -164,10 +165,12 @@ def fit_one(
         return _failure()
 
     top_lo = plateau_floor_decades(scale, plateau_floor)
+    if baseline is not None:
+        top_lo = max(top_lo, baseline + _BOUND_GAP)
     top_hi = max(scale.top, top_lo + _BOUND_GAP)
     base_lo = scale.floor
     base_hi = top_lo - _BOUND_GAP
-    if base_hi <= base_lo:
+    if baseline is None and base_hi <= base_lo:
         raise ValueError(
             f"plateau_floor {plateau_floor:.3g} leaves no room between the bottom gate and the "
             f"plateau; raise the floor or widen the gate range."
@@ -187,8 +190,17 @@ def fit_one(
     # sigma = 1/sqrt(w); a zero-weight point is treated as very uncertain rather than dropped.
     sigma = np.where(w > 0, 1.0 / np.sqrt(np.maximum(w, 1e-12)), 1e12)
 
-    lo = [log_kd_lo, top_lo, base_lo]
-    hi = [log_kd_hi, top_hi, base_hi]
+    if baseline is None:
+        model = _model
+        lo = [log_kd_lo, top_lo, base_lo]
+        hi = [log_kd_hi, top_hi, base_hi]
+    else:
+
+        def model(cc: np.ndarray, log10_kd: float, log10_top: float) -> np.ndarray:
+            return _model(cc, log10_kd, log10_top, baseline)
+
+        lo = [log_kd_lo, top_lo]
+        hi = [log_kd_hi, top_hi]
 
     # The surface has local minima in log K, so one start is not enough: a single start costs 0.008
     # decades on the Adams median and 0.078 at the 90th percentile. Start from the half-max crossing
@@ -201,7 +213,9 @@ def fit_one(
     best_popt = best_pcov = None
     best_cost = math.inf
     for seed in seeds:
-        p0 = [min(max(seed, log_kd_lo), log_kd_hi), top0, base0]
+        p0 = [min(max(seed, log_kd_lo), log_kd_hi), top0]
+        if baseline is None:
+            p0.append(base0)
         try:
             # OptimizeWarning is NOT promoted to an error here. scipy emits it when the covariance
             # cannot be estimated, which is exactly what a fit pinned at a bound does — and a pinned
@@ -209,7 +223,7 @@ def fit_one(
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", OptimizeWarning)
                 popt, pcov = curve_fit(
-                    _model,
+                    model,
                     c,
                     y,
                     p0=p0,
@@ -221,7 +235,7 @@ def fit_one(
                 )
         except (RuntimeError, ValueError):
             continue
-        residual = (_model(c, *popt) - y) / sigma
+        residual = (model(c, *popt) - y) / sigma
         if not np.all(np.isfinite(residual)):
             continue
         cost = float(np.sum(residual**2))
@@ -234,7 +248,7 @@ def fit_one(
 
     log10_kd = float(popt[0])
     log10_top = float(popt[1])
-    log10_base = float(popt[2])
+    log10_base = float(popt[2]) if baseline is None else float(baseline)
     variance = float(np.asarray(pcov)[0, 0]) if np.ndim(pcov) == 2 else math.nan
     se = math.sqrt(variance) if math.isfinite(variance) and variance >= 0 else None
 
