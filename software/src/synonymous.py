@@ -52,7 +52,7 @@ from __future__ import annotations
 import math
 import statistics
 from dataclasses import dataclass, replace
-from typing import Literal
+from typing import Literal, Protocol
 
 import polars as pl
 
@@ -245,7 +245,7 @@ def combine(copies: list[Copy], *, weighted: bool = False) -> Combined:
     return Combined(mean, None, Classification(entered[0].affinity_class, None), False, counts, sd)
 
 
-def _mutation_counts(frame: pl.DataFrame, key: str) -> dict[str, int]:
+def mutation_counts(frame: pl.DataFrame, key: str) -> dict[str, int]:
     counts = frame.select(pl.col(key).cast(pl.Utf8), pl.col(COL_MUTATIONS).cast(pl.Int64, strict=False)).drop_nulls()
     return dict(zip(counts[key].to_list(), counts[COL_MUTATIONS].to_list()))
 
@@ -315,9 +315,14 @@ def resolve_parents(
     return assignment, own, unidentifiable, several
 
 
-def parent_delta(
-    variant: Combined | Copy | None, parent: Combined | Copy | None, is_parent: bool
-) -> tuple[float | None, float | None]:
+class HasKd(Protocol):
+    """A combined or single value with a log10 K_D and, where one exists, its standard error."""
+
+    log10_kd: float | None
+    log10_kd_se: float | None
+
+
+def parent_delta(variant: HasKd | None, parent: HasKd | None, is_parent: bool) -> tuple[float | None, float | None]:
     """deltaLog10Kd and its error. None where either side has no K_D."""
     if variant is None or parent is None or variant.log10_kd is None or parent.log10_kd is None:
         return None, None
@@ -330,7 +335,7 @@ def parent_delta(
 
 
 def parent_deltas(
-    values: dict[str, Combined | Copy], links: pl.DataFrame, mutations: pl.DataFrame, key: str
+    values: dict[str, HasKd], links: pl.DataFrame, mutations: pl.DataFrame, key: str
 ) -> tuple[list[float | None], list[float | None], dict]:
     """The parent delta and its error for each variant of `values`, in its order, and the summary counts."""
     assignment, own, unidentifiable, several = resolve_parents(links, mutations, key)
@@ -413,7 +418,7 @@ def combine_synonymous(
         columns["ntFailed"].append(c.counts["failed"])
     schema = dict(PER_VARIANT_SCHEMA)
 
-    aa_mutations = _mutation_counts(inputs.aa_mutations, COL_AA) if inputs.aa_mutations is not None else None
+    aa_mutations = mutation_counts(inputs.aa_mutations, COL_AA) if inputs.aa_mutations is not None else None
     if aa_mutations is not None:
         columns[COL_CLASS] = [aa_class(aa_mutations.get(aa), aa in stops) for aa in combined]
         schema.update(CLASS_SCHEMA)
@@ -430,7 +435,7 @@ def combine_synonymous(
         nt_columns: dict[str, list] = {COL_NT: fitted}
         nt_schema: dict[str, pl.DataType] = {COL_NT: pl.Utf8}
         if aa_mutations is not None:
-            nt_mutations = _mutation_counts(inputs.nt_mutations, COL_NT)
+            nt_mutations = mutation_counts(inputs.nt_mutations, COL_NT)
             nt_columns[COL_CLASS] = [
                 None
                 if nt not in mapping
