@@ -278,6 +278,7 @@ export const initBlockData = (params?: BlockParams): BlockData => ({
   filterRef: params?.filterRef,
   concentrationColumnRef: params?.concentrationColumnRef,
   binColumnRef: params?.binColumnRef,
+  binFluorescenceColumnRef: params?.binFluorescenceColumnRef,
   antigenColumnRef: params?.antigenColumnRef,
   sortFractionColumnRef: params?.sortFractionColumnRef,
   targetAntigen: params?.targetAntigen,
@@ -290,6 +291,8 @@ export const initBlockData = (params?: BlockParams): BlockData => ({
   plateauFloor: params?.plateauFloor ?? DEFAULT_PLATEAU_FLOOR,
   r2GateEnabled: params?.r2GateEnabled ?? DEFAULT_R2_GATE.r2GateEnabled,
   r2GateMin: params?.r2GateMin ?? DEFAULT_R2_GATE.r2GateMin,
+  kdSeGateMax: params?.kdSeGateMax,
+  requireAllConcentrations: params?.requireAllConcentrations,
   replicateColumnRef: params?.replicateColumnRef,
   replicateErrorModel: params?.replicateErrorModel ?? DEFAULT_REPLICATE_ERROR_MODEL,
   // Both filters start off: no rule that is not verified against a paper's own code runs by
@@ -529,9 +532,12 @@ export const deriveArgs = (data: BlockData): BlockArgs => {
     ...(data.replicateColumnRef !== undefined && {
       replicateColumnRef: data.replicateColumnRef,
       replicateErrorModel: data.replicateErrorModel,
-      ...(data.replicateFitErrorCutoff !== undefined && {
-        replicateFitErrorCutoff: data.replicateFitErrorCutoff,
-      }),
+      // The cutoff reads a replicate's own fit standard error. The mean bin fit reports none, so
+      // the setting is inert there and is not sent — the UI hides it for the same reason.
+      ...(data.equation === "log_fluorescence" &&
+        data.replicateFitErrorCutoff !== undefined && {
+          replicateFitErrorCutoff: data.replicateFitErrorCutoff,
+        }),
       ...(data.replicateR2Floor !== undefined && { replicateR2Floor: data.replicateR2Floor }),
       replicateCensoredMajority: data.replicateCensoredMajority,
     }),
@@ -961,46 +967,24 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     });
   })
 
-  // The main grid's key axis. Feeds `showCellButtonForAxisId`, which matches by exact JSON.
+  // The main grid's key axis. Feeds `showCellButtonForAxisId`, which renders the button on every
+  // displayed column that sits on this axis alone. It is read off the affinity class rather than
+  // off Kd,app: under the log fluorescence fit molar Kd,app is hidden by default, and a button on
+  // a hidden column is a button nobody sees. Both columns carry the same axis, so the id is the
+  // same either way.
   .output("summaryKeyAxisId", (ctx) => {
-    const axis = ctx.outputs
-      ?.resolve("summaryPf")
-      ?.getPColumns()
-      ?.find((c) => c.spec.name === "pl7.app/vdj/kd")?.spec.axesSpec[0];
+    const cols = ctx.outputs?.resolve("summaryPf")?.getPColumns();
+    const axis = (
+      cols?.find((c) => c.spec.name === "pl7.app/vdj/affinityClass") ??
+      cols?.find((c) => c.spec.name === "pl7.app/vdj/kd")
+    )?.spec.axesSpec[0];
     return axis === undefined ? undefined : getAxisId(axis);
   })
 
-  // The selected variant's own name, for the panel's title. Read off the label column the
-  // upstream attaches to the variant axis; undefined when it attaches none.
-  .output("replicateDrilldownLabel", (ctx): string | undefined => {
-    const value = ctx.data.replicateDrilldownKey?.[0];
-    if (value === undefined || value === null) return undefined;
-    const axis = ctx.outputs
-      ?.resolve("summaryPf")
-      ?.getPColumns()
-      ?.find((c) => c.spec.name === "pl7.app/vdj/kd")?.spec.axesSpec[0];
-    if (axis === undefined) return undefined;
-    return ctx.resultPool.findLabels(axis)?.[String(value)];
-  })
-
-  // The combined value the replicates below it produced, so the panel shows inputs and result
-  // together. The same filter as the per-replicate table, over the summary columns.
-  .outputWithStatus("replicateDrilldownSummary", (ctx) => {
-    if (replicateCols(ctx) === undefined) return undefined;
-    const summaryCols = ctx.outputs?.resolve("summaryPf")?.getPColumns();
-    if (summaryCols === undefined) return undefined;
-    const filters = replicateDrilldownFilter(
-      summaryCols.map((c) => c.spec),
-      ctx.data.replicateDrilldownKey,
-    );
-    if (filters === undefined) return undefined;
-    return createPlDataTableV3(ctx, {
-      primaryColumns: summaryCols.map((c) => DataColumn.fromColumn(c)),
-      columns: undefined,
-      tableState: undefined,
-      filters,
-    });
-  })
+  // No `replicateDrilldownLabel`: the panel cannot name the variant. The clonotype axis value is
+  // an opaque key, its label column is Parquet-partitioned so `resultPool.findLabels` throws on
+  // it, and neither table click event carries the row's cells. The panel's own table carries the
+  // upstream label column instead.
 
   // One variant's replicates, opened from the main table. No table while nothing is selected:
   // unfiltered it would be every variant's replicates.
@@ -1012,13 +996,17 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
       ctx.data.replicateDrilldownKey,
     );
     if (filters === undefined) return undefined;
+    // Shown by default, except molar Kd,app wherever the -log10 column exists: the panel reports
+    // Kd,app in the same form as the main table.
+    const hasNegLog10 = cols.some((c) => c.spec.name === "pl7.app/vdj/kdNegLog10");
+    const shown = cols.filter((c) => !(hasNegLog10 && c.spec.name === "pl7.app/vdj/kd"));
     return createPlDataTableV3(ctx, {
       primaryColumns: cols.map((c) => DataColumn.fromColumn(c)),
       columns: undefined,
       tableState: ctx.data.replicateDrilldownTableState,
       displayOptions: {
         visibility: [
-          { match: { name: cols.map((c) => exactly(c.spec.name)) }, visibility: "default" },
+          { match: { name: shown.map((c) => exactly(c.spec.name)) }, visibility: "default" },
         ],
       },
       filters,

@@ -271,7 +271,6 @@ function setBinColumn(ref: PlRef | undefined): void {
           The lowest R² that a fit can have. A fit with a lower R², or with no R², gets the rating
           Failed, with the reason low_r2. The block checks only a fit whose Kd,app is inside the
           titrated range. With sample replicates, the block checks the fit of each replicate.
-          Phillips 2021 used 0.8.
         </template>
       </PlNumberField>
       <PlNumberField
@@ -288,7 +287,7 @@ function setBinColumn(ref: PlRef | undefined): void {
           or with no error, gets the rating Failed, with the reason high_kd_se. The block checks
           only a fit whose Kd,app is inside the titrated range. With sample replicates, the block
           checks the fit of each replicate. An error above 0.5 always changes the rating from Good
-          to Partial. Leave this field empty to set no Failed limit. Phillips 2021 used 1.
+          to Partial. Leave this field empty to set no Failed limit.
         </template>
       </PlNumberField>
     </PlAccordionSection>
@@ -307,22 +306,36 @@ function setBinColumn(ref: PlRef | undefined): void {
           Sample SD / √n: the standard error of the mean, over the replicates that entered. The
           default. <br /><br />
           Population SD / √(n+1): divides by one more than the replicate count and uses the
-          population standard deviation, which makes it the smaller of the two. Phillips 2021
-          published this form. Its own value at one replicate is 0, which would rate every
-          single-replicate variant Good, so the fit's own error stands in.
+          population standard deviation, which makes it the smaller of the two. Its own value at one
+          replicate is 0, which would rate every single-replicate variant Good, so the fit's own
+          error stands in.
         </template>
       </PlDropdown>
+      <!--
+        Three settings are hidden while it is still being decided which of them the block keeps.
+        The code behind each one is untouched, so uncommenting a field brings it back as it was.
+
+        Each hidden field holds its default, which is what the block now does:
+          * Fit error cutoff — unset, so no replicate is dropped for a wide fit error.
+          * R² floor — unset, so no replicate is dropped for a poor R². Minimum R², under Fit
+            method, already rates such a fit Failed before this floor would see it.
+          * Censoring majority — 0.5, so one edge of the titration must simply hold more of the
+            replicates than the other for that edge to be reported. The operator asked for this
+            to be a fixed "more than half" rather than a number a reader has to choose.
+
       <PlNumberField
+        v-if="isLogFluorescence"
         v-model="app.model.data.replicateFitErrorCutoff"
         label="Fit error cutoff (decades)"
         :min-value="0"
         :step="0.1"
+        :validate="aboveZero"
         clearable
       >
         <template #tooltip>
           Optional. Leaves out a replicate whose own fit error is above this, before the mean. Off
-          unless you set it. Phillips 2021 published 1.0. A replicate censored at an edge of the
-          titration is not affected: the edge, not the fit, set its value.
+          unless you set it. A replicate censored at an edge of the titration is not affected: the
+          edge, not the fit, set its value.
         </template>
       </PlNumberField>
       <PlNumberField
@@ -335,9 +348,9 @@ function setBinColumn(ref: PlRef | undefined): void {
       >
         <template #tooltip>
           Optional. Leaves out a replicate whose fit R² is below this, before the mean, and counts
-          it as filtered. Off unless you set it. Phillips 2021 published 0.8. This differs from the
-          R² gate under Fit method: the gate rates the replicate's own fit Failed, and a failed
-          replicate is counted as failed.
+          it as filtered. Off unless you set it. This differs from Minimum R² under Fit method: that
+          gate runs first and rates the replicate's own fit Failed, so a replicate it rejects never
+          reaches this floor. Set both to the same value and this one does nothing.
         </template>
       </PlNumberField>
       <PlNumberField
@@ -356,6 +369,7 @@ function setBinColumn(ref: PlRef | undefined): void {
           defines one, and averaging opposite edges would land inside the range and mean nothing.
         </template>
       </PlNumberField>
+      -->
     </PlAccordionSection>
 
     <PlAccordionSection label="Read coverage">

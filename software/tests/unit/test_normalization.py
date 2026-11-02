@@ -104,6 +104,31 @@ class TestComputeMeanBin:
         assert out["mean_bin"][0] == 4.0
 
 
+class TestNullGateLabels:
+    """An unsorted sample has reads but no `bin`. Polars skips a null in the numerator, so its
+    weight in the denominator pulls the mean towards 0 unless the weight is dropped too."""
+
+    @staticmethod
+    def _reads() -> pl.DataFrame:
+        # Half the clonotype's reads sit in gate 4; the other half are unsorted (`bin` null).
+        return pl.DataFrame(
+            [
+                {"clonotypeKey": "A", "sampleId": "s", "concentrationStr": "0", "concentration": 0.0, "bin": b, "reads": r}
+                for b, r in ((4, 50), (None, 50))
+            ],
+            schema_overrides={"bin": pl.Int64},
+        )
+
+    def test_a_null_gate_label_drags_the_mean_down_by_default(self):
+        # v2.4.0's behaviour on the gate-index path, pinned by `test_v240_output_pin`.
+        out = compute_mean_bin(self._reads())
+        assert out["mean_bin"][0] == 2.0
+
+    def test_dropping_null_positions_leaves_the_mean_on_the_sorted_gates(self):
+        out = compute_mean_bin(self._reads(), drop_null_positions=True)
+        assert out["mean_bin"][0] == 4.0
+
+
 class TestComputeFrequencySignal:
     # R7b: signal = reads_clonotype / total_reads_at_conc.
     @pytest.mark.parametrize(

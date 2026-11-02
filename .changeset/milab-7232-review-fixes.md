@@ -44,3 +44,13 @@ Both fits:
   means.
 
 The mean bin fit's columns and classes are unchanged.
+
+Fixes:
+
+- A project template now carries the gate fluorescence column, the maximum Kd,app SE and the
+  complete-titration rule. A block created from a template that set them got none of the three.
+- An unsorted sample — reads at a concentration but no FACS bin — no longer drags the shared
+  baseline below the first gate. Its reads were skipped in the mean's numerator while their weight
+  stayed in the denominator, which pulled a 0 M baseline down by two thirds of a gate and moved
+  flat non-binders into the titrated range as `Partial`. The mean bin fit keeps its own arithmetic,
+  so its output is unchanged.

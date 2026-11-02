@@ -762,6 +762,7 @@ def run(
         bin_mode=has_bin,
         sort_fraction_col=sort_fraction_col if has_bin else None,
         gate_position_col=measured_gates,
+        drop_null_positions=params.equation == "log_fluorescence",
         replicate_keys=replicate_keys,
     )
 

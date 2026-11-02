@@ -272,6 +272,16 @@ class TestFiltersEndToEnd:
         outputs = run(_frame(self._design()), params=LF, replicates=inputs)
         assert outputs["per_clonotype"]["replicateFilteredCount"].to_list() == [0]
 
+    def test_the_mean_bin_fit_ignores_a_cutoff_it_cannot_judge(self):
+        # The mean bin fit writes no per-replicate kdLog10Se. Reading that None as a rejection
+        # rated every variant Failed on any run that merely had the cutoff set.
+        inputs = ReplicateInputs(column="replicate", filters=Filters(fit_error_cutoff=1.0))
+        outputs = run(_frame(self._design()), params=HILL, replicates=inputs)
+        row = outputs["per_clonotype"].row(0, named=True)
+        assert row["replicateFilteredCount"] == 0
+        assert row["replicateCount"] == 2
+        assert row["fitFailureReason"] != "all_replicates_filtered"
+
 
 # Two clonotypes, each titrated in replicates A and B; "c2" only in A.
 TWO_REPLICATES = pl.DataFrame(

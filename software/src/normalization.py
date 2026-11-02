@@ -18,6 +18,7 @@ def compute_mean_bin(
     *,
     sort_fraction_col: str | None = None,
     gate_position_col: str | None = None,
+    drop_null_positions: bool = False,
     replicate_keys: list[str] | None = None,
 ) -> pl.DataFrame:
     """R7: mean_bin_c = Σ_b (b · freq_cb) / Σ_b freq_cb, where freq_cb = reads_cb / depth_b.
@@ -31,7 +32,14 @@ def compute_mean_bin(
     (concentration, gate), so it cannot be recovered from the mean gate index afterwards. Only
     the "log_fluorescence" equation passes it. Without it the two differ by one affine map. A row
     whose position is null contributes to neither sum, so a missing position cannot pull the mean
-    towards 0. The gate-label path keeps v2.4.0's sums unchanged.
+    towards 0.
+
+    `drop_null_positions` applies that same guard to the gate-label path, where `b` is the gate
+    number. Without it a null-`bin` row — an unsorted sample, typically the 0 M one — is skipped
+    in the numerator by polars but keeps its weight in the denominator, which drags the mean below
+    gate 1 and, through the shared baseline, flips flat non-binders into the titrated range. Only
+    "log_fluorescence" sets it: v2.4.0 carries the same bias on the gate-index path and its output
+    is pinned.
 
     Groups by (clonotype, concentration). Per-bin frequency uses per-sample depth
     (total reads in that bin at that concentration). A bin-at-concentration with zero
@@ -54,7 +62,7 @@ def compute_mean_bin(
 
     weight = pl.col(FREQ) * pl.col(sort_fraction_col) if sort_fraction_col is not None else pl.col(FREQ)
     position = pl.col(gate_position_col) if gate_position_col is not None else pl.col(COL_BIN)
-    if gate_position_col is not None:
+    if gate_position_col is not None or drop_null_positions:
         weight = pl.when(position.is_not_null()).then(weight).otherwise(0.0)
 
     return (
@@ -102,6 +110,7 @@ def normalize(
     *,
     sort_fraction_col: str | None = None,
     gate_position_col: str | None = None,
+    drop_null_positions: bool = False,
     replicate_keys: list[str] | None = None,
 ) -> pl.DataFrame:
     """Unified entry point; always emits column named SIGNAL for downstream modules.
@@ -117,6 +126,7 @@ def normalize(
             reads,
             sort_fraction_col=sort_fraction_col,
             gate_position_col=gate_position_col,
+            drop_null_positions=drop_null_positions,
             replicate_keys=replicate_keys,
         ).rename({MEAN_BIN: SIGNAL})
     else:

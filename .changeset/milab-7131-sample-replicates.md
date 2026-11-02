@@ -13,9 +13,11 @@ run stops with "sort_fraction values must sum to 1.0 per concentration", because
 to two.
 
 - New optional setting `replicateColumnRef` (block data and the kind's init params): a per-sample
-  String or integer column naming each sample's replicate. Unset, every output, every spec and
-  every byte of the args and the command line is the one the block produced before. A column that
-  cannot be used — missing, empty, or two values on one sample — warns and runs as one replicate.
+  String or integer column naming each sample's replicate. Unset, every output and every byte of
+  the args and the command line is the one the block produced before. One spec does change without
+  a replicate column: the fit failure reason is now visible by default rather than hidden. A column
+  that cannot be used — missing, empty, or two values on one sample — warns and runs as one
+  replicate.
 - Each replicate is a titration of its own. The gate depth, the library depth, the sort-fraction
   sum and the missing (bin, concentration) check are taken within the replicate, so the replicates
   no longer divide each other's reads.
@@ -40,6 +42,10 @@ to two.
   reported; otherwise the clonotype is Failed with reason `conflicting_censoring`. This is the
   block's own rule — no published method defines one. Under the log fluorescence fit the combined
   bound rates by the wall it sits at, `Below range` or `Above range`, as a single fit does.
+- The fit error cutoff reads a replicate's own fit standard error. The Mean bin fit reports none,
+  so the setting is hidden and left out of the args under that equation, and a missing error no
+  longer reads as a wide one. Sending it under the Mean bin fit previously rated every variant
+  `Failed` with the reason `all_replicates_filtered`.
 - `pl7.app/vdj/replicateCount` and its family — `replicateMeasuredCount`,
   `replicateCensoredBelowCount`, `replicateCensoredAboveCount`, `replicateFailedCount`,
   `replicateFilteredCount` — count what each clonotype's replicates produced.

@@ -112,8 +112,11 @@ class Filters:
         return self.fit_error_cutoff is not None or self.r2_floor is not None
 
     def rejects(self, log10_kd_se: float | None, r2: float | None) -> bool:
-        if self.fit_error_cutoff is not None:
-            if log10_kd_se is None or not math.isfinite(log10_kd_se) or log10_kd_se > self.fit_error_cutoff:
+        # A None SE is not a wide one: the mean bin fit reports no standard error at all, so this
+        # filter has nothing to judge and the replicate passes it. `_from_fit` has already turned
+        # a non-finite SE into None.
+        if self.fit_error_cutoff is not None and log10_kd_se is not None:
+            if log10_kd_se > self.fit_error_cutoff:
                 return True
         if self.r2_floor is not None:
             if r2 is None or not math.isfinite(r2) or r2 < self.r2_floor:
@@ -247,8 +250,8 @@ class ReplicateInputs:
 # in the words the panel shows.
 STATE_LABELS: dict[ReplicateState, str] = {
     "measured": "In the mean",
-    "below": "In the mean, at the tight wall",
-    "above": "In the mean, at the weak wall",
+    "below": "In the mean, at the lowest concentration",
+    "above": "In the mean, at the highest concentration",
     "failed": "Left out, no fit",
     "filtered": "Left out by a filter",
 }
@@ -257,6 +260,7 @@ PER_REPLICATE_COLUMNS: dict[str, pl.DataType] = {
     COL_REPLICATE: pl.Utf8,
     "replicateReads": pl.Int64,
     "kd": pl.Float64,
+    "kdNegLog10": pl.Float64,
     "kdLog10Se": pl.Float64,
     "r2": pl.Float64,
     "affinityClass": pl.Utf8,
@@ -329,6 +333,8 @@ def build_per_replicate_frame(
             cols[COL_REPLICATE].append(value.replicate)
             cols["replicateReads"].append(None if reads is None else reads.get((key, value.replicate)))
             cols["kd"].append(None if value.log10_kd is None else 10.0**value.log10_kd)
+            # The published form, as the combined value reports it: larger is tighter.
+            cols["kdNegLog10"].append(None if value.log10_kd is None else -value.log10_kd)
             cols["kdLog10Se"].append(value.log10_kd_se)
             cols["r2"].append(value.r2)
             cols["affinityClass"].append(value.affinity_class)

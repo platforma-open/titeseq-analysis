@@ -219,3 +219,10 @@ const CONTRACT = {
   replicateCensoredMajority: check(isMajority, "a number between 0.5 and 1"),
   customBlockLabel: check(isString, "a string"),
 } satisfies { [K in keyof Required<BlockParams>]: Check<NonNullable<BlockParams[K]>> };
+
+/**
+ * Every field a template carries, as a list. The model reads it so `initBlockData`,
+ * `deriveTemplateParams` and this contract cannot drift apart unnoticed: a field added here but
+ * forgotten in either of those is silently dropped from every template exported afterwards.
+ */
+export const CONTRACT_KEYS = Object.keys(CONTRACT) as (keyof BlockParams)[];

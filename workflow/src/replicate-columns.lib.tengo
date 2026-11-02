@@ -7,7 +7,7 @@ maps := import("@platforma-sdk/workflow-tengo:maps")
 
 COUNT_NAME := "pl7.app/vdj/replicateCount"
 STATE_NAME := "pl7.app/vdj/kdReplicateState"
-STATE_VALUES := "[\"In the mean\",\"In the mean, at the tight wall\",\"In the mean, at the weak wall\",\"Left out, no fit\",\"Left out by a filter\"]"
+STATE_VALUES := "[\"In the mean\",\"In the mean, at the lowest concentration\",\"In the mean, at the highest concentration\",\"Left out, no fit\",\"Left out by a filter\"]"
 
 /**
  * The replicate axis. String rather than Int for the same reason the concentration axis is: the
@@ -144,9 +144,11 @@ seColumn := func(blockId, idPrefix, errorModel) {
  * @param idPrefix: prepended to each column's xsv id
  * @param kdAnnotations: the combined Kd,app annotations, unit included
  * @param classValues: the affinity classes the equation can rate, as a JSON list
+ * @param withNegLog10: true where the equation reports -log10 Kd,app, so the panel shows the
+ *        same form as the main table
  * @return xsv column descriptors
  */
-perReplicateColumns := func(blockId, idPrefix, kdAnnotations, classValues) {
+perReplicateColumns := func(blockId, idPrefix, kdAnnotations, classValues, withNegLog10) {
 	domain := { "pl7.app/block": blockId }
 	hidden := func(name, valueType, label, description, extra) {
 		return {
@@ -161,7 +163,7 @@ perReplicateColumns := func(blockId, idPrefix, kdAnnotations, classValues) {
 			}, extra)
 		}
 	}
-	return [
+	columns := [
 		{
 			column: "kd",
 			id: idPrefix + "kd",
@@ -173,7 +175,8 @@ perReplicateColumns := func(blockId, idPrefix, kdAnnotations, classValues) {
 					"pl7.app/label": "Kd,app (per replicate)",
 					"pl7.app/description": "Kd,app this replicate contributed to the mean. A replicate censored at an edge of the titration reports that edge; a filtered one reports the value the filter rejected.",
 					"pl7.app/isScore": "false",
-					"pl7.app/table/visibility": "hidden"
+					"pl7.app/table/visibility": "hidden",
+					"pl7.app/table/orderPriority": "198"
 				})
 			}
 		},
@@ -182,13 +185,13 @@ perReplicateColumns := func(blockId, idPrefix, kdAnnotations, classValues) {
 			id: idPrefix + "kdLog10Se",
 			spec: hidden("pl7.app/vdj/kdLog10Se", "Double", "Kd,app SE (log10, per replicate)",
 				"Standard error of log10 Kd,app from this replicate's own fit, where the equation reports one.",
-				{ "pl7.app/format": ".2f" })
+				{ "pl7.app/format": ".2f", "pl7.app/table/orderPriority": "200" })
 		},
 		{
 			column: "r2",
 			id: idPrefix + "r2",
 			spec: hidden("pl7.app/vdj/curveFitR2", "Double", "Curve fit R² (per replicate)",
-				"R² of this replicate's own fit.", {})
+				"R² of this replicate's own fit.", { "pl7.app/table/orderPriority": "196" })
 		},
 		{
 			column: "affinityClass",
@@ -197,32 +200,46 @@ perReplicateColumns := func(blockId, idPrefix, kdAnnotations, classValues) {
 				"How this replicate's own fit rates. The combined value is rated once, on its own, so the two can differ.",
 				{
 					"pl7.app/isDiscreteFilter": "true",
-					"pl7.app/discreteValues": classValues
+					"pl7.app/discreteValues": classValues,
+					"pl7.app/table/orderPriority": "202"
 				})
 		},
 		{
 			column: "fitFailureReason",
 			id: idPrefix + "fitFailureReason",
 			spec: hidden("pl7.app/vdj/fitFailureReason", "String", "Fit failure reason (per replicate)",
-				"Why this replicate's own fit rated Failed. Empty when it did not.", {})
+				"Why this replicate's own fit rated Failed. Empty when it did not.", { "pl7.app/table/orderPriority": "197" })
 		},
 		{
 			column: "replicateReads",
 			id: idPrefix + "replicateReads",
 			spec: hidden("pl7.app/vdj/replicateReads", "Long", "Reads in this replicate",
-				"Reads behind this replicate's own fit, summed over the concentrations it was fitted on. A wide or missing value usually reads back to a low count here.", {})
+				"Reads behind this replicate's own fit, summed over the concentrations it was fitted on. A wide or missing value usually reads back to a low count here.", { "pl7.app/table/orderPriority": "195" })
 		},
 		{
 			column: "kdState",
 			id: idPrefix + "kdState",
 			spec: hidden(STATE_NAME, "String", "Entered the mean",
-				"What this replicate contributed. In the mean: its Kd,app was measured inside the titrated range. At the tight or weak wall: its Kd,app was a bound and entered at that wall. Left out: it produced no fit, or a pre-combine filter rejected it.",
+				"What this replicate contributed. In the mean: its Kd,app was measured inside the titrated range. At the lowest or highest concentration: its Kd,app was a bound and entered the mean at that concentration. Left out: it produced no fit, or a pre-combine filter rejected it.",
 				{
 					"pl7.app/isDiscreteFilter": "true",
-					"pl7.app/discreteValues": STATE_VALUES
+					"pl7.app/discreteValues": STATE_VALUES,
+					"pl7.app/table/orderPriority": "194"
 				})
 		}
 	]
+	// The panel reports Kd,app the way the main table does. Emitted only where the equation
+	// reports the combined -log10 column, so the other equation's spec is untouched.
+	if withNegLog10 {
+		columns = append(columns, {
+			column: "kdNegLog10",
+			id: idPrefix + "kdNegLog10",
+			spec: hidden("pl7.app/vdj/kdNegLog10", "Double", "-log10 Kd,app (per replicate)",
+				"-log10 of the Kd,app this replicate contributed to the mean. Larger is tighter binding. A replicate at an edge of the titration reports that edge.",
+				{ "pl7.app/format": ".3f", "pl7.app/table/orderPriority": "201" })
+		})
+	}
+	return columns
 }
 
 export ll.toStrict({

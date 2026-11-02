@@ -8,7 +8,7 @@ import {
   PlSlideModal,
   usePlDataTableSettingsV2,
 } from "@platforma-sdk/ui-vue";
-import { computed, ref } from "vue";
+import { computed } from "vue";
 import { useApp } from "../app";
 import TiteseqPage from "../components/TiteseqPage.vue";
 
@@ -53,24 +53,6 @@ const drilldownReady = computed(() => {
   return out !== undefined && (!out.ok || out.value !== undefined);
 });
 
-// The combined value the replicates produced, shown above them.
-const summarySettings = usePlDataTableSettingsV2({
-  model: () => app.model.outputs.replicateDrilldownSummary,
-  sourceId: () => app.model.data.replicateDrilldownKey?.join(" "),
-});
-
-const summaryReady = computed(() => {
-  const out = app.model.outputs.replicateDrilldownSummary;
-  return out !== undefined && (!out.ok || out.value !== undefined);
-});
-
-const summaryState = ref(createPlDataTableStateV2());
-
-const drilldownTitle = computed(() => {
-  const label = app.model.outputs.replicateDrilldownLabel;
-  return label === undefined ? "Replicates of this variant" : `Replicates of ${label}`;
-});
-
 const cellButtonAxis = computed(() =>
   app.model.outputs.replicates === true ? app.model.outputs.summaryKeyAxisId : undefined,
 );
@@ -89,15 +71,9 @@ const cellButtonAxis = computed(() =>
       @cell-button-clicked="openDrilldown"
     />
     <PlSlideModal v-model="drilldownOpen" width="80%">
-      <template #title>{{ drilldownTitle }}</template>
-      <div :class="$style.sectionLabel">Combined across replicates</div>
-      <PlAgDataTableV2
-        v-if="summaryReady"
-        v-model="summaryState"
-        :settings="summarySettings"
-        no-rows-text="No combined value for this variant."
-      />
-      <div :class="$style.sectionLabel">Each replicate</div>
+      <!-- The variant is named by the label column inside the table below: the model cannot
+           resolve it, since the axis value is an opaque key. -->
+      <template #title>Replicates</template>
       <PlAgDataTableV2
         v-if="drilldownReady"
         v-model="drilldownTableState"
@@ -114,14 +90,3 @@ const cellButtonAxis = computed(() =>
     </PlSlideModal>
   </TiteseqPage>
 </template>
-
-<style module>
-.sectionLabel {
-  color: var(--txt-03);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  margin: 12px 0 6px;
-  text-transform: uppercase;
-}
-</style>

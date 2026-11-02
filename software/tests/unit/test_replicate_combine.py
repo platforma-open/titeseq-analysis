@@ -150,9 +150,19 @@ class TestFilters:
         assert replicate_value("A", _row(1e-8, se=1.4), log10_lo=LO, log10_hi=HI, filters=filters).state == "filtered"
         assert replicate_value("A", _row(1e-8, se=0.9), log10_lo=LO, log10_hi=HI, filters=filters).state == "measured"
 
-    def test_the_fit_error_cutoff_drops_a_measured_replicate_with_no_error(self):
+    def test_the_fit_error_cutoff_keeps_a_replicate_whose_equation_reports_no_error(self):
+        # The mean bin fit reports no standard error at all. A None is not a wide error, so the
+        # cutoff has nothing to judge and the replicate enters the mean. Rejecting it instead
+        # rated every variant Failed on a run that merely had the cutoff set.
         filters = Filters(fit_error_cutoff=1.0)
-        assert replicate_value("A", _row(1e-8, se=None), log10_lo=LO, log10_hi=HI, filters=filters).state == "filtered"
+        assert replicate_value("A", _row(1e-8, se=None), log10_lo=LO, log10_hi=HI, filters=filters).state == "measured"
+
+    def test_a_non_finite_error_reads_as_no_error_and_passes_the_cutoff(self):
+        # `_from_fit` turns a NaN or infinite SE into None before any filter sees it.
+        filters = Filters(fit_error_cutoff=1.0)
+        v = replicate_value("A", _row(1e-8, se=float("nan")), log10_lo=LO, log10_hi=HI, filters=filters)
+        assert v.log10_kd_se is None
+        assert v.state == "measured"
 
     def test_a_censored_replicate_is_exempt_from_the_fit_error_cutoff(self):
         filters = Filters(fit_error_cutoff=0.01)
@@ -219,11 +229,17 @@ class TestFrames:
     def test_the_per_replicate_frame_holds_one_row_a_replicate(self):
         frame = build_per_replicate_frame(self._collected(), "clonotypeKey")
         assert frame.columns == [
-            "clonotypeKey", "replicate", "replicateReads", "kd", "kdLog10Se", "r2", "affinityClass",
-            "fitFailureReason", "kdState",
+            "clonotypeKey", "replicate", "replicateReads", "kd", "kdNegLog10", "kdLog10Se", "r2",
+            "affinityClass", "fitFailureReason", "kdState",
         ]  # fmt: skip
         assert frame.height == 4
         assert frame.filter(kdState="Left out, no fit").height == 2
+
+    def test_the_per_replicate_frame_reports_kd_in_the_published_form(self):
+        frame = build_per_replicate_frame(self._collected(), "clonotypeKey")
+        measured = frame.filter(kdState="In the mean").sort("replicate")
+        assert measured["kd"].to_list() == pytest.approx([1e-8, 2e-8])
+        assert measured["kdNegLog10"].to_list() == pytest.approx([8.0, 7.69897], abs=1e-5)
 
     def test_the_counts_add_up_to_the_replicates_seen(self):
         merged = merge_all(self._collected())

@@ -586,7 +586,7 @@ wf.body(func(args) {
 				{ column: "clonotypeKey", spec: clonotypeAxisSpec },
 				{ column: "replicate", spec: replicateAxisSpec }
 			],
-			columns: replicateColumnsLib.perReplicateColumns(blockId, "rep_", kdAnnotations, affinityClassValues),
+			columns: replicateColumnsLib.perReplicateColumns(blockId, "rep_", kdAnnotations, affinityClassValues, args.equation == "log_fluorescence"),
 			storageFormat: "Parquet",
 			partitionKeyLength: 0
 		}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
