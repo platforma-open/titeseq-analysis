@@ -885,9 +885,14 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     // appears in server logs while the block silently shows empty panels.
     // CIDConflictError is typically transient — the platform's "zebra"
     // self-recovery retries the write — so we label it as such.
-    // replicatePf exists only on a run that combined replicates, and the last two in synonymous
+    // replicatePf exists only on a run that combined replicates, and the last three in synonymous
     // mode only, so their absence is no error.
-    const optionalKeys = new Set(["replicatePf", "variantSummaryPf", "synonymousSummary"]);
+    const optionalKeys = new Set([
+      "replicatePf",
+      "variantSummaryPf",
+      "synonymousSummary",
+      "ntVariantPf",
+    ]);
     const outputKeys = [
       "summaryPf",
       "signalPf",
@@ -895,6 +900,7 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
       "replicatePf",
       "variantSummaryPf",
       "synonymousSummary",
+      "ntVariantPf",
     ] as const;
     for (const key of outputKeys) {
       const errorAcc = (

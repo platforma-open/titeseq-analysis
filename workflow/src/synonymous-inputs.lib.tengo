@@ -91,17 +91,26 @@ parentAxisOf := func(linker) {
 
 /**
  * Synonymous mode is on exactly when the variant axis is nucleotide and the nt -> aa linker resolves.
- * The parent delta is on when, in addition, both amino-acid parent columns resolve.
+ * In that mode, each further input is used when exactly one column matches it:
+ *   parentMode   the amino-acid mutation count and parent link: the amino-acid parent delta
+ *   aaClass      the amino-acid mutation count: the amino-acid variant class
+ *   ntClass      aaClass and the nucleotide mutation count: the nucleotide variant class
+ *   ntParentMode the nucleotide mutation count and parent link: the nucleotide parent delta
+ *   aaProductive the amino-acid productive flag: the stop class, and no Kd,app for a stop variant
  *
- * @param candidates: {aaToNt, aaMutationCounts, parentLinks}, each an array of bundle columns
- *   ({spec, data}) or undefined
+ * @param candidates: {aaToNt, aaMutationCounts, parentLinks, aaProductive, ntMutationCounts}, each an
+ *   array of bundle columns ({spec, data}) or undefined
  * @param variantAxis: the abundance's variant axis spec
- * @return {synonymous, linker, aaAxis, parentMode, aaMutationCount, aaParentLink, parentAxis}
+ * @return {synonymous, linker, aaAxis, parentMode, aaMutationCount, aaParentLink, parentAxis,
+ *   aaClass, ntClass, aaProductive, ntMutationCount, ntParentMode, ntParentLink, ntParentAxis}
  */
 resolve := func(candidates, variantAxis) {
 	res := {
 		synonymous: false,
-		parentMode: false
+		parentMode: false,
+		aaClass: false,
+		ntClass: false,
+		ntParentMode: false
 	}
 	if domainOf(variantAxis)[ALPHABET] != "nucleotide" {
 		return res
@@ -119,7 +128,50 @@ resolve := func(candidates, variantAxis) {
 	if res.parentMode {
 		res.parentAxis = parentAxisOf(res.aaParentLink)
 	}
+
+	res.aaProductive = single(candidates.aaProductive, isOnlyOn(res.aaAxis))
+	res.ntMutationCount = single(candidates.ntMutationCounts, isOnlyOn(variantAxis))
+	res.aaClass = !is_undefined(res.aaMutationCount)
+	res.ntClass = res.aaClass && !is_undefined(res.ntMutationCount)
+	res.ntParentLink = single(candidates.parentLinks, isParentLinkOn(variantAxis))
+	res.ntParentMode = !is_undefined(res.ntMutationCount) && !is_undefined(res.ntParentLink)
+	if res.ntParentMode {
+		res.ntParentAxis = parentAxisOf(res.ntParentLink)
+	}
 	return res
+}
+
+NT_LEVEL := "NT Variants"
+AA_LEVEL := "AA Variants"
+
+hasAxis := func(spec, axis) {
+	for a in spec.axesSpec {
+		if sameAxis(a, axis) {
+			return true
+		}
+	}
+	return false
+}
+
+/**
+ * The level step label of an output column: AA_LEVEL on the aa axis, NT_LEVEL on the nt axis,
+ * undefined outside synonymous mode and for a column on neither axis.
+ *
+ * @param spec: the output column spec
+ * @param syn: the result of resolve
+ * @param ntAxis: the abundance's variant axis spec
+ */
+levelOf := func(spec, syn, ntAxis) {
+	if !syn.synonymous {
+		return undefined
+	}
+	if hasAxis(spec, syn.aaAxis) {
+		return AA_LEVEL
+	}
+	if hasAxis(spec, ntAxis) {
+		return NT_LEVEL
+	}
+	return undefined
 }
 
 // What one row of the abundance is, as a lower-case noun for labels. Mirrors the model's input kind.
@@ -146,6 +198,9 @@ CAPITALIZED := {
 export ll.toStrict({
 	sameAxis: sameAxis,
 	resolve: resolve,
+	levelOf: levelOf,
+	NT_LEVEL: NT_LEVEL,
+	AA_LEVEL: AA_LEVEL,
 	nounOf: nounOf,
 	CAPITALIZED: CAPITALIZED
 })

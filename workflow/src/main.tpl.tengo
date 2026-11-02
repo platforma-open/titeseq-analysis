@@ -64,6 +64,16 @@ wf.prepare(func(args) {
 		name: "pl7.app/repertoire/parentLink",
 		annotations: { "pl7.app/isLinkerColumn": "true" }
 	}, "parentLinks")
+	// The class inputs. The productive flag carries no alphabet domain; its axis does. A plain axis
+	// needs `type` to resolve; its domain matches as a subset.
+	bb.addMulti({
+		axes: [{ name: "pl7.app/variantKey", type: "String", domain: { "pl7.app/alphabet": "aminoacid" } }],
+		name: "pl7.app/vdj/sequence/productive"
+	}, "aaProductive")
+	bb.addMulti({
+		axes: [{ anchor: "abundance", idx: 1 }],
+		name: "pl7.app/repertoire/mutationCount"
+	}, "ntMutationCounts")
 
 	return { columns: bb.build() }
 })
@@ -94,8 +104,14 @@ wf.body(func(args) {
 	syn := synonymousInputs.resolve({
 		aaToNt: columns.getColumns("aaToNt"),
 		aaMutationCounts: columns.getColumns("aaMutationCounts"),
-		parentLinks: columns.getColumns("parentLinks")
+		parentLinks: columns.getColumns("parentLinks"),
+		aaProductive: columns.getColumns("aaProductive"),
+		ntMutationCounts: columns.getColumns("ntMutationCounts")
 	}, abundanceSpec.axesSpec[1])
+
+	// The nt grain's own synonymous columns, in per_nt_variant.tsv.
+	ntVariantOpts := { variantClass: syn.ntClass, parentMode: syn.ntParentMode }
+	hasNtVariantColumns := syn.ntClass || syn.ntParentMode
 
 	// The concentration column's label, and the unit read from it: the text in its trailing
 	// parentheses when it has them ("Antigen concentration (M)" -> "M"), else the whole label.
@@ -290,18 +306,48 @@ wf.body(func(args) {
 		if synonymousWeighting == "reads" {
 			execBuilder.arg("--synonymous-weighting").arg("reads")
 		}
-		if syn.parentMode {
+		if syn.aaClass {
 			execBuilder.
 				addFile("aa_mutations.tsv", keyTable(func(b) {
 					b.add(syn.aaMutationCount, { header: "mutationCount" })
 					b.setAxisHeader(syn.aaAxis, "aaKey")
 				})).
+				arg("--aa-mutations").arg("aa_mutations.tsv")
+		}
+		if !is_undefined(syn.aaProductive) {
+			execBuilder.
+				addFile("aa_productive.tsv", keyTable(func(b) {
+					b.add(syn.aaProductive, { header: "productive" })
+					b.setAxisHeader(syn.aaAxis, "aaKey")
+				})).
+				arg("--aa-productive").arg("aa_productive.tsv")
+		}
+		if hasNtVariantColumns {
+			execBuilder.
+				addFile("nt_mutations.tsv", keyTable(func(b) {
+					b.add(syn.ntMutationCount, { header: "mutationCount" })
+					b.setAxisHeader(ntAxis, "ntKey")
+				})).
+				arg("--nt-mutations").arg("nt_mutations.tsv").
+				arg("--out-per-nt-variant").arg("per_nt_variant.tsv").
+				saveFile("per_nt_variant.tsv")
+		}
+		if syn.ntParentMode {
+			execBuilder.
+				addFile("nt_parent_links.tsv", keyTable(func(b) {
+					b.add(syn.ntParentLink, { header: "link" })
+					b.setAxisHeader(ntAxis, "ntKey")
+					b.setAxisHeader(syn.ntParentAxis, "parentId")
+				})).
+				arg("--nt-parent-links").arg("nt_parent_links.tsv")
+		}
+		if syn.parentMode {
+			execBuilder.
 				addFile("aa_parent_links.tsv", keyTable(func(b) {
 					b.add(syn.aaParentLink, { header: "link" })
 					b.setAxisHeader(syn.aaAxis, "aaKey")
 					b.setAxisHeader(syn.parentAxis, "parentId")
 				})).
-				arg("--aa-mutations").arg("aa_mutations.tsv").
 				arg("--aa-parent-links").arg("aa_parent_links.tsv")
 		}
 	}
@@ -592,8 +638,20 @@ wf.body(func(args) {
 			axes: [{ column: "aaKey", spec: syn.aaAxis }],
 			columns: variantColumnsLib.variantColumns(blockId, kdAnnotations, {
 				parentMode: syn.parentMode,
-				weighting: synonymousWeighting
+				weighting: synonymousWeighting,
+				variantClass: syn.aaClass
 			}),
+			storageFormat: "Parquet",
+			partitionKeyLength: 0
+		}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
+	}
+
+	// Synonymous mode: the nt grain's class and parent delta, on the abundance's variant axis.
+	ntVariantImported := undefined
+	if hasNtVariantColumns {
+		ntVariantImported = xsv.importFile(fit.getFile("per_nt_variant.tsv"), "tsv", {
+			axes: [{ column: "ntKey", spec: clonotypeAxisSpec }],
+			columns: variantColumnsLib.ntVariantColumns(blockId, ntVariantOpts),
 			storageFormat: "Parquet",
 			partitionKeyLength: 0
 		}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
@@ -698,11 +756,33 @@ wf.body(func(args) {
 	if traceLabel == "" {
 		traceLabel = args.defaultBlockLabel
 	}
-	trace := pSpec.makeTrace(traceSpec, {
+	blockStep := {
 		type: "milaboratories.titeseq-analysis",
 		importance: 30,
 		label: traceLabel
-	})
+	}
+	trace := pSpec.makeTrace(traceSpec, blockStep)
+
+	// Synonymous mode: the nt and aa grains share names and labels, so a level step tells them
+	// apart. The type is the profiler's level type: label derivation counts a type from the newest
+	// step, so this step shadows the inherited "NT Variants". A column on neither variant axis keeps
+	// the plain trace.
+	levelTrace := func(label) {
+		return pSpec.makeTrace(traceSpec, blockStep, {
+			type: "milaboratories.synthetic-repertoire-profiler.level",
+			importance: 80,
+			label: label
+		})
+	}
+	levelTraces := {}
+	if syn.synonymous {
+		levelTraces[synonymousInputs.NT_LEVEL] = levelTrace(synonymousInputs.NT_LEVEL)
+		levelTraces[synonymousInputs.AA_LEVEL] = levelTrace(synonymousInputs.AA_LEVEL)
+	}
+	traceOf := func(spec) {
+		level := synonymousInputs.levelOf(spec, syn, clonotypeAxisSpec)
+		return is_undefined(level) ? trace : levelTraces[level]
+	}
 
 	buildTracedPf := func(sources, excludeKeys) {
 		excluded := {}
@@ -716,7 +796,7 @@ wf.body(func(args) {
 			for k in maps.getKeys(src) {
 				if excluded[k] { continue }
 				v := src[k]
-				spec := trace.inject(v.spec)
+				spec := traceOf(v.spec).inject(v.spec)
 				// A run on a subset says so: its outputs cover only the subset's clonotypes.
 				if !is_undefined(filterColumn) {
 					spec.domain["pl7.app/inputSubset"] = args.inputFilter
@@ -729,6 +809,7 @@ wf.body(func(args) {
 
 	summaryPf := buildTracedPf([summaryImported], [])
 	variantSources := is_undefined(variantImported) ? [] : [variantImported]
+	ntVariantSources := is_undefined(ntVariantImported) ? [] : [ntVariantImported]
 	// signalPf feeds this block's Titration Curves graph: meanBin (Y),
 	// fittedMeanBin (curve overlay), concentrationValue (numeric X).
 	signalPf := buildTracedPf([meanBinImported, fittedMeanBinImported, concValueImported], [])
@@ -770,6 +851,9 @@ wf.body(func(args) {
 	if syn.synonymous {
 		outputs.variantSummaryPf = pframes.exportFrame(buildTracedPf(variantSources, []))
 		outputs.synonymousSummary = fit.getFileContent("synonymous_summary.json")
+		if hasNtVariantColumns {
+			outputs.ntVariantPf = pframes.exportFrame(buildTracedPf(ntVariantSources, []))
+		}
 	}
 
 	return {

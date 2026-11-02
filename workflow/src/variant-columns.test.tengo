@@ -1,6 +1,7 @@
 test := import("@platforma-sdk/workflow-tengo:test")
 variantColumns := import(":variant-columns")
 text := import("text")
+json := import("json")
 
 KD := { "pl7.app/label": "Kd,app", "pl7.app/unit": "nM" }
 
@@ -13,9 +14,10 @@ byHeader := func(cols) {
 }
 
 Test_headers_match_the_software_and_ids_stay_apart_from_the_nt_grain := func() {
-	cols := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: true, weighting: "none" }))
+	cols := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: true, weighting: "none", variantClass: true }))
 	headers := ["kd", "kdLog10Se", "affinityClass", "kdOutOfRange", "ntVariants", "ntMeasured",
-		"ntCensoredBelow", "ntCensoredAbove", "ntFailed", "kdLog10ParentDelta", "kdLog10ParentDeltaSe"]
+		"ntCensoredBelow", "ntCensoredAbove", "ntFailed", "kdLog10ParentDelta", "kdLog10ParentDeltaSe",
+		"variantClass"]
 	test.isEqual(len(headers), len(cols), "one column per per_variant.tsv value header")
 	for h in headers {
 		test.isFalse(is_undefined(cols[h]), "header " + h)
@@ -24,7 +26,7 @@ Test_headers_match_the_software_and_ids_stay_apart_from_the_nt_grain := func() {
 }
 
 Test_values_reuse_the_nt_grain_names := func() {
-	cols := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: false, weighting: "none" }))
+	cols := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: false, weighting: "none", variantClass: false }))
 	test.isEqual("pl7.app/vdj/kd", cols.kd.spec.name, "Kd,app")
 	test.isEqual("pl7.app/vdj/kdLog10Se", cols.kdLog10Se.spec.name, "its error")
 	test.isEqual("pl7.app/vdj/affinityClass", cols.affinityClass.spec.name, "class")
@@ -34,7 +36,7 @@ Test_values_reuse_the_nt_grain_names := func() {
 }
 
 Test_counts_share_one_name_and_differ_by_state := func() {
-	cols := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: false, weighting: "none" }))
+	cols := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: false, weighting: "none", variantClass: false }))
 	states := { ntVariants: "all", ntMeasured: "measured", ntCensoredBelow: "censoredBelow",
 		ntCensoredAbove: "censoredAbove", ntFailed: "failed" }
 	for h, state in states {
@@ -46,18 +48,49 @@ Test_counts_share_one_name_and_differ_by_state := func() {
 }
 
 Test_the_parent_delta_only_in_parent_mode := func() {
-	test.isEqual(9, len(variantColumns.variantColumns("blk", KD, { parentMode: false, weighting: "none" })), "no delta columns")
-	cols := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: true, weighting: "none" }))
+	test.isEqual(9, len(variantColumns.variantColumns("blk", KD, { parentMode: false, weighting: "none", variantClass: false })), "no delta columns")
+	cols := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: true, weighting: "none", variantClass: true }))
 	test.isEqual("pl7.app/vdj/kdLog10ParentDelta", cols.kdLog10ParentDelta.spec.name, "delta")
 	test.isEqual("pl7.app/vdj/kdLog10ParentDeltaSe", cols.kdLog10ParentDeltaSe.spec.name, "its error")
 }
 
 Test_descriptions_name_the_weighting := func() {
-	plain := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: false, weighting: "none" }))
-	weighted := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: false, weighting: "reads" }))
+	plain := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: false, weighting: "none", variantClass: false }))
+	weighted := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: false, weighting: "reads", variantClass: false }))
 	test.isTrue(text.contains(plain.kd.spec.annotations["pl7.app/description"], "unweighted"), "plain Kd,app")
 	test.isTrue(text.contains(weighted.kd.spec.annotations["pl7.app/description"], "weighted by its total reads"), "weighted Kd,app")
 	test.isTrue(text.contains(weighted.kdLog10Se.spec.annotations["pl7.app/description"], "read-weighted"), "weighted SE")
 	test.isFalse(text.contains(plain.kdLog10Se.spec.annotations["pl7.app/description"], "read-weighted"), "plain SE")
 	test.isEqual(weighted.kd.spec.name, plain.kd.spec.name, "the name does not move with the weighting")
+}
+
+Test_the_class_column_on_each_grain := func() {
+	aaCols := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: false, weighting: "none", variantClass: true }))
+	ntCols := byHeader(variantColumns.ntVariantColumns("blk", { variantClass: true, parentMode: false }))
+	for c in [aaCols.variantClass, ntCols.variantClass] {
+		test.isEqual(variantColumns.CLASS_NAME, c.spec.name, "one name on both grains")
+		test.isEqual("String", c.spec.valueType, "a string")
+		test.isEqual({ "pl7.app/block": "blk" }, c.spec.domain, "the block domain")
+		test.isEqual("true", c.spec.annotations["pl7.app/isDiscreteFilter"], "a discrete filter")
+		test.isEqual(variantColumns.CLASS_VALUES, json.decode(c.spec.annotations["pl7.app/discreteValues"]), "Starr's five strings")
+		test.isTrue(c.allowNA, "unknown class is empty")
+	}
+	test.isEqual("aa_variantClass", aaCols.variantClass.id, "aa id")
+	test.isEqual("nt_variantClass", ntCols.variantClass.id, "nt id")
+	test.isEqual(0, len(variantColumns.ntVariantColumns("blk", { variantClass: false, parentMode: false })), "no nt columns without the class")
+	test.isTrue(is_undefined(byHeader(variantColumns.variantColumns("blk", KD, { parentMode: false, weighting: "none", variantClass: false })).variantClass), "no aa class without the mutation count")
+}
+
+Test_the_nt_parent_delta_reuses_the_aa_specs := func() {
+	aaCols := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: true, weighting: "none", variantClass: false }))
+	ntCols := byHeader(variantColumns.ntVariantColumns("blk", { variantClass: false, parentMode: true }))
+	test.isEqual(2, len(ntCols), "the delta and its error")
+	for h in ["kdLog10ParentDelta", "kdLog10ParentDeltaSe"] {
+		test.isEqual("nt_" + h, ntCols[h].id, "nt id of " + h)
+		test.isEqual("aa_" + h, aaCols[h].id, "aa id of " + h)
+		test.isEqual(aaCols[h].spec.name, ntCols[h].spec.name, "one name on both grains: " + h)
+		test.isEqual(aaCols[h].spec.domain, ntCols[h].spec.domain, "one domain on both grains: " + h)
+	}
+	test.isTrue(text.contains(ntCols.kdLog10ParentDelta.spec.annotations["pl7.app/description"], "nucleotide variant"), "nt wording")
+	test.isEqual(3, len(variantColumns.ntVariantColumns("blk", { variantClass: true, parentMode: true })), "class and delta")
 }

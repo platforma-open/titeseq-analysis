@@ -13,6 +13,11 @@ export type InputKind = "vdj-clonotype" | "variant" | "peptide";
 
 export type ParentInput = typeof MUTATION_COUNT | typeof PARENT_LINK;
 
+type UnidentifiableParent = {
+  parentId: string;
+  reason: "no-unmutated-variant" | "several-unmutated-variants";
+};
+
 /** The run summary the software writes in synonymous mode. */
 export type SynonymousSummary = {
   ntVariants: number;
@@ -21,11 +26,16 @@ export type SynonymousSummary = {
   ambiguousNtVariants: number;
   parentMode: boolean;
   parents?: number;
-  unidentifiableParents?: {
-    parentId: string;
-    reason: "no-unmutated-variant" | "several-unmutated-variants";
-  }[];
+  unidentifiableParents?: UnidentifiableParent[];
   multiParentVariants?: number;
+  /** Present when the nucleotide mutation count resolved. */
+  ntParentMode?: boolean;
+  ntParents?: number;
+  ntUnidentifiableParents?: UnidentifiableParent[];
+  ntMultiParentVariants?: number;
+  weighting?: "none" | "reads";
+  /** Present when the amino-acid productive column resolved. */
+  stopAaVariants?: number;
 };
 
 /**
@@ -113,12 +123,14 @@ const PARENT_INPUT_LABELS: Record<ParentInput, string> = {
   [PARENT_LINK]: "amino-acid parent link",
 };
 
-const UNIDENTIFIABLE_REASONS: Record<
-  NonNullable<SynonymousSummary["unidentifiableParents"]>[number]["reason"],
-  string
-> = {
+const UNIDENTIFIABLE_REASONS: Record<UnidentifiableParent["reason"], string> = {
   "no-unmutated-variant": "no amino-acid variant has zero mutations",
   "several-unmutated-variants": "several amino-acid variants have zero mutations",
+};
+
+const NT_UNIDENTIFIABLE_REASONS: Record<UnidentifiableParent["reason"], string> = {
+  "no-unmutated-variant": "no nucleotide variant has zero mutations",
+  "several-unmutated-variants": "several nucleotide variants have zero mutations",
 };
 
 /** The messages the results pages show about the synonymous combination. */
@@ -150,6 +162,20 @@ export function synonymousMessages(
   if ((summary.multiParentVariants ?? 0) > 0)
     messages.push(
       `${summary.multiParentVariants} amino-acid variants link to several parents and have no parent delta.`,
+    );
+  for (const p of summary.ntUnidentifiableParents ?? [])
+    messages.push(
+      `Parent ${p.parentId} cannot be identified at nucleotide level: ` +
+        `${NT_UNIDENTIFIABLE_REASONS[p.reason]}. Its nucleotide variants have no parent delta.`,
+    );
+  if ((summary.ntMultiParentVariants ?? 0) > 0)
+    messages.push(
+      `${summary.ntMultiParentVariants} nucleotide variants link to several parents and have no parent delta.`,
+    );
+  if ((summary.stopAaVariants ?? 0) > 0)
+    messages.push(
+      `${summary.stopAaVariants} amino-acid variants carry a stop codon. They have no Kd,app and are ` +
+        "rated Failed; their nucleotide variants keep their own fits.",
     );
   return messages;
 }
