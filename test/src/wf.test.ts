@@ -185,6 +185,10 @@ blockTest(
           axesSettings: { axisX: { scale: "log" } },
         },
         settingsOpen: false,
+        // Pinned to the fit this test was written against, so it keeps asserting the
+        // behaviour it has always asserted rather than following the new default.
+        equation: "hill_gate_index",
+        plateauFloor: 2 / 3,
       } satisfies BlockData,
     });
 
@@ -304,6 +308,99 @@ blockTest(
     expect(outputs.isEmpty).toBe(false);
     // After the run settles, the block is idle again.
     expect(outputs.isRunning).toBeFalsy();
+
+    // The same ingest, re-fitted with the equation a new block defaults to. Switching
+    // here rather than in a fourth blockTest reuses the fixture upload, as the note at
+    // the top of this test requires, and fits both equations to identical data.
+    await project.mutateBlockStorage(titeseqBlockId, {
+      operation: "update-block-data",
+      value: {
+        abundanceRef,
+        concentrationColumnRef: concentrationRef,
+        binColumnRef: binRef,
+        antigenColumnRef: undefined,
+        targetAntigen: undefined,
+        minReadsPerConcentration: 3,
+        minConcentrationPoints: 5,
+        r2ThresholdGood: 0.8,
+        r2ThresholdFailed: 0.5,
+        nMin: 0.5,
+        nMax: 2.0,
+        hookEffectThresholdBin: 0.2,
+        hookEffectThresholdNoBin: 0.02,
+        hookEffectMinReads: 20,
+        defaultBlockLabel: "Tite-Seq Analysis",
+        customBlockLabel: "",
+        tableState: createPlDataTableStateV2(),
+        graphStateTitrationCurves: {
+          title: "Titration Curves",
+          template: "dots",
+          currentTab: null,
+          layersSettings: { dots: {} },
+          axesSettings: { axisX: { scale: "log" } },
+        },
+        graphStateKDHistogram: {
+          title: "Kd,app Distribution",
+          template: "bins",
+          currentTab: null,
+          layersSettings: { bins: {} },
+          axesSettings: { axisX: { scale: "log" }, other: { binsCount: 30 } },
+        },
+        graphStateAffinityVsFit: {
+          title: "Affinity vs Fit Quality",
+          template: "dots",
+          currentTab: null,
+          layersSettings: { dots: {} },
+          axesSettings: { axisX: { scale: "log" } },
+        },
+        settingsOpen: false,
+        equation: "log_fluorescence",
+        plateauFloor: 2 / 3,
+      } satisfies BlockData,
+    });
+    await project.runBlock(titeseqBlockId);
+    const lfState = await helpers.awaitBlockDoneAndGetStableBlockState(titeseqBlockId, 360000);
+    const lfOutputs = wrapOutputs<BlockOutputs>(lfState.outputs as unknown as BlockOutputs);
+
+    expect(lfOutputs.validationWarnings, "log_fluorescence validation").toEqual([]);
+    expect(lfOutputs.isEmpty, "log_fluorescence produced rows").toBe(false);
+
+    // Data extraction goes through the PTable handle — PFrame handles have no
+    // getSpec/getData, as the note above records.
+    const lfTable = lfOutputs.summaryTable;
+    if (!lfTable) throw new Error("summaryTable unexpectedly undefined after log_fluorescence");
+    const lfHandle = lfTable.fullTableHandle;
+    if (!lfHandle) throw new Error("fullTableHandle unexpectedly undefined after log_fluorescence");
+    const lfSpec = await ml.driverKit.pFrameDriver.getSpec(lfHandle);
+    // Every v2.4.0 column survives the equation switch — the block's public API does
+    // not change shape with the fit.
+    for (const [name] of expectedCols) {
+      expect(
+        lfSpec.some((c) => c.type === "column" && c.spec.name === name),
+        `log_fluorescence summary missing ${name}`,
+      ).toBe(true);
+    }
+
+    const lfHillIdx = lfSpec.findIndex(
+      (c) => c.type === "column" && c.spec.name === "pl7.app/vdj/hillCoefficient",
+    );
+    const lfKdIdx = lfSpec.findIndex(
+      (c) => c.type === "column" && c.spec.name === "pl7.app/vdj/kd",
+    );
+    const lfData = await ml.driverKit.pFrameDriver.getData(lfHandle, [lfHillIdx, lfKdIdx]);
+    const lfHills = lfData[0].data as unknown as (number | null | undefined)[];
+    const lfKds = lfData[1].data as unknown as (number | null | undefined)[];
+
+    // The exponent is fixed at 1 under this equation — the signature that distinguishes
+    // it from the free-exponent fit above, measured on the block's own output.
+    const fittedHills = lfHills.filter((n): n is number => typeof n === "number" && n > 0);
+    expect(fittedHills.length, "log_fluorescence fitted rows").toBeGreaterThanOrEqual(1);
+    for (const n of fittedHills) expect(n, "fixed Hill exponent").toBeCloseTo(1, 10);
+
+    expect(
+      lfKds.filter((kd) => typeof kd === "number" && Number.isFinite(kd)).length,
+      "log_fluorescence finite Kd values",
+    ).toBeGreaterThanOrEqual(1);
   },
 );
 
@@ -426,6 +523,10 @@ blockTest(
           axesSettings: { axisX: { scale: "log" } },
         },
         settingsOpen: false,
+        // Pinned to the fit this test was written against, so it keeps asserting the
+        // behaviour it has always asserted rather than following the new default.
+        equation: "hill_gate_index",
+        plateauFloor: 2 / 3,
       } satisfies BlockData,
     });
 

@@ -15,6 +15,10 @@ json := import("json")
 
 fitCurvesSw := assets.importSoftware("@platforma-open/platforma-open.titeseq-analysis.software:fit-curves")
 
+prerunTpl := assets.importTemplate(":prerun")
+
+wf.setPreRun(prerunTpl)
+
 wf.prepare(func(args) {
 	bb := wf.createPBundleBuilder()
 	bb.ignoreMissingDomains()
@@ -30,6 +34,9 @@ wf.prepare(func(args) {
 	}
 	if !is_undefined(args.sortFractionColumnRef) {
 		bb.addAnchor("sortFraction", args.sortFractionColumnRef)
+	}
+	if !is_undefined(args.binFluorescenceColumnRef) {
+		bb.addAnchor("binFluorescence", args.binFluorescenceColumnRef)
 	}
 	// Optional subset column picked alongside the abundance (PlDatasetSelector)
 	if !is_undefined(args.inputFilter) {
@@ -52,6 +59,9 @@ wf.body(func(args) {
 	// The model gates this on hasBin, but we re-check here so the workflow is
 	// safe if called with a sort-fraction ref and no bin ref.
 	hasSortFraction := !is_undefined(args.sortFractionColumnRef) && hasBin
+	// The gate's measured mean log10 fluorescence. Only "log_fluorescence" reads it, and only
+	// with gates. Python detects it by the column's presence, as it does the bin column.
+	hasBinFluorescence := !is_undefined(args.binFluorescenceColumnRef) && hasBin
 
 	unitLabel := ""
 	if !is_undefined(concSpec.annotations) && !is_undefined(concSpec.annotations["pl7.app/label"]) {
@@ -100,6 +110,9 @@ wf.body(func(args) {
 	if hasSortFraction {
 		addReadsColumn(columns.getColumn("sortFraction"), { header: "sort_fraction" })
 	}
+	if hasBinFluorescence {
+		addReadsColumn(columns.getColumn("binFluorescence"), { header: "bin_fluorescence" })
+	}
 	readsBuilder.mem("16GiB")
 	readsBuilder.cpu(1)
 	readsTsv := readsBuilder.build()
@@ -116,6 +129,17 @@ wf.body(func(args) {
 		hook_effect_threshold_bin: args.hookEffectThresholdBin,
 		hook_effect_threshold_no_bin: args.hookEffectThresholdNoBin,
 		hook_effect_min_reads: args.hookEffectMinReads
+	}
+	// The equation and its plateau floor are written only when the model sends them. An absent
+	// `equation` means "hill_gate_index" here and in the Python FitParams, which is how a project
+	// created before the equation existed keeps the params.json — and so the result — it had.
+	// Note this is NOT the default a new block takes: that one is "log_fluorescence", and the
+	// model sends it by name.
+	if !is_undefined(args.equation) {
+		paramsPayload.equation = args.equation
+	}
+	if !is_undefined(args.plateauFloor) {
+		paramsPayload.plateau_floor = args.plateauFloor
 	}
 	// FACS-correction status flows via the --sort-fraction-column CLI arg; the
 	// Python pipeline logs "Mean-bin correction: ..." unconditionally so stdout

@@ -13,8 +13,18 @@ TOTAL_READS_AT_CONC = "total_reads_at_conc"
 CLONOTYPE_READS_AT_CONC = "clonotype_reads_at_conc"
 
 
-def compute_mean_bin(reads: pl.DataFrame, *, sort_fraction_col: str | None = None) -> pl.DataFrame:
+def compute_mean_bin(
+    reads: pl.DataFrame,
+    *,
+    sort_fraction_col: str | None = None,
+    gate_position_col: str | None = None,
+) -> pl.DataFrame:
     """R7: mean_bin_c = Σ_b (b · freq_cb) / Σ_b freq_cb, where freq_cb = reads_cb / depth_b.
+
+    `gate_position_col` replaces the gate label `b` with a measured gate position, so the result
+    is a mean log10 fluorescence rather than a mean gate index. A gate position varies per
+    (concentration, gate), so it cannot be recovered from the mean gate index afterwards. Only
+    the "log_fluorescence" equation passes it. Without it the two differ by one affine map.
 
     Groups by (clonotype, concentration). Per-bin frequency uses per-sample depth
     (total reads in that bin at that concentration). A bin-at-concentration with zero
@@ -35,12 +45,13 @@ def compute_mean_bin(reads: pl.DataFrame, *, sort_fraction_col: str | None = Non
     ).with_columns(pl.when(pl.col("depth") > 0).then(pl.col(COL_READS) / pl.col("depth")).otherwise(0.0).alias(FREQ))
 
     weight = pl.col(FREQ) * pl.col(sort_fraction_col) if sort_fraction_col is not None else pl.col(FREQ)
+    position = pl.col(gate_position_col) if gate_position_col is not None else pl.col(COL_BIN)
 
     return (
         with_freq.with_columns(weight.alias("w"))
         .group_by([COL_CLONOTYPE, COL_CONC_STR, COL_CONC_VAL], maintain_order=True)
         .agg(
-            (pl.col(COL_BIN).cast(pl.Float64) * pl.col("w")).sum().alias("num"),
+            (position.cast(pl.Float64) * pl.col("w")).sum().alias("num"),
             pl.col("w").sum().alias("den"),
             pl.col(COL_READS).sum().alias(CLONOTYPE_READS_AT_CONC),
         )
@@ -71,14 +82,25 @@ def compute_frequency_signal(reads: pl.DataFrame) -> pl.DataFrame:
     )
 
 
-def normalize(reads: pl.DataFrame, bin_mode: bool, *, sort_fraction_col: str | None = None) -> pl.DataFrame:
+def normalize(
+    reads: pl.DataFrame,
+    bin_mode: bool,
+    *,
+    sort_fraction_col: str | None = None,
+    gate_position_col: str | None = None,
+) -> pl.DataFrame:
     """Unified entry point; always emits column named SIGNAL for downstream modules.
 
     `sort_fraction_col` is only consulted in bin mode — frequency-mode signal is
-    sort-yield-independent so the correction does not apply.
+    sort-yield-independent so the correction does not apply. `gate_position_col` is also bin-mode
+    only, and makes SIGNAL a mean log10 fluorescence instead of a mean gate index.
     """
     if bin_mode:
-        sig = compute_mean_bin(reads, sort_fraction_col=sort_fraction_col).rename({MEAN_BIN: SIGNAL})
+        sig = compute_mean_bin(
+            reads,
+            sort_fraction_col=sort_fraction_col,
+            gate_position_col=gate_position_col,
+        ).rename({MEAN_BIN: SIGNAL})
     else:
         sig = compute_frequency_signal(reads)
     return sig

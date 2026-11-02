@@ -157,6 +157,21 @@ class TestSortFractionIntegration:
         ]
         assert any(d > 0.05 for d in diffs), "sort-fraction correction left mean_bin unchanged — is the kwarg wired?"
 
+    def test_sort_fraction_sums_per_target_antigen(self):
+        """Each antigen's sorts carry their own fractions, so the sum is 1 per antigen and
+        concentration, and only the target's samples are checked."""
+        _, reads_with_sort = self._build_skewed_reads()
+        lib1 = reads_with_sort.with_columns(pl.lit("lib1").alias("antigen"))
+        lib2 = reads_with_sort.with_columns(
+            pl.lit("lib2").alias("antigen"),
+            (pl.col("sampleId") + "_lib2").alias("sampleId"),
+        )
+        reads = pl.concat([lib1, lib2])
+
+        out = run(reads, target_antigen="lib1", antigen_column_ref="antigen", sort_fraction_col="sort_fraction")
+
+        assert out["per_clonotype"].height == 1
+
 
 class TestValidatorWarnings:
     # R2: c=0 without a bin is ambiguous — validator emits a WARN to stdout so the
@@ -191,5 +206,3 @@ class TestValidatorWarnings:
         captured = capsys.readouterr()
         assert "ambiguous" in captured.out
         assert "ambiguous" not in captured.err
-
-

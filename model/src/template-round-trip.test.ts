@@ -28,6 +28,8 @@ const configured: BlockData = {
   antigenColumnRef: ref("antigen"),
   sortFractionColumnRef: ref("sortFraction"),
   targetAntigen: "CD19",
+  equation: "hill_gate_index",
+  plateauFloor: 0.4,
   minReadsPerConcentration: 7,
   minConcentrationPoints: 8,
   r2ThresholdGood: 0.9,
@@ -75,12 +77,20 @@ describe("the template round trip", () => {
     expect(roundTrip(initBlockData())).toEqual(initBlockData());
   });
 
-  it("does not carry the derived label, the drawer flag or view state", () => {
+  it("carries a template's equation rather than a new block's default", () => {
+    expect(roundTrip(configured).equation).toBe("hill_gate_index");
+    expect(initBlockData().equation).toBe("log_fluorescence");
+  });
+
+  it("does not carry the derived label, the drawer flag, view state or the import handle", () => {
     const restored = roundTrip({
       ...configured,
       defaultBlockLabel: "CD19 - Abundance",
       settingsOpen: true,
+      appliedPreset: "starr",
     });
+    expect(restored.appliedPreset).toBeUndefined();
+    expect(restored.importFileHandle).toBeUndefined();
     // Re-derived from the antigen and abundance labels by a `watchEffect` on mount.
     expect(restored.defaultBlockLabel).toBe("Tite-Seq Analysis");
     expect(restored.settingsOpen).toBe(false);
