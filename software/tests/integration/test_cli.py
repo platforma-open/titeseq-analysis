@@ -194,3 +194,21 @@ def test_cli_hook_effect_triggers_failure(tmp_path):
     assert h1["kd"][0] is None
     assert h1["kdPlotPosition"][0] == max(concs) * 10.0
     assert h1["hillPlotPosition"][0] == -1.0
+
+
+# The TSV the workflow writes when the abundance has no reads for any sample: the reads column is
+# empty on every row, so polars reads it as String.
+def test_cli_abundance_without_reads_names_the_cause(tmp_path):
+    import pytest
+
+    from io_layer import InputValidationError
+
+    reads_path = tmp_path / "reads.tsv"
+    reads_path.write_text(
+        "clonotypeKey\tsampleId\tconcentrationStr\tconcentration\treads\nA\ts1\t1e-9\t1e-9\t\nA\ts2\t1e-8\t1e-8\t\n"
+    )
+    outs = []
+    for flag in ("--out-per-clonotype", "--out-mean-bin", "--out-fitted-mean-bin", "--out-concentration-value"):
+        outs += [flag, str(tmp_path / f"{flag[2:]}.tsv")]
+    with pytest.raises(InputValidationError, match="no reads for any selected sample"):
+        main(["--reads", str(reads_path), *outs])

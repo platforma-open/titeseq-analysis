@@ -12,6 +12,7 @@ from io_layer import (
     validate_antigen_filter,
     validate_bin_column,
     validate_concentration_column,
+    validate_reads_present,
     validate_reads_schema,
     validate_sample_metadata_uniqueness,
     validate_sort_fraction,
@@ -40,6 +41,28 @@ class TestSchema:
         )
         with pytest.raises(InputValidationError, match="sampleId"):
             validate_reads_schema(df, has_bin=True, has_antigen=False)
+
+
+class TestReadsPresent:
+    def test_every_read_count_empty_raises(self):
+        df = pl.DataFrame(
+            {"clonotypeKey": ["A", "A"], "sampleId": ["s1", "s2"], "reads": [None, None]},
+            schema={"clonotypeKey": pl.Utf8, "sampleId": pl.Utf8, "reads": pl.Utf8},
+        )
+        with pytest.raises(InputValidationError, match="no reads for any selected sample"):
+            validate_reads_present(df)
+
+    def test_no_rows_raises(self):
+        df = pl.DataFrame(schema={"clonotypeKey": pl.Utf8, "sampleId": pl.Utf8, "reads": pl.Utf8})
+        with pytest.raises(InputValidationError, match="no reads for any selected sample"):
+            validate_reads_present(df)
+
+    def test_one_read_count_passes(self):
+        df = pl.DataFrame({"clonotypeKey": ["A", "B"], "sampleId": ["s1", "s1"], "reads": [None, 0]})
+        validate_reads_present(df)
+
+    def test_missing_reads_column_is_left_to_schema_check(self):
+        validate_reads_present(pl.DataFrame({"clonotypeKey": ["A"], "sampleId": ["s1"]}))
 
 
 class TestConcentrationValidation:
@@ -462,6 +485,33 @@ class TestBinConcentrationGrid:
                     )
         warnings = _validate_grid(_mk(rows))
         assert warnings == []
+
+    def test_an_unsorted_sample_is_no_gate_of_the_grid(self):
+        # B alone sits in an unsorted sample at conc 1. Counted as a gate, it would flag A.
+        rows = [
+            {
+                "clonotypeKey": clone,
+                "sampleId": f"s-{conc}-{b}",
+                "concentrationStr": conc,
+                "concentration": float(conc),
+                "bin": b,
+                "reads": 5,
+            }
+            for clone in ["A", "B"]
+            for conc in ["1", "10"]
+            for b in [1, 2]
+        ]
+        rows.append(
+            {
+                "clonotypeKey": "B",
+                "sampleId": "s-1-unsorted",
+                "concentrationStr": "1",
+                "concentration": 1.0,
+                "bin": None,
+                "reads": 5,
+            }
+        )
+        assert _validate_grid(_mk(rows)) == []
 
     def test_missing_combo_emits_warning(self):
         # A has (bin=1, conc=10); B is missing that combo → warn on B.

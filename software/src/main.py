@@ -121,7 +121,7 @@ def main(argv: list[str] | None = None) -> int:
         "--replicate-error-model",
         choices=REPLICATE_ERROR_MODELS,
         default=REPLICATE_ERROR_MODELS[0],
-        help="sd_over_sqrt_n: sample SD / sqrt(n); phillips: population SD / sqrt(n + 1)",
+        help="sd_over_sqrt_n: sample SD / sqrt(n); pop_sd_over_sqrt_n_plus_1: population SD / sqrt(n + 1)",
     )
     parser.add_argument(
         "--replicate-fit-error-cutoff",
@@ -142,6 +142,9 @@ def main(argv: list[str] | None = None) -> int:
         help="Share of the entered replicates one censoring side must hold to set the bound.",
     )
     parser.add_argument("--out-per-replicate", default=None, help="one row per (variant, replicate)")
+    parser.add_argument(
+        "--out-run-warnings", default=None, help="JSON list of what the run must tell the user; [] when nothing"
+    )
     parser.add_argument("--nt-to-aa", default=None, help="TSV [ntKey, aaKey]: the nt -> aa linker")
     parser.add_argument("--aa-mutations", default=None, help="TSV [aaKey, mutationCount]")
     parser.add_argument("--aa-parent-links", default=None, help="TSV [aaKey, parentId]: the aa parent linker")
@@ -194,6 +197,9 @@ def main(argv: list[str] | None = None) -> int:
             _write_frame(outputs["per_nt_variant"], args.out_per_nt_variant)
         with open(args.out_synonymous_summary, "w") as f:
             json.dump(outputs["synonymous_summary"], f, sort_keys=True)
+    if args.out_run_warnings is not None:
+        with open(args.out_run_warnings, "w") as f:
+            json.dump(outputs.get("run_warnings", []), f)
     log("CLI done")
     return 0
 

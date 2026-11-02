@@ -19,16 +19,18 @@ export type Equation = (typeof EQUATIONS)[number];
 /**
  * How the error of a value combined over sample replicates is computed.
  *
- * `sd_over_sqrt_n` is the sample SD over the square root of the replicate count, falling back to
- * the single fit's own standard error for one replicate. `phillips` is the population SD over the
- * square root of the count plus one, which is 0 for one replicate; it reproduces the SEM published
- * with Phillips 2021.
+ * `sd_over_sqrt_n` is the sample SD over the square root of the replicate count.
+ * `pop_sd_over_sqrt_n_plus_1` is the population SD over the square root of the count plus one. With
+ * one replicate both fall back to that fit's own standard error.
+ *
+ * The default is `pop_sd_over_sqrt_n_plus_1`: on the block's own fits it lands closest to the
+ * published errors it was scored against (median ratio 1.22 and 2.86, against 1.75 and 4.29).
  */
-export const REPLICATE_ERROR_MODELS = ["sd_over_sqrt_n", "phillips"] as const;
+export const REPLICATE_ERROR_MODELS = ["sd_over_sqrt_n", "pop_sd_over_sqrt_n_plus_1"] as const;
 
 export type ReplicateErrorModel = (typeof REPLICATE_ERROR_MODELS)[number];
 
-export const DEFAULT_REPLICATE_ERROR_MODEL: ReplicateErrorModel = "sd_over_sqrt_n";
+export const DEFAULT_REPLICATE_ERROR_MODEL: ReplicateErrorModel = "pop_sd_over_sqrt_n_plus_1";
 
 /**
  * Share of the entered replicates one censoring side must hold, and exceed the other side by, for
@@ -98,7 +100,7 @@ export type BlockParams = {
   hookEffectMinReads?: number;
   /** Which replicate each sample belongs to. Absent fits one titration. */
   replicateColumnRef?: PlRef;
-  /** Read only beside a replicate column. Absent reads as `sd_over_sqrt_n`. */
+  /** Read only beside a replicate column. Absent reads as `pop_sd_over_sqrt_n_plus_1`. */
   replicateErrorModel?: ReplicateErrorModel;
   /** Decades. Absent leaves the fit-error filter off. */
   replicateFitErrorCutoff?: number;

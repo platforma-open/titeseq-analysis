@@ -190,8 +190,13 @@ export type BlockDataV1 = Omit<BlockDataV2, "equation" | "plateauFloor">;
 /** v2: the equation choice, before the log-fluorescence R² gate. Never released. */
 export type BlockDataV2 = Omit<BlockDataV3, "r2GateEnabled" | "r2GateMin">;
 
-/** v6: before the nucleotide variant table. */
-export type BlockDataV6 = Omit<BlockData, "ntTableState">;
+/** v6: before the nucleotide variant table, with the error model's 2.5.0 name still allowed. */
+export type BlockDataV6 = Omit<BlockData, "ntTableState" | "replicateErrorModel"> & {
+  replicateErrorModel: ReplicateErrorModel | LegacyReplicateErrorModel;
+};
+
+/** 2.5.0 stored `pop_sd_over_sqrt_n_plus_1` under this name. */
+type LegacyReplicateErrorModel = "phillips";
 
 /** v4 and v5: a checkbox turned the R² and SE limits on and off. */
 export type BlockDataV5 = BlockDataV6 & { r2GateEnabled: boolean };
@@ -437,9 +442,11 @@ export const migrateV5ToV6 = ({ r2GateEnabled, ...v5 }: BlockDataV5): BlockDataV
   kdSeGateMax: r2GateEnabled ? v5.kdSeGateMax : undefined,
 });
 
-/** v6 -> v7. Adds the nucleotide variant table's state, empty. View state only: the args do not move. */
+/** v6 -> v7. Adds the nucleotide variant table's state, empty, and renames the stored error model. */
 export const migrateV6ToV7 = (v6: BlockDataV6): BlockData => ({
   ...v6,
+  replicateErrorModel:
+    v6.replicateErrorModel === "phillips" ? "pop_sd_over_sqrt_n_plus_1" : v6.replicateErrorModel,
   ntTableState: createPlDataTableStateV2(),
 });
 
@@ -566,20 +573,6 @@ export const deriveArgs = (data: BlockData): BlockArgs => {
     sortFractionColumnRef: data.sortFractionColumnRef,
     targetAntigen: data.targetAntigen,
   };
-  if (data.replicateColumnRef !== undefined) {
-    if (data.replicateFitErrorCutoff !== undefined && data.replicateFitErrorCutoff <= 0)
-      throw new Error("Replicate fit-error cutoff must be above 0, or empty to turn it off");
-    if (
-      data.replicateR2Floor !== undefined &&
-      (data.replicateR2Floor < 0 || data.replicateR2Floor > 1)
-    )
-      throw new Error("Replicate R² floor must be between 0 and 1, or empty to turn it off");
-    if (data.replicateCensoredMajority === undefined)
-      throw new Error("Replicate censoring majority is required");
-    if (data.replicateCensoredMajority < 0.5 || data.replicateCensoredMajority > 1)
-      throw new Error("Replicate censoring majority must be between 0.5 and 1");
-  }
-
   const labels: ArgsLabels = {
     // Strings have UI defaults but old stored data may lack them; coerce to
     // empty/safe values rather than throw — they don't break the workflow.
@@ -591,21 +584,14 @@ export const deriveArgs = (data: BlockData): BlockArgs => {
       inputFilter: createGlobalPObjectId(data.filterRef.blockId, data.filterRef.name),
     }),
     // Every replicate setting rides on the column: without one the block fits one titration and
-    // projects no replicate byte at all.
+    // projects no replicate byte at all. While the Sample replicates section is hidden, every
+    // setting in it is pinned to its default — population SD / sqrt(n + 1), both filters off, a simple
+    // majority — so a value a block stored before the section went away is not used unseen.
+    // Restore the `data.replicate*` fields, and their checks, when that section comes back.
     ...(data.replicateColumnRef !== undefined && {
       replicateColumnRef: data.replicateColumnRef,
-      // Pinned to the sample SD while the Sample replicates section is hidden, so a block that
-      // stored the other model before the section went away does not keep using it unseen.
-      // Restore `data.replicateErrorModel` when that section comes back.
       replicateErrorModel: DEFAULT_REPLICATE_ERROR_MODEL,
-      // The cutoff reads a replicate's own fit standard error. The mean bin fit reports none, so
-      // the setting is inert there and is not sent — the UI hides it for the same reason.
-      ...(data.equation === "log_fluorescence" &&
-        data.replicateFitErrorCutoff !== undefined && {
-          replicateFitErrorCutoff: data.replicateFitErrorCutoff,
-        }),
-      ...(data.replicateR2Floor !== undefined && { replicateR2Floor: data.replicateR2Floor }),
-      replicateCensoredMajority: data.replicateCensoredMajority,
+      replicateCensoredMajority: DEFAULT_CENSORED_MAJORITY,
     }),
     // Absent unless "reads", so a block that never set it projects the args it always did.
     ...(data.synonymousWeighting === "reads" && { synonymousWeighting: "reads" as const }),
@@ -732,6 +718,16 @@ function synonymousSummary(ctx: Ctx): SynonymousSummary | undefined {
   return ctx.outputs
     ?.resolve({ field: "synonymousSummary", allowPermanentAbsence: true })
     ?.getDataAsJson<SynonymousSummary>();
+}
+
+/** What the last run must tell the user. Empty for a run on another dataset, or before any run. */
+function runWarnings(ctx: Ctx): string[] {
+  if (!plRefsEqualOrBothAbsent(ctx.activeArgs?.abundanceRef, ctx.data.abundanceRef)) return [];
+  return (
+    ctx.outputs
+      ?.resolve({ field: "runWarnings", allowPermanentAbsence: true })
+      ?.getDataAsJson<string[]>() ?? []
+  );
 }
 
 function plRefsEqualOrBothAbsent(a: PlRef | undefined, b: PlRef | undefined): boolean {
@@ -954,13 +950,14 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     // appears in server logs while the block silently shows empty panels.
     // CIDConflictError is typically transient — the platform's "zebra"
     // self-recovery retries the write — so we label it as such.
-    // replicatePf exists only on a run that combined replicates, and the last three in synonymous
-    // mode only, so their absence is no error.
+    // replicatePf exists only on a run that combined replicates, the next three in synonymous mode
+    // only, and runWarnings not on a run made before it existed, so their absence is no error.
     const optionalKeys = new Set([
       "replicatePf",
       "variantSummaryPf",
       "synonymousSummary",
       "ntVariantPf",
+      "runWarnings",
     ]);
     const outputKeys = [
       "summaryPf",
@@ -970,6 +967,7 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
       "variantSummaryPf",
       "synonymousSummary",
       "ntVariantPf",
+      "runWarnings",
     ] as const;
     for (const key of outputKeys) {
       const errorAcc = (
@@ -1018,6 +1016,8 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
 
     for (const message of synonymousMessages(halfMatchedParent(ctx), synonymousSummary(ctx)))
       issues.push({ severity: "warning", message });
+
+    for (const message of runWarnings(ctx)) issues.push({ severity: "warning", message });
 
     return issues;
   })

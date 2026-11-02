@@ -48,7 +48,7 @@ SD_DESCRIPTION := "The standard deviation of log10 Kd,app across the replicates 
 
 SE_DESCRIPTIONS := {
 	sd_over_sqrt_n: "Standard error of the mean log10 Kd,app across the replicates: their sample SD over the square root of their number. With one replicate, that fit's own standard error where the equation reports one. Empty for a bound and for a failed variant. At or below 0.5, Kd,app is rated Good.",
-	phillips: "Standard error of the mean log10 Kd,app across the replicates: their population SD over the square root of their number plus one, the form Phillips 2021 published. With one replicate it is that replicate's own fit error, not that form's 0. Empty for a bound and for a failed variant."
+	pop_sd_over_sqrt_n_plus_1: "Standard error of the mean log10 Kd,app across the replicates: their population SD over the square root of their number plus one,. With one replicate it is that replicate's own fit error. Empty for a bound and for a failed variant."
 }
 
 /**
@@ -111,7 +111,7 @@ sdColumn := func(blockId, idPrefix) {
  *
  * @param blockId: the block id stamped into the domain
  * @param idPrefix: prepended to the column's xsv id
- * @param errorModel: "sd_over_sqrt_n" or "phillips"
+ * @param errorModel: "sd_over_sqrt_n" or "pop_sd_over_sqrt_n_plus_1"
  */
 seColumn := func(blockId, idPrefix, errorModel) {
 	return {
@@ -143,11 +143,9 @@ seColumn := func(blockId, idPrefix, errorModel) {
  * @param idPrefix: prepended to each column's xsv id
  * @param kdAnnotations: the combined Kd,app annotations, unit included
  * @param classValues: the affinity classes the equation can rate, as a JSON list
- * @param withNegLog10: true where the equation reports -log10 Kd,app, so the panel shows the
- *        same form as the main table
  * @return xsv column descriptors
  */
-perReplicateColumns := func(blockId, idPrefix, kdAnnotations, classValues, withNegLog10) {
+perReplicateColumns := func(blockId, idPrefix, kdAnnotations, classValues) {
 	domain := { "pl7.app/block": blockId }
 	hidden := func(name, valueType, label, description, extra) {
 		return {
@@ -214,19 +212,17 @@ perReplicateColumns := func(blockId, idPrefix, kdAnnotations, classValues, withN
 			id: idPrefix + "replicateReads",
 			spec: hidden("pl7.app/vdj/replicateReads", "Long", "Reads in this replicate",
 				"Reads behind this replicate's own fit, summed over the concentrations it was fitted on. A wide or missing value usually reads back to a low count here.", { "pl7.app/table/orderPriority": "195" })
-		}
-	]
-	// The panel reports Kd,app the way the main table does. The caller passes true wherever the
-	// main table carries the combined -log10 column.
-	if withNegLog10 {
-		columns = append(columns, {
+		},
+		// The panel reports Kd,app the way the main table does, which carries -log10 under every
+		// equation.
+		{
 			column: "kdNegLog10",
 			id: idPrefix + "kdNegLog10",
 			spec: hidden("pl7.app/vdj/kdNegLog10", "Double", "-log10 Kd,app (per replicate)",
 				"-log10 of the Kd,app this replicate contributed to the mean. Larger is tighter binding. A replicate at an edge of the titration reports that edge.",
 				{ "pl7.app/format": ".2f", "pl7.app/table/orderPriority": "201" })
-		})
-	}
+		}
+	]
 	return columns
 }
 

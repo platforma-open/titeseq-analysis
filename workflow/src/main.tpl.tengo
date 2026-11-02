@@ -97,7 +97,7 @@ wf.body(func(args) {
 	// Which replicate each sample belongs to. Unbound, the block fits one titration and no
 	// replicate reaches the command line, the grouping or any output.
 	hasReplicate := !is_undefined(args.replicateColumnRef)
-	replicateErrorModel := args.replicateErrorModel == "phillips" ? "phillips" : "sd_over_sqrt_n"
+	replicateErrorModel := args.replicateErrorModel == "sd_over_sqrt_n" ? "sd_over_sqrt_n" : "pop_sd_over_sqrt_n_plus_1"
 
 	// Synonymous mode: a nucleotide dataset whose nt -> aa linker resolves. Each nt variant is still
 	// fitted on its own; the software then combines the fits per amino-acid variant.
@@ -246,10 +246,12 @@ wf.body(func(args) {
 		arg("--out-mean-bin").arg("mean_bin.tsv").
 		arg("--out-fitted-mean-bin").arg("fitted_mean_bin.tsv").
 		arg("--out-concentration-value").arg("concentration_value.tsv").
+		arg("--out-run-warnings").arg("run_warnings.json").
 		saveFile("per_clonotype.tsv").
 		saveFile("mean_bin.tsv").
 		saveFile("fitted_mean_bin.tsv").
 		saveFile("concentration_value.tsv").
+		saveFileContent("run_warnings.json").
 		saveStdoutStream()
 
 	if hasAntigen {
@@ -414,6 +416,11 @@ wf.body(func(args) {
 	if concUnit != "" {
 		kdAnnotations["pl7.app/unit"] = concUnit
 	}
+	if hasReplicate {
+		// A replicate at an edge enters the mean at that edge, as the papers do, so the mean of a
+		// variant with one censored replicate is partly an edge value. The counts say how many.
+		kdAnnotations["pl7.app/description"] += " With sample replicates, Kd,app is the mean of log10 Kd,app across the replicates. A replicate at an edge of the range enters the mean at that edge. Replicates below range and Replicates above range give the number of such replicates."
+	}
 
 	// Import per_clonotype.tsv → summary PColumns.
 	// Python writes column `r2`; the output spec name `pl7.app/vdj/curveFitR2` is
@@ -438,6 +445,15 @@ wf.body(func(args) {
 		affinityClassValues = "[\"Good\",\"Partial\",\"Below range\",\"Above range\",\"Failed\"]"
 		affinityClassDescription = "Good: Kd,app inside the titrated range, with a standard error of log10 Kd,app at or below 0.5. Partial: Kd,app is inside the range and its standard error is larger. Below range: Kd,app is at most the lowest concentration titrated, so the variant binds tighter than this titration resolves. Above range: Kd,app is at least the highest concentration titrated, which covers a signal that stayed flat and dim and one that rose without reaching half-maximum. Failed: no fit, a gap in the titration while complete titrations are required, or the fit-quality gate is on and an in-range fit's R² is below its minimum or its standard error above its maximum; see the fit failure reason."
 		affinityClassCutoff = "[\"Good\",\"Partial\",\"Below range\"]"
+	}
+	// With replicates the class is given to the combined value, so the single-fit rules above do
+	// not apply to it.
+	boundRule := args.equation == "log_fluorescence" ?
+		"A value at an edge of the range gets Below range or Above range." :
+		"A value at an edge of the range keeps the class of its replicates if they all have the same class. If they do not, it gets Partial."
+	if hasReplicate {
+		affinityClassDescription = "The class of the combined value. Good: the standard error across the replicates is 0.5 or less. Partial: the standard error is more than 0.5. " +
+			boundRule + " Failed: no replicate has a Kd,app, or the replicates are at opposite edges of the range. With one replicate, the value keeps the class of that replicate if it has no standard error."
 	}
 	summaryColumns := [
 		{
@@ -639,6 +655,9 @@ wf.body(func(args) {
 				weighting: synonymousWeighting,
 				variantClass: syn.aaClass,
 				kdNegLog10Spec: kdNegLog10Spec,
+				affinityClassValues: affinityClassValues,
+				affinityClassCutoff: affinityClassCutoff,
+				boundRule: boundRule,
 				replicateColumns: hasReplicate ? [
 					replicateColumnsLib.seColumn(blockId, "aa_", replicateErrorModel),
 					replicateColumnsLib.sdColumn(blockId, "aa_")
@@ -747,7 +766,7 @@ wf.body(func(args) {
 				replicateVariantAxis,
 				{ column: "replicate", spec: replicateAxisSpec }
 			],
-			columns: replicateColumnsLib.perReplicateColumns(blockId, "rep_", kdAnnotations, affinityClassValues, true),
+			columns: replicateColumnsLib.perReplicateColumns(blockId, "rep_", kdAnnotations, affinityClassValues),
 			storageFormat: "Parquet",
 			partitionKeyLength: 0
 		}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
@@ -849,7 +868,9 @@ wf.body(func(args) {
 	outputs := {
 		summaryPf: pframes.exportFrame(summaryPf),
 		signalPf: pframes.exportFrame(signalPf),
-		logHandle: fit.getStdoutStream()
+		logHandle: fit.getStdoutStream(),
+		// What the run must tell the user, as a JSON list of sentences; [] when nothing.
+		runWarnings: fit.getFileContent("run_warnings.json")
 	}
 	// The per-replicate values stay out of exportPf and out of the main table: their extra axis
 	// would fan every row out by the replicate count.

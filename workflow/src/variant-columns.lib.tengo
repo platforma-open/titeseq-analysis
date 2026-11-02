@@ -160,12 +160,14 @@ variantColumns := func(blockId, kdAnnotations, opts) {
 			domain: domain,
 			annotations: {
 				"pl7.app/label": "Affinity class",
-				"pl7.app/description": "Rated once on the combined value. Failed: no nucleotide variant has a Kd,app. Partial: every variant is censored at the same edge, or the SE is above 0.5. Good: SE at or below 0.5. A single variant with no SE keeps its own rating.",
+				"pl7.app/description": "The class of the value combined over the synonymous nucleotide variants. Good: the standard error is 0.5 or less. Partial: the standard error is more than 0.5. " +
+					opts.boundRule + " Failed: no nucleotide variant has a Kd,app. A single variant with no standard error keeps its own class.",
 				"pl7.app/isScore": "true",
 				"pl7.app/isDiscreteFilter": "true",
-				"pl7.app/discreteValues": "[\"Good\",\"Partial\",\"Failed\"]",
+				// The equation's own classes, as on the nucleotide grain, so one filter fits both.
+				"pl7.app/discreteValues": opts.affinityClassValues,
 				"pl7.app/score/rankingOrder": "decreasing",
-				"pl7.app/score/defaultCutoff": "[\"Good\",\"Partial\"]",
+				"pl7.app/score/defaultCutoff": opts.affinityClassCutoff,
 				"pl7.app/table/visibility": "default",
 				"pl7.app/table/orderPriority": "202"
 			}

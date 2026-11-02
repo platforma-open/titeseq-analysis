@@ -133,7 +133,7 @@ class TestNoReplicateColumn:
                     "--reads", "r.parquet",
                     "--out-per-clonotype", "a", "--out-mean-bin", "b",
                     "--out-fitted-mean-bin", "c", "--out-concentration-value", "d",
-                    "--replicate-error-model", "phillips",
+                    "--replicate-error-model", "pop_sd_over_sqrt_n_plus_1",
                 ]
             )  # fmt: skip
 
@@ -287,7 +287,7 @@ class TestFiltersEndToEnd:
         inputs = ReplicateInputs(column="replicate", filters=Filters(r2_floor=1.5))
         outputs = run(_frame(self._design()), params=LF, replicates=inputs)
         assert outputs["per_clonotype"]["fitFailureReason"].to_list() == ["all_replicates_filtered"]
-        assert outputs["per_replicate"]["kdState"].unique().to_list() == ["Left out by a filter"]
+        assert outputs["per_clonotype"]["replicateFilteredCount"].to_list() == [2]
 
     def test_a_reachable_cutoff_keeps_the_replicates(self):
         inputs = ReplicateInputs(column="replicate", filters=Filters(fit_error_cutoff=5.0, r2_floor=0.0))
@@ -334,7 +334,7 @@ class TestReplicateCli:
                 "--out-fitted-mean-bin", str(out / "fitted_mean_bin.tsv"),
                 "--out-concentration-value", str(out / "concentration_value.tsv"),
                 "--replicate-column", "replicate",
-                "--replicate-error-model", "phillips",
+                "--replicate-error-model", "pop_sd_over_sqrt_n_plus_1",
                 "--out-per-replicate", str(out / "per_replicate.tsv"),
             ]
         )  # fmt: skip
@@ -381,7 +381,7 @@ class TestReviewClassesAcrossReplicates:
         gated = FitParams(equation="log_fluorescence", r2_gate_min=1.0)
         outputs = run(_frame(self.DESIGN), params=gated, replicates=REPS)
         per_replicate = outputs["per_replicate"].filter(pl.col("clonotypeKey") == "v1")
-        assert per_replicate["kdState"].to_list() == ["Left out, no fit", "Left out, no fit"]
+        assert per_replicate["affinityClass"].to_list() == ["Failed", "Failed"]
         assert per_replicate["fitFailureReason"].to_list() == ["low_r2", "low_r2"]
         assert _kd(outputs["per_clonotype"], "v1", "affinityClass") == "Failed"
         assert _kd(outputs["per_clonotype"], "v1", "fitFailureReason") == "all_replicates_failed"

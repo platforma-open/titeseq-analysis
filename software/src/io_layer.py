@@ -43,6 +43,19 @@ def validate_reads_schema(df: pl.DataFrame, has_bin: bool, has_antigen: bool) ->
         raise InputValidationError(f"missing required columns: {sorted(missing)}")
 
 
+def validate_reads_present(df: pl.DataFrame) -> None:
+    """At least one row carries a read count. A frame without a reads column is left to
+    `validate_reads_schema`."""
+    if COL_READS not in df.columns:
+        return
+    counts = df.get_column(COL_READS).cast(pl.Float64, strict=False)
+    if counts.is_not_null().sum() == 0:
+        raise InputValidationError(
+            "the abundance column has no reads for any selected sample: every read count is empty. "
+            "Check that the selected abundance holds read counts for these samples."
+        )
+
+
 def validate_concentration_column(df: pl.DataFrame, has_bin: bool) -> list[str]:
     """R2: concentrations must be finite non-negative floats. Unit-agnostic.
 
@@ -159,8 +172,9 @@ def validate_sort_fraction(reads: pl.DataFrame, col: str, group_keys: list[str] 
 def validate_bin_column(df: pl.DataFrame) -> None:
     """R3: bin must be a positive integer. Non-consecutive labels are allowed.
 
-    Nulls are permitted at concentration 0 (warned separately); `<=0` on null
-    yields null which is ignored by `.sum()`, so no intermediate filter needed.
+    Nulls are permitted at any concentration: a sample with no bin is unsorted. Its reads give
+    no signal, so its point leaves the log fluorescence fit before the points are counted.
+    `<=0` on null yields null which is ignored by `.sum()`, so no intermediate filter needed.
     """
     # An Integer metadata column whose sample values are all null arrives here as a
     # string column of empty strings (the TSV builder's null encoding). Surface a
@@ -282,6 +296,9 @@ def validate_bin_concentration_grid(df: pl.DataFrame) -> list[str]:
     if COL_BIN not in df.columns:
         return warnings
 
+    # An unsorted sample (null bin) is no gate of the grid: counted, it would flag every clonotype
+    # that is not in it.
+    df = df.filter(pl.col(COL_BIN).is_not_null())
     ref_grid = df.select([COL_BIN, COL_CONC_STR]).unique()
     n_grid = ref_grid.height
     if n_grid <= 1:

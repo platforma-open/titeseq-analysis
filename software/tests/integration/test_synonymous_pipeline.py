@@ -152,13 +152,13 @@ class TestLogFluorescence:
         assert (tight["ntCensoredBelow"], tight["ntCensoredAbove"]) == (2, 0)
         assert tight["kdLog10Se"] is None
         assert tight["kdOutOfRange"] is True
-        assert tight["affinityClass"] == "Partial"
+        assert tight["affinityClass"] == "Below range"
 
     def test_flat_dim_copies_give_an_upper_bound(self, lf):
         dead = _aa(lf, "DEAD")
         assert math.log10(dead["kd"]) == pytest.approx(LOG_HI, abs=1e-9)
         assert (dead["ntCensoredBelow"], dead["ntCensoredAbove"]) == (0, 2)
-        assert dead["affinityClass"] == "Partial"
+        assert dead["affinityClass"] == "Above range"
 
     def test_a_censored_copy_enters_at_its_wall_beside_a_measured_one(self, lf):
         mixed = _aa(lf, "MIXED")

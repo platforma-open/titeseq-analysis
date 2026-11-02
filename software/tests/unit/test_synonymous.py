@@ -116,12 +116,23 @@ class TestCombine:
         assert (c.log10_kd, c.log10_kd_se, c.out_of_range) == (None, None, None)
 
     def test_copies_censored_on_one_side_give_a_bound_with_no_se(self):
-        c = combine([Copy("below", LO, None, "Partial"), Copy("below", LO, None, "Partial")])
+        c = combine([Copy("below", LO, None, "Below range"), Copy("below", LO, None, "Below range")])
         assert c.log10_kd == LO
         assert c.log10_kd_se is None
         assert c.out_of_range is True
-        assert c.classification.affinity_class == "Partial"
+        assert c.classification.affinity_class == "Below range"
         assert c.counts["below"] == 2
+
+    def test_a_bound_is_rated_by_its_wall_under_the_log_fluorescence_fit(self):
+        c = combine([Copy("above", HI, None, "Above range"), Copy("above", HI, None, "Above range")])
+        assert c.classification.affinity_class == "Above range"
+
+    def test_under_the_mean_bin_fit_a_bound_keeps_the_class_its_copies_share(self):
+        # The mean bin fit declares no wall class; its copies are rated by R².
+        same = combine([Copy("above", HI, None, "Good"), Copy("above", HI, None, "Good")], wall_classes=False)
+        assert same.classification.affinity_class == "Good"
+        mixed = combine([Copy("above", HI, None, "Good"), Copy("above", HI, None, "Partial")], wall_classes=False)
+        assert mixed.classification.affinity_class == "Partial"
 
     def test_a_censored_copy_beside_a_measured_one_enters_at_the_wall(self):
         c = combine([Copy("above", HI, None, "Partial"), _measured(-8.0)])

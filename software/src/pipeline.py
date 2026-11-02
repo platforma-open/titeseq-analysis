@@ -73,6 +73,7 @@ from io_layer import (
     validate_bin_concentration_grid,
     validate_bin_fluorescence,
     validate_concentration_column,
+    validate_reads_present,
     validate_reads_schema,
     validate_replicate_column,
     validate_sample_metadata_uniqueness,
@@ -533,6 +534,18 @@ def _gate_incomplete_titrations(signal_frame: pl.DataFrame, insufficient_map: di
     log(f"Complete titrations required: {gated} clonotypes lack reads at one of {n_conc} concentrations")
 
 
+NO_C0_SAMPLES = "no 0 M samples"
+
+
+def _no_baseline_cause(lf_frame: pl.DataFrame, c0_unsorted: bool) -> str:
+    """Why no shared baseline could be computed, in the words the warning uses."""
+    if lf_frame.filter(pl.col(COL_CONC_VAL) == 0).height == 0:
+        return NO_C0_SAMPLES
+    if c0_unsorted:
+        return "the 0 M samples carry no FACS bin (they are unsorted), so they have no signal"
+    return "no variant has enough reads at 0 M to pass the read floor"
+
+
 def _run_log_fluorescence(
     signal_frame: pl.DataFrame,
     reads: pl.DataFrame,
@@ -542,8 +555,11 @@ def _run_log_fluorescence(
     max_bin: int | None,
     conc_bounds: tuple[float | None, float | None],
     gates_measured: bool,
+    notices: list[str],
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """The "log_fluorescence" branch, from the signal frame to the per-clonotype and fitted frames.
+
+    `notices` collects what the run must tell the user: a cause that changes the numbers.
 
     `gates_measured` says the signal frame already carries mean log10 fluorescence, because the
     caller passed measured gate positions to `normalize`. The affine conversion below is then
@@ -574,6 +590,15 @@ def _run_log_fluorescence(
 
     log("Applying floor and weights")
     floor_frame = apply_floor_and_weights(lf_frame, params)
+    # A point whose reads all sit in an unsorted sample has no signal. It leaves before the points
+    # are counted, so the point count and the fit see the same points.
+    no_signal = pl.col(SIGNAL).is_null()
+    dropped = floor_frame.filter(no_signal & (pl.col(COL_CONC_VAL) != 0)).height
+    if dropped:
+        log(f"Left out {dropped} points with no FACS bin signal (unsorted samples)")
+    c0_rows = floor_frame.filter(pl.col(COL_CONC_VAL) == 0)
+    c0_unsorted = c0_rows.height > 0 and c0_rows.filter(~no_signal).height == 0
+    floor_frame = floor_frame.filter(~no_signal)
 
     all_clonotypes = signal_frame[COL_CLONOTYPE].unique().to_list()
     log(f"Classifying {len(all_clonotypes)} clonotypes for sufficiency")
@@ -588,7 +613,13 @@ def _run_log_fluorescence(
     c0_points, fit_points = split_c0(floor_frame)
     baseline = compute_read_weighted_baseline(c0_points)
     if baseline is None:
-        log("Baseline: fitted per clonotype (no 0 M samples)")
+        cause = _no_baseline_cause(lf_frame, c0_unsorted)
+        log(f"Baseline: fitted per clonotype ({cause})")
+        if cause != NO_C0_SAMPLES:
+            notices.append(
+                f"No shared baseline: {cause}. Each variant fits its own baseline, which widens the "
+                "error of its Kd,app."
+            )
     else:
         log(f"Baseline: {baseline:.4f} log10, the read-weighted mean 0 M signal of {c0_points.height} clonotypes")
 
@@ -680,6 +711,7 @@ def _fit(
     max_bin: int | None,
     conc_bounds: tuple[float | None, float | None],
     gates_measured: bool,
+    notices: list[str],
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """One titration's fit: the equation's branch, from the signal frame to the two fit frames."""
     if params.equation == "log_fluorescence":
@@ -691,6 +723,7 @@ def _fit(
             max_bin=max_bin,
             conc_bounds=conc_bounds,
             gates_measured=gates_measured,
+            notices=notices,
         )
     return _run_hill_gate_index(signal_frame, params=params, has_bin=has_bin, max_bin=max_bin)
 
@@ -721,6 +754,8 @@ def run(
     `synonymous_summary` (a JSON-ready dict) to the outputs. Every other output is unchanged.
     """
     log(f"Pipeline start: {reads.height} reads rows")
+    # Precedes canonicalization, which reports an empty frame as a missing concentration.
+    validate_reads_present(reads)
     reads = canonicalize_concentration(reads)
     has_bin = COL_BIN in reads.columns
     has_antigen = COL_ANTIGEN in reads.columns
@@ -785,6 +820,7 @@ def run(
     )
 
     conc_bounds = _concentration_bounds(reads)
+    notices: list[str] = []
     log(f"Equation: {params.equation}")
     fit_args = {
         "params": params,
@@ -792,6 +828,7 @@ def run(
         "max_bin": mbl,
         "conc_bounds": conc_bounds,
         "gates_measured": measured_gates is not None,
+        "notices": notices,
     }
     replicate_outputs: dict[str, pl.DataFrame] = {}
     if replicates is not None:
@@ -818,10 +855,22 @@ def run(
         f"fitted_mean_bin={outputs['fitted_mean_bin'].height}"
     )
     outputs.update(replicate_outputs)
+    # Present only when there is one, so a clean run's outputs do not move. Each replicate can
+    # raise the same notice; the user needs it once.
+    if notices:
+        outputs["run_warnings"] = list(dict.fromkeys(notices))
     # With replicates the synonymous combination already ran inside each replicate.
     if synonymous is not None and replicates is None:
         reads_per_copy = _reads_per_copy(reads) if synonymous.weighting == "reads" else None
-        outputs.update(_combine_synonymous(outputs["per_clonotype"], synonymous, conc_bounds, reads_per_copy))
+        outputs.update(
+            _combine_synonymous(
+                outputs["per_clonotype"],
+                synonymous,
+                conc_bounds,
+                reads_per_copy,
+                wall_classes=params.equation == "log_fluorescence",
+            )
+        )
     return outputs
 
 
@@ -836,6 +885,7 @@ def _fit_replicates(
     max_bin: int | None,
     conc_bounds: tuple[float | None, float | None],
     gates_measured: bool,
+    notices: list[str],
 ) -> tuple[pl.DataFrame, pl.DataFrame, dict]:
     """Fit each replicate's titration on its own, then combine the per-replicate values.
 
@@ -863,6 +913,7 @@ def _fit_replicates(
             max_bin=max_bin,
             conc_bounds=conc_bounds,
             gates_measured=gates_measured,
+            notices=notices,
         )
         # Each replicate's own censoring state, against the titration they share. "log_fluorescence"
         # pins and flags inside the fit; "hill_gate_index" reports the raw K_D and is flagged here.
@@ -879,7 +930,13 @@ def _fit_replicates(
         .iter_rows(named=True)
     }
     collected = collect_values(frames, COL_CLONOTYPE, log10_lo=log10_lo, log10_hi=log10_hi, filters=replicates.filters)
-    merged = merge_all(collected, error_model=replicates.error_model, censored_majority=replicates.censored_majority)
+    wall_classes = params.equation == "log_fluorescence"
+    merged = merge_all(
+        collected,
+        error_model=replicates.error_model,
+        censored_majority=replicates.censored_majority,
+        wall_classes=wall_classes,
+    )
     _log_filters(replicates, collected)
     combined = build_combined_clonotype_frame(collected, merged)
     fitted_curves = pl.concat(curves).select([COL_CLONOTYPE, COL_REPLICATE, COL_CONC_STR, "fittedMeanBin"])
@@ -896,6 +953,7 @@ def _fit_replicates(
         per_replicate_reads=per_replicate_reads,
         log10_lo=log10_lo,
         log10_hi=log10_hi,
+        wall_classes=wall_classes,
     )
     return combined, fitted_curves, outputs
 
@@ -925,6 +983,8 @@ def _combine_synonymous(
     synonymous: SynonymousInputs,
     conc_bounds: tuple[float | None, float | None],
     reads_per_copy: dict[str, float] | None,
+    *,
+    wall_classes: bool,
 ) -> dict:
     """The amino-acid outputs: each nt variant's own fit, combined per amino-acid variant."""
     lo, hi = conc_bounds
@@ -934,6 +994,7 @@ def _combine_synonymous(
         log10_lo=math.log10(lo) if lo is not None else None,
         log10_hi=math.log10(hi) if hi is not None else None,
         reads=reads_per_copy,
+        wall_classes=wall_classes,
     )
     weighting = "each nt variant weighted by its total reads" if reads_per_copy is not None else "unweighted"
     log(f"Synonymous combination: mean of log10 Kd,app, {weighting}")
@@ -989,6 +1050,7 @@ def _combine_replicate_synonymous(
     per_replicate_reads: dict[tuple[str, str], int],
     log10_lo: float | None,
     log10_hi: float | None,
+    wall_classes: bool,
 ) -> dict:
     """Starr's order: synonymous copies combine inside each replicate, then the replicates combine.
 
@@ -1012,13 +1074,16 @@ def _combine_replicate_synonymous(
         if synonymous.weighting == "reads":
             reads_per_copy = _reads_per_copy(reads.filter(pl.col(COL_REPLICATE) == label))
         per_variant, _nt, _summary = combine_synonymous(
-            masked, copies_only, log10_lo=log10_lo, log10_hi=log10_hi, reads=reads_per_copy
+            masked, copies_only, log10_lo=log10_lo, log10_hi=log10_hi, reads=reads_per_copy, wall_classes=wall_classes
         )
         aa_frames.append((label, per_variant))
 
     aa_collected = collect_values(aa_frames, COL_AA, log10_lo=log10_lo, log10_hi=log10_hi)
     aa_merged = merge_all(
-        aa_collected, error_model=replicates.error_model, censored_majority=replicates.censored_majority
+        aa_collected,
+        error_model=replicates.error_model,
+        censored_majority=replicates.censored_majority,
+        wall_classes=wall_classes,
     )
 
     fitted_nt = sorted(merged)

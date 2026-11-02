@@ -57,7 +57,7 @@ from typing import Literal, Protocol
 
 import polars as pl
 
-from classify import Classification
+from classify import Classification, bound_class
 from constants import COL_CLONOTYPE, KD_SD_GOOD
 
 COL_NT = "ntKey"
@@ -226,9 +226,9 @@ def _spread_sd(entered: list[Copy], mean: float, weighted: bool) -> float:
     return math.sqrt(n / (n - 1) * scatter / total)
 
 
-def combine(copies: list[Copy], *, weighted: bool = False) -> Combined:
+def combine(copies: list[Copy], *, weighted: bool = False, wall_classes: bool = True) -> Combined:
     """The mean over one amino-acid variant's copies, and its class. `weighted` reads each copy's
-    `weight`."""
+    `weight`. `wall_classes` is True under the equation that rates a bound by its wall."""
     counts: dict[CopyState, int] = {"measured": 0, "below": 0, "above": 0, "failed": 0}
     for c in copies:
         counts[c.state] += 1
@@ -244,7 +244,9 @@ def combine(copies: list[Copy], *, weighted: bool = False) -> Combined:
     sides = {c.state for c in entered}
     bound = sides == {"below"} or sides == {"above"}
     if bound:
-        return Combined(mean, None, Classification("Partial", None), True, counts)
+        side = entered[0].state
+        cls = bound_class(side, [c.affinity_class for c in entered], wall_classes=wall_classes)
+        return Combined(mean, None, Classification(cls, None), True, counts)
 
     if n == 1:
         se, sd = entered[0].log10_kd_se, None
@@ -368,6 +370,7 @@ def combine_synonymous(
     log10_lo: float | None,
     log10_hi: float | None,
     reads: dict[str, float] | None = None,
+    wall_classes: bool = True,
 ) -> tuple[pl.DataFrame, pl.DataFrame | None, dict]:
     """The amino-acid frame, the nucleotide frame, and the run summary, from the per-nt-variant fits.
 
@@ -393,7 +396,7 @@ def combine_synonymous(
             if weighted:
                 c = replace(c, weight=float(reads.get(row[COL_CLONOTYPE], 0.0)))
             copies.setdefault(aa, []).append(c)
-    combined = {aa: combine(copies[aa], weighted=weighted) for aa in sorted(copies)}
+    combined = {aa: combine(copies[aa], weighted=weighted, wall_classes=wall_classes) for aa in sorted(copies)}
     stops = stop_variants(inputs.aa_productive) if inputs.aa_productive is not None else set()
     # A stop variant has no value: its counts stay, every value goes.
     combined = {aa: replace(STOP, counts=c.counts) if aa in stops else c for aa, c in combined.items()}

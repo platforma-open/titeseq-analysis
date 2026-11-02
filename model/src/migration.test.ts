@@ -275,8 +275,22 @@ describe("a project stored on the v6 data model", () => {
     customBlockLabel: "CD19 titration",
     settingsOpen: true,
   };
-  const stored: BlockDataV6 = v6Project;
+  // A v6 project 2.5.0 wrote with a current error-model name.
+  const stored = v6Project;
   const migrated = () => dataModel.migrate({ version: "v6", data: stored });
+
+  it("renames the error model 2.5.0 stored as phillips", () => {
+    const legacy = dataModel.migrate({
+      version: "v6",
+      data: { ...stored, replicateErrorModel: "phillips" },
+    });
+    expect(legacy.data.replicateErrorModel).toBe("pop_sd_over_sqrt_n_plus_1");
+    const other = dataModel.migrate({
+      version: "v6",
+      data: { ...stored, replicateErrorModel: "sd_over_sqrt_n" },
+    });
+    expect(other.data.replicateErrorModel).toBe("sd_over_sqrt_n");
+  });
 
   it("gains an empty nucleotide variant table state", () => {
     expect(migrated().version).toBe("v7");
@@ -336,7 +350,7 @@ describe("a project stored on the v3 data model", () => {
   it("gains unset replicates and the per-replicate view state", () => {
     expect(migrated().version).toBe("v7");
     expect(migrated().data).toMatchObject({
-      replicateErrorModel: "sd_over_sqrt_n",
+      replicateErrorModel: "pop_sd_over_sqrt_n_plus_1",
       replicateCensoredMajority: 0.5,
     });
     expect(migrated().data.replicateColumnRef).toBeUndefined();
@@ -418,7 +432,7 @@ describe("the sample replicates", () => {
   it("a stored setting alone changes nothing: the column is what turns the mode on", () => {
     const tuned = {
       ...configured,
-      replicateErrorModel: "phillips" as const,
+      replicateErrorModel: "sd_over_sqrt_n" as const,
       replicateFitErrorCutoff: 1,
       replicateR2Floor: 0.8,
       replicateCensoredMajority: 0.9,
@@ -430,7 +444,7 @@ describe("the sample replicates", () => {
     const args = argsOf({ ...configured, replicateColumnRef: ref("replicate") });
     expect(args).toMatchObject({
       replicateColumnRef: ref("replicate"),
-      replicateErrorModel: "sd_over_sqrt_n",
+      replicateErrorModel: "pop_sd_over_sqrt_n_plus_1",
       replicateCensoredMajority: 0.5,
     });
   });
@@ -441,31 +455,26 @@ describe("the sample replicates", () => {
     expect(Object.hasOwn(args, "replicateR2Floor")).toBe(false);
   });
 
-  it("sends each filter once it is set", () => {
-    const args = argsOf({
+  it("pins every hidden replicate setting to its default while the section is hidden", () => {
+    // A block that stored these before the section went away must not run them unseen.
+    const stored = {
       ...configured,
       replicateColumnRef: ref("replicate"),
+      replicateErrorModel: "sd_over_sqrt_n" as const,
       replicateFitErrorCutoff: 1,
       replicateR2Floor: 0.8,
-    });
-    expect(args).toMatchObject({ replicateFitErrorCutoff: 1, replicateR2Floor: 0.8 });
+      replicateCensoredMajority: 0.9,
+    };
+    expect(JSON.stringify(argsOf(stored))).toBe(
+      JSON.stringify(argsOf({ ...configured, replicateColumnRef: ref("replicate") })),
+    );
   });
 
-  it("refuses a filter or a majority the software would reject", () => {
+  it("does not block Run on a hidden setting the operator cannot see", () => {
     const withColumn = { ...configured, replicateColumnRef: ref("replicate") };
-    expect(() => argsOf({ ...withColumn, replicateFitErrorCutoff: 0 })).toThrow();
-    expect(() => argsOf({ ...withColumn, replicateR2Floor: 1.5 })).toThrow();
-    expect(() => argsOf({ ...withColumn, replicateCensoredMajority: 0.4 })).toThrow();
-  });
-
-  it("disables Run while the column is set and the majority is cleared", () => {
-    expect(() =>
-      argsOf({
-        ...configured,
-        replicateColumnRef: ref("replicate"),
-        replicateCensoredMajority: undefined,
-      }),
-    ).toThrow("Replicate censoring majority is required");
+    expect(() => argsOf({ ...withColumn, replicateFitErrorCutoff: 0 })).not.toThrow();
+    expect(() => argsOf({ ...withColumn, replicateR2Floor: 1.5 })).not.toThrow();
+    expect(() => argsOf({ ...withColumn, replicateCensoredMajority: undefined })).not.toThrow();
   });
 
   it("is unset on a new block and on an upgraded project", () => {

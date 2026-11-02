@@ -74,7 +74,6 @@ const binMode = computed(() => app.model.outputs.binMode === true);
 
 // Every replicate setting rides on the column, so clearing it hides them all. The stored values
 // stay: re-picking a column brings the previous combination back.
-const hasReplicates = computed(() => app.model.data.replicateColumnRef !== undefined);
 
 // Each equation reads only its own settings. A hidden setting keeps its stored value.
 const isLogFluorescence = computed(() => app.model.data.equation === "log_fluorescence");
@@ -317,12 +316,12 @@ function setBinColumn(ref: PlRef | undefined): void {
 
     <!--
       The whole Sample replicates section is hidden while it is being decided what stays. The
-      error across replicates is the sample SD over the square root of the replicate count; the
-      other model and the two pre-combine filters are not offered. `deriveArgs` pins the error
-      model to match, so a block that stored the other one still gets the sample SD. The code
-      behind every field here is untouched: uncomment this block and drop that pin to restore it.
+      error across replicates is the population SD over the square root of the replicate count plus
+      one; the other model and the two pre-combine filters are not offered. `deriveArgs` pins every field
+      here to its default, so a block that stored another value does not use it unseen. The code
+      behind every field here is untouched: uncomment this block and drop those pins to restore it.
 
-    <PlAccordionSection v-if="hasReplicates" label="Sample replicates">
+    <PlAccordionSection v-if="app.model.data.replicateColumnRef !== undefined" label="Sample replicates">
       <PlDropdown
         :model-value="app.model.data.replicateErrorModel"
         :options="REPLICATE_ERROR_MODEL_OPTIONS"

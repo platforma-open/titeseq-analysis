@@ -26,7 +26,10 @@ variants as repeats.
   nucleotide variant is weighted by its total reads over the titration, in the mean, the spread and
   the fit-error term. Unset, the args and the command line are those of a block without the setting.
 - Amino-acid columns sit on the linker's amino-acid axis and reuse the nucleotide names:
-  `pl7.app/vdj/kd`, `pl7.app/vdj/kdLog10Se`, `pl7.app/vdj/affinityClass`, `pl7.app/vdj/kdOutOfRange`.
+  `pl7.app/vdj/kd`, `pl7.app/vdj/kdNegLog10`, `pl7.app/vdj/kdLog10Se`, `pl7.app/vdj/affinityClass`,
+  `pl7.app/vdj/kdOutOfRange`. The affinity class takes the equation's declared values and cutoff,
+  as on the nucleotide grain. The export carries the same four answer columns on both grains:
+  affinity class, Kd,app, -log10 Kd,app and its SE.
   `pl7.app/vdj/kdNtVariants` counts the nucleotide variants behind each value, split by
   `pl7.app/vdj/kdNtVariantState` (all, measured, censored low, censored high, failed).
 - `pl7.app/vdj/variantClass` (String, discrete filter) on both grains, in Starr's strings: `wildtype`,
@@ -51,7 +54,39 @@ variants as repeats.
   and variants with several parents, are counted and named in the block's warnings, as at the
   amino-acid grain.
 - The table shows amino-acid rows in this mode. Each nucleotide variant's own fit stays in the
-  export and in the graphs, and a second page, NT Variants, shows one row per nucleotide variant:
-  its fit, its class and parent delta, and the result pool's columns on the nucleotide axis. The
-  page exists in this mode only. Its table state is new block data, added by a v2 -> v3 migration.
+  graphs, and a second page, NT Variants, shows one row per nucleotide variant: its fit, its class
+  and parent delta, and the result pool's columns on the nucleotide axis. The page exists in this
+  mode only. Its table state is new block data, added by a v6 -> v7 migration.
 - Page titles and help text name the input: clonotype, variant or peptide.
+- A run whose abundance holds no read count for any selected sample stops with "the abundance column
+  has no reads for any selected sample", instead of a polars type error during normalization. This
+  applies to every input kind.
+
+With a sample replicate column as well, the copies combine inside each replicate first, and the
+amino-acid values then combine across replicates (Starr's order). The class, the stop rule and both
+parent deltas are decided once, on the final values. The amino-acid grain then carries the
+replicates' SE, SD and counts, and the per-replicate drill-down shows amino-acid values.
+
+Review fixes to the 2.5.0 fits and replicates:
+
+- Log fluorescence fit: a point whose reads all sit in an unsorted sample (no FACS bin) leaves before
+  the points are counted. It used to fail the whole curve as `convergence_failure`.
+- When the 0 M samples are unsorted, or none passes the read floor, each variant fits its own
+  baseline. The block now says why, as a warning, instead of logging "no 0 M samples". The software
+  writes the run's warnings to `run_warnings.json`.
+- A value censored at an edge of the range is rated by its wall (Below range, Above range) only
+  under the log fluorescence fit. Under the mean bin fit it keeps the class its fits share, or
+  Partial when they differ, so it never takes a value the column does not declare.
+- The error across replicates is now population SD / sqrt(n + 1) (`pop_sd_over_sqrt_n_plus_1`)
+  instead of sample SD / sqrt(n). On the block's own fits it lands closest to the published errors
+  it was scored against. The setting value `phillips` is renamed to `pop_sd_over_sqrt_n_plus_1`. It is smaller, so more variants rate Good. A project with a replicate column
+  goes stale on upgrade and gets the new error on its next run. The setting stays hidden.
+- Every hidden Sample replicates setting is pinned to its default, not the error model alone, and
+  none of them can disable Run.
+- The (bin, concentration) grid check no longer counts an unsorted sample as a gate.
+- Kd,app's description says that with replicates a censored replicate enters the mean at its edge.
+- The per-replicate output drops its unread `kdState` column.
+
+2.5.0 also narrowed the export to the affinity class, Kd,app, -log10 Kd,app and its SE. A downstream
+block that used another of this block's columns (R², Hill coefficient, fit failure reason, the
+replicate counts, the per-concentration signal) loses it on the next run of this block.

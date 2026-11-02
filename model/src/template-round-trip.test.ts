@@ -41,7 +41,7 @@ const configured: BlockData = {
   kdSeGateMax: 1.5,
   requireAllConcentrations: true,
   replicateColumnRef: ref("replicate"),
-  replicateErrorModel: "phillips",
+  replicateErrorModel: "pop_sd_over_sqrt_n_plus_1",
   replicateFitErrorCutoff: 1,
   replicateR2Floor: 0.8,
   replicateCensoredMajority: 0.75,
