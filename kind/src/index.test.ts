@@ -119,6 +119,24 @@ describe("the R² gate", () => {
   it.each([-0.1, 1.01, Number.NaN, "0.8"])("refuses r2GateMin %o", (v) => {
     expect(() => parse({ r2GateMin: v })).toThrow("'r2GateMin' must be");
   });
+
+  it.each([true, false])("accepts requireAllConcentrations %o", (v) => {
+    expect(parse({ requireAllConcentrations: v })).toEqual({ requireAllConcentrations: v });
+  });
+
+  it("refuses a requireAllConcentrations that is not a boolean", () => {
+    expect(() => parse({ requireAllConcentrations: "yes" })).toThrow(
+      "'requireAllConcentrations' must be true or false",
+    );
+  });
+
+  it.each([0.1, 1, 3])("accepts kdSeGateMax %o", (v) => {
+    expect(parse({ kdSeGateMax: v })).toEqual({ kdSeGateMax: v });
+  });
+
+  it.each([0, -1, Number.POSITIVE_INFINITY, "1"])("refuses kdSeGateMax %o", (v) => {
+    expect(() => parse({ kdSeGateMax: v })).toThrow("'kdSeGateMax' must be a number above 0");
+  });
 });
 
 describe("the unbounded settings", () => {

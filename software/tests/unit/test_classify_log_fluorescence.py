@@ -85,3 +85,26 @@ class TestR2Gate:
 
     def test_the_gate_runs_before_the_standard_error(self):
         assert _rate(r2=0.5, r2_gate_min=0.8, log10_kd_se=5.0).affinity_class == "Failed"
+
+
+class TestSeGate:
+    def test_off_by_default_a_wide_error_is_partial(self):
+        assert _rate(log10_kd_se=3.0).affinity_class == "Partial"
+
+    def test_an_in_range_fit_above_the_limit_fails_high_kd_se(self):
+        result = _rate(log10_kd_se=1.01, kd_se_gate_max=1.0)
+        assert (result.affinity_class, result.failure_reason) == ("Failed", "high_kd_se")
+
+    def test_the_limit_is_inclusive(self):
+        assert _rate(log10_kd_se=1.0, kd_se_gate_max=1.0).affinity_class == "Partial"
+
+    @pytest.mark.parametrize("se", [None, math.nan])
+    def test_an_undefined_se_fails_when_the_limit_is_set(self, se):
+        assert _rate(log10_kd_se=se, kd_se_gate_max=1.0).failure_reason == "high_kd_se"
+
+    def test_a_bound_is_not_gated(self):
+        assert _rate(censored=True, log10_kd_se=None, kd_se_gate_max=1.0).affinity_class == "Partial"
+
+    def test_the_r2_gate_reads_first(self):
+        result = _rate(r2=0.1, r2_gate_min=0.8, log10_kd_se=5.0, kd_se_gate_max=1.0)
+        assert result.failure_reason == "low_r2"

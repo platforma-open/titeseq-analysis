@@ -120,8 +120,12 @@ export type BlockArgs =
   | (CommonArgs & {
       equation: "log_fluorescence";
       plateauFloor: number;
-      /** Present only while the R² gate is on, so an ungated block's args name no gate. */
+      /** Present only while the gate is on, so an ungated block's args name no gate. */
       r2GateMin?: number;
+      /** Present only while the gate is on and an SE limit is set. */
+      kdSeGateMax?: number;
+      /** Present only as true. */
+      requireAllConcentrations?: true;
       binFluorescenceColumnRef?: PlRef;
     });
 
@@ -518,6 +522,8 @@ function logFluorescenceArgs(data: BlockData, inputs: ArgsInputs, labels: ArgsLa
     if (data.r2GateMin === undefined) throw new Error("R² gate threshold is required");
     if (data.r2GateMin < 0 || data.r2GateMin > 1)
       throw new Error("R² gate threshold must be between 0 and 1");
+    if (data.kdSeGateMax !== undefined && !(data.kdSeGateMax > 0))
+      throw new Error("Maximum Kd,app SE must be above 0, or empty for no limit");
   }
   return {
     ...inputs,
@@ -525,6 +531,8 @@ function logFluorescenceArgs(data: BlockData, inputs: ArgsInputs, labels: ArgsLa
     equation: "log_fluorescence",
     plateauFloor: data.plateauFloor,
     ...(data.r2GateEnabled && { r2GateMin: data.r2GateMin }),
+    ...(data.r2GateEnabled && data.kdSeGateMax !== undefined && { kdSeGateMax: data.kdSeGateMax }),
+    ...(data.requireAllConcentrations === true && { requireAllConcentrations: true as const }),
     ...labels,
   };
 }
@@ -782,9 +790,11 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
   .output("isRunning", (ctx) => ctx.outputs?.getIsReadyOrError() === false)
 
   .outputWithStatus("summaryTable", (ctx) => {
+    // One row per variant: the summary columns only. The per-concentration signal, keyed by
+    // concentration and replicate as well, would repeat each variant once per measured point; it
+    // is plotted on the Titration Curves page and exported in `pf`.
     const summaryCols = ctx.outputs?.resolve("summaryPf")?.getPColumns();
     if (summaryCols === undefined) return undefined;
-    const signalCols = ctx.outputs?.resolve("signalPf")?.getPColumns() ?? [];
 
     const kdCol = summaryCols.find((c) => c.spec.name === "pl7.app/vdj/kd");
     if (!kdCol) return undefined;
@@ -822,22 +832,14 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
       .map((c) => c.withSpecs({ annotations: { "pl7.app/table/visibility": "optional" } }));
 
     return createPlDataTableV3(ctx, {
-      primaryColumns: [...summaryCols, ...signalCols].map((c) => DataColumn.fromColumn(c)),
+      primaryColumns: summaryCols.map((c) => DataColumn.fromColumn(c)),
       columns: resultPoolCols,
       tableState: ctx.data.tableState,
       displayOptions: {
-        // Reveal fitFailureReason and the signal columns in this block's Table
-        // so users see why each clonotype failed and can export the
-        // per-concentration data. Both carry pl7.app/table/visibility: "hidden"
-        // to stay out of downstream pickers.
+        // Show why each clonotype failed. Results from runs that hid the column still show it.
         visibility: [
           {
-            match: {
-              name: [
-                exactly("pl7.app/vdj/fitFailureReason"),
-                ...signalCols.map((c) => exactly(c.spec.name)),
-              ],
-            },
+            match: { name: [exactly("pl7.app/vdj/fitFailureReason")] },
             visibility: "default",
           },
         ],

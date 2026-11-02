@@ -4,10 +4,18 @@ import { computed } from "vue";
 import { useApp } from "../app";
 import PageHeader from "./PageHeader.vue";
 
-// Only the main page offers Settings.
-defineProps<{ title: string; mode: "graph" | "table"; showSettings?: boolean }>();
+// Only the main page offers Settings and the editable block label.
+const props = defineProps<{ title: string; mode: "graph" | "table"; main?: boolean }>();
 
 const app = useApp();
+
+// PlBlockPage renders the subtitle only while its model is defined, so the other pages pass none.
+const subtitle = computed({
+  get: () => (props.main ? app.model.data.customBlockLabel : undefined),
+  set: (label: string | undefined) => {
+    if (label !== undefined) app.model.data.customBlockLabel = label;
+  },
+});
 
 // Checks with no field of their own. Numeric-field errors show on each PlNumberField.
 const warnings = computed(() => app.model.outputs.validationWarnings ?? []);
@@ -15,13 +23,13 @@ const warnings = computed(() => app.model.outputs.validationWarnings ?? []);
 
 <template>
   <PlBlockPage
-    v-model:subtitle="app.model.data.customBlockLabel"
+    v-model:subtitle="subtitle"
     :subtitle-placeholder="app.model.data.defaultBlockLabel"
     :title="title"
     :no-body-gutters="mode === 'graph'"
   >
     <template #append>
-      <PageHeader :show-settings="showSettings" />
+      <PageHeader :show-settings="props.main" />
     </template>
     <PlAlert
       v-for="(w, i) in warnings"

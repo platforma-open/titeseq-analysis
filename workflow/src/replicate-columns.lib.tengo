@@ -50,7 +50,7 @@ SD_DESCRIPTION := "SD of log10 Kd,app across the replicates in the mean. Empty w
 
 SE_DESCRIPTIONS := {
 	sd_over_sqrt_n: "Standard error of the mean log10 Kd,app across the replicates: their sample SD over the square root of their number. With one replicate, that fit's own standard error where the equation reports one. Empty for a bound and for a failed variant. At or below 0.5, Kd,app is rated Good.",
-	phillips: "Standard error of the mean log10 Kd,app across the replicates: their population SD over the square root of their number plus one, which is the form Phillips 2021 published. With one replicate it is 0. Empty for a bound and for a failed variant."
+	phillips: "Standard error of the mean log10 Kd,app across the replicates: their population SD over the square root of their number plus one, which is the form Phillips 2021 published. With one replicate it is that replicate's own fit error, not the paper's 0. Empty for a bound and for a failed variant."
 }
 
 /**
@@ -62,8 +62,8 @@ SE_DESCRIPTIONS := {
  */
 countColumns := func(blockId, idPrefix) {
 	return [
-		countColumn("replicateCount", blockId, idPrefix, "Replicates",
-			"Replicates that produced a Kd,app and entered the mean. 1 means the reported error is that fit's own standard error rather than a spread across replicates.",
+		countColumn("replicateCount", blockId, idPrefix, "Replicates in mean",
+			"Replicates that produced a Kd,app and entered the mean. A variant with 0 failed in every replicate; the fit failure reason and the per-replicate table say why. 1 means the reported error is that fit's own standard error rather than a spread across replicates.",
 			"default", "190"),
 		countColumn("replicateMeasuredCount", blockId, idPrefix, "Replicates measured",
 			"Replicates whose Kd,app lies inside the titrated range.", "optional", "189"),
@@ -199,6 +199,12 @@ perReplicateColumns := func(blockId, idPrefix, kdAnnotations, classValues) {
 					"pl7.app/isDiscreteFilter": "true",
 					"pl7.app/discreteValues": classValues
 				})
+		},
+		{
+			column: "fitFailureReason",
+			id: idPrefix + "fitFailureReason",
+			spec: hidden("pl7.app/vdj/fitFailureReason", "String", "Fit failure reason (per replicate)",
+				"Why this replicate's own fit rated Failed. Empty when it did not.", {})
 		},
 		{
 			column: "kdState",

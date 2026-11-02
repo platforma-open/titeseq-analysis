@@ -91,7 +91,7 @@ from log_fluorescence import (
     gate_index_to_decades,
     pin_kd,
 )
-from normalization import SIGNAL, normalize
+from normalization import CLONOTYPE_READS_AT_CONC, SIGNAL, normalize
 from output_build import (
     FITTED_MEAN_BIN_SCHEMA,
     PER_CLONOTYPE_SCHEMA,
@@ -413,6 +413,7 @@ def _fit_all_log_fluorescence(
     baseline: float | None,
     gates_measured: bool,
     r2_gate_min: float | None,
+    kd_se_gate_max: float | None,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """ "log_fluorescence": fit every clonotype, then pin, rate and integrate.
 
@@ -452,6 +453,7 @@ def _fit_all_log_fluorescence(
                 log10_kd_se=se,
                 r2=fit.r2,
                 r2_gate_min=r2_gate_min,
+                kd_se_gate_max=kd_se_gate_max,
             ),
         )
         batch.add_curve(clonotype, conc_strs, fit.y_hat if gates_measured else decades_to_gate_index(fit.y_hat))
@@ -493,6 +495,28 @@ def _run_hill_gate_index(
         max_bin=max_bin,
         params=params,
     )
+
+
+def _gate_incomplete_titrations(signal_frame: pl.DataFrame, insufficient_map: dict[str, str | None]) -> None:
+    """Rate Failed, incomplete_titration, every clonotype without reads at each concentration.
+
+    The titration is every concentration in `signal_frame`, 0 M included; with replicates the
+    caller passes one replicate's frame. `insufficient_map` holds every clonotype; a reason an
+    earlier gate set stands.
+    """
+    n_conc = signal_frame[COL_CONC_STR].n_unique()
+    present = (
+        signal_frame.filter(pl.col(CLONOTYPE_READS_AT_CONC) > 0)
+        .group_by(COL_CLONOTYPE)
+        .agg(pl.col(COL_CONC_STR).n_unique().alias("n"))
+    )
+    covered = dict(zip(present[COL_CLONOTYPE].to_list(), present["n"].to_list()))
+    gated = 0
+    for clonotype, reason in insufficient_map.items():
+        if reason is None and covered.get(clonotype, 0) < n_conc:
+            insufficient_map[clonotype] = "incomplete_titration"
+            gated += 1
+    log(f"Complete titrations required: {gated} clonotypes lack reads at one of {n_conc} concentrations")
 
 
 def _run_log_fluorescence(
@@ -547,6 +571,8 @@ def _run_log_fluorescence(
     log(f"Classifying {len(all_clonotypes)} clonotypes for sufficiency")
     insufficient = classify_insufficient(floor_frame, all_clonotypes, gate_params)
     insufficient_map = dict(zip(insufficient[COL_CLONOTYPE].to_list(), insufficient["insufficient_reason"].to_list()))
+    if params.require_all_concentrations:
+        _gate_incomplete_titrations(signal_frame, insufficient_map)
 
     stats_map = _observed_statistics(floor_frame, scale)
     # One baseline for every clonotype: the read-weighted mean 0 M signal. Without 0 M samples,
@@ -566,6 +592,7 @@ def _run_log_fluorescence(
         scale=scale,
         plateau_floor=params.plateau_floor,
         r2_gate_min=params.r2_gate_min,
+        kd_se_gate_max=params.kd_se_gate_max,
         log10_conc_lo=math.log10(conc_lo),
         log10_conc_hi=math.log10(conc_hi),
         baseline=baseline,

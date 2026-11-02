@@ -58,7 +58,7 @@ Test_the_spread_column_is_shown_and_not_a_score := func() {
 
 Test_the_per_replicate_columns_are_hidden_and_carry_the_state := func() {
 	cols := byHeader(replicateColumns.perReplicateColumns("blk", "rep_", KD, CLASSES))
-	headers := ["kd", "kdLog10Se", "r2", "affinityClass", "kdState"]
+	headers := ["kd", "kdLog10Se", "r2", "affinityClass", "fitFailureReason", "kdState"]
 	test.isEqual(len(headers), len(cols), "one column per per_replicate.tsv value header")
 	for h in headers {
 		test.isEqual("rep_" + h, cols[h].id, "id of " + h)

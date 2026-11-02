@@ -18,6 +18,12 @@ export type FitSettings = {
   r2GateEnabled: boolean;
   /** The R² gate's threshold. Read by `log_fluorescence` only, while the gate is on. */
   r2GateMin: number;
+  /** The gate's SE(log10 Kd,app) maximum, while the gate is on. Absent sets no limit. Read by
+   *  `log_fluorescence` only. */
+  kdSeGateMax?: number;
+  /** Whether a clonotype with no reads at one of the titration's concentrations, 0 M included,
+   *  rates Failed before any fit. Absent is off. Read by `log_fluorescence` only. */
+  requireAllConcentrations?: boolean;
   minReadsPerConcentration: number;
   minConcentrationPoints: number;
   r2ThresholdGood: number;
@@ -30,7 +36,12 @@ export type FitSettings = {
 };
 
 /** The settings only `log_fluorescence` reads. */
-export type LogFluorescenceSetting = "plateauFloor" | "r2GateEnabled" | "r2GateMin";
+export type LogFluorescenceSetting =
+  | "plateauFloor"
+  | "r2GateEnabled"
+  | "r2GateMin"
+  | "kdSeGateMax"
+  | "requireAllConcentrations";
 
 /**
  * The settings as the block stores them, which is what the drawer edits: a number field the
@@ -90,17 +101,22 @@ export const PRESETS: readonly Preset[] = [
       equation: "log_fluorescence",
       plateauFloor: DEFAULT_PLATEAU_FLOOR,
       r2GateEnabled: false,
+      requireAllConcentrations: false,
     },
   },
   {
     id: "phillips2021",
     label: "Phillips 2021 (CR6261)",
-    // The authors drop an in-range fit with R² below 0.8 (klawrence26/bnab-landscapes).
+    // The authors drop an in-range fit with R² below 0.8 or SE(log10 Kd) above 1
+    // (klawrence26/bnab-landscapes).
     settings: {
       equation: "log_fluorescence",
       plateauFloor: 0.4,
       r2GateEnabled: true,
       r2GateMin: 0.8,
+      kdSeGateMax: 1,
+      // The authors fit only genotypes with a mean bin at every concentration, 0 M included.
+      requireAllConcentrations: true,
     },
   },
   {

@@ -56,3 +56,12 @@ to two.
 - The signal frames gain the replicate on their key when a replicate column is set, so the
   Titration Curves graph draws each replicate's own curve instead of one pooled curve that belongs
   to no fit.
+
+A variant whose every replicate failed rates `Failed` with the reason `all_replicates_failed`, and
+each replicate's row on the Replicates page carries its own fit failure reason. The count of
+replicates that entered the mean is labelled "Replicates in mean". The main table shows the fit
+failure reason by default.
+
+Under the Phillips 2021 error model, a variant with one replicate in the mean reports that
+replicate's own fit error, not the paper's 0. A zero error rated every single-replicate variant
+Good and left the log-scale Affinity vs Fit Quality chart without a range.

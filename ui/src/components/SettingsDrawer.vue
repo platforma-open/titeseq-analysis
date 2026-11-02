@@ -134,8 +134,8 @@ function setBinColumn(ref: PlRef | undefined): void {
     >
       <template #tooltip>
         Per-sample numeric column giving the antigen concentration at which each sample was stained.
-        The column label becomes the Kd,app unit — prefer a bare unit (e.g. "nM", "µM") over a
-        phrase.
+        The Kd,app unit comes from the column label: the text in its trailing parentheses, so
+        "Antigen concentration (M)" gives "M". A label without parentheses is used whole.
       </template>
     </PlDropdownRef>
     <PlDropdownRef
@@ -267,8 +267,16 @@ function setBinColumn(ref: PlRef | undefined): void {
           clonotypes bind, use a lower value, for example 0.4.
         </template>
       </PlNumberField>
+      <!-- Absent reads as off: the field has no migration default. -->
+      <PlCheckbox
+        v-if="isLogFluorescence"
+        :model-value="app.model.data.requireAllConcentrations === true"
+        @update:model-value="(on: boolean) => (app.model.data.requireAllConcentrations = on)"
+      >
+        Require reads at every concentration
+      </PlCheckbox>
       <PlCheckbox v-if="isLogFluorescence" v-model="app.model.data.r2GateEnabled">
-        Fail in-range fits with a low R²
+        Fail in-range fits of poor quality
       </PlCheckbox>
       <PlNumberField
         v-if="isLogFluorescence && app.model.data.r2GateEnabled"
@@ -281,10 +289,28 @@ function setBinColumn(ref: PlRef | undefined): void {
         :error-message="emptyError(app.model.data.r2GateMin)"
       >
         <template #tooltip>
-          A fit with its Kd,app inside the titrated range and an R² below this value is rated
-          Failed, with the reason low_r2. A Kd,app at the edge of the range is not checked. Off by
-          default; the Phillips 2021 preset turns it on at 0.8, the value its authors used. With
-          sample replicates, the gate rates each replicate's own fit.
+          The lowest R² that a fit can have. A fit with a lower R², or with no R², gets the rating
+          Failed, with the reason low_r2. The block checks only a fit whose Kd,app is inside the
+          titrated range. With sample replicates, the block checks the fit of each replicate. The
+          Phillips 2021 preset sets 0.8. Its authors used this value.
+        </template>
+      </PlNumberField>
+      <PlNumberField
+        v-if="isLogFluorescence && app.model.data.r2GateEnabled"
+        v-model="app.model.data.kdSeGateMax"
+        label="Maximum Kd,app SE (log10, optional)"
+        :min-value="0"
+        :step="0.1"
+        :validate="aboveZero"
+        clearable
+      >
+        <template #tooltip>
+          The largest standard error of log10 Kd,app that a fit can have. A fit with a larger error,
+          or with no error, gets the rating Failed, with the reason high_kd_se. The block checks
+          only a fit whose Kd,app is inside the titrated range. With sample replicates, the block
+          checks the fit of each replicate. An error above 0.5 always changes the rating from Good
+          to Partial. Leave this field empty to set no Failed limit. The Phillips 2021 preset sets
+          1. Its authors used this value.
         </template>
       </PlNumberField>
     </PlAccordionSection>
@@ -302,8 +328,8 @@ function setBinColumn(ref: PlRef | undefined): void {
           SD / √n: the sample standard deviation over the square root of the replicate count. With
           one replicate it is that fit's own standard error. The default. <br /><br />
           Phillips 2021: the population standard deviation over the square root of the count plus
-          one. With one replicate it is 0. This reproduces the standard error published with
-          Phillips 2021.
+          one, which reproduces the standard error published with Phillips 2021. With one replicate
+          it is that fit's own standard error, as above: the paper's form gives 0 there.
         </template>
       </PlDropdown>
       <PlNumberField

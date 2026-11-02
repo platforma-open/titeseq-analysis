@@ -24,6 +24,8 @@ export function deriveTemplateParams(data: BlockData): BlockParams {
     plateauFloor: data.plateauFloor,
     r2GateEnabled: data.r2GateEnabled,
     r2GateMin: data.r2GateMin,
+    kdSeGateMax: data.kdSeGateMax,
+    requireAllConcentrations: data.requireAllConcentrations,
     replicateColumnRef: data.replicateColumnRef,
     replicateErrorModel: data.replicateErrorModel,
     replicateFitErrorCutoff: data.replicateFitErrorCutoff,

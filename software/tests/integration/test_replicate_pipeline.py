@@ -339,4 +339,6 @@ class TestReviewClassesAcrossReplicates:
         outputs = run(_frame(self.DESIGN), params=gated, replicates=REPS)
         per_replicate = outputs["per_replicate"].filter(pl.col("clonotypeKey") == "v1")
         assert per_replicate["kdState"].to_list() == ["failed", "failed"]
+        assert per_replicate["fitFailureReason"].to_list() == ["low_r2", "low_r2"]
         assert _kd(outputs["per_clonotype"], "v1", "affinityClass") == "Failed"
+        assert _kd(outputs["per_clonotype"], "v1", "fitFailureReason") == "all_replicates_failed"

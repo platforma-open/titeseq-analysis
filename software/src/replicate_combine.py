@@ -15,8 +15,10 @@ per-replicate results and reduces them to one.
   SE           by `error_model`:
                  sd_over_sqrt_n  sample SD (ddof 1) / sqrt(n); for n = 1 the replicate's own fit
                                  SE, where the equation reports one, else empty
-                 phillips        population SD (ddof 0) / sqrt(n + 1), which is 0 for n = 1.
-                                 Reproduces the SEM published with Phillips 2021
+                 phillips        population SD (ddof 0) / sqrt(n + 1). Reproduces the SEM
+                                 published with Phillips 2021 for n >= 2. For n = 1 the paper's
+                                 form is 0, which would rate any single replicate Good; the
+                                 replicate's own fit SE stands in, as under sd_over_sqrt_n
   SD           sample SD (ddof 1) of the entered replicates, whatever the error model; empty for
                n = 1
   bound        no entered replicate measured a K_D. One censoring side must hold at least
@@ -57,6 +59,7 @@ STATES: tuple[ReplicateState, ...] = ("measured", "below", "above", "failed", "f
 ENTERED: tuple[ReplicateState, ...] = ("measured", "below", "above")
 
 REASON_ALL_FILTERED = "all_replicates_filtered"
+REASON_ALL_FAILED = "all_replicates_failed"
 REASON_CONFLICTING = "conflicting_censoring"
 
 # A censored value's side of the titration: "below" the lowest concentration or "above" the highest.
@@ -131,6 +134,8 @@ class ReplicateValue:
     log10_kd_se: float | None
     affinity_class: str
     r2: float | None = None
+    # The replicate's own fit failure reason; None unless its fit rated Failed.
+    failure_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -163,7 +168,9 @@ def replicate_value(
     state: ReplicateState = fit.state
     if state == "measured" and filters.rejects(fit.log10_kd_se, r2):
         state = "filtered"
-    return ReplicateValue(replicate, state, fit.log10_kd, fit.log10_kd_se, fit.affinity_class, r2)
+    return ReplicateValue(
+        replicate, state, fit.log10_kd, fit.log10_kd_se, fit.affinity_class, r2, row.get("fitFailureReason")
+    )
 
 
 def _spread_se(values: list[float], error_model: ReplicateErrorModel) -> float:
@@ -207,7 +214,8 @@ def combine_replicates(
     entered = [v for v in values if v.state in ENTERED and v.log10_kd is not None]
     n = len(entered)
     if n == 0:
-        reason = REASON_ALL_FILTERED if counts["filtered"] > 0 else None
+        # A filter dropping a replicate is the more specific cause, so it names the failure.
+        reason = REASON_ALL_FILTERED if counts["filtered"] > 0 else REASON_ALL_FAILED
         return Merged(None, None, None, Classification("Failed", reason), None, counts)
 
     if not any(v.state == "measured" for v in entered):
@@ -216,7 +224,7 @@ def combine_replicates(
     points = [v.log10_kd for v in entered]
     mean = math.fsum(points) / n
     if n == 1:
-        se = 0.0 if error_model == "phillips" else entered[0].log10_kd_se
+        se = entered[0].log10_kd_se
         sd = None
     else:
         se = _spread_se(points, error_model)
@@ -252,6 +260,7 @@ PER_REPLICATE_COLUMNS: dict[str, pl.DataType] = {
     "kdLog10Se": pl.Float64,
     "r2": pl.Float64,
     "affinityClass": pl.Utf8,
+    "fitFailureReason": pl.Utf8,
     "kdState": pl.Utf8,
 }
 
@@ -319,6 +328,7 @@ def build_per_replicate_frame(collected: Collected, key_col: str) -> pl.DataFram
             cols["kdLog10Se"].append(value.log10_kd_se)
             cols["r2"].append(value.r2)
             cols["affinityClass"].append(value.affinity_class)
+            cols["fitFailureReason"].append(value.failure_reason)
             cols["kdState"].append(STATE_LABELS[value.state])
     return pl.DataFrame(cols, schema=schema)
 

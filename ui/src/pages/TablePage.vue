@@ -11,7 +11,7 @@ const tableSettings = usePlDataTableSettingsV2({
 </script>
 
 <template>
-  <TiteseqPage title="Clonotype Fit Results" mode="table" show-settings>
+  <TiteseqPage title="Clonotype Fit Results" mode="table" main>
     <PlAgDataTableV2
       v-model="app.model.data.tableState"
       :settings="tableSettings"

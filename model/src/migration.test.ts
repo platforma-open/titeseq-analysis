@@ -223,6 +223,36 @@ describe("the R² gate", () => {
     );
   });
 
+  it("sends an SE limit only while the gate is on and the limit is set", () => {
+    expect(Object.hasOwn(argsOf({ ...configured, r2GateEnabled: true }), "kdSeGateMax")).toBe(
+      false,
+    );
+    expect(argsOf({ ...configured, r2GateEnabled: true, kdSeGateMax: 1 })).toMatchObject({
+      r2GateMin: 0.8,
+      kdSeGateMax: 1,
+    });
+    expect(Object.hasOwn(argsOf({ ...configured, kdSeGateMax: 1 }), "kdSeGateMax")).toBe(false);
+  });
+
+  it("disables Run on an SE limit of zero while the gate is on", () => {
+    expect(() => argsOf({ ...configured, r2GateEnabled: true, kdSeGateMax: 0 })).toThrow(
+      "Maximum Kd,app SE must be above 0",
+    );
+  });
+
+  it("sends the complete-titration rule only when it is on", () => {
+    expect(Object.hasOwn(argsOf(configured), "requireAllConcentrations")).toBe(false);
+    expect(
+      Object.hasOwn(
+        argsOf({ ...configured, requireAllConcentrations: false }),
+        "requireAllConcentrations",
+      ),
+    ).toBe(false);
+    expect(argsOf({ ...configured, requireAllConcentrations: true })).toMatchObject({
+      requireAllConcentrations: true,
+    });
+  });
+
   it("an off gate with its threshold cleared still runs", () => {
     expect(() => argsOf({ ...configured, r2GateMin: undefined })).not.toThrow();
   });

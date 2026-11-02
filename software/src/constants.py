@@ -17,16 +17,20 @@ FailureReason = Literal[
     "non_monotonic_signal",
     "convergence_failure",
     "low_r2",
+    "high_kd_se",
+    "incomplete_titration",
     "n_out_of_range",
     "all_replicates_filtered",
+    "all_replicates_failed",
     "conflicting_censoring",
 ]
 
 # How the error of a value combined over sample replicates is computed.
 #   "sd_over_sqrt_n"  — sample SD (ddof 1) / sqrt(n); for n = 1 the fit's own SE, where the
 #                       equation reports one, else empty.
-#   "phillips"        — population SD (ddof 0) / sqrt(n + 1); 0 for n = 1. Reproduces the SEM
-#                       published with Phillips 2021.
+#   "phillips"        — population SD (ddof 0) / sqrt(n + 1). Reproduces the SEM published with
+#                       Phillips 2021 for n >= 2; for n = 1 the fit's own SE, as above, not the
+#                       paper's 0.
 ReplicateErrorModel = Literal["sd_over_sqrt_n", "phillips"]
 REPLICATE_ERROR_MODELS: tuple[ReplicateErrorModel, ...] = ("sd_over_sqrt_n", "phillips")
 
@@ -85,6 +89,13 @@ class FitParams:
     # Read by "log_fluorescence" only. An in-range fit with R² below this rates Failed, low_r2.
     # None turns the gate off.
     r2_gate_min: float | None = None
+    # Read by "log_fluorescence" only. An in-range fit with SE(log10 K_D) above this rates Failed,
+    # high_kd_se. None sets no limit.
+    kd_se_gate_max: float | None = None
+    # Read by "log_fluorescence" only. True rates a clonotype with no reads at one or more of the
+    # titration's concentrations, 0 M included, Failed, incomplete_titration, before any fit.
+    # Phillips 2021 fits complete titrations only.
+    require_all_concentrations: bool = False
     # Everything below is read by "hill_gate_index" only.
     min_reads_per_concentration: int = 3
     min_concentration_points: int = 5
@@ -103,6 +114,8 @@ class FitParams:
             raise ValueError(f"unknown equation {self.equation!r}; expected one of {', '.join(EQUATIONS)}")
         if self.r2_gate_min is not None and not 0.0 <= self.r2_gate_min <= 1.0:
             raise ValueError(f"r2_gate_min must be between 0 and 1, got {self.r2_gate_min!r}")
+        if self.kd_se_gate_max is not None and not self.kd_se_gate_max > 0.0:
+            raise ValueError(f"kd_se_gate_max must be above 0, got {self.kd_se_gate_max!r}")
 
 
 DEFAULT_PARAMS = FitParams()

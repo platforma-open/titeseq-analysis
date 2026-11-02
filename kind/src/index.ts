@@ -74,6 +74,12 @@ export type BlockParams = {
   r2GateEnabled?: boolean;
   /** The R² gate's threshold. Read by `log_fluorescence` only, while the gate is on. */
   r2GateMin?: number;
+  /** The gate's SE(log10 Kd,app) maximum, while the gate is on. Absent sets no limit. Read by
+   *  `log_fluorescence` only. */
+  kdSeGateMax?: number;
+  /** Whether a clonotype with no reads at one of the titration's concentrations rates Failed
+   *  before any fit. Read by `log_fluorescence` only. */
+  requireAllConcentrations?: boolean;
   minReadsPerConcentration?: number;
   minConcentrationPoints?: number;
   r2ThresholdGood?: number;
@@ -192,6 +198,8 @@ const CONTRACT = {
   plateauFloor: check(isPositiveFraction, "a number above 0 and at most 1"),
   r2GateEnabled: check(isBoolean, "true or false"),
   r2GateMin: check(isFraction, "a number between 0 and 1"),
+  requireAllConcentrations: check(isBoolean, "true or false"),
+  kdSeGateMax: check((v): v is number => isFiniteNumber(v) && v > 0, "a number above 0"),
   minReadsPerConcentration: check(isNumberFrom(1), "a number of 1 or more"),
   minConcentrationPoints: check(isNumberFrom(3), "a number of 3 or more"),
   r2ThresholdGood: check(isFraction, "a number between 0 and 1"),

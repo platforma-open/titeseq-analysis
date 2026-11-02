@@ -152,6 +152,14 @@ wf.body(func(args) {
 		if !is_undefined(args.r2GateMin) {
 			paramsPayload.r2_gate_min = args.r2GateMin
 		}
+		// Absent means the gate sets no limit on the Kd,app error.
+		if !is_undefined(args.kdSeGateMax) {
+			paramsPayload.kd_se_gate_max = args.kdSeGateMax
+		}
+		// Absent means a titration with a gap is still fitted.
+		if !is_undefined(args.requireAllConcentrations) {
+			paramsPayload.require_all_concentrations = args.requireAllConcentrations
+		}
 	} else {
 		paramsPayload = {
 			min_reads_per_concentration: args.minReadsPerConcentration,
@@ -299,7 +307,7 @@ wf.body(func(args) {
 			r2Visibility = "hidden"
 		}
 		affinityClassValues = "[\"Good\",\"Partial\",\"Non-binder\",\"Failed\"]"
-		affinityClassDescription = "Good: Kd,app inside the titrated range, with a standard error of log10 Kd,app at or below 0.5. Partial: Kd,app is a bound at the edge of the titration, or its standard error is larger. Non-binder: the signal stayed flat and dim at every concentration. Failed: no fit, or the R² gate is on and an in-range fit fell below it; see the fit failure reason."
+		affinityClassDescription = "Good: Kd,app inside the titrated range, with a standard error of log10 Kd,app at or below 0.5. Partial: Kd,app is a bound at the edge of the titration, or its standard error is larger. Non-binder: the signal stayed flat and dim at every concentration. Failed: no fit, a gap in the titration while complete titrations are required, or the fit-quality gate is on and an in-range fit's R² is below its minimum or its standard error above its maximum; see the fit failure reason."
 	}
 	summaryColumns := [
 		{
@@ -368,7 +376,7 @@ wf.body(func(args) {
 				annotations: {
 					"pl7.app/label": "Fit failure reason",
 					"pl7.app/isScore": "false",
-					"pl7.app/table/visibility": "hidden",
+					"pl7.app/table/visibility": "default",
 					"pl7.app/table/orderPriority": "197"
 				}
 			}

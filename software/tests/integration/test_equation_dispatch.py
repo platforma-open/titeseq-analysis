@@ -444,3 +444,44 @@ class TestGridWarningReadsTheFilteredFrame:
         ]
         run(_frame(x, y), params=LF, target_antigen="X", antigen_column_ref="antigen")
         assert "(bin, concentration) samples" not in capsys.readouterr().out
+
+
+class TestSeGate:
+    def test_a_limit_below_the_fits_error_fails_it_high_kd_se(self):
+        gated = FitParams(equation="log_fluorescence", kd_se_gate_max=1e-9)
+        row = _row(run(_frame(_lf_reads("G1", 1e-8)), params=gated), "G1")
+        assert (row["affinityClass"], row["fitFailureReason"]) == ("Failed", "high_kd_se")
+
+    def test_a_generous_limit_leaves_a_good_fit_good(self):
+        gated = FitParams(equation="log_fluorescence", kd_se_gate_max=1.0)
+        assert _row(run(_frame(_lf_reads("G1", 1e-8)), params=gated), "G1")["affinityClass"] == "Good"
+
+    def test_a_limit_of_zero_is_refused(self):
+        with pytest.raises(ValueError, match="kd_se_gate_max"):
+            FitParams(equation="log_fluorescence", kd_se_gate_max=0.0)
+
+
+class TestCompleteTitration:
+    @staticmethod
+    def _missing_one_concentration() -> list[dict]:
+        # G1 has no reads at the third concentration; G2 has reads everywhere.
+        drop = str(CONCS[2])
+        g1 = [r for r in _lf_reads("G1", 1e-8) if r["concentrationStr"] != drop]
+        return g1 + _lf_reads("G2", 1e-8)
+
+    def test_off_by_default_a_gap_still_fits(self):
+        out = run(_frame(self._missing_one_concentration()), params=LF)
+        assert _row(out, "G1")["affinityClass"] == "Good"
+
+    def test_on_a_gap_fails_incomplete_titration_without_a_fit(self):
+        gated = FitParams(equation="log_fluorescence", require_all_concentrations=True)
+        out = run(_frame(self._missing_one_concentration()), params=gated)
+        row = _row(out, "G1")
+        assert (row["affinityClass"], row["fitFailureReason"]) == ("Failed", "incomplete_titration")
+        assert row["kd"] is None
+        assert _row(out, "G2")["affinityClass"] == "Good"
+
+    def test_an_earlier_gate_keeps_its_reason(self):
+        gated = FitParams(equation="log_fluorescence", require_all_concentrations=True)
+        row = _row(run(_frame(_lf_reads("SHORT", 1e-8, concs=CONCS[:4])), params=gated), "SHORT")
+        assert row["fitFailureReason"] == "insufficient_points"

@@ -87,10 +87,11 @@ class TestErrorModels:
         assert m.log10_kd_se is None
         assert m.classification.affinity_class == "Partial"
 
-    def test_one_replicate_under_phillips_reports_exactly_zero(self):
-        m = combine_replicates([_value("A", -8.0, se=0.31)], error_model="phillips")
-        assert m.log10_kd_se == 0.0
-        assert m.classification.affinity_class == "Good"
+    def test_one_replicate_under_phillips_reports_its_own_fit_error(self):
+        # The paper's form is 0 at n = 1, which would rate every single replicate Good.
+        m = combine_replicates([_value("A", -8.0, se=0.61)], error_model="phillips")
+        assert m.log10_kd_se == pytest.approx(0.61)
+        assert m.classification.affinity_class == "Partial"
 
     def test_the_sd_column_is_the_sample_sd_whatever_the_error_model(self):
         values = [_value(str(i), p) for i, p in enumerate(self.POINTS)]
@@ -180,9 +181,16 @@ class TestFilters:
         assert m.log10_kd is None
         assert m.classification.failure_reason == "all_replicates_filtered"
 
-    def test_every_replicate_failed_names_no_filter(self):
+    def test_every_replicate_failed_is_named(self):
         m = combine_replicates([ReplicateValue("A", "failed", None, None, "Failed")])
-        assert m.classification.failure_reason is None
+        assert m.classification.failure_reason == "all_replicates_failed"
+
+    def test_a_filter_names_the_failure_over_a_failed_fit(self):
+        values = [
+            ReplicateValue("A", "failed", None, None, "Failed"),
+            ReplicateValue("B", "filtered", -8.0, 2.0, "Partial"),
+        ]
+        assert combine_replicates(values).classification.failure_reason == "all_replicates_filtered"
 
 
 class TestFrames:
@@ -210,7 +218,9 @@ class TestFrames:
 
     def test_the_per_replicate_frame_holds_one_row_a_replicate(self):
         frame = build_per_replicate_frame(self._collected(), "clonotypeKey")
-        assert frame.columns == ["clonotypeKey", "replicate", "kd", "kdLog10Se", "r2", "affinityClass", "kdState"]
+        assert frame.columns == [
+            "clonotypeKey", "replicate", "kd", "kdLog10Se", "r2", "affinityClass", "fitFailureReason", "kdState",
+        ]  # fmt: skip
         assert frame.height == 4
         assert frame.filter(kdState="failed").height == 2
 
