@@ -161,6 +161,7 @@ blockTest(
       defaultBlockLabel: "Tite-Seq Analysis",
       customBlockLabel: "",
       tableState: createPlDataTableStateV2(),
+      ntTableState: createPlDataTableStateV2(),
       graphStateTitrationCurves: {
         title: "Titration Curves",
         template: "dots",
@@ -466,6 +467,7 @@ blockTest(
         defaultBlockLabel: "Tite-Seq Analysis",
         customBlockLabel: "",
         tableState: createPlDataTableStateV2(),
+        ntTableState: createPlDataTableStateV2(),
         graphStateTitrationCurves: {
           title: "Titration Curves",
           template: "dots",

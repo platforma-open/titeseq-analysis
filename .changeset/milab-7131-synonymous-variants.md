@@ -48,5 +48,7 @@ variants as repeats.
   and variants with several parents, are counted and named in the block's warnings, as at the
   amino-acid grain.
 - The table shows amino-acid rows in this mode. Each nucleotide variant's own fit stays in the
-  export and in the graphs.
+  export and in the graphs, and a second page, NT Variants, shows one row per nucleotide variant:
+  its fit, its class and parent delta, and the result pool's columns on the nucleotide axis. The
+  page exists in this mode only. Its table state is new block data, added by a v2 -> v3 migration.
 - Page titles and help text name the input: clonotype, variant or peptide.

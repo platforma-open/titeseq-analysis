@@ -111,6 +111,8 @@ export type BlockData = FitInputs &
      *  Not authoritative: the settings themselves are. Never reaches the workflow. */
     appliedPreset?: PresetId;
     tableState: PlDataTableStateV2;
+    /** The nucleotide variant table, shown in synonymous mode only. */
+    ntTableState: PlDataTableStateV2;
     graphStateTitrationCurves: GraphMakerState;
     graphStateKDHistogram: GraphMakerState;
     graphStateAffinityVsFit: GraphMakerState;
@@ -121,7 +123,13 @@ export type BlockData = FitInputs &
  * v1: the block as published through 2.4.0 — one fit, the free-exponent Hill on the read-weighted
  * mean gate index, with no equation to choose. This is the shape every released project stores.
  */
-export type BlockDataV1 = Omit<BlockData, "equation" | "plateauFloor" | "appliedPreset">;
+export type BlockDataV1 = Omit<
+  BlockData,
+  "equation" | "plateauFloor" | "appliedPreset" | "ntTableState"
+>;
+
+/** v2: the block as published with the equation choice, before the nucleotide variant table. */
+export type BlockDataV2 = Omit<BlockData, "ntTableState">;
 
 // Bind by resolvePath, not block-id domain, so defaults survive a fresh block
 // or project. The format — double-encoded JSON — is what GraphMaker stores.
@@ -229,6 +237,7 @@ export const initBlockData = (params?: BlockParams): BlockData => ({
   defaultBlockLabel: "Tite-Seq Analysis",
   customBlockLabel: params?.customBlockLabel ?? "",
   tableState: createPlDataTableStateV2(),
+  ntTableState: createPlDataTableStateV2(),
   graphStateTitrationCurves: {
     title: "",
     template: "dots",
@@ -269,15 +278,22 @@ export const initBlockData = (params?: BlockParams): BlockData => ({
  * not read one. Nothing else moves: every setting, reference, label and piece of view state
  * crosses untouched, so a re-run reproduces the numbers the project already holds.
  */
-export const migrateV1ToV2 = (v1: BlockDataV1): BlockData => ({
+export const migrateV1ToV2 = (v1: BlockDataV1): BlockDataV2 => ({
   ...v1,
   equation: "hill_gate_index",
   plateauFloor: DEFAULT_PLATEAU_FLOOR,
 });
 
+/** v2 -> v3. Adds the nucleotide variant table's state, empty. View state only: the args do not move. */
+export const migrateV2ToV3 = (v2: BlockDataV2): BlockData => ({
+  ...v2,
+  ntTableState: createPlDataTableStateV2(),
+});
+
 export const dataModel = new DataModelBuilder({ kind })
   .from<BlockDataV1>("v1")
-  .migrate<BlockData>("v2", migrateV1ToV2)
+  .migrate<BlockDataV2>("v2", migrateV1ToV2)
+  .migrate<BlockData>("v3", migrateV2ToV3)
   .init(({ params }) => initBlockData(params));
 
 function isIntegerValueType(vt: string | undefined): boolean {
@@ -486,6 +502,91 @@ function poolSynonymousAaAxis(ctx: Ctx) {
 function halfMatchedParent(ctx: Ctx) {
   const found = poolSynonymousAaAxis(ctx);
   return found === undefined ? undefined : halfMatchedParentInput(found.specs, found.aaAxis);
+}
+
+/**
+ * The block's pages. The nucleotide variant table exists in synonymous mode only, beside the
+ * amino-acid table. Each entry stays an `as const` literal: the routes are typed from the hrefs.
+ */
+export const sectionsFor = (synonymous: boolean) => [
+  { type: "link" as const, href: "/" as const, label: "Table" },
+  ...(synonymous
+    ? [{ type: "link" as const, href: "/nt-variants" as const, label: "NT Variants" }]
+    : []),
+  { type: "link" as const, href: "/titration-curves" as const, label: "Titration Curves" },
+  { type: "link" as const, href: "/kd-distribution" as const, label: "Kd Distribution" },
+  { type: "link" as const, href: "/affinity-vs-fit" as const, label: "Affinity vs Fit Quality" },
+];
+
+type FitColumns = NonNullable<ReturnType<typeof variantSummaryCols>>;
+
+/**
+ * A fit results table: `summaryCols` and `signalCols` as primary columns, joined with the result
+ * pool's columns on the Kd,app column's axis.
+ */
+function fitTable(
+  ctx: Ctx,
+  summaryCols: FitColumns,
+  signalCols: FitColumns,
+  tableState: PlDataTableStateV2,
+) {
+  const kdCol = summaryCols.find((c) => c.spec.name === "pl7.app/vdj/kd");
+  if (!kdCol) return undefined;
+
+  // Include result pool columns keyed by the same clonotype axis as the kd
+  // column — i.e., the same cohort of clonotypes. Each axis is matched by
+  // full spec (name + domain), not just name, so when the upstream is a
+  // redefine-clonotypes run, columns keyed by the original (pre-redefine)
+  // clonotype axis are correctly excluded — those have the same axis name but
+  // a different domain and a disjoint key space, which would otherwise fail
+  // spec integration with "axes sets are disjoint".
+  const resultPoolCols = ColumnsCollection(["result_pool"], { ctx: ctx.ctx })
+    .filter({
+      include: {
+        axes: kdCol.spec.axesSpec.map((axis) => ({
+          name: [exactly(axis.name)],
+          domain: Object.fromEntries(
+            Object.entries(axis.domain ?? {}).map(([key, value]) => [key, [exactly(value)]]),
+          ),
+        })),
+        partialAxesMatch: false,
+      },
+      // The table attaches axis labels itself; a copy re-annotated below
+      // would get its own id and show up as a second label column.
+      exclude: { name: [exactly("pl7.app/label")] },
+    })
+    .getColumns()
+    .filter((c) => {
+      const spec = c.getSpec();
+      return (
+        (spec.valueType as string) !== "File" &&
+        !spec.annotations?.["pl7.app/trace"]?.includes("milaboratories.titeseq-analysis")
+      );
+    })
+    .map((c) => c.withSpecs({ annotations: { "pl7.app/table/visibility": "optional" } }));
+
+  return createPlDataTableV3(ctx, {
+    primaryColumns: [...summaryCols, ...signalCols].map((c) => DataColumn.fromColumn(c)),
+    columns: resultPoolCols,
+    tableState,
+    displayOptions: {
+      // Reveal fitFailureReason and the signal columns in this block's Table
+      // so users see why each clonotype failed and can export the
+      // per-concentration data. Both carry pl7.app/table/visibility: "hidden"
+      // to stay out of downstream pickers.
+      visibility: [
+        {
+          match: {
+            name: [
+              exactly("pl7.app/vdj/fitFailureReason"),
+              ...signalCols.map((c) => exactly(c.spec.name)),
+            ],
+          },
+          visibility: "default",
+        },
+      ],
+    },
+  });
 }
 
 export const platforma = BlockModelV3.create({ dataModel, kind })
@@ -705,64 +806,18 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     // The signal is per nucleotide variant and does not join amino-acid rows.
     const signalCols =
       variantCols !== undefined ? [] : (ctx.outputs?.resolve("signalPf")?.getPColumns() ?? []);
+    return fitTable(ctx, summaryCols, signalCols, ctx.data.tableState);
+  })
 
-    const kdCol = summaryCols.find((c) => c.spec.name === "pl7.app/vdj/kd");
-    if (!kdCol) return undefined;
-
-    // Include result pool columns keyed by the same clonotype axis as the kd
-    // column — i.e., the same cohort of clonotypes. Each axis is matched by
-    // full spec (name + domain), not just name, so when the upstream is a
-    // redefine-clonotypes run, columns keyed by the original (pre-redefine)
-    // clonotype axis are correctly excluded — those have the same axis name but
-    // a different domain and a disjoint key space, which would otherwise fail
-    // spec integration with "axes sets are disjoint".
-    const resultPoolCols = ColumnsCollection(["result_pool"], { ctx: ctx.ctx })
-      .filter({
-        include: {
-          axes: kdCol.spec.axesSpec.map((axis) => ({
-            name: [exactly(axis.name)],
-            domain: Object.fromEntries(
-              Object.entries(axis.domain ?? {}).map(([key, value]) => [key, [exactly(value)]]),
-            ),
-          })),
-          partialAxesMatch: false,
-        },
-        // The table attaches axis labels itself; a copy re-annotated below
-        // would get its own id and show up as a second label column.
-        exclude: { name: [exactly("pl7.app/label")] },
-      })
-      .getColumns()
-      .filter((c) => {
-        const spec = c.getSpec();
-        return (
-          (spec.valueType as string) !== "File" &&
-          !spec.annotations?.["pl7.app/trace"]?.includes("milaboratories.titeseq-analysis")
-        );
-      })
-      .map((c) => c.withSpecs({ annotations: { "pl7.app/table/visibility": "optional" } }));
-
-    return createPlDataTableV3(ctx, {
-      primaryColumns: [...summaryCols, ...signalCols].map((c) => DataColumn.fromColumn(c)),
-      columns: resultPoolCols,
-      tableState: ctx.data.tableState,
-      displayOptions: {
-        // Reveal fitFailureReason and the signal columns in this block's Table
-        // so users see why each clonotype failed and can export the
-        // per-concentration data. Both carry pl7.app/table/visibility: "hidden"
-        // to stay out of downstream pickers.
-        visibility: [
-          {
-            match: {
-              name: [
-                exactly("pl7.app/vdj/fitFailureReason"),
-                ...signalCols.map((c) => exactly(c.spec.name)),
-              ],
-            },
-            visibility: "default",
-          },
-        ],
-      },
-    });
+  // Synonymous mode only: one row per nucleotide variant, its own fit and its nt-grain columns.
+  .outputWithStatus("ntVariantTable", (ctx) => {
+    if (variantSummaryCols(ctx) === undefined) return undefined;
+    const summaryCols = ctx.outputs?.resolve("summaryPf")?.getPColumns();
+    if (summaryCols === undefined) return undefined;
+    const ntCols =
+      ctx.outputs?.resolve({ field: "ntVariantPf", allowPermanentAbsence: true })?.getPColumns() ??
+      [];
+    return fitTable(ctx, [...summaryCols, ...ntCols], [], ctx.data.ntTableState);
   })
 
   .outputWithStatus("titrationCurvesPf", (ctx): PFrameHandle | undefined => {
@@ -805,12 +860,7 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
 
   .subtitle((ctx) => ctx.data.customBlockLabel || ctx.data.defaultBlockLabel || "")
 
-  .sections((_ctx) => [
-    { type: "link", href: "/", label: "Table" },
-    { type: "link", href: "/titration-curves", label: "Titration Curves" },
-    { type: "link", href: "/kd-distribution", label: "Kd Distribution" },
-    { type: "link", href: "/affinity-vs-fit", label: "Affinity vs Fit Quality" },
-  ])
+  .sections((ctx) => sectionsFor(variantSummaryCols(ctx) !== undefined))
 
   .done();
 

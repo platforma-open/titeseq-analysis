@@ -1,12 +1,13 @@
 import type { PlRef } from "@platforma-sdk/model";
 import { describe, expect, it } from "vitest";
-import type { BlockArgs, BlockData, BlockDataV1 } from "./index";
+import type { BlockArgs, BlockData, BlockDataV1, BlockDataV2 } from "./index";
 import {
   HILL_GATE_INDEX_DEFAULTS,
   dataModel,
   deriveArgs,
   initBlockData,
   migrateV1ToV2,
+  sectionsFor,
 } from "./index";
 
 const ref = (name: string): PlRef => ({ __isRef: true, blockId: "b1", name });
@@ -45,7 +46,7 @@ const v240Project: BlockDataV1 = {
 /** The project as the block will hold it after the upgrade, through the real version chain. */
 const upgraded = (): BlockData => {
   const migrated = dataModel.migrate({ version: "v1", data: v240Project });
-  expect(migrated.version).toBe("v2");
+  expect(migrated.version).toBe("v3");
   return migrated.data;
 };
 
@@ -187,6 +188,58 @@ describe("the synonymous weighting", () => {
   it("is unset on a new block and on an upgraded project", () => {
     expect(initBlockData().synonymousWeighting).toBeUndefined();
     expect(upgraded().synonymousWeighting).toBeUndefined();
+  });
+});
+
+describe("a project stored on the v2 data model", () => {
+  const { ntTableState: _n, ...v2Project }: BlockData = {
+    ...initBlockData(),
+    abundanceRef: ref("abundance"),
+    concentrationColumnRef: ref("concentration"),
+    binColumnRef: ref("bin"),
+    customBlockLabel: "CD19 titration",
+    settingsOpen: true,
+  };
+  const stored: BlockDataV2 = v2Project;
+  const migrated = () => dataModel.migrate({ version: "v2", data: stored });
+
+  it("gains an empty nucleotide variant table state", () => {
+    expect(migrated().version).toBe("v3");
+    expect(migrated().data.ntTableState).toEqual(initBlockData().ntTableState);
+  });
+
+  it("keeps everything it stored", () => {
+    const { ntTableState: _added, ...rest } = migrated().data;
+    expect(rest).toEqual(stored);
+  });
+
+  it("projects the args it projected", () => {
+    expect(JSON.stringify(argsOf(migrated().data))).toBe(
+      JSON.stringify(argsOf({ ...stored, ntTableState: initBlockData().ntTableState })),
+    );
+  });
+});
+
+describe("the pages", () => {
+  const hrefs = (synonymous: boolean) => sectionsFor(synonymous).map((s) => s.href);
+
+  it("show the nucleotide variant table in synonymous mode, after the main table", () => {
+    expect(hrefs(true)).toEqual([
+      "/",
+      "/nt-variants",
+      "/titration-curves",
+      "/kd-distribution",
+      "/affinity-vs-fit",
+    ]);
+  });
+
+  it("leave every other input with the four pages it had", () => {
+    expect(sectionsFor(false)).toEqual([
+      { type: "link", href: "/", label: "Table" },
+      { type: "link", href: "/titration-curves", label: "Titration Curves" },
+      { type: "link", href: "/kd-distribution", label: "Kd Distribution" },
+      { type: "link", href: "/affinity-vs-fit", label: "Affinity vs Fit Quality" },
+    ]);
   });
 });
 
