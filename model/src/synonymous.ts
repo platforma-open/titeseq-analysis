@@ -26,6 +26,9 @@ export type SynonymousSummary = {
     reason: "no-unmutated-variant" | "several-unmutated-variants";
   }[];
   multiParentVariants?: number;
+  weighting?: "none" | "reads";
+  /** Present when the amino-acid productive column resolved. */
+  stopAaVariants?: number;
 };
 
 /**
@@ -150,6 +153,11 @@ export function synonymousMessages(
   if ((summary.multiParentVariants ?? 0) > 0)
     messages.push(
       `${summary.multiParentVariants} amino-acid variants link to several parents and have no parent delta.`,
+    );
+  if ((summary.stopAaVariants ?? 0) > 0)
+    messages.push(
+      `${summary.stopAaVariants} amino-acid variants carry a stop codon. They have no Kd,app and are ` +
+        "rated Failed; their nucleotide variants keep their own fits.",
     );
   return messages;
 }

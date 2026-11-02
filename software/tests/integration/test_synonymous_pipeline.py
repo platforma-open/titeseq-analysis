@@ -82,6 +82,19 @@ PARENT_INPUTS = {
 }
 
 
+# The nt mutation count of each copy; the first copy of each aa variant is the unmutated one.
+NT_MUTATIONS = pl.DataFrame(
+    {
+        "ntKey": [nt for cs in LIBRARY.values() for nt, *_ in cs] + ["amb", "orphan"],
+        "mutationCount": [str(i) for cs in LIBRARY.values() for i in range(len(cs))] + ["1", "1"],
+    }
+)
+# SINGLE carries a stop codon.
+AA_PRODUCTIVE = pl.DataFrame(
+    {"aaKey": list(LIBRARY), "productive": ["false" if aa == "SINGLE" else "true" for aa in LIBRARY]}
+)
+
+
 @pytest.fixture(scope="module")
 def reads() -> pl.DataFrame:
     return _library_reads()
@@ -192,6 +205,46 @@ class TestParentDelta:
         assert out["synonymous_summary"]["parentMode"] is False
 
 
+class TestVariantClassAndStops:
+    @pytest.fixture(scope="class")
+    def classed(self, reads):
+        inputs = SynonymousInputs(_links(), aa_productive=AA_PRODUCTIVE, nt_mutations=NT_MUTATIONS, **PARENT_INPUTS)
+        return run(reads, params=LF, synonymous=inputs)
+
+    def test_a_stop_aa_variant_has_no_kd_and_is_failed(self, classed):
+        single = _aa(classed, "SINGLE")
+        assert (single["kd"], single["kdLog10Se"]) == (None, None)
+        assert (single["kdLog10ParentDelta"], single["kdLog10ParentDeltaSe"]) == (None, None)
+        assert single["affinityClass"] == "Failed"
+        assert single["variantClass"] == "stop"
+        assert single["ntVariants"] == 1
+        assert classed["synonymous_summary"]["stopAaVariants"] == 1
+
+    def test_the_stop_copy_keeps_its_own_fit(self, lf, classed):
+        assert_frame_equal(classed["per_clonotype"], lf["per_clonotype"])
+        own = classed["per_clonotype"].filter(pl.col("clonotypeKey") == "s_a").row(0, named=True)
+        assert math.log10(own["kd"]) == pytest.approx(-9.0, abs=0.3)
+
+    def test_the_aa_classes(self, classed):
+        classes = dict(zip(classed["per_variant"]["aaKey"], classed["per_variant"]["variantClass"]))
+        assert classes == {
+            "WT": "wildtype",
+            "TIGHT": "1 nonsynonymous",
+            "DEAD": "1 nonsynonymous",
+            "MIXED": "1 nonsynonymous",
+            "SINGLE": "stop",
+            "LOST": "1 nonsynonymous",
+        }
+
+    def test_the_nt_classes(self, classed):
+        per_nt = classed["per_nt_variant"]
+        assert per_nt["ntKey"].to_list() == classed["per_clonotype"]["clonotypeKey"].to_list()
+        classes = dict(zip(per_nt["ntKey"], per_nt["variantClass"]))
+        assert (classes["wt_a"], classes["wt_b"], classes["wt_c"]) == ("wildtype", "synonymous", "synonymous")
+        assert (classes["t_a"], classes["s_a"]) == ("1 nonsynonymous", "stop")
+        assert (classes["amb"], classes["orphan"]) == (None, None)
+
+
 class TestReadWeighting:
     @pytest.fixture(scope="class")
     def weighted(self, reads):
@@ -283,6 +336,81 @@ def test_the_cli_passes_read_weighting_on(tmp_path, reads):
     )  # fmt: skip
     assert rc == 0
     assert json.loads((tmp_path / "summary.json").read_text())["weighting"] == "reads"
+
+
+def test_the_cli_writes_the_nucleotide_frame_with_the_nt_mutation_count(tmp_path, reads):
+    reads.write_parquet(tmp_path / "reads.parquet")
+    _links().write_csv(tmp_path / "nt_to_aa.tsv", separator="\t")
+    PARENT_INPUTS["aa_mutations"].write_csv(tmp_path / "aa_mutations.tsv", separator="\t")
+    AA_PRODUCTIVE.write_csv(tmp_path / "aa_productive.tsv", separator="\t")
+    NT_MUTATIONS.write_csv(tmp_path / "nt_mutations.tsv", separator="\t")
+    (tmp_path / "params.json").write_text(json.dumps({"equation": "log_fluorescence", "plateau_floor": 2 / 3}))
+    out = {name: str(tmp_path / f"{name}.tsv") for name in ("pc", "mb", "fmb", "cv", "pv", "pnv")}
+    rc = main(
+        [
+            "--reads", str(tmp_path / "reads.parquet"),
+            "--params", str(tmp_path / "params.json"),
+            "--out-per-clonotype", out["pc"],
+            "--out-mean-bin", out["mb"],
+            "--out-fitted-mean-bin", out["fmb"],
+            "--out-concentration-value", out["cv"],
+            "--nt-to-aa", str(tmp_path / "nt_to_aa.tsv"),
+            "--aa-mutations", str(tmp_path / "aa_mutations.tsv"),
+            "--aa-productive", str(tmp_path / "aa_productive.tsv"),
+            "--nt-mutations", str(tmp_path / "nt_mutations.tsv"),
+            "--out-per-variant", out["pv"],
+            "--out-per-nt-variant", out["pnv"],
+            "--out-synonymous-summary", str(tmp_path / "summary.json"),
+        ]
+    )  # fmt: skip
+    assert rc == 0
+    per_nt = pl.read_csv(out["pnv"], separator="\t")
+    assert per_nt.columns == ["ntKey", "variantClass"]
+    assert per_nt.height == 13
+    per_variant = pl.read_csv(out["pv"], separator="\t")
+    assert "variantClass" in per_variant.columns
+    assert "kdLog10ParentDelta" not in per_variant.columns
+
+
+def test_the_cli_without_a_linker_writes_only_the_four_frames(tmp_path, reads):
+    reads.write_parquet(tmp_path / "reads.parquet")
+    (tmp_path / "params.json").write_text(json.dumps({"equation": "log_fluorescence", "plateau_floor": 2 / 3}))
+    out = tmp_path / "out"
+    out.mkdir()
+    rc = main(
+        [
+            "--reads", str(tmp_path / "reads.parquet"),
+            "--params", str(tmp_path / "params.json"),
+            "--out-per-clonotype", str(out / "per_clonotype.tsv"),
+            "--out-mean-bin", str(out / "mean_bin.tsv"),
+            "--out-fitted-mean-bin", str(out / "fitted_mean_bin.tsv"),
+            "--out-concentration-value", str(out / "concentration_value.tsv"),
+        ]
+    )  # fmt: skip
+    assert rc == 0
+    assert sorted(p.name for p in out.iterdir()) == [
+        "concentration_value.tsv",
+        "fitted_mean_bin.tsv",
+        "mean_bin.tsv",
+        "per_clonotype.tsv",
+    ]
+    plain = run(reads, params=LF)
+    assert set(plain) == {"per_clonotype", "mean_bin", "fitted_mean_bin", "concentration_value"}
+    written = pl.read_csv(out / "per_clonotype.tsv", separator="\t")
+    assert written.columns == plain["per_clonotype"].columns
+
+
+def test_the_cli_refuses_an_nt_mutation_count_without_its_output(tmp_path):
+    with pytest.raises(SystemExit):
+        main(
+            [
+                "--reads", "r.parquet",
+                "--out-per-clonotype", "a", "--out-mean-bin", "b",
+                "--out-fitted-mean-bin", "c", "--out-concentration-value", "d",
+                "--nt-to-aa", "links.tsv", "--out-per-variant", "e", "--out-synonymous-summary", "f",
+                "--nt-mutations", "m.tsv",
+            ]
+        )  # fmt: skip
 
 
 def test_the_cli_refuses_weighting_without_a_linker():

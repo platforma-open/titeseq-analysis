@@ -603,13 +603,14 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     // appears in server logs while the block silently shows empty panels.
     // CIDConflictError is typically transient — the platform's "zebra"
     // self-recovery retries the write — so we label it as such.
-    // The last two exist in synonymous mode only.
+    // The last three exist in synonymous mode only.
     const outputKeys = [
       "summaryPf",
       "signalPf",
       "logHandle",
       "variantSummaryPf",
       "synonymousSummary",
+      "ntVariantPf",
     ] as const;
     for (const key of outputKeys) {
       const errorAcc = ctx.outputs

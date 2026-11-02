@@ -91,17 +91,24 @@ parentAxisOf := func(linker) {
 
 /**
  * Synonymous mode is on exactly when the variant axis is nucleotide and the nt -> aa linker resolves.
- * The parent delta is on when, in addition, both amino-acid parent columns resolve.
+ * In that mode, each further input is used when exactly one column matches it:
+ *   parentMode   the amino-acid mutation count and parent link: the amino-acid parent delta
+ *   aaClass      the amino-acid mutation count: the amino-acid variant class
+ *   ntClass      aaClass and the nucleotide mutation count: the nucleotide variant class
+ *   aaProductive the amino-acid productive flag: the stop class, and no Kd,app for a stop variant
  *
- * @param candidates: {aaToNt, aaMutationCounts, parentLinks}, each an array of bundle columns
- *   ({spec, data}) or undefined
+ * @param candidates: {aaToNt, aaMutationCounts, parentLinks, aaProductive, ntMutationCounts}, each an
+ *   array of bundle columns ({spec, data}) or undefined
  * @param variantAxis: the abundance's variant axis spec
- * @return {synonymous, linker, aaAxis, parentMode, aaMutationCount, aaParentLink, parentAxis}
+ * @return {synonymous, linker, aaAxis, parentMode, aaMutationCount, aaParentLink, parentAxis,
+ *   aaClass, ntClass, aaProductive, ntMutationCount}
  */
 resolve := func(candidates, variantAxis) {
 	res := {
 		synonymous: false,
-		parentMode: false
+		parentMode: false,
+		aaClass: false,
+		ntClass: false
 	}
 	if domainOf(variantAxis)[ALPHABET] != "nucleotide" {
 		return res
@@ -119,6 +126,11 @@ resolve := func(candidates, variantAxis) {
 	if res.parentMode {
 		res.parentAxis = parentAxisOf(res.aaParentLink)
 	}
+
+	res.aaProductive = single(candidates.aaProductive, isOnlyOn(res.aaAxis))
+	res.ntMutationCount = single(candidates.ntMutationCounts, isOnlyOn(variantAxis))
+	res.aaClass = !is_undefined(res.aaMutationCount)
+	res.ntClass = res.aaClass && !is_undefined(res.ntMutationCount)
 	return res
 }
 

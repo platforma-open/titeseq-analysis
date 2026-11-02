@@ -5,10 +5,37 @@ ll := import("@platforma-sdk/workflow-tengo:ll")
 maps := import("@platforma-sdk/workflow-tengo:maps")
 
 COUNT_NAME := "pl7.app/vdj/kdNtVariants"
+CLASS_NAME := "pl7.app/vdj/variantClass"
+CLASS_VALUES := ["wildtype", "synonymous", "stop", "1 nonsynonymous", ">1 nonsynonymous"]
 COUNT_STATE := "pl7.app/vdj/kdNtVariantState"
 
 column := func(header, spec) {
 	return { column: header, id: "aa_" + header, spec: spec }
+}
+
+// Empty where the class is unknown: a variant with no mutation count, or an nt variant with no single
+// amino-acid variant.
+classColumn := func(blockId, id, description) {
+	return {
+		column: "variantClass",
+		id: id,
+		allowNA: true,
+		naRegex: "",
+		spec: {
+			name: CLASS_NAME,
+			valueType: "String",
+			domain: { "pl7.app/block": blockId },
+			annotations: {
+				"pl7.app/label": "Variant class",
+				"pl7.app/description": description,
+				"pl7.app/isScore": "false",
+				"pl7.app/isDiscreteFilter": "true",
+				"pl7.app/discreteValues": "[\"wildtype\",\"synonymous\",\"stop\",\"1 nonsynonymous\",\">1 nonsynonymous\"]",
+				"pl7.app/table/visibility": "default",
+				"pl7.app/table/orderPriority": "203"
+			}
+		}
+	}
 }
 
 countColumn := func(header, blockId, state, label, description, visibility, priority) {
@@ -41,8 +68,8 @@ SE_DESCRIPTION := {
 /**
  * @param blockId: the block id stamped into every domain, as on the nucleotide grain
  * @param kdAnnotations: the nucleotide grain's Kd,app annotations, unit included
- * @param opts: {parentMode, weighting}; parentMode emits the parent delta and its error, weighting
- *   is "none" or "reads"
+ * @param opts: {parentMode, weighting, variantClass}; parentMode emits the parent delta and its
+ *   error, weighting is "none" or "reads", variantClass emits the class column
  * @return xsv column descriptors
  */
 variantColumns := func(blockId, kdAnnotations, opts) {
@@ -114,6 +141,10 @@ variantColumns := func(blockId, kdAnnotations, opts) {
 		countColumn("ntFailed", blockId, "failed", "NT variants failed",
 			"Nucleotide variants rated Failed. They are left out of the mean.", "optional", "191")
 	]
+	if opts.variantClass {
+		cols = append(cols, classColumn(blockId, "aa_variantClass",
+			"stop: the amino-acid variant is not productive, and has no Kd,app. Otherwise by its amino-acid mutation count: wildtype 0, 1 nonsynonymous 1, >1 nonsynonymous more."))
+	}
 	if opts.parentMode {
 		cols = append(cols, column("kdLog10ParentDelta", {
 			name: "pl7.app/vdj/kdLog10ParentDelta",
@@ -146,8 +177,28 @@ variantColumns := func(blockId, kdAnnotations, opts) {
 	return cols
 }
 
+/**
+ * Column specs for the nucleotide grain's synonymous columns, one row per fitted nt variant. Headers
+ * match the software's per_nt_variant.tsv.
+ *
+ * @param blockId: the block id stamped into every domain
+ * @param opts: {variantClass}
+ * @return xsv column descriptors
+ */
+ntVariantColumns := func(blockId, opts) {
+	cols := []
+	if opts.variantClass {
+		cols = append(cols, classColumn(blockId, "nt_variantClass",
+			"The class of the nucleotide variant's amino-acid variant: stop, 1 nonsynonymous or >1 nonsynonymous. Under an unmutated amino-acid variant, wildtype with no nucleotide mutation and synonymous with some. A stop variant keeps its own fit."))
+	}
+	return cols
+}
+
 export ll.toStrict({
 	COUNT_NAME: COUNT_NAME,
 	COUNT_STATE: COUNT_STATE,
-	variantColumns: variantColumns
+	CLASS_NAME: CLASS_NAME,
+	CLASS_VALUES: CLASS_VALUES,
+	variantColumns: variantColumns,
+	ntVariantColumns: ntVariantColumns
 })

@@ -28,7 +28,9 @@ otherAa := variantAxis("aminoacid", "run2")
 full := {
 	aaToNt: [col(aa, nt)],
 	aaMutationCounts: [col(aa), col(otherAa)],
-	parentLinks: [col(parentAxis, nt), col(parentAxis, aa), col(parentAxis, otherAa)]
+	parentLinks: [col(parentAxis, nt), col(parentAxis, aa), col(parentAxis, otherAa)],
+	aaProductive: [col(aa), col(otherAa)],
+	ntMutationCounts: [col(nt)]
 }
 
 Test_nucleotide_dataset_with_a_linker_is_synonymous := func() {
@@ -98,4 +100,45 @@ Test_level_follows_the_column_axis_in_synonymous_mode_only := func() {
 	test.isTrue(is_undefined(synonymousInputs.levelOf({axesSpec: [nt]}, off, nt)), "off outside synonymous mode")
 	test.isEqual("NT Variants", synonymousInputs.NT_LEVEL, "the profiler's nt label")
 	test.isEqual("AA Variants", synonymousInputs.AA_LEVEL, "the profiler's aa label")
+}
+
+Test_class_and_stop_inputs_resolve_on_their_own_axis := func() {
+	res := synonymousInputs.resolve(full, nt)
+	test.isTrue(res.aaClass, "aa mutation count of this run")
+	test.isTrue(res.ntClass, "and the nt mutation count")
+	test.isTrue(synonymousInputs.sameAxis(aa, res.aaProductive.spec.axesSpec[0]), "aa productive of this run")
+	test.isTrue(synonymousInputs.sameAxis(nt, res.ntMutationCount.spec.axesSpec[0]), "nt mutation count on the nt axis")
+}
+
+Test_the_aa_class_needs_no_parent_link := func() {
+	res := synonymousInputs.resolve({aaToNt: [col(aa, nt)], aaMutationCounts: [col(aa)]}, nt)
+	test.isFalse(res.parentMode, "no parent link")
+	test.isTrue(res.aaClass, "the mutation count alone")
+	test.isFalse(res.ntClass, "no nt mutation count")
+}
+
+Test_the_nt_class_needs_the_aa_mutation_count := func() {
+	res := synonymousInputs.resolve({aaToNt: [col(aa, nt)], ntMutationCounts: [col(nt)]}, nt)
+	test.isFalse(res.aaClass, "no aa mutation count")
+	test.isFalse(res.ntClass, "the nt class reads the aa count")
+	test.isFalse(is_undefined(res.ntMutationCount), "the nt count itself resolves")
+}
+
+Test_several_or_foreign_matches_count_as_none := func() {
+	otherNt := variantAxis("nucleotide", "run2")
+	res := synonymousInputs.resolve({
+		aaToNt: [col(aa, nt)],
+		aaMutationCounts: [col(aa)],
+		aaProductive: [col(aa), col(aa)],
+		ntMutationCounts: [col(otherNt)]
+	}, nt)
+	test.isTrue(is_undefined(res.aaProductive), "two productive columns")
+	test.isTrue(is_undefined(res.ntMutationCount), "another run's nt axis")
+	test.isFalse(res.ntClass, "so no nt class")
+}
+
+Test_no_class_outside_synonymous_mode := func() {
+	res := synonymousInputs.resolve(full, aa)
+	test.isFalse(res.aaClass, "aa dataset")
+	test.isFalse(res.ntClass, "aa dataset")
 }

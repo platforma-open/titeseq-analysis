@@ -30,6 +30,13 @@ The class is decided once, on the combined value:
   copy's own   n = 1 and the equation reports no SE: the combined value is that copy's fit, rated by
                its equation's own rule
 
+Each variant gets a class, in Starr's strings. An amino-acid variant is `stop` when it is not productive,
+else by its amino-acid mutation count: 0 `wildtype`, 1 `1 nonsynonymous`, more `>1 nonsynonymous`. A
+nucleotide variant takes its amino-acid variant's class, except that under an unmutated amino-acid variant
+it is `wildtype` with no nucleotide mutation and `synonymous` with some. Without the productive column there
+is no `stop` class. A stop amino-acid variant has no K_D, SE or parent delta and is rated Failed; its
+nucleotide variants keep their own fits.
+
 The parent delta is log10 K_D of the variant minus that of its parent, both at amino-acid grain, with
 error sqrt(se_v^2 + se_p^2). A parent's own row is 0 with error 0. A parent is the one amino-acid variant
 with zero mutations linked to it; a parent with none or several cannot be identified.
@@ -52,6 +59,15 @@ COL_AA = "aaKey"
 COL_PARENT = "parentId"
 COL_MUTATIONS = "mutationCount"
 
+COL_PRODUCTIVE = "productive"
+COL_CLASS = "variantClass"
+
+CLASS_WILDTYPE = "wildtype"
+CLASS_SYNONYMOUS = "synonymous"
+CLASS_STOP = "stop"
+CLASS_ONE = "1 nonsynonymous"
+CLASS_SEVERAL = ">1 nonsynonymous"
+
 REASON_NO_UNMUTATED = "no-unmutated-variant"
 REASON_SEVERAL_UNMUTATED = "several-unmutated-variants"
 
@@ -71,6 +87,7 @@ PER_VARIANT_SCHEMA: dict[str, pl.DataType] = {
     "ntCensoredAbove": pl.Int64,
     "ntFailed": pl.Int64,
 }
+CLASS_SCHEMA: dict[str, pl.DataType] = {COL_CLASS: pl.Utf8}
 DELTA_SCHEMA: dict[str, pl.DataType] = {
     "kdLog10ParentDelta": pl.Float64,
     "kdLog10ParentDeltaSe": pl.Float64,
@@ -79,16 +96,23 @@ DELTA_SCHEMA: dict[str, pl.DataType] = {
 
 @dataclass(frozen=True)
 class SynonymousInputs:
-    """The nt -> aa linker, the amino-acid parent columns when both resolve, and the weighting."""
+    """The nt -> aa linker, the per-variant columns that resolved, and the weighting.
+
+    The amino-acid parent delta needs `aa_mutations` and `aa_parent_links`; the amino-acid class needs
+    `aa_mutations`; the nucleotide class needs `aa_mutations` and `nt_mutations`; `stop` needs
+    `aa_productive`.
+    """
 
     nt_to_aa: pl.DataFrame  # [ntKey, aaKey]
     aa_mutations: pl.DataFrame | None = None  # [aaKey, mutationCount]
     aa_parent_links: pl.DataFrame | None = None  # [aaKey, parentId]
     weighting: Weighting = "none"
+    aa_productive: pl.DataFrame | None = None  # [aaKey, productive], "true" / "false"
+    nt_mutations: pl.DataFrame | None = None  # [ntKey, mutationCount]
 
     def __post_init__(self) -> None:
-        if (self.aa_mutations is None) != (self.aa_parent_links is None):
-            raise ValueError("the amino-acid mutation counts and parent links come together or not at all")
+        if self.aa_parent_links is not None and self.aa_mutations is None:
+            raise ValueError("the amino-acid parent links need the amino-acid mutation counts")
         if self.weighting not in WEIGHTINGS:
             raise ValueError(f"unknown weighting: {self.weighting}")
 
@@ -200,6 +224,41 @@ def combine(copies: list[Copy], *, weighted: bool = False) -> Combined:
     return Combined(mean, None, Classification(entered[0].affinity_class, None), False, counts)
 
 
+def _mutation_counts(frame: pl.DataFrame, key: str) -> dict[str, int]:
+    counts = frame.select(pl.col(key).cast(pl.Utf8), pl.col(COL_MUTATIONS).cast(pl.Int64, strict=False)).drop_nulls()
+    return dict(zip(counts[key].to_list(), counts[COL_MUTATIONS].to_list()))
+
+
+def stop_variants(productive: pl.DataFrame) -> set[str]:
+    """The amino-acid variants marked not productive."""
+    flag = pl.col(COL_PRODUCTIVE).cast(pl.Utf8).str.strip_chars().str.to_lowercase()
+    return set(productive.filter(flag == "false")[COL_AA].cast(pl.Utf8).to_list())
+
+
+def aa_class(mutations: int | None, stop: bool) -> str | None:
+    """Starr's class of an amino-acid variant; None when its mutation count is unknown."""
+    if stop:
+        return CLASS_STOP
+    if mutations is None:
+        return None
+    if mutations == 0:
+        return CLASS_WILDTYPE
+    return CLASS_ONE if mutations == 1 else CLASS_SEVERAL
+
+
+def nt_class(aa_mutations: int | None, nt_mutations: int | None, stop: bool) -> str | None:
+    """Starr's class of a nucleotide variant, from its amino-acid variant; None when unknown."""
+    cls = aa_class(aa_mutations, stop)
+    if cls != CLASS_WILDTYPE:
+        return cls
+    if nt_mutations is None:
+        return None
+    return CLASS_WILDTYPE if nt_mutations == 0 else CLASS_SYNONYMOUS
+
+
+STOP = Combined(None, None, Classification("Failed", None), None, {})
+
+
 def resolve_parents(
     links: pl.DataFrame, mutations: pl.DataFrame
 ) -> tuple[dict[str, str], dict[str, str], list[dict[str, str]], int]:
@@ -256,8 +315,11 @@ def combine_synonymous(
     log10_lo: float | None,
     log10_hi: float | None,
     reads: dict[str, float] | None = None,
-) -> tuple[pl.DataFrame, dict]:
-    """The amino-acid frame and the run summary, from the per-nucleotide-variant fits.
+) -> tuple[pl.DataFrame, pl.DataFrame | None, dict]:
+    """The amino-acid frame, the nucleotide frame, and the run summary, from the per-nt-variant fits.
+
+    The nucleotide frame, one row per fitted nt variant, exists when `nt_mutations` comes; it holds
+    the nt-grain columns that resolved.
 
     `log10_lo` and `log10_hi` are log10 of the lowest and highest non-zero concentrations: the walls
     a censored copy enters at. `reads` is each nt variant's total reads over the samples that enter
@@ -278,6 +340,9 @@ def combine_synonymous(
                 c = replace(c, weight=float(reads.get(row[COL_CLONOTYPE], 0.0)))
             copies.setdefault(aa, []).append(c)
     combined = {aa: combine(copies[aa], weighted=weighted) for aa in sorted(copies)}
+    stops = stop_variants(inputs.aa_productive) if inputs.aa_productive is not None else set()
+    # A stop variant has no value: its counts stay, every value goes.
+    combined = {aa: replace(STOP, counts=c.counts) if aa in stops else c for aa, c in combined.items()}
 
     summary: dict = {
         "ntVariants": len(fitted),
@@ -287,6 +352,8 @@ def combine_synonymous(
         "parentMode": inputs.aa_parent_links is not None,
         "weighting": inputs.weighting,
     }
+    if inputs.aa_productive is not None:
+        summary["stopAaVariants"] = sum(1 for aa in combined if aa in stops)
     columns: dict[str, list] = {name: [] for name in PER_VARIANT_SCHEMA}
     for aa, c in combined.items():
         columns[COL_AA].append(aa)
@@ -300,6 +367,11 @@ def combine_synonymous(
         columns["ntCensoredAbove"].append(c.counts["above"])
         columns["ntFailed"].append(c.counts["failed"])
     schema = dict(PER_VARIANT_SCHEMA)
+
+    aa_mutations = _mutation_counts(inputs.aa_mutations, COL_AA) if inputs.aa_mutations is not None else None
+    if aa_mutations is not None:
+        columns[COL_CLASS] = [aa_class(aa_mutations.get(aa), aa in stops) for aa in combined]
+        schema.update(CLASS_SCHEMA)
 
     if inputs.aa_parent_links is not None and inputs.aa_mutations is not None:
         assignment, own, unidentifiable, several = resolve_parents(inputs.aa_parent_links, inputs.aa_mutations)
@@ -319,4 +391,19 @@ def combine_synonymous(
         summary["unidentifiableParents"] = unidentifiable
         summary["multiParentVariants"] = several
 
-    return pl.DataFrame(columns, schema=schema), summary
+    per_nt = None
+    if inputs.nt_mutations is not None:
+        nt_columns: dict[str, list] = {COL_NT: fitted}
+        nt_schema: dict[str, pl.DataType] = {COL_NT: pl.Utf8}
+        if aa_mutations is not None:
+            nt_mutations = _mutation_counts(inputs.nt_mutations, COL_NT)
+            nt_columns[COL_CLASS] = [
+                None
+                if nt not in mapping
+                else nt_class(aa_mutations.get(mapping[nt]), nt_mutations.get(nt), mapping[nt] in stops)
+                for nt in fitted
+            ]
+            nt_schema.update(CLASS_SCHEMA)
+        per_nt = pl.DataFrame(nt_columns, schema=nt_schema)
+
+    return pl.DataFrame(columns, schema=schema), per_nt, summary

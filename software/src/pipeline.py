@@ -694,7 +694,7 @@ def _combine_synonymous(
 ) -> dict:
     """The amino-acid outputs: each nt variant's own fit, combined per amino-acid variant."""
     lo, hi = conc_bounds
-    per_variant, summary = combine_synonymous(
+    per_variant, per_nt_variant, summary = combine_synonymous(
         per_clonotype,
         synonymous,
         log10_lo=math.log10(lo) if lo is not None else None,
@@ -715,4 +715,11 @@ def _combine_synonymous(
         )
     else:
         log("Parent delta: off (no amino-acid mutation count and parent link)")
-    return {"per_variant": per_variant, "synonymous_summary": summary}
+    if "stopAaVariants" in summary:
+        log(f"Stop codons: {summary['stopAaVariants']} amino-acid variants not productive; they get no Kd,app")
+    else:
+        log("Stop codons: off (no amino-acid productive column)")
+    outputs = {"per_variant": per_variant, "synonymous_summary": summary}
+    if per_nt_variant is not None:
+        outputs["per_nt_variant"] = per_nt_variant
+    return outputs

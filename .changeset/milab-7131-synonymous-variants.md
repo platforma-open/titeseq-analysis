@@ -26,6 +26,15 @@ variants as repeats.
   `pl7.app/vdj/kd`, `pl7.app/vdj/kdLog10Se`, `pl7.app/vdj/affinityClass`, `pl7.app/vdj/kdOutOfRange`.
   `pl7.app/vdj/kdNtVariants` counts the nucleotide variants behind each value, split by
   `pl7.app/vdj/kdNtVariantState` (all, measured, censored low, censored high, failed).
+- `pl7.app/vdj/variantClass` (String, discrete filter) on both grains, in Starr's strings: `wildtype`,
+  `synonymous`, `stop`, `1 nonsynonymous`, `>1 nonsynonymous`. The amino-acid grain needs the
+  amino-acid `pl7.app/repertoire/mutationCount`; the nucleotide grain needs that and the nucleotide
+  one. `stop` needs the amino-acid `pl7.app/vdj/sequence/productive`; without it there is no stop
+  class. Each input is used only when exactly one column matches it.
+- A stop amino-acid variant has no Kd,app, SE or parent delta and is rated Failed; the run summary,
+  the Fit log and the block's warnings count them. Its nucleotide variants keep their own fits, so
+  the graphs keep their curves, and their class is `stop`. Starr nulls stop variants per barcode;
+  this block's nucleotide grain keeps each raw fit.
 - Where the amino-acid mutation count and parent link resolve, `pl7.app/vdj/kdLog10ParentDelta` and
   `pl7.app/vdj/kdLog10ParentDeltaSe` give each variant's log10 Kd,app against its parent's.
 - Every output column on a variant axis carries a level step in its trace, as sort-seq-analysis does

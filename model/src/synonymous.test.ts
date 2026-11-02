@@ -150,6 +150,14 @@ describe("synonymousMessages", () => {
     );
   });
 
+  it("counts the stop variants", () => {
+    expect(synonymousMessages(undefined, { ...summary, stopAaVariants: 3 })).toEqual([
+      "3 amino-acid variants carry a stop codon. They have no Kd,app and are rated Failed; " +
+        "their nucleotide variants keep their own fits.",
+    ]);
+    expect(synonymousMessages(undefined, { ...summary, stopAaVariants: 0 })).toEqual([]);
+  });
+
   it("names a parent that cannot be identified", () => {
     const messages = synonymousMessages(undefined, {
       ...summary,
