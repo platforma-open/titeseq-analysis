@@ -65,6 +65,11 @@ SE_DESCRIPTION := {
 	reads: "Standard error of the read-weighted mean log10 Kd,app. With two or more synonymous nucleotide variants, the larger of two terms: their read-weighted spread; and their own fit SEs, each weighted by its reads, added in quadrature and divided by the total reads, where the equation reports a fit SE. With one variant, its own fit SE where the equation reports one. Empty for a bound and for a failed variant. At or below 0.5, Kd,app is rated Good."
 }
 
+SD_DESCRIPTION := {
+	none: "SD of log10 Kd,app across the synonymous nucleotide variants in the mean: their spread alone, with no fit error. Empty with fewer than two variants, for a bound and for a failed variant.",
+	reads: "Read-weighted SD of log10 Kd,app across the synonymous nucleotide variants in the mean: their spread alone, with no fit error. Empty with fewer than two variants, for a bound and for a failed variant."
+}
+
 // The parent delta and its error, on the grain whose ids start with `idPrefix`.
 deltaColumns := func(blockId, idPrefix, description) {
 	domain := { "pl7.app/block": blockId }
@@ -134,6 +139,19 @@ variantColumns := func(blockId, kdAnnotations, opts) {
 				"pl7.app/score/rankingOrder": "increasing",
 				"pl7.app/table/visibility": "default",
 				"pl7.app/table/orderPriority": "200"
+			}
+		}),
+		column("kdLog10Sd", {
+			name: "pl7.app/vdj/kdLog10Sd",
+			valueType: "Double",
+			domain: domain,
+			annotations: {
+				"pl7.app/label": "Kd,app SD across synonyms (log10)",
+				"pl7.app/description": SD_DESCRIPTION[opts.weighting],
+				"pl7.app/isScore": "false",
+				"pl7.app/format": ".2f",
+				"pl7.app/table/visibility": "default",
+				"pl7.app/table/orderPriority": "201"
 			}
 		}),
 		column("affinityClass", {

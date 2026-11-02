@@ -19,7 +19,10 @@ fit; a copy with no reads carries no weight and stays out of the mean:
                  unweighted   spread sample SD / sqrt(n); fit-error sqrt(sum se_i^2) / n
                  weighted     spread sqrt(n / (n - 1) * sum w_i^2 (x_i - x_w)^2) / sum w_i, around the
                               weighted mean x_w; fit-error sqrt(sum w_i^2 se_i^2) / sum w_i
+  SD           the spread of the copies in the mean alone, never floored: for n >= 2, the sample SD
+               unweighted, sqrt(n / (n - 1) * sum w_i (x_i - x_w)^2 / sum w_i) weighted; null for n = 1
   bound        every copy in the mean censored on the same side; the value is that wall, with no SE
+               and no SD
 
 The class is decided once, on the combined value:
 
@@ -81,6 +84,7 @@ PER_VARIANT_SCHEMA: dict[str, pl.DataType] = {
     COL_AA: pl.Utf8,
     "kd": pl.Float64,
     "kdLog10Se": pl.Float64,
+    "kdLog10Sd": pl.Float64,
     "affinityClass": pl.Utf8,
     "kdOutOfRange": pl.Boolean,
     "ntVariants": pl.Int64,
@@ -138,6 +142,7 @@ class Combined:
     classification: Classification
     out_of_range: bool | None
     counts: dict[CopyState, int]
+    log10_kd_sd: float | None = None
 
 
 def _keys(frame: pl.DataFrame, *cols: str) -> pl.DataFrame:
@@ -199,6 +204,16 @@ def _floored_weighted_se(entered: list[Copy], mean: float) -> float:
     return max(spread, math.sqrt(math.fsum(fit)) / total)
 
 
+def _spread_sd(entered: list[Copy], mean: float, weighted: bool) -> float:
+    """The SD of n >= 2 copies around `mean`."""
+    if not weighted:
+        return statistics.stdev([c.log10_kd for c in entered])
+    n = len(entered)
+    total = math.fsum(c.weight for c in entered)
+    scatter = math.fsum(c.weight * (c.log10_kd - mean) ** 2 for c in entered)
+    return math.sqrt(n / (n - 1) * scatter / total)
+
+
 def combine(copies: list[Copy], *, weighted: bool = False) -> Combined:
     """The mean over one amino-acid variant's copies, and its class. `weighted` reads each copy's
     `weight`."""
@@ -220,13 +235,14 @@ def combine(copies: list[Copy], *, weighted: bool = False) -> Combined:
         return Combined(mean, None, Classification("Partial", None), True, counts)
 
     if n == 1:
-        se = entered[0].log10_kd_se
+        se, sd = entered[0].log10_kd_se, None
     else:
         se = _floored_weighted_se(entered, mean) if weighted else _floored_se(entered)
+        sd = _spread_sd(entered, mean, weighted)
     if se is not None:
         cls = "Good" if math.isfinite(se) and se <= KD_SD_GOOD else "Partial"
-        return Combined(mean, se, Classification(cls, None), False, counts)
-    return Combined(mean, None, Classification(entered[0].affinity_class, None), False, counts)
+        return Combined(mean, se, Classification(cls, None), False, counts, sd)
+    return Combined(mean, None, Classification(entered[0].affinity_class, None), False, counts, sd)
 
 
 def _mutation_counts(frame: pl.DataFrame, key: str) -> dict[str, int]:
@@ -387,6 +403,7 @@ def combine_synonymous(
         columns[COL_AA].append(aa)
         columns["kd"].append(None if c.log10_kd is None else 10.0**c.log10_kd)
         columns["kdLog10Se"].append(c.log10_kd_se)
+        columns["kdLog10Sd"].append(c.log10_kd_sd)
         columns["affinityClass"].append(c.classification.affinity_class)
         columns["kdOutOfRange"].append(c.out_of_range)
         columns["ntVariants"].append(sum(c.counts.values()))

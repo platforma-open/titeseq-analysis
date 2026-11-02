@@ -15,7 +15,7 @@ byHeader := func(cols) {
 
 Test_headers_match_the_software_and_ids_stay_apart_from_the_nt_grain := func() {
 	cols := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: true, weighting: "none", variantClass: true }))
-	headers := ["kd", "kdLog10Se", "affinityClass", "kdOutOfRange", "ntVariants", "ntMeasured",
+	headers := ["kd", "kdLog10Se", "kdLog10Sd", "affinityClass", "kdOutOfRange", "ntVariants", "ntMeasured",
 		"ntCensoredBelow", "ntCensoredAbove", "ntFailed", "kdLog10ParentDelta", "kdLog10ParentDeltaSe",
 		"variantClass"]
 	test.isEqual(len(headers), len(cols), "one column per per_variant.tsv value header")
@@ -29,6 +29,8 @@ Test_values_reuse_the_nt_grain_names := func() {
 	cols := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: false, weighting: "none", variantClass: false }))
 	test.isEqual("pl7.app/vdj/kd", cols.kd.spec.name, "Kd,app")
 	test.isEqual("pl7.app/vdj/kdLog10Se", cols.kdLog10Se.spec.name, "its error")
+	test.isEqual("pl7.app/vdj/kdLog10Sd", cols.kdLog10Sd.spec.name, "the synonyms' spread")
+	test.isEqual("false", cols.kdLog10Sd.spec.annotations["pl7.app/isScore"], "not a ranking score")
 	test.isEqual("pl7.app/vdj/affinityClass", cols.affinityClass.spec.name, "class")
 	test.isEqual("pl7.app/vdj/kdOutOfRange", cols.kdOutOfRange.spec.name, "bound flag")
 	test.isEqual("nM", cols.kd.spec.annotations["pl7.app/unit"], "unit carried over")
@@ -48,7 +50,7 @@ Test_counts_share_one_name_and_differ_by_state := func() {
 }
 
 Test_the_parent_delta_only_in_parent_mode := func() {
-	test.isEqual(9, len(variantColumns.variantColumns("blk", KD, { parentMode: false, weighting: "none", variantClass: false })), "no delta columns")
+	test.isEqual(10, len(variantColumns.variantColumns("blk", KD, { parentMode: false, weighting: "none", variantClass: false })), "no delta columns")
 	cols := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: true, weighting: "none", variantClass: true }))
 	test.isEqual("pl7.app/vdj/kdLog10ParentDelta", cols.kdLog10ParentDelta.spec.name, "delta")
 	test.isEqual("pl7.app/vdj/kdLog10ParentDeltaSe", cols.kdLog10ParentDeltaSe.spec.name, "its error")

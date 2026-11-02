@@ -18,6 +18,9 @@ variants as repeats.
   combined, sqrt(sum of se_i^2) / n, where the equation reports a fit SE. With one variant, its own
   fit SE where the equation reports one. A variant censored at the edge of the titration enters at
   that edge; a Failed one is left out and counted.
+- `pl7.app/vdj/kdLog10Sd` on the amino-acid axis: the SD of log10 Kd,app across the synonymous
+  nucleotide variants in the mean, their spread alone with no fit-error floor (read-weighted under
+  `reads`). Empty with fewer than two variants, for a bound and for a stop or failed variant.
 - New setting `synonymousWeighting` (block data and the kind's init params; the drawer shows it only
   for a dataset that turns this mode on). Unset or `none`: the plain mean above. `reads`: each
   nucleotide variant is weighted by its total reads over the titration, in the mean, the spread and

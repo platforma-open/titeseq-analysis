@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import statistics
 
 import polars as pl
 import pytest
@@ -143,6 +144,42 @@ class TestCombine:
 
 def _weighted(value, weight, se=None, state="measured"):
     return Copy(state, value, se, "Good", weight)
+
+
+class TestSynonymSd:
+    def test_the_sd_is_the_synonyms_sample_sd(self):
+        c = combine([_measured(-8.0), _measured(-7.0), _measured(-9.0)])
+        assert c.log10_kd_sd == pytest.approx(1.0)
+
+    def test_the_sd_is_not_floored_by_the_fit_errors(self):
+        c = combine([_measured(-8.0, se=0.3), _measured(-8.2, se=0.4)])
+        assert c.log10_kd_se == pytest.approx(0.25)
+        assert c.log10_kd_sd == pytest.approx(statistics.stdev([-8.0, -8.2]))
+
+    def test_censored_copies_enter_the_sd_at_their_wall(self):
+        c = combine([_measured(-8.0), Copy("above", HI, None, "Partial")])
+        assert c.log10_kd_sd == pytest.approx(statistics.stdev([-8.0, HI]))
+
+    def test_one_copy_has_no_sd_even_with_a_fit_se(self):
+        c = combine([_measured(-8.0, se=0.2), Copy("failed", None, None, "Failed")])
+        assert c.log10_kd_se == 0.2
+        assert c.log10_kd_sd is None
+
+    def test_a_bound_has_no_sd(self):
+        c = combine([Copy("below", LO, None, "Partial"), Copy("below", LO, None, "Partial")])
+        assert c.log10_kd_sd is None
+
+    def test_the_read_weighted_sd(self):
+        copies = [_weighted(-8.0, 3.0), _weighted(-9.0, 1.0)]
+        c = combine(copies, weighted=True)
+        mean = -8.25
+        expected = math.sqrt(2 / 1 * (3 * (-8.0 - mean) ** 2 + 1 * (-9.0 - mean) ** 2) / 4)
+        assert c.log10_kd_sd == pytest.approx(expected)
+
+    def test_equal_weights_give_the_plain_sd(self):
+        values = [-8.0, -8.4, -7.9]
+        weighted = combine([_weighted(v, 5.0) for v in values], weighted=True)
+        assert weighted.log10_kd_sd == pytest.approx(statistics.stdev(values))
 
 
 class TestCombineReadWeighted:
