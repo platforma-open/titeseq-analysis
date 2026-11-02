@@ -1,7 +1,6 @@
 import type { GraphMakerState } from "@milaboratories/graph-maker";
 import type {
   DatasetOption,
-  ImportFileHandle,
   InferOutputsType,
   PColumnIdAndSpec,
   PFrameHandle,
@@ -12,14 +11,11 @@ import type { BlockParams, Equation } from "@platforma-open/platforma-open.tites
 import { kind } from "@platforma-open/platforma-open.titeseq-analysis.kind";
 import type { FitSettings, PresetId } from "./presets";
 import { DEFAULT_EQUATION, DEFAULT_PLATEAU_FLOOR, HILL_GATE_INDEX_DEFAULTS } from "./presets";
-import type { SettingsImport } from "./settingsFile";
-import { readSettingsFile } from "./settingsFile";
 import { deriveTemplateParams } from "./templateParams";
 
 export type { BlockParams, Equation } from "@platforma-open/platforma-open.titeseq-analysis.kind";
 export { EQUATIONS } from "@platforma-open/platforma-open.titeseq-analysis.kind";
 export * from "./presets";
-export * from "./settingsFile";
 export { deriveTemplateParams };
 import {
   BlockModelV3,
@@ -38,6 +34,8 @@ import {
 export type ValidationIssue = {
   severity: "warning" | "error";
   message: string;
+  /** "settings": shown in the settings drawer only, never on the results pages. */
+  scope: "everywhere" | "settings";
 };
 
 /** The columns a titration is read from, and the antigen it is read for. */
@@ -83,8 +81,6 @@ export type BlockData = FitInputs &
     /** The preset last applied, kept so the drawer can name a preset the scientist then edited.
      *  Not authoritative: the settings themselves are. Never reaches the workflow. */
     appliedPreset?: PresetId;
-    /** The settings file picked for import. Read through the prerun; applied only on a gesture. */
-    importFileHandle?: ImportFileHandle;
     tableState: PlDataTableStateV2;
     graphStateTitrationCurves: GraphMakerState;
     graphStateKDHistogram: GraphMakerState;
@@ -96,10 +92,7 @@ export type BlockData = FitInputs &
  * v1: the block as published through 2.4.0 — one fit, the free-exponent Hill on the read-weighted
  * mean gate index, with no equation to choose. This is the shape every released project stores.
  */
-export type BlockDataV1 = Omit<
-  BlockData,
-  "equation" | "plateauFloor" | "appliedPreset" | "importFileHandle"
->;
+export type BlockDataV1 = Omit<BlockData, "equation" | "plateauFloor" | "appliedPreset">;
 
 // Bind by resolvePath, not block-id domain, so defaults survive a fresh block
 // or project. The format — double-encoded JSON — is what GraphMaker stores.
@@ -126,6 +119,8 @@ const AFFINITY_VS_FIT_DEFAULT_STATE: GraphMakerState = {
   },
   axesSettings: {
     axisX: { scale: "log" },
+    // New blocks use log_fluorescence, whose y is the SE. useFitSettings sets y per equation.
+    axisY: { scale: "log" },
   },
   optionsState: {
     type: "scatterplot",
@@ -404,39 +399,6 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
 
   .args<BlockArgs>(deriveArgs)
 
-  // The settings file is the only thing the prerun carries. Projected on its own so picking one
-  // reads it straight away, without staling the block or waiting on an abundance column.
-  .prerunArgs((data) => ({ importFileHandle: data.importFileHandle }))
-
-  // isActive evaluates this output even when nothing subscribes to it. That evaluation starts
-  // the upload: getImportProgress() makes the context transfer each pending ImportFileHandle.
-  // Without isActive the output never renders, the upload never starts, and the prerun never
-  // resolves. No error appears anywhere.
-  .output(
-    "prerunFileImports",
-    (ctx) =>
-      Object.fromEntries(
-        ctx.prerun
-          ?.resolve({ field: "fileImports", assertFieldType: "Input" })
-          ?.mapFields((handle, acc) => [handle as ImportFileHandle, acc.getImportProgress()], {
-            skipUnresolved: true,
-          }) ?? [],
-      ),
-    { isActive: true },
-  )
-
-  // The picked settings file, read and checked here rather than in the UI: the derivation is
-  // pure and memoized, and the UI is left with nothing to watch. Applying the settings is a
-  // button the scientist presses, never a write this output triggers.
-  .output("importedSettings", (ctx) => {
-    if (ctx.data.importFileHandle === undefined) return { status: "none" } satisfies SettingsImport;
-    const content = ctx.prerun?.traverse({ field: "importedFile" })?.getFileContentAsString();
-    if (content === undefined) return { status: "loading" } satisfies SettingsImport;
-    return content.map((text): SettingsImport =>
-      text === undefined ? { status: "loading" } : readSettingsFile(text),
-    );
-  })
-
   // Datasets, each with its subset columns (e.g. Repertoire Labeling labels) as filters.
   .output(
     "abundanceOptions",
@@ -555,6 +517,7 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
       const isCidConflict = typeName === "CIDConflictError";
       issues.push({
         severity: "error",
+        scope: "everywhere",
         message: isCidConflict
           ? `Transient result-hash conflict on "${key}": ${detail}. ` +
             `The platform retries automatically; usually self-recovers. ` +
@@ -569,6 +532,7 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
       if (unitLabel && /\s/.test(unitLabel)) {
         issues.push({
           severity: "warning",
+          scope: "settings",
           message:
             `Concentration column label "${unitLabel}" contains spaces. ` +
             `The full label becomes the Kd,app unit, so values render as "Kd,app (${unitLabel})". ` +
@@ -580,6 +544,7 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     if (data.antigenColumnRef === undefined && data.targetAntigen) {
       issues.push({
         severity: "warning",
+        scope: "everywhere",
         message:
           "targetAntigen is set but no antigen column is selected — " +
           "the value is ignored. Select an antigen column or clear the targetAntigen field.",
@@ -593,6 +558,7 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     if (data.sortFractionColumnRef !== undefined && data.binColumnRef === undefined) {
       issues.push({
         severity: "error",
+        scope: "everywhere",
         message:
           "FACS sort fraction requires a FACS bin column — " +
           "the correction only applies in bin mode. Select a FACS bin or clear the sort fraction.",

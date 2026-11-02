@@ -2,20 +2,17 @@
 import { PlAlert, PlBlockPage } from "@platforma-sdk/ui-vue";
 import { computed } from "vue";
 import { useApp } from "../app";
-import { useFitSummary } from "../composables/useFitSummary";
 import PageHeader from "./PageHeader.vue";
 
 defineProps<{ title: string; mode: "graph" | "table" }>();
 
 const app = useApp();
 
-const { fitSummary } = useFitSummary();
-
-// Page-level alerts cover spec-based checks with no field-level home —
-// concentration column label format, sort-fraction without a bin column.
-// Numeric-field violations show inline on each PlNumberField (see
-// useFieldValidation).
-const warnings = computed(() => app.model.outputs.validationWarnings ?? []);
+// Checks with no field of their own. Issues scoped to "settings" show in the drawer only.
+// Numeric-field errors show on each PlNumberField (see useFieldValidation).
+const warnings = computed(() =>
+  (app.model.outputs.validationWarnings ?? []).filter((w) => w.scope === "everywhere"),
+);
 </script>
 
 <template>
@@ -28,9 +25,6 @@ const warnings = computed(() => app.model.outputs.validationWarnings ?? []);
     <template #append>
       <PageHeader />
     </template>
-    <PlAlert type="info" class="titeseq-page-alert">
-      {{ fitSummary }}
-    </PlAlert>
     <PlAlert
       v-for="(w, i) in warnings"
       :key="i"

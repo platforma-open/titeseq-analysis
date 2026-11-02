@@ -25,14 +25,38 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
   const failureReason = pCols.find(
     (p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/fitFailureReason",
   );
-  if (!kdPlot || !hillPlot || !failureReason) return undefined;
+  const kdSe = pCols.find((p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/kdLog10Se");
+  // y is the measure each equation rates fit quality on: SE of log10 Kd,app, or Hill coefficient.
+  const ySource = app.model.data.equation === "log_fluorescence" && kdSe ? kdSe : hillPlot;
+  if (!kdPlot || !ySource || !failureReason) return undefined;
+
+  // A failed or pinned log-fluorescence fit has no SE. GraphMaker replaces only the inputs a
+  // default names, so the filter is named here to replace the saved Failed-only filter.
+  if (ySource === kdSe) {
+    const options: PredefinedGraphOption<"scatterplot">[] = [
+      { inputName: "x", selectedSource: kdPlot.spec },
+      { inputName: "y", selectedSource: kdSe.spec },
+    ];
+    if (affinityClass) {
+      options.push(
+        { inputName: "grouping", selectedSource: affinityClass.spec },
+        {
+          inputName: "filters",
+          selectedSource: affinityClass.spec,
+          filterType: "equals",
+          selectedFilterValues: ["Good", "Partial"],
+        },
+      );
+    }
+    return options;
+  }
 
   const options: PredefinedGraphOption<"scatterplot">[] = [
     { inputName: "x", selectedSource: kdPlot.spec },
-    { inputName: "y", selectedSource: hillPlot.spec },
+    { inputName: "y", selectedSource: ySource.spec },
     { inputName: "grouping", selectedSource: failureReason.spec },
   ];
-  if (hillCoef) {
+  if (ySource === hillPlot && hillCoef) {
     options.push({
       inputName: "filters",
       selectedSource: hillCoef.spec,

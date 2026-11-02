@@ -93,6 +93,12 @@ class TestLogFluorescenceFit:
         assert row["r2"] is not None
         assert row["r2"] > 0.9
 
+    def test_reports_the_standard_error_that_rated_it_good(self):
+        row = _row(run(_frame(_lf_reads("G1", 1e-8)), params=LF), "G1")
+        assert row["kdLog10Se"] is not None
+        assert math.isfinite(row["kdLog10Se"])
+        assert 0.0 < row["kdLog10Se"] <= 0.5
+
     def test_the_output_columns_are_the_same_under_both_equations(self):
         reads = _frame(_lf_reads("G1", 1e-8))
         lf = run(reads, params=LF)
@@ -122,6 +128,12 @@ class TestBounds:
         assert row["fitFailureReason"] is None
         assert row["kdOutOfRange"] is True
         assert math.log10(row["kd"]) == pytest.approx(LOG_LO, abs=1e-9)
+
+    def test_a_pinned_kd_reports_no_standard_error(self):
+        # The SE belongs to the unpinned estimate; the reported K_D is a bound.
+        row = _row(run(_frame(_lf_reads("SAT", 1e-14)), params=LF), "SAT")
+        assert row["kdOutOfRange"] is True
+        assert row["kdLog10Se"] is None
 
     def test_a_flat_dim_curve_is_pinned_high_and_rated_partial(self):
         row = _row(run(_frame(_lf_reads("DIM", 1e3)), params=LF), "DIM")
@@ -180,6 +192,10 @@ class TestV240PathUnchanged:
         b = run(reads, params=FitParams(equation="hill_gate_index", plateau_floor=0.05))
         for name in a:
             assert a[name].equals(b[name]), name
+
+    def test_the_v240_fit_reports_no_standard_error(self):
+        out = run(_frame(_lf_reads("G1", 1e-8)), params=HILL)
+        assert out["per_clonotype"]["kdLog10Se"].null_count() == out["per_clonotype"].height
 
     def test_the_v240_fit_still_fits_its_own_exponent(self):
         row = _row(run(_frame(_lf_reads("G1", 1e-8)), params=HILL), "G1")

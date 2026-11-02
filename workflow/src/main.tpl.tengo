@@ -15,10 +15,6 @@ json := import("json")
 
 fitCurvesSw := assets.importSoftware("@platforma-open/platforma-open.titeseq-analysis.software:fit-curves")
 
-prerunTpl := assets.importTemplate(":prerun")
-
-wf.setPreRun(prerunTpl)
-
 wf.prepare(func(args) {
 	bb := wf.createPBundleBuilder()
 	bb.ignoreMissingDomains()
@@ -233,137 +229,157 @@ wf.body(func(args) {
 	// Import per_clonotype.tsv → summary PColumns.
 	// Python writes column `r2`; the output spec name `pl7.app/vdj/curveFitR2` is
 	// what discovery & the UI see, so the rename is invisible downstream.
+	summaryColumns := [
+		{
+			column: "kd",
+			spec: {
+				name: "pl7.app/vdj/kd",
+				valueType: "Double",
+				domain: { "pl7.app/block": blockId },
+				annotations: kdAnnotations
+			}
+		},
+		{
+			column: "hillCoefficient",
+			spec: {
+				name: "pl7.app/vdj/hillCoefficient",
+				valueType: "Double",
+				domain: { "pl7.app/block": blockId },
+				annotations: {
+					"pl7.app/label": "Hill coefficient",
+					"pl7.app/isScore": "false",
+					"pl7.app/description": "Hill coefficient n from the Hill fit. n = 1 is the expected Langmuir isotherm value for simple 1:1 monovalent binding; n in roughly [0.7, 1.3] behaves as expected. n > 2 typically reflects heterogeneous yeast display populations rather than genuine cooperativity. n < 1 often indicates a non-functional display fraction (misfolding, non-binding orientation) diluting the signal. Diagnostic only — not a primary ranking criterion.",
+					"pl7.app/table/visibility": "default",
+					"pl7.app/table/orderPriority": "198"
+				}
+			}
+		},
+		{
+			column: "r2",
+			spec: {
+				name: "pl7.app/vdj/curveFitR2",
+				valueType: "Double",
+				domain: { "pl7.app/block": blockId },
+				annotations: {
+					"pl7.app/label": "Curve fit R²",
+					"pl7.app/isScore": "false",
+					"pl7.app/table/visibility": "default",
+					"pl7.app/table/orderPriority": "199"
+				}
+			}
+		},
+		{
+			column: "affinityClass",
+			spec: {
+				name: "pl7.app/vdj/affinityClass",
+				valueType: "String",
+				domain: { "pl7.app/block": blockId },
+				annotations: {
+					"pl7.app/label": "Affinity class",
+					"pl7.app/isScore": "true",
+					"pl7.app/isDiscreteFilter": "true",
+					"pl7.app/discreteValues": "[\"Good\",\"Partial\",\"Failed\"]",
+					"pl7.app/score/rankingOrder": "decreasing",
+					"pl7.app/score/defaultCutoff": "[\"Good\",\"Partial\"]",
+					"pl7.app/table/visibility": "default",
+					"pl7.app/table/orderPriority": "202"
+				}
+			}
+		},
+		{
+			column: "fitFailureReason",
+			spec: {
+				name: "pl7.app/vdj/fitFailureReason",
+				valueType: "String",
+				domain: { "pl7.app/block": blockId },
+				annotations: {
+					"pl7.app/label": "Fit failure reason",
+					"pl7.app/isScore": "false",
+					"pl7.app/table/visibility": "hidden",
+					"pl7.app/table/orderPriority": "197"
+				}
+			}
+		},
+		{
+			// pcolumn-spec specifies Boolean, but xsv.importFile rejects Boolean
+			// valueType — its validator regex permits only Int|Long|Float|Double|String
+			// (see `core/platforma/sdk/workflow-tengo/src/pframes/xsv-import-file.lib.tengo`).
+			// Python emits pl.Boolean which polars serializes to TSV as "true"/"false";
+			// we import those literals as String and expose them through
+			// pl7.app/isDiscreteFilter so the UI still filters it as a two-value enum.
+			// If/when xsv.importFile gains Boolean support, switch valueType back to
+			// Boolean and drop the discrete-filter annotations.
+			column: "kdOutOfRange",
+			spec: {
+				name: "pl7.app/vdj/kdOutOfRange",
+				valueType: "String",
+				domain: { "pl7.app/block": blockId },
+				annotations: {
+					"pl7.app/label": "Kd,app out of range",
+					"pl7.app/isScore": "false",
+					"pl7.app/isDiscreteFilter": "true",
+					"pl7.app/discreteValues": "[\"true\",\"false\"]",
+					"pl7.app/table/visibility": "default",
+					"pl7.app/table/orderPriority": "196"
+				}
+			}
+		},
+		{
+			column: "kdPlotPosition",
+			spec: {
+				name: "pl7.app/vdj/kdPlotPosition",
+				valueType: "Double",
+				domain: { "pl7.app/block": blockId },
+				annotations: {
+					// Distinct label from "Kd,app" so downstream pickers show this plot-
+					// rendering sibling (nulls parked at max_conc*10) separately from the real Kd.
+					"pl7.app/label": "Kd,app (plot position)",
+					"pl7.app/isScore": "false",
+					"pl7.app/table/visibility": "hidden"
+				}
+			}
+		},
+		{
+			column: "hillPlotPosition",
+			spec: {
+				name: "pl7.app/vdj/hillPlotPosition",
+				valueType: "Double",
+				domain: { "pl7.app/block": blockId },
+				annotations: {
+					// Distinct label from "Hill coefficient" so pickers show this plot-
+					// rendering sibling (nulls parked at -1.0) separately from the real coefficient.
+					"pl7.app/label": "Hill coefficient (plot position)",
+					"pl7.app/isScore": "false",
+					"pl7.app/table/visibility": "hidden"
+				}
+			}
+		}
+	]
+	// Only "log_fluorescence" writes the SE of log10 K_D. "hill_gate_index" keeps the v2.4.0 columns.
+	if args.equation == "log_fluorescence" {
+		summaryColumns = append(summaryColumns, {
+			column: "kdLog10Se",
+			spec: {
+				name: "pl7.app/vdj/kdLog10Se",
+				valueType: "Double",
+				domain: { "pl7.app/block": blockId },
+				annotations: {
+					"pl7.app/label": "Kd,app SE (log10)",
+					"pl7.app/description": "Standard error of log10 Kd,app from the fit. At or below 0.5, an in-range Kd,app is rated Good. Empty when Kd,app is a bound at the edge of the titration or the fit failed.",
+					"pl7.app/isScore": "true",
+					"pl7.app/score/rankingOrder": "increasing",
+					"pl7.app/table/visibility": "default",
+					"pl7.app/table/orderPriority": "200"
+				}
+			}
+		})
+	}
 	summaryImported := xsv.importFile(fit.getFile("per_clonotype.tsv"), "tsv", {
 		axes: [{
 			column: "clonotypeKey",
 			spec: clonotypeAxisSpec
 		}],
-		columns: [
-			{
-				column: "kd",
-				spec: {
-					name: "pl7.app/vdj/kd",
-					valueType: "Double",
-					domain: { "pl7.app/block": blockId },
-					annotations: kdAnnotations
-				}
-			},
-			{
-				column: "hillCoefficient",
-				spec: {
-					name: "pl7.app/vdj/hillCoefficient",
-					valueType: "Double",
-					domain: { "pl7.app/block": blockId },
-					annotations: {
-						"pl7.app/label": "Hill coefficient",
-						"pl7.app/isScore": "false",
-						"pl7.app/description": "Hill coefficient n from the Hill fit. n = 1 is the expected Langmuir isotherm value for simple 1:1 monovalent binding; n in roughly [0.7, 1.3] behaves as expected. n > 2 typically reflects heterogeneous yeast display populations rather than genuine cooperativity. n < 1 often indicates a non-functional display fraction (misfolding, non-binding orientation) diluting the signal. Diagnostic only — not a primary ranking criterion.",
-						"pl7.app/table/visibility": "default",
-						"pl7.app/table/orderPriority": "198"
-					}
-				}
-			},
-			{
-				column: "r2",
-				spec: {
-					name: "pl7.app/vdj/curveFitR2",
-					valueType: "Double",
-					domain: { "pl7.app/block": blockId },
-					annotations: {
-						"pl7.app/label": "Curve fit R²",
-						"pl7.app/isScore": "false",
-						"pl7.app/table/visibility": "default",
-						"pl7.app/table/orderPriority": "199"
-					}
-				}
-			},
-			{
-				column: "affinityClass",
-				spec: {
-					name: "pl7.app/vdj/affinityClass",
-					valueType: "String",
-					domain: { "pl7.app/block": blockId },
-					annotations: {
-						"pl7.app/label": "Affinity class",
-						"pl7.app/isScore": "true",
-						"pl7.app/isDiscreteFilter": "true",
-						"pl7.app/discreteValues": "[\"Good\",\"Partial\",\"Failed\"]",
-						"pl7.app/score/rankingOrder": "decreasing",
-						"pl7.app/score/defaultCutoff": "[\"Good\",\"Partial\"]",
-						"pl7.app/table/visibility": "default",
-						"pl7.app/table/orderPriority": "202"
-					}
-				}
-			},
-			{
-				column: "fitFailureReason",
-				spec: {
-					name: "pl7.app/vdj/fitFailureReason",
-					valueType: "String",
-					domain: { "pl7.app/block": blockId },
-					annotations: {
-						"pl7.app/label": "Fit failure reason",
-						"pl7.app/isScore": "false",
-						"pl7.app/table/visibility": "hidden",
-						"pl7.app/table/orderPriority": "197"
-					}
-				}
-			},
-			{
-				// pcolumn-spec specifies Boolean, but xsv.importFile rejects Boolean
-				// valueType — its validator regex permits only Int|Long|Float|Double|String
-				// (see `core/platforma/sdk/workflow-tengo/src/pframes/xsv-import-file.lib.tengo`).
-				// Python emits pl.Boolean which polars serializes to TSV as "true"/"false";
-				// we import those literals as String and expose them through
-				// pl7.app/isDiscreteFilter so the UI still filters it as a two-value enum.
-				// If/when xsv.importFile gains Boolean support, switch valueType back to
-				// Boolean and drop the discrete-filter annotations.
-				column: "kdOutOfRange",
-				spec: {
-					name: "pl7.app/vdj/kdOutOfRange",
-					valueType: "String",
-					domain: { "pl7.app/block": blockId },
-					annotations: {
-						"pl7.app/label": "Kd,app out of range",
-						"pl7.app/isScore": "false",
-						"pl7.app/isDiscreteFilter": "true",
-						"pl7.app/discreteValues": "[\"true\",\"false\"]",
-						"pl7.app/table/visibility": "default",
-						"pl7.app/table/orderPriority": "196"
-					}
-				}
-			},
-			{
-				column: "kdPlotPosition",
-				spec: {
-					name: "pl7.app/vdj/kdPlotPosition",
-					valueType: "Double",
-					domain: { "pl7.app/block": blockId },
-					annotations: {
-						// Distinct label from "Kd,app" so downstream pickers show this plot-
-						// rendering sibling (nulls parked at max_conc*10) separately from the real Kd.
-						"pl7.app/label": "Kd,app (plot position)",
-						"pl7.app/isScore": "false",
-						"pl7.app/table/visibility": "hidden"
-					}
-				}
-			},
-			{
-				column: "hillPlotPosition",
-				spec: {
-					name: "pl7.app/vdj/hillPlotPosition",
-					valueType: "Double",
-					domain: { "pl7.app/block": blockId },
-					annotations: {
-						// Distinct label from "Hill coefficient" so pickers show this plot-
-						// rendering sibling (nulls parked at -1.0) separately from the real coefficient.
-						"pl7.app/label": "Hill coefficient (plot position)",
-						"pl7.app/isScore": "false",
-						"pl7.app/table/visibility": "hidden"
-					}
-				}
-			}
-		],
+		columns: summaryColumns,
 		storageFormat: "Parquet",
 		partitionKeyLength: 0
 	}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
@@ -487,9 +503,15 @@ wf.body(func(args) {
 	// vs Fit Quality scatter (nulls parked at max_conc*10 and -1.0) that would
 	// otherwise appear as spurious Kd,app / Hill coefficient siblings in
 	// downstream pickers.
+	// "log_fluorescence" fixes the Hill exponent at 1. Its hillCoefficient is not exported. The
+	// block's own table keeps it.
+	exportExcluded := ["kdPlotPosition", "hillPlotPosition"]
+	if args.equation == "log_fluorescence" {
+		exportExcluded = append(exportExcluded, "hillCoefficient")
+	}
 	exportPf := buildTracedPf(
 		[summaryImported, meanBinImported, fittedMeanBinImported, concValueImported],
-		["kdPlotPosition", "hillPlotPosition"]
+		exportExcluded
 	)
 
 	return {

@@ -380,6 +380,12 @@ blockTest(
         `log_fluorescence summary missing ${name}`,
       ).toBe(true);
     }
+    // The fit-quality measure this equation rates on is added only under it.
+    expect(
+      lfSpec.some((c) => c.type === "column" && c.spec.name === "pl7.app/vdj/kdLog10Se"),
+      "log_fluorescence summary has the Kd,app standard error",
+    ).toBe(true);
+    expect(specByName.has("pl7.app/vdj/kdLog10Se"), "mean bin fit has no Kd,app SE").toBe(false);
 
     const lfHillIdx = lfSpec.findIndex(
       (c) => c.type === "column" && c.spec.name === "pl7.app/vdj/hillCoefficient",
