@@ -1,7 +1,13 @@
 import type { PlRef } from "@platforma-sdk/model";
 import { describe, expect, it } from "vitest";
 import type { BlockArgs, BlockData, BlockDataV1 } from "./index";
-import { dataModel, deriveArgs, initBlockData, migrateV1ToV2 } from "./index";
+import {
+  HILL_GATE_INDEX_DEFAULTS,
+  dataModel,
+  deriveArgs,
+  initBlockData,
+  migrateV1ToV2,
+} from "./index";
 
 const ref = (name: string): PlRef => ({ __isRef: true, blockId: "b1", name });
 
@@ -46,7 +52,7 @@ const upgraded = (): BlockData => {
 /** The args the model projects from a given state — what the staleness gate compares. */
 const argsOf = (data: BlockData): BlockArgs => deriveArgs(data);
 
-describe("a project created before this release", () => {
+describe("a project created on v2.4.0 or earlier", () => {
   it("is pinned to the equation it ran, by name", () => {
     const data = upgraded();
     // Not `toBe` alone: an absent field would read `undefined`, and `undefined` defaults forward
@@ -68,8 +74,8 @@ describe("a project created before this release", () => {
   });
 
   it("projects the args v2.4.0 projected, so the upgrade does not stale it", () => {
-    // v2.4.0's own args lambda is gone, but its output is reconstructible: this release adds
-    // `equation` and `plateauFloor` to args and nothing else, so the bytes must be unchanged.
+    // v2.4.0's args lambda is not in the tree, but its output is reconstructible: the v2 data
+    // model adds `equation` and `plateauFloor` to args and nothing else, so the bytes must match.
     const args = argsOf(upgraded());
     expect(Object.hasOwn(args, "equation")).toBe(false);
     expect(Object.hasOwn(args, "plateauFloor")).toBe(false);
@@ -80,7 +86,7 @@ describe("a project created before this release", () => {
   });
 });
 
-describe("a project created after this release", () => {
+describe("a block created on the v2 data model", () => {
   it("fits the log-fluorescence equation", () => {
     expect(initBlockData().equation).toBe("log_fluorescence");
     expect(initBlockData().plateauFloor).toBe(2 / 3);
@@ -94,8 +100,7 @@ describe("a project created after this release", () => {
       // The default equation fits gate fluorescence, so a new block needs gates.
       binColumnRef: ref("bin"),
     });
-    expect(args.equation).toBe("log_fluorescence");
-    expect(args.plateauFloor).toBe(2 / 3);
+    expect(args).toMatchObject({ equation: "log_fluorescence", plateauFloor: 2 / 3 });
   });
 
   it("cannot run the default equation on frequency-only data", () => {
@@ -121,6 +126,38 @@ describe("a project created after this release", () => {
         binColumnRef: undefined,
       }),
     ).not.toThrow();
+  });
+});
+
+describe("the args carry only the settings the selected equation reads", () => {
+  const configured: BlockData = {
+    ...initBlockData(),
+    abundanceRef: ref("abundance"),
+    concentrationColumnRef: ref("concentration"),
+    binColumnRef: ref("bin"),
+    binFluorescenceColumnRef: ref("binFluorescence"),
+  };
+
+  it("log fluorescence omits every hill_gate_index setting", () => {
+    const args = argsOf(configured);
+    for (const field of Object.keys(HILL_GATE_INDEX_DEFAULTS)) {
+      expect(Object.hasOwn(args, field), field).toBe(false);
+    }
+    expect(args).toMatchObject({ binFluorescenceColumnRef: ref("binFluorescence") });
+  });
+
+  it("log fluorescence runs with an invalid hill_gate_index setting the drawer hides", () => {
+    expect(() => argsOf({ ...configured, nMin: 3, nMax: 2 })).not.toThrow();
+  });
+
+  it("a hidden hill_gate_index setting does not change log fluorescence args", () => {
+    expect(argsOf({ ...configured, r2ThresholdGood: 0.95 })).toEqual(argsOf(configured));
+  });
+
+  it("hill_gate_index omits the plateau floor and gate fluorescence", () => {
+    const args = argsOf({ ...configured, equation: "hill_gate_index" });
+    expect(Object.hasOwn(args, "plateauFloor")).toBe(false);
+    expect(Object.hasOwn(args, "binFluorescenceColumnRef")).toBe(false);
   });
 });
 

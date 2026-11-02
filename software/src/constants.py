@@ -53,10 +53,10 @@ class FitParams:
     # The two exposed knobs.
     #
     # This default is deliberately the LEGACY equation, and it is not the default a user gets. The
-    # UI defaults a new project to "log_fluorescence" and sends it explicitly. The model omits the
-    # key whenever the equation is the legacy one, so an upgraded project projects byte-identical
-    # workflow args and does not re-run. An absent key on the wire therefore means "a pre-existing
-    # project running v2.4.0's fit", and it must keep meaning that.
+    # UI sets "log_fluorescence" on a project when the project is created and sends it explicitly.
+    # The model omits the key whenever the equation is the legacy one, so an upgraded project
+    # projects byte-identical workflow args and does not re-run. An absent key on the wire therefore
+    # means "a pre-existing project running v2.4.0's fit", and it must keep meaning that.
     equation: Equation = "hill_gate_index"
     # Read by "log_fluorescence" only. A params file for "hill_gate_index" may omit it.
     plateau_floor: float = 2.0 / 3.0
@@ -70,6 +70,12 @@ class FitParams:
     hook_effect_threshold_bin: float = 0.2
     hook_effect_threshold_no_bin: float = 0.02
     hook_effect_min_reads: int = 20
+
+    def __post_init__(self) -> None:
+        # `equation` selects the code path, so an unknown value would otherwise run the legacy fit
+        # silently. Every other field is range-checked by the stage that reads it.
+        if self.equation not in EQUATIONS:
+            raise ValueError(f"unknown equation {self.equation!r}; expected one of {', '.join(EQUATIONS)}")
 
 
 DEFAULT_PARAMS = FitParams()
@@ -94,8 +100,9 @@ COL_READS = "reads"
 # --sort-fraction-column. Do not change without a simultaneous change
 # to workflow/src/main.tpl.tengo.
 COL_SORT_FRACTION = "sort_fraction"
-# Column name emitted by the Tengo workflow when binFluorescenceColumnRef is bound: the gate's
-# measured mean log10 fluorescence, one value per (concentration, gate). Must match the string
-# passed to --bin-fluorescence-column. Read by "log_fluorescence" only. Absent means the gates
+# Column header the Tengo workflow writes into reads.tsv when binFluorescenceColumnRef is bound:
+# the gate's measured mean log10 fluorescence, one value per (concentration, gate). The pipeline
+# detects the column by this name; no CLI flag carries it. Do not change without a simultaneous
+# change to workflow/src/main.tpl.tengo. Read by "log_fluorescence" only. Absent means the gates
 # are assumed evenly spaced at GATE_WIDTH_DECADES.
 COL_BIN_FLUORESCENCE = "bin_fluorescence"

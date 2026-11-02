@@ -9,6 +9,7 @@ import polars as pl
 from constants import (
     COL_ANTIGEN,
     COL_BIN,
+    COL_BIN_FLUORESCENCE,
     COL_CLONOTYPE,
     COL_CONC_STR,
     COL_CONC_VAL,
@@ -80,9 +81,7 @@ def validate_concentration_column(df: pl.DataFrame, has_bin: bool) -> list[str]:
     nonzero = df.filter(pl.col(COL_CONC_VAL) > 0).select(pl.col(COL_CONC_VAL).unique())
     n_nonzero = nonzero.height
     if n_nonzero == 1:
-        warnings.append(
-            "only one non-zero concentration present; narrow dose range may not bracket Kd,app (R5)"
-        )
+        warnings.append("only one non-zero concentration present; narrow dose range may not bracket Kd,app (R5)")
     elif n_nonzero >= 2:
         max_c = float(nonzero.select(pl.col(COL_CONC_VAL).max()).item())
         min_c = float(nonzero.select(pl.col(COL_CONC_VAL).min()).item())
@@ -126,8 +125,7 @@ def validate_sort_fraction(reads: pl.DataFrame, col: str) -> None:
     if bad.height > 0:
         violations = bad.select([COL_CONC_STR, "s"]).to_dicts()
         raise InputValidationError(
-            f"sort_fraction values must sum to 1.0 per concentration "
-            f"(tolerance 1e-3). Violations: {violations}"
+            f"sort_fraction values must sum to 1.0 per concentration (tolerance 1e-3). Violations: {violations}"
         )
 
 
@@ -141,9 +139,7 @@ def validate_bin_column(df: pl.DataFrame) -> None:
     # string column of empty strings (the TSV builder's null encoding). Surface a
     # user-actionable message instead of the generic "got String" dtype complaint.
     if df.schema[COL_BIN] == pl.Utf8:
-        non_empty = df.filter(
-            pl.col(COL_BIN).is_not_null() & (pl.col(COL_BIN).str.len_chars() > 0)
-        ).height
+        non_empty = df.filter(pl.col(COL_BIN).is_not_null() & (pl.col(COL_BIN).str.len_chars() > 0)).height
         if non_empty == 0:
             raise InputValidationError(
                 "bin column has no integer values — the selected metadata "
@@ -155,6 +151,23 @@ def validate_bin_column(df: pl.DataFrame) -> None:
         raise InputValidationError(f"bin column must be integer type, got {df[COL_BIN].dtype}")
     if df.select((pl.col(COL_BIN) <= 0).sum()).item() > 0:
         raise InputValidationError("bin column must contain positive integers (>= 1)")
+
+
+def validate_bin_fluorescence(df: pl.DataFrame) -> None:
+    """Every row in a gate (bin >= 1) must carry a finite measured gate position.
+
+    A missing position would drop that gate's reads from the mean log10 fluorescence and move the
+    signal without any warning, so it is refused. Rows with a null bin (allowed at concentration 0)
+    are not checked.
+    """
+    position = pl.col(COL_BIN_FLUORESCENCE).cast(pl.Float64, strict=False)
+    bad = df.filter((pl.col(COL_BIN) >= 1) & (position.is_null() | ~position.is_finite()))
+    if bad.height > 0:
+        examples = bad.select([COL_SAMPLE, COL_CONC_STR, COL_BIN]).unique().sort(COL_SAMPLE).head(5).to_dicts()
+        raise InputValidationError(
+            f"column '{COL_BIN_FLUORESCENCE}' must hold a finite log10 fluorescence for every gate; "
+            f"{bad.height} rows are null or not finite, e.g. {examples}"
+        )
 
 
 def max_bin_label(df: pl.DataFrame) -> int:

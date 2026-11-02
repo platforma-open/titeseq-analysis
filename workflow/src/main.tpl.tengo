@@ -55,9 +55,9 @@ wf.body(func(args) {
 	// The model gates this on hasBin, but we re-check here so the workflow is
 	// safe if called with a sort-fraction ref and no bin ref.
 	hasSortFraction := !is_undefined(args.sortFractionColumnRef) && hasBin
-	// The gate's measured mean log10 fluorescence. Only "log_fluorescence" reads it, and only
-	// with gates. Python detects it by the column's presence, as it does the bin column.
-	hasBinFluorescence := !is_undefined(args.binFluorescenceColumnRef) && hasBin
+	// The gate's measured mean log10 fluorescence. The model sends it only under
+	// "log_fluorescence", which requires gates. Python detects it by the column's presence.
+	hasBinFluorescence := !is_undefined(args.binFluorescenceColumnRef)
 
 	unitLabel := ""
 	if !is_undefined(concSpec.annotations) && !is_undefined(concSpec.annotations["pl7.app/label"]) {
@@ -115,27 +115,27 @@ wf.body(func(args) {
 
 	// params.json payload. Python auto-detects bin-mode (COL_BIN presence)
 	// and baseline-from-zero (c=0 rows), so only tuning params go here.
-	paramsPayload := {
-		min_reads_per_concentration: args.minReadsPerConcentration,
-		min_concentration_points: args.minConcentrationPoints,
-		r2_threshold_good: args.r2ThresholdGood,
-		r2_threshold_failed: args.r2ThresholdFailed,
-		n_min: args.nMin,
-		n_max: args.nMax,
-		hook_effect_threshold_bin: args.hookEffectThresholdBin,
-		hook_effect_threshold_no_bin: args.hookEffectThresholdNoBin,
-		hook_effect_min_reads: args.hookEffectMinReads
-	}
-	// The equation and its plateau floor are written only when the model sends them. An absent
-	// `equation` means "hill_gate_index" here and in the Python FitParams, which is how a project
-	// created before the equation existed keeps the params.json — and so the result — it had.
-	// Note this is NOT the default a new block takes: that one is "log_fluorescence", and the
-	// model sends it by name.
-	if !is_undefined(args.equation) {
-		paramsPayload.equation = args.equation
-	}
-	if !is_undefined(args.plateauFloor) {
-		paramsPayload.plateau_floor = args.plateauFloor
+	// The model sends each equation only the settings it reads. "hill_gate_index" arrives without
+	// `equation`, and Python's FitParams reads an absent `equation` as "hill_gate_index", so a
+	// project created on v2.4.0 or earlier keeps the params.json, and so the result, it had.
+	paramsPayload := undefined
+	if args.equation == "log_fluorescence" {
+		paramsPayload = {
+			equation: args.equation,
+			plateau_floor: args.plateauFloor
+		}
+	} else {
+		paramsPayload = {
+			min_reads_per_concentration: args.minReadsPerConcentration,
+			min_concentration_points: args.minConcentrationPoints,
+			r2_threshold_good: args.r2ThresholdGood,
+			r2_threshold_failed: args.r2ThresholdFailed,
+			n_min: args.nMin,
+			n_max: args.nMax,
+			hook_effect_threshold_bin: args.hookEffectThresholdBin,
+			hook_effect_threshold_no_bin: args.hookEffectThresholdNoBin,
+			hook_effect_min_reads: args.hookEffectMinReads
+		}
 	}
 	// FACS-correction status flows via the --sort-fraction-column CLI arg; the
 	// Python pipeline logs "Mean-bin correction: ..." unconditionally so stdout
@@ -145,6 +145,7 @@ wf.body(func(args) {
 	// Exec Python fit-curves.
 	execBuilder := exec.builder().
 		software(fitCurvesSw).
+		name("titeseq-fit-curves").
 		mem("16GiB").
 		cpu(4).
 		writeFile("params.json", canonical.encode(paramsPayload)).
@@ -203,6 +204,10 @@ wf.body(func(args) {
 	if !hasBin {
 		meanBinLabel = "Clonotype frequency"
 		fittedMeanBinLabel = "Fitted clonotype frequency"
+	} else if hasBinFluorescence {
+		// Measured gate positions put the signal and the fitted curve in log10 fluorescence.
+		meanBinLabel = "Mean log10 fluorescence"
+		fittedMeanBinLabel = "Fitted log10 fluorescence"
 	}
 
 	// Provenance annotation for the FACS sort-fraction correction. Always emitted
@@ -229,6 +234,11 @@ wf.body(func(args) {
 	// Import per_clonotype.tsv → summary PColumns.
 	// Python writes column `r2`; the output spec name `pl7.app/vdj/curveFitR2` is
 	// what discovery & the UI see, so the rename is invisible downstream.
+	// "log_fluorescence" fixes the Hill exponent at 1, so its column is a constant; hide it there.
+	hillVisibility := "default"
+	if args.equation == "log_fluorescence" {
+		hillVisibility = "hidden"
+	}
 	summaryColumns := [
 		{
 			column: "kd",
@@ -249,7 +259,7 @@ wf.body(func(args) {
 					"pl7.app/label": "Hill coefficient",
 					"pl7.app/isScore": "false",
 					"pl7.app/description": "Hill coefficient n from the Hill fit. n = 1 is the expected Langmuir isotherm value for simple 1:1 monovalent binding; n in roughly [0.7, 1.3] behaves as expected. n > 2 typically reflects heterogeneous yeast display populations rather than genuine cooperativity. n < 1 often indicates a non-functional display fraction (misfolding, non-binding orientation) diluting the signal. Diagnostic only — not a primary ranking criterion.",
-					"pl7.app/table/visibility": "default",
+					"pl7.app/table/visibility": hillVisibility,
 					"pl7.app/table/orderPriority": "198"
 				}
 			}

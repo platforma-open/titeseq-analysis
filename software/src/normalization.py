@@ -24,7 +24,9 @@ def compute_mean_bin(
     `gate_position_col` replaces the gate label `b` with a measured gate position, so the result
     is a mean log10 fluorescence rather than a mean gate index. A gate position varies per
     (concentration, gate), so it cannot be recovered from the mean gate index afterwards. Only
-    the "log_fluorescence" equation passes it. Without it the two differ by one affine map.
+    the "log_fluorescence" equation passes it. Without it the two differ by one affine map. A row
+    whose position is null contributes to neither sum, so a missing position cannot pull the mean
+    towards 0. The gate-label path keeps v2.4.0's sums unchanged.
 
     Groups by (clonotype, concentration). Per-bin frequency uses per-sample depth
     (total reads in that bin at that concentration). A bin-at-concentration with zero
@@ -46,6 +48,8 @@ def compute_mean_bin(
 
     weight = pl.col(FREQ) * pl.col(sort_fraction_col) if sort_fraction_col is not None else pl.col(FREQ)
     position = pl.col(gate_position_col) if gate_position_col is not None else pl.col(COL_BIN)
+    if gate_position_col is not None:
+        weight = pl.when(position.is_not_null()).then(weight).otherwise(0.0)
 
     return (
         with_freq.with_columns(weight.alias("w"))

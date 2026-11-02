@@ -1,8 +1,10 @@
-"""The "log_fluorescence" rating, at its boundaries.
+"""The "log_fluorescence" rating of a converged fit, at its boundaries.
 
-Failed   the fit did not converge, or too few reads or points to fit
-Partial  converged, but the reported K_D is a bound, or SE(log10 K_D) > KD_SD_GOOD / not finite
-Good     converged, K_D inside the titrated range, and SE(log10 K_D) <= KD_SD_GOOD
+Partial  the reported K_D is a bound, or SE(log10 K_D) > KD_SD_GOOD / not finite
+Good     K_D inside the titrated range, and SE(log10 K_D) <= KD_SD_GOOD
+
+The pipeline rates gated clonotypes and non-converged fits Failed before this runs; the pipeline
+tests cover those.
 """
 
 from __future__ import annotations
@@ -16,23 +18,8 @@ from constants import KD_SD_GOOD
 
 
 def _rate(**kwargs):
-    base = {"converged": True, "censored": False, "log10_kd_se": 0.1}
+    base = {"censored": False, "log10_kd_se": 0.1}
     return classify_log_fluorescence(**{**base, **kwargs})
-
-
-class TestFailed:
-    def test_a_fit_that_did_not_converge_is_failed(self):
-        result = _rate(converged=False)
-        assert (result.affinity_class, result.failure_reason) == ("Failed", "convergence_failure")
-
-    @pytest.mark.parametrize("reason", ["insufficient_reads", "insufficient_points"])
-    def test_an_upstream_gate_wins_over_everything(self, reason):
-        result = _rate(precomputed_reason=reason)
-        assert (result.affinity_class, result.failure_reason) == ("Failed", reason)
-
-    def test_a_non_convergence_never_reports_a_fit_reason(self):
-        # low_r2 and n_out_of_range cannot fire under this equation.
-        assert _rate(converged=False, log10_kd_se=None).failure_reason == "convergence_failure"
 
 
 class TestGood:

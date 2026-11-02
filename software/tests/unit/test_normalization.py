@@ -278,3 +278,33 @@ class TestNormalizeDispatch:
         out_without = normalize(reads, bin_mode=False, sort_fraction_col=None).sort("clonotypeKey")
         out_with = normalize(reads, bin_mode=False, sort_fraction_col="sort_fraction").sort("clonotypeKey")
         assert out_without.equals(out_with)
+
+
+class TestComputeMeanBinGatePositions:
+    """`gate_position_col` replaces the gate label with a measured gate position."""
+
+    @staticmethod
+    def _reads(positions: list[float | None]) -> pl.DataFrame:
+        # One clonotype alone in each of four gates: every per-gate frequency is 1, so the mean is
+        # the plain mean of the positions that count.
+        return pl.DataFrame(
+            {
+                "clonotypeKey": ["A"] * 4,
+                "sampleId": [f"s{b}" for b in range(1, 5)],
+                "concentrationStr": ["1"] * 4,
+                "concentration": [1.0] * 4,
+                "bin": [1, 2, 3, 4],
+                "reads": [10] * 4,
+                "bin_fluorescence": positions,
+            },
+            schema_overrides={"bin_fluorescence": pl.Float64},
+        )
+
+    def test_the_mean_is_taken_over_the_positions(self):
+        out = compute_mean_bin(self._reads([0.0, 0.65, 1.30, 1.95]), gate_position_col="bin_fluorescence")
+        assert out[MEAN_BIN][0] == pytest.approx(0.975)
+
+    def test_a_null_position_counts_in_neither_sum(self):
+        # Counting its weight in the denominator only would read (0 + 0.65 + 1.30) / 4 = 0.4875.
+        out = compute_mean_bin(self._reads([0.0, 0.65, 1.30, None]), gate_position_col="bin_fluorescence")
+        assert out[MEAN_BIN][0] == pytest.approx(0.65)

@@ -7,7 +7,7 @@ import type {
   PlDataTableStateV2,
   PlRef,
 } from "@platforma-sdk/model";
-import type { BlockParams, Equation } from "@platforma-open/platforma-open.titeseq-analysis.kind";
+import type { BlockParams } from "@platforma-open/platforma-open.titeseq-analysis.kind";
 import { kind } from "@platforma-open/platforma-open.titeseq-analysis.kind";
 import type { FitSettings, PresetId } from "./presets";
 import { DEFAULT_EQUATION, DEFAULT_PLATEAU_FLOOR, HILL_GATE_INDEX_DEFAULTS } from "./presets";
@@ -58,20 +58,26 @@ type BlockLabels = {
   customBlockLabel: string;
 };
 
-export type BlockArgs = FitInputs &
-  BlockLabels &
-  Omit<FitSettings, "equation" | "plateauFloor"> & {
-    /**
-     * An absent key means `hill_gate_index`. The workflow and the Python `FitParams` read it
-     * the same way. A new block's `BlockData` default is `log_fluorescence`, so the two differ
-     * on purpose: a project from before this release projects the args it always projected,
-     * and the upgrade does not stale it.
-     */
-    equation?: Equation;
-    /** Sent only under `log_fluorescence`; no other equation reads a plateau floor. */
-    plateauFloor?: number;
-    inputFilter?: string;
-  };
+/** What every equation's args carry: the inputs except gate fluorescence, labels and subset. */
+type ArgsInputs = Omit<FitInputs, "binFluorescenceColumnRef">;
+type ArgsLabels = BlockLabels & { inputFilter?: string };
+type CommonArgs = ArgsInputs & ArgsLabels;
+
+/**
+ * Each equation's args carry only the settings that equation reads, so a setting the drawer hides
+ * can neither block Run nor stale the block.
+ *
+ * `hill_gate_index` omits `equation`. The workflow and the Python `FitParams` read an absent
+ * `equation` as `hill_gate_index`, so a project created on v2.4.0 or earlier projects the args it
+ * always projected, and the upgrade does not stale it.
+ */
+export type BlockArgs =
+  | (CommonArgs & Omit<FitSettings, "equation" | "plateauFloor"> & { equation?: undefined })
+  | (CommonArgs & {
+      equation: "log_fluorescence";
+      plateauFloor: number;
+      binFluorescenceColumnRef?: PlRef;
+    });
 
 export type BlockData = FitInputs &
   BlockLabels &
@@ -177,8 +183,11 @@ export const initBlockData = (params?: BlockParams): BlockData => ({
   sortFractionColumnRef: params?.sortFractionColumnRef,
   targetAntigen: params?.targetAntigen,
   // A new block fits the log-fluorescence equation. An args projection that omits `equation`
-  // means the other one — see `BlockArgs.equation`.
-  equation: params?.equation ?? DEFAULT_EQUATION,
+  // means the other one — see `BlockArgs`. So does a template exported before the
+  // equation existed: it carries the fit settings but no equation.
+  equation:
+    params?.equation ??
+    (params?.minReadsPerConcentration !== undefined ? "hill_gate_index" : DEFAULT_EQUATION),
   plateauFloor: params?.plateauFloor ?? DEFAULT_PLATEAU_FLOOR,
   minReadsPerConcentration:
     params?.minReadsPerConcentration ?? HILL_GATE_INDEX_DEFAULTS.minReadsPerConcentration,
@@ -227,7 +236,7 @@ export const initBlockData = (params?: BlockParams): BlockData => ({
 });
 
 /**
- * v1 -> v2. A project from before this release ran the gate-index fit, so name it.
+ * v1 -> v2. A v1 project (v2.4.0 or earlier) ran the gate-index fit, so name it.
  *
  * Writing the field is the point. An absent `equation` reads as a new block's default,
  * `log_fluorescence`, and every released project would change the equation it fits.
@@ -314,19 +323,59 @@ export const deriveArgs = (data: BlockData): BlockArgs => {
       "FACS sort fraction requires a FACS bin column — the correction only applies in bin mode",
     );
 
-  // Reject undefined before any range comparison runs. `undefined < 1` returns false, so a
-  // stored block that lacks one of these fields would pass validation and send undefined to
-  // the Python fit.
-  if (data.equation === undefined) throw new Error("Equation is required");
-  if (data.plateauFloor === undefined) throw new Error("Plateau floor is required");
+  // Two halves, so `hill_gate_index` can place its settings between them: its args keep
+  // v2.4.0's key order as well as its keys.
+  const inputs = {
+    abundanceRef: data.abundanceRef,
+    concentrationColumnRef: data.concentrationColumnRef,
+    binColumnRef: data.binColumnRef,
+    antigenColumnRef: data.antigenColumnRef,
+    sortFractionColumnRef: data.sortFractionColumnRef,
+    targetAntigen: data.targetAntigen,
+  };
+  const labels = {
+    // Strings have UI defaults but old stored data may lack them; coerce to
+    // empty/safe values rather than throw — they don't break the workflow.
+    defaultBlockLabel: data.defaultBlockLabel ?? "Tite-Seq Analysis",
+    customBlockLabel: data.customBlockLabel ?? "",
+    // The subset's canonical column id, which the workflow stamps as the outputs'
+    // `pl7.app/inputSubset`. Absent without a filter, so unfiltered args are unchanged.
+    ...(data.filterRef !== undefined && {
+      inputFilter: createGlobalPObjectId(data.filterRef.blockId, data.filterRef.name),
+    }),
+  };
+
+  switch (data.equation) {
+    case "log_fluorescence":
+      return logFluorescenceArgs(data, inputs, labels);
+    case "hill_gate_index":
+      return hillGateIndexArgs(data, inputs, labels);
+    default:
+      throw new Error(`Unknown equation: ${data.equation satisfies never}`);
+  }
+};
+
+function logFluorescenceArgs(data: BlockData, inputs: ArgsInputs, labels: ArgsLabels): BlockArgs {
   if (data.plateauFloor <= 0 || data.plateauFloor > 1)
     throw new Error("Plateau floor must be above 0 and at most 1");
   // The log-fluorescence fit's signal is gate fluorescence, so frequency-only data cannot
   // feed it. The Python raises on this; refusing here disables Run and names the reason
   // instead of failing the job after it has been submitted.
-  if (data.equation === "log_fluorescence" && data.binColumnRef === undefined)
+  if (data.binColumnRef === undefined)
     throw new Error("The log fluorescence fit requires a FACS bin column");
+  return {
+    ...inputs,
+    binFluorescenceColumnRef: data.binFluorescenceColumnRef,
+    equation: "log_fluorescence",
+    plateauFloor: data.plateauFloor,
+    ...labels,
+  };
+}
 
+function hillGateIndexArgs(data: BlockData, inputs: ArgsInputs, labels: ArgsLabels): BlockArgs {
+  // Reject undefined before any range comparison runs. `undefined < 1` returns false, so a
+  // stored block that lacks one of these fields would pass validation and send undefined to
+  // the Python fit.
   if (data.minReadsPerConcentration === undefined)
     throw new Error("Min reads per concentration is required");
   if (data.minConcentrationPoints === undefined)
@@ -356,20 +405,7 @@ export const deriveArgs = (data: BlockData): BlockArgs => {
   if (data.minReadsPerConcentration < 1) throw new Error("Min reads per concentration must be ≥ 1");
   if (data.minConcentrationPoints < 3) throw new Error("Min concentration points must be ≥ 3");
   return {
-    // Canonicalization, not a shortcut. An absent `equation` means `hill_gate_index`, so a
-    // project that stores it projects the bytes v2.4.0 projected and the upgrade does not
-    // stale it. The plateau floor travels with the one equation that reads it.
-    ...(data.equation !== "hill_gate_index" && {
-      equation: data.equation,
-      plateauFloor: data.plateauFloor,
-    }),
-    abundanceRef: data.abundanceRef,
-    concentrationColumnRef: data.concentrationColumnRef,
-    binColumnRef: data.binColumnRef,
-    antigenColumnRef: data.antigenColumnRef,
-    sortFractionColumnRef: data.sortFractionColumnRef,
-    binFluorescenceColumnRef: data.binFluorescenceColumnRef,
-    targetAntigen: data.targetAntigen,
+    ...inputs,
     minReadsPerConcentration: data.minReadsPerConcentration,
     minConcentrationPoints: data.minConcentrationPoints,
     r2ThresholdGood: data.r2ThresholdGood,
@@ -378,20 +414,14 @@ export const deriveArgs = (data: BlockData): BlockArgs => {
     nMax: data.nMax,
     // Default the inactive mode's threshold so the args type is satisfied
     // — the workflow only reads the field for the active mode.
-    hookEffectThresholdBin: data.hookEffectThresholdBin ?? 0.2,
-    hookEffectThresholdNoBin: data.hookEffectThresholdNoBin ?? 0.02,
+    hookEffectThresholdBin:
+      data.hookEffectThresholdBin ?? HILL_GATE_INDEX_DEFAULTS.hookEffectThresholdBin,
+    hookEffectThresholdNoBin:
+      data.hookEffectThresholdNoBin ?? HILL_GATE_INDEX_DEFAULTS.hookEffectThresholdNoBin,
     hookEffectMinReads: data.hookEffectMinReads,
-    // Strings have UI defaults but old stored data may lack them; coerce to
-    // empty/safe values rather than throw — they don't break the workflow.
-    defaultBlockLabel: data.defaultBlockLabel ?? "Tite-Seq Analysis",
-    customBlockLabel: data.customBlockLabel ?? "",
-    // The subset's canonical column id, which the workflow stamps as the outputs'
-    // `pl7.app/inputSubset`. Absent without a filter, so unfiltered args are unchanged.
-    ...(data.filterRef !== undefined && {
-      inputFilter: createGlobalPObjectId(data.filterRef.blockId, data.filterRef.name),
-    }),
+    ...labels,
   };
-};
+}
 
 export const platforma = BlockModelV3.create({ dataModel, kind })
 

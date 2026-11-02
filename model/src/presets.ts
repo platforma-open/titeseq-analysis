@@ -4,8 +4,8 @@ import type { Equation } from "@platforma-open/platforma-open.titeseq-analysis.k
  * Every setting that shapes the fit — the two knobs the equations are chosen and tuned with, and
  * the nine `hill_gate_index` grades its fits by. Inputs, labels and view state are not here.
  *
- * `BlockArgs` and `BlockData` are both built on this type, so a setting added here reaches the
- * workflow and the presets below together.
+ * `BlockData` and the `hill_gate_index` branch of `BlockArgs` are built on this type, so a
+ * setting added here reaches the drawer, the args and the presets below together.
  */
 export type FitSettings = {
   equation: Equation;

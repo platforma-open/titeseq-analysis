@@ -136,7 +136,7 @@ class TestSortFractionIntegration:
         out_corrected = run(reads_with_sort, sort_fraction_col="sort_fraction")
 
         # Schema must match the uncorrected run — the correction stays on the
-        # existing meanBin column, no new columns or rows.
+        # existing meanBin column, no extra columns or rows.
         assert set(out_corrected["mean_bin"].columns) == set(out_uncorrected["mean_bin"].columns)
         assert out_corrected["mean_bin"].height == out_uncorrected["mean_bin"].height
         assert set(out_corrected["per_clonotype"].columns) == set(out_uncorrected["per_clonotype"].columns)
@@ -159,18 +159,26 @@ class TestSortFractionIntegration:
 
     def test_sort_fraction_sums_per_target_antigen(self):
         """Each antigen's sorts carry their own fractions, so the sum is 1 per antigen and
-        concentration, and only the target's samples are checked."""
+        concentration, and only the target's samples are checked. The result is the target's alone:
+        the other antigen's reads (here a reversed curve) reach neither the check nor the fit."""
         _, reads_with_sort = self._build_skewed_reads()
         lib1 = reads_with_sort.with_columns(pl.lit("lib1").alias("antigen"))
         lib2 = reads_with_sort.with_columns(
             pl.lit("lib2").alias("antigen"),
             (pl.col("sampleId") + "_lib2").alias("sampleId"),
+            (5 - pl.col("bin")).alias("bin"),
         )
         reads = pl.concat([lib1, lib2])
+        kwargs = {"target_antigen": "lib1", "antigen_column_ref": "antigen", "sort_fraction_col": "sort_fraction"}
 
-        out = run(reads, target_antigen="lib1", antigen_column_ref="antigen", sort_fraction_col="sort_fraction")
+        out = run(reads, **kwargs)
+        alone = run(lib1, **kwargs)
+        uncorrected = run(lib1.drop("sort_fraction"), target_antigen="lib1", antigen_column_ref="antigen")
 
-        assert out["per_clonotype"].height == 1
+        for name in out:
+            assert out[name].equals(alone[name]), name
+        assert out["per_clonotype"]["kd"][0] is not None
+        assert not out["mean_bin"].equals(uncorrected["mean_bin"])
 
 
 class TestValidatorWarnings:

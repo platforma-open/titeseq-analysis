@@ -180,7 +180,7 @@ class TestGates:
 
 
 class TestV240PathUnchanged:
-    """The v2.4.0 path is what existing users run. Nothing in this change may reach it."""
+    """The v2.4.0 path is what existing users run. Nothing in the "log_fluorescence" path may reach it."""
 
     def test_an_absent_equation_runs_the_v240_fit(self):
         reads = _frame(_lf_reads("G1", 1e-8))
@@ -228,6 +228,109 @@ class TestSortFraction:
         assert corrected["affinityClass"] in {"Good", "Partial"}
 
 
+def _with_positions(reads: pl.DataFrame, offset: float = 2.0) -> pl.DataFrame:
+    """Measured gate positions at the assumed spacing, shifted to a realistic log10 fluorescence."""
+    return reads.with_columns(((pl.col("bin") - 1) * GATE_WIDTH + offset).cast(pl.Float64).alias("bin_fluorescence"))
+
+
+class TestOutputScale:
+    """meanBin and fittedMeanBin are plotted on one axis, so they must share a scale."""
+
+    @pytest.mark.parametrize(
+        "measured,lo,hi,gate",
+        [
+            # Assumed positions: both are the mean gate index, one gate apart per unit.
+            (False, BINS[0], BINS[-1], 1.0),
+            # Measured positions: both are mean log10 fluorescence, here offset by 2 decades.
+            (True, 2.0, 2.0 + (len(BINS) - 1) * GATE_WIDTH, GATE_WIDTH),
+        ],
+    )
+    def test_the_fitted_curve_shares_the_observed_scale(self, measured, lo, hi, gate):
+        reads = _frame(_lf_reads("G1", 1e-8))
+        out = run(_with_positions(reads) if measured else reads, params=LF)
+        joined = out["mean_bin"].join(out["fitted_mean_bin"], on=["clonotypeKey", "concentrationStr"])
+        assert joined.height == len(CONCS)
+        for name in ("meanBin", "fittedMeanBin"):
+            assert joined[name].min() >= lo - 1e-9, name
+            assert joined[name].max() <= hi + 1e-9, name
+        # Within half a gate at every concentration. Curves on different scales sit gates apart.
+        assert (joined["meanBin"] - joined["fittedMeanBin"]).abs().max() < 0.5 * gate
+
+
+class TestMeasuredGatePositionValidation:
+    @pytest.mark.parametrize("bad", [None, math.nan, math.inf])
+    def test_a_gate_without_a_finite_position_is_refused(self, bad):
+        reads = _with_positions(_frame(_lf_reads("G1", 1e-8)))
+        reads = reads.with_columns(
+            pl.when(pl.int_range(pl.len()) == 7)
+            .then(pl.lit(bad, dtype=pl.Float64))
+            .otherwise(pl.col("bin_fluorescence"))
+            .alias("bin_fluorescence")
+        )
+        with pytest.raises(ValueError, match="bin_fluorescence"):
+            run(reads, params=LF)
+
+    def test_the_other_equation_does_not_read_the_column(self):
+        reads = _with_positions(_frame(_lf_reads("G1", 1e-8)))
+        reads = reads.with_columns(pl.lit(None, dtype=pl.Float64).alias("bin_fluorescence"))
+        assert run(reads, params=HILL)["per_clonotype"].height == 1
+
+
+class TestSharedBaseline:
+    """With 0 M samples every clonotype is fitted against one baseline: the read-weighted 0 M mean."""
+
+    @staticmethod
+    def _zero_molar(clonotype: str, gate: int, reads: int) -> list[dict]:
+        # One clonotype alone in its gate at 0 M, so its 0 M signal is exactly that gate's position.
+        return [
+            {
+                "clonotypeKey": clonotype,
+                "sampleId": f"s_0M_b{gate}",
+                "concentrationStr": "0",
+                "concentration": 0.0,
+                "bin": gate,
+                "reads": reads,
+            }
+        ]
+
+    def test_every_fit_receives_the_read_weighted_zero_molar_signal(self, monkeypatch):
+        import pipeline
+
+        seen: list[float | None] = []
+        fit_one = pipeline.fit_one
+
+        def spy(c, y, w, **kwargs):
+            seen.append(kwargs["baseline"])
+            return fit_one(c, y, w, **kwargs)
+
+        monkeypatch.setattr(pipeline, "fit_one", spy)
+        reads = _frame(
+            _lf_reads("A", 1e-8),
+            _lf_reads("B", 1e-9),
+            self._zero_molar("A", gate=1, reads=300),
+            self._zero_molar("B", gate=2, reads=100),
+        )
+        run(reads, params=LF)
+
+        # Gate 1 sits at 0 decades and gate 2 at one gate width. Weighted 300:100 the mean is a
+        # quarter of a gate width; unweighted it would be half.
+        assert seen == [pytest.approx(0.25 * GATE_WIDTH)] * 2
+
+    def test_without_zero_molar_samples_each_clonotype_fits_its_own(self, monkeypatch):
+        import pipeline
+
+        seen: list[float | None] = []
+        fit_one = pipeline.fit_one
+
+        def spy(c, y, w, **kwargs):
+            seen.append(kwargs["baseline"])
+            return fit_one(c, y, w, **kwargs)
+
+        monkeypatch.setattr(pipeline, "fit_one", spy)
+        run(_frame(_lf_reads("A", 1e-8), _lf_reads("B", 1e-9)), params=LF)
+        assert seen == [None, None]
+
+
 class TestCliParams:
     """`equation` and `plateau_floor` reach the pipeline through the --params JSON file."""
 
@@ -254,12 +357,12 @@ class TestCliParams:
         assert main(argv) == 0
         return pl.read_parquet(pc_path)
 
-    def test_the_new_equation_arrives_through_the_params_file(self, tmp_path):
+    def test_log_fluorescence_arrives_through_the_params_file(self, tmp_path):
         frame = self._run(tmp_path, {"equation": "log_fluorescence", "plateau_floor": 2 / 3})
         assert frame.row(0, named=True)["hillCoefficient"] == 1.0
 
     def test_an_absent_equation_runs_the_v240_fit(self, tmp_path):
-        # A pre-existing project's args carry no `equation`. It must not move to the new fit.
+        # A pre-existing project's args carry no `equation`. It must not move to "log_fluorescence".
         frame = self._run(tmp_path, {"min_reads_per_concentration": 3, "min_concentration_points": 5})
         assert frame.row(0, named=True)["hillCoefficient"] != 1.0
 

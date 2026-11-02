@@ -153,6 +153,27 @@ class TestAvailableCpus:
     def test_no_cgroup_files_falls_back_to_host(self, tmp_path):
         assert pipeline.available_cpus(tmp_path) == 96
 
+    @pytest.mark.parametrize("text", ["max\n", "\n", "abc 100000\n", "100000 0\n", "1 2 3\n"])
+    def test_a_malformed_cgroup_v2_file_falls_back_to_host(self, tmp_path, text):
+        _write(tmp_path / "cpu.max", text)
+        assert pipeline.available_cpus(tmp_path) == 96
+
+    @pytest.mark.parametrize("quota,period", [("abc\n", "100000\n"), ("200000\n", "0\n")])
+    def test_a_malformed_cgroup_v1_file_falls_back_to_host(self, tmp_path, quota, period):
+        _write(tmp_path / "cpu" / "cpu.cfs_quota_us", quota)
+        _write(tmp_path / "cpu" / "cpu.cfs_period_us", period)
+        assert pipeline.available_cpus(tmp_path) == 96
+
+    def test_an_unreadable_cgroup_file_falls_back_to_host(self, tmp_path, monkeypatch):
+        _write(tmp_path / "cpu.max", "200000 100000\n")
+
+        def refuse(self, *args, **kwargs):
+            raise PermissionError(13, "Permission denied", str(self))
+
+        # Patched rather than chmod-ed: a test run as root reads a mode-000 file anyway.
+        monkeypatch.setattr(pipeline.Path, "read_text", refuse)
+        assert pipeline.available_cpus(tmp_path) == 96
+
     def test_quota_above_host_is_capped_at_host(self, tmp_path, monkeypatch):
         monkeypatch.setattr(pipeline, "_host_cpus", lambda: 2)
         _write(tmp_path / "cpu.max", "800000 100000\n")

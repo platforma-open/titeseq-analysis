@@ -143,53 +143,54 @@ blockTest(
     // args + UI state into a single BlockData record (see model/src/index.ts);
     // mutateBlockStorage with `update-block-data` is the V3 equivalent of
     // setBlockArgs + setUiState.
+    const hillGateIndexData = {
+      abundanceRef,
+      concentrationColumnRef: concentrationRef,
+      binColumnRef: binRef,
+      antigenColumnRef: undefined,
+      targetAntigen: undefined,
+      minReadsPerConcentration: 3,
+      minConcentrationPoints: 5,
+      r2ThresholdGood: 0.8,
+      r2ThresholdFailed: 0.5,
+      nMin: 0.5,
+      nMax: 2.0,
+      hookEffectThresholdBin: 0.2,
+      hookEffectThresholdNoBin: 0.02,
+      hookEffectMinReads: 20,
+      defaultBlockLabel: "Tite-Seq Analysis",
+      customBlockLabel: "",
+      tableState: createPlDataTableStateV2(),
+      graphStateTitrationCurves: {
+        title: "Titration Curves",
+        template: "dots",
+        currentTab: null,
+        layersSettings: { dots: {} },
+        axesSettings: { axisX: { scale: "log" } },
+      },
+      graphStateKDHistogram: {
+        title: "Kd,app Distribution",
+        template: "bins",
+        currentTab: null,
+        layersSettings: { bins: {} },
+        axesSettings: { axisX: { scale: "log" }, other: { binsCount: 30 } },
+      },
+      graphStateAffinityVsFit: {
+        title: "Affinity vs Fit Quality",
+        template: "dots",
+        currentTab: null,
+        layersSettings: { dots: {} },
+        axesSettings: { axisX: { scale: "log" } },
+      },
+      settingsOpen: false,
+      // Pinned to the fit this test was written against, so it keeps asserting the
+      // behaviour it has always asserted rather than following the new default.
+      equation: "hill_gate_index",
+      plateauFloor: 2 / 3,
+    } satisfies BlockData;
     await project.mutateBlockStorage(titeseqBlockId, {
       operation: "update-block-data",
-      value: {
-        abundanceRef,
-        concentrationColumnRef: concentrationRef,
-        binColumnRef: binRef,
-        antigenColumnRef: undefined,
-        targetAntigen: undefined,
-        minReadsPerConcentration: 3,
-        minConcentrationPoints: 5,
-        r2ThresholdGood: 0.8,
-        r2ThresholdFailed: 0.5,
-        nMin: 0.5,
-        nMax: 2.0,
-        hookEffectThresholdBin: 0.2,
-        hookEffectThresholdNoBin: 0.02,
-        hookEffectMinReads: 20,
-        defaultBlockLabel: "Tite-Seq Analysis",
-        customBlockLabel: "",
-        tableState: createPlDataTableStateV2(),
-        graphStateTitrationCurves: {
-          title: "Titration Curves",
-          template: "dots",
-          currentTab: null,
-          layersSettings: { dots: {} },
-          axesSettings: { axisX: { scale: "log" } },
-        },
-        graphStateKDHistogram: {
-          title: "Kd,app Distribution",
-          template: "bins",
-          currentTab: null,
-          layersSettings: { bins: {} },
-          axesSettings: { axisX: { scale: "log" }, other: { binsCount: 30 } },
-        },
-        graphStateAffinityVsFit: {
-          title: "Affinity vs Fit Quality",
-          template: "dots",
-          currentTab: null,
-          layersSettings: { dots: {} },
-          axesSettings: { axisX: { scale: "log" } },
-        },
-        settingsOpen: false,
-        // Pinned to the fit this test was written against, so it keeps asserting the
-        // behaviour it has always asserted rather than following the new default.
-        equation: "hill_gate_index",
-        plateauFloor: 2 / 3,
-      } satisfies BlockData,
+      value: hillGateIndexData,
     });
 
     await project.runBlock(titeseqBlockId);
@@ -314,49 +315,7 @@ blockTest(
     // the top of this test requires, and fits both equations to identical data.
     await project.mutateBlockStorage(titeseqBlockId, {
       operation: "update-block-data",
-      value: {
-        abundanceRef,
-        concentrationColumnRef: concentrationRef,
-        binColumnRef: binRef,
-        antigenColumnRef: undefined,
-        targetAntigen: undefined,
-        minReadsPerConcentration: 3,
-        minConcentrationPoints: 5,
-        r2ThresholdGood: 0.8,
-        r2ThresholdFailed: 0.5,
-        nMin: 0.5,
-        nMax: 2.0,
-        hookEffectThresholdBin: 0.2,
-        hookEffectThresholdNoBin: 0.02,
-        hookEffectMinReads: 20,
-        defaultBlockLabel: "Tite-Seq Analysis",
-        customBlockLabel: "",
-        tableState: createPlDataTableStateV2(),
-        graphStateTitrationCurves: {
-          title: "Titration Curves",
-          template: "dots",
-          currentTab: null,
-          layersSettings: { dots: {} },
-          axesSettings: { axisX: { scale: "log" } },
-        },
-        graphStateKDHistogram: {
-          title: "Kd,app Distribution",
-          template: "bins",
-          currentTab: null,
-          layersSettings: { bins: {} },
-          axesSettings: { axisX: { scale: "log" }, other: { binsCount: 30 } },
-        },
-        graphStateAffinityVsFit: {
-          title: "Affinity vs Fit Quality",
-          template: "dots",
-          currentTab: null,
-          layersSettings: { dots: {} },
-          axesSettings: { axisX: { scale: "log" } },
-        },
-        settingsOpen: false,
-        equation: "log_fluorescence",
-        plateauFloor: 2 / 3,
-      } satisfies BlockData,
+      value: { ...hillGateIndexData, equation: "log_fluorescence" } satisfies BlockData,
     });
     await project.runBlock(titeseqBlockId);
     const lfState = await helpers.awaitBlockDoneAndGetStableBlockState(titeseqBlockId, 360000);
