@@ -1,0 +1,87 @@
+test := import("@platforma-sdk/workflow-tengo:test")
+synonymousInputs := import(":synonymous-inputs")
+
+variantAxis := func(alphabet, run) {
+	return {
+		name: "pl7.app/variantKey",
+		type: "String",
+		domain: {
+			"pl7.app/repertoire/extractionRunId": run,
+			"pl7.app/modality": "amplicon",
+			"pl7.app/alphabet": alphabet
+		},
+		annotations: {"pl7.app/label": alphabet}
+	}
+}
+
+parentAxis := {name: "pl7.app/repertoire/parentId", type: "String"}
+clonotypeAxis := {name: "pl7.app/vdj/clonotypeKey", type: "String", domain: {"pl7.app/vdj/clonotypingRunId": "r"}}
+
+col := func(...axes) {
+	return {spec: {axesSpec: axes}}
+}
+
+nt := variantAxis("nucleotide", "run1")
+aa := variantAxis("aminoacid", "run1")
+otherAa := variantAxis("aminoacid", "run2")
+
+full := {
+	aaToNt: [col(aa, nt)],
+	aaMutationCounts: [col(aa), col(otherAa)],
+	parentLinks: [col(parentAxis, nt), col(parentAxis, aa), col(parentAxis, otherAa)]
+}
+
+Test_nucleotide_dataset_with_a_linker_is_synonymous := func() {
+	res := synonymousInputs.resolve(full, nt)
+	test.isTrue(res.synonymous, "nucleotide axis and one linker")
+	test.isTrue(synonymousInputs.sameAxis(aa, res.aaAxis), "aa axis is the linker's other axis, verbatim")
+	test.isTrue(res.parentMode, "both aa parent columns of this run resolve")
+	test.isTrue(synonymousInputs.sameAxis(aa, res.aaMutationCount.spec.axesSpec[0]), "aa mutation count of this run")
+	test.isEqual(parentAxis, res.parentAxis, "parent axis from the aa parent link")
+}
+
+Test_linker_axes_in_either_order := func() {
+	res := synonymousInputs.resolve({aaToNt: [col(nt, aa)]}, nt)
+	test.isTrue(res.synonymous, "axis order does not matter")
+}
+
+Test_amino_acid_dataset_is_never_synonymous := func() {
+	res := synonymousInputs.resolve(full, aa)
+	test.isFalse(res.synonymous, "nothing beneath an amino-acid dataset")
+	test.isFalse(res.parentMode, "no parent delta outside synonymous mode")
+}
+
+Test_clonotype_dataset_is_never_synonymous := func() {
+	res := synonymousInputs.resolve(full, clonotypeAxis)
+	test.isFalse(res.synonymous, "a MiXCR axis has no alphabet")
+}
+
+Test_no_linker_or_several_linkers_turn_it_off := func() {
+	test.isFalse(synonymousInputs.resolve({aaToNt: []}, nt).synonymous, "no linker")
+	test.isFalse(synonymousInputs.resolve({}, nt).synonymous, "no candidates at all")
+	test.isFalse(synonymousInputs.resolve({aaToNt: [col(aa, nt), col(otherAa, nt)]}, nt).synonymous, "two linkers")
+}
+
+Test_a_linker_from_another_run_does_not_match := func() {
+	otherNt := variantAxis("nucleotide", "run2")
+	test.isFalse(synonymousInputs.resolve({aaToNt: [col(otherAa, otherNt)]}, nt).synonymous, "domain must match")
+}
+
+Test_one_parent_column_missing_turns_the_delta_off := func() {
+	res := synonymousInputs.resolve({aaToNt: [col(aa, nt)], aaMutationCounts: [col(aa)], parentLinks: []}, nt)
+	test.isTrue(res.synonymous, "the combination still runs")
+	test.isFalse(res.parentMode, "the parent link is missing")
+	res = synonymousInputs.resolve({aaToNt: [col(aa, nt)], parentLinks: [col(parentAxis, aa)]}, nt)
+	test.isFalse(res.parentMode, "the mutation count is missing")
+}
+
+Test_noun_follows_the_input := func() {
+	test.isEqual("variant", synonymousInputs.nounOf(nt), "amplicon variant")
+	test.isEqual("clonotype", synonymousInputs.nounOf(clonotypeAxis), "MiXCR clonotype")
+	vdj := variantAxis("nucleotide", "run1")
+	vdj.domain["pl7.app/modality"] = "vdj"
+	test.isEqual("clonotype", synonymousInputs.nounOf(vdj), "declared VDJ")
+	peptide := {name: "pl7.app/variantKey", type: "String", domain: {"pl7.app/peptide/extractionRunId": "p"}}
+	test.isEqual("peptide", synonymousInputs.nounOf(peptide), "peptide extraction")
+	test.isEqual("Variant", synonymousInputs.CAPITALIZED["variant"], "capitalized form")
+}

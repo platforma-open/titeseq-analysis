@@ -13,6 +13,7 @@ import type {
 } from "@platforma-sdk/model";
 import type {
   BlockParams,
+  SynonymousWeighting,
   ReplicateErrorModel,
 } from "@platforma-open/platforma-open.titeseq-analysis.kind";
 import {
@@ -30,10 +31,18 @@ import {
   READ_COVERAGE_DEFAULTS,
 } from "./fitSettings";
 import { deriveTemplateParams } from "./templateParams";
+import type { InputKind, SynonymousSummary } from "./synonymous";
+import {
+  halfMatchedParentInput,
+  inputKindOf,
+  synonymousAaAxis,
+  synonymousMessages,
+} from "./synonymous";
 
 export type {
   BlockParams,
   Equation,
+  SynonymousWeighting,
   ReplicateErrorModel,
 } from "@platforma-open/platforma-open.titeseq-analysis.kind";
 export {
@@ -41,10 +50,13 @@ export {
   DEFAULT_REPLICATE_ERROR_MODEL,
   EQUATIONS,
   REPLICATE_ERROR_MODELS,
+  SYNONYMOUS_WEIGHTINGS,
 } from "@platforma-open/platforma-open.titeseq-analysis.kind";
 export * from "./fitSettings";
 export { deriveTemplateParams };
 export type { PTableKey } from "@platforma-sdk/model";
+export type { InputKind, SynonymousSummary } from "./synonymous";
+export { nounOf } from "./synonymous";
 import {
   BlockModelV3,
   ColumnsCollection,
@@ -106,10 +118,12 @@ type ArgsInputs = Omit<FitInputs, "binFluorescenceColumnRef" | "replicateColumnR
 /**
  * Appended last to every equation's args. Every replicate setting is present only beside a
  * replicate column, so a block that set none projects the args it always projected.
+ * `synonymousWeighting` is present only as "reads".
  */
 type ArgsLabels = BlockLabels & {
   inputFilter?: string;
   replicateColumnRef?: PlRef;
+  synonymousWeighting?: "reads";
 } & Partial<ReplicateSettings>;
 type CommonArgs = ArgsInputs & ArgsLabels;
 
@@ -156,6 +170,8 @@ export type BlockData = FitInputs &
     graphStateReplicates: GraphMakerState;
     /** Subset column picked with the abundance in PlDatasetSelector (e.g. a Repertoire Labeling label). */
     filterRef?: PlRef;
+    /** How synonymous nucleotide variants are combined per amino-acid variant. Absent reads as "none". */
+    synonymousWeighting?: SynonymousWeighting;
     tableState: PlDataTableStateV2;
     graphStateTitrationCurves: GraphMakerState;
     graphStateKDHistogram: GraphMakerState;
@@ -316,6 +332,7 @@ export const initBlockData = (params?: BlockParams): BlockData => ({
   hookEffectThresholdNoBin:
     params?.hookEffectThresholdNoBin ?? HILL_GATE_INDEX_DEFAULTS.hookEffectThresholdNoBin,
   hookEffectMinReads: params?.hookEffectMinReads ?? HILL_GATE_INDEX_DEFAULTS.hookEffectMinReads,
+  synonymousWeighting: params?.synonymousWeighting,
   defaultBlockLabel: "Tite-Seq Analysis",
   customBlockLabel: params?.customBlockLabel ?? "",
   tableState: createPlDataTableStateV2(),
@@ -577,6 +594,8 @@ export const deriveArgs = (data: BlockData): BlockArgs => {
       ...(data.replicateR2Floor !== undefined && { replicateR2Floor: data.replicateR2Floor }),
       replicateCensoredMajority: data.replicateCensoredMajority,
     }),
+    // Absent unless "reads", so a block that never set it projects the args it always did.
+    ...(data.synonymousWeighting === "reads" && { synonymousWeighting: "reads" as const }),
   };
 
   switch (data.equation) {
@@ -692,6 +711,43 @@ export const sectionsFor = () => [
   { type: "link" as const, href: "/kd-distribution" as const, label: "Kd Distribution" },
   { type: "link" as const, href: "/affinity-vs-fit" as const, label: "Affinity vs Fit Quality" },
 ];
+
+/** The amino-acid frame of the last run; undefined outside synonymous mode. */
+function variantSummaryCols(ctx: Ctx) {
+  return ctx.outputs
+    ?.resolve({ field: "variantSummaryPf", allowPermanentAbsence: true })
+    ?.getPColumns();
+}
+
+function synonymousSummary(ctx: Ctx): SynonymousSummary | undefined {
+  // A summary from a run on another dataset says nothing about this one.
+  if (!plRefsEqualOrBothAbsent(ctx.activeArgs?.abundanceRef, ctx.data.abundanceRef))
+    return undefined;
+  return ctx.outputs
+    ?.resolve({ field: "synonymousSummary", allowPermanentAbsence: true })
+    ?.getDataAsJson<SynonymousSummary>();
+}
+
+function plRefsEqualOrBothAbsent(a: PlRef | undefined, b: PlRef | undefined): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return plRefsEqual(a, b);
+}
+
+/** The picked abundance's amino-acid axis when synonymous mode will turn on, read from the pool. */
+function poolSynonymousAaAxis(ctx: Ctx) {
+  if (ctx.data.abundanceRef === undefined) return undefined;
+  const ntAxis = ctx.resultPool.getPColumnSpecByRef(ctx.data.abundanceRef)?.axesSpec[1];
+  if (ntAxis === undefined) return undefined;
+  const specs = ctx.resultPool.getSpecs().entries.map((e) => e.obj);
+  const aaAxis = synonymousAaAxis(specs, ntAxis);
+  return aaAxis === undefined ? undefined : { specs, aaAxis };
+}
+
+/** Read from the result pool, so the warning shows before the first run. */
+function halfMatchedParent(ctx: Ctx) {
+  const found = poolSynonymousAaAxis(ctx);
+  return found === undefined ? undefined : halfMatchedParentInput(found.specs, found.aaAxis);
+}
 
 export const platforma = BlockModelV3.create({ dataModel, kind })
 
@@ -829,11 +885,20 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     // appears in server logs while the block silently shows empty panels.
     // CIDConflictError is typically transient — the platform's "zebra"
     // self-recovery retries the write — so we label it as such.
-    // replicatePf exists only on a run that combined replicates, so its absence is no error.
-    const outputKeys = ["summaryPf", "signalPf", "logHandle", "replicatePf"] as const;
+    // replicatePf exists only on a run that combined replicates, and the last two in synonymous
+    // mode only, so their absence is no error.
+    const optionalKeys = new Set(["replicatePf", "variantSummaryPf", "synonymousSummary"]);
+    const outputKeys = [
+      "summaryPf",
+      "signalPf",
+      "logHandle",
+      "replicatePf",
+      "variantSummaryPf",
+      "synonymousSummary",
+    ] as const;
     for (const key of outputKeys) {
       const errorAcc = (
-        key === "replicatePf"
+        optionalKeys.has(key)
           ? ctx.outputs?.resolve({ field: key, allowPermanentAbsence: true })
           : ctx.outputs?.resolve(key)
       )?.getError();
@@ -876,6 +941,9 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     // Numeric-field errors surface on each PlNumberField, from its own `required`,
     // `min-value`, `max-value` and `validate` props. The args() throw above gates Run.
 
+    for (const message of synonymousMessages(halfMatchedParent(ctx), synonymousSummary(ctx)))
+      issues.push({ severity: "warning", message });
+
     return issues;
   })
 
@@ -883,11 +951,26 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
 
   .output("isRunning", (ctx) => ctx.outputs?.getIsReadyOrError() === false)
 
+  .output("inputKind", (ctx): InputKind | undefined => {
+    if (ctx.data.abundanceRef === undefined) return undefined;
+    const axis = ctx.resultPool.getPColumnSpecByRef(ctx.data.abundanceRef)?.axesSpec[1];
+    return axis === undefined ? undefined : inputKindOf(axis);
+  })
+
+  // Whether the picked dataset turns synonymous mode on, before any run: the drawer shows the
+  // synonymous settings only then.
+  .output("synonymousCapable", (ctx) => poolSynonymousAaAxis(ctx) !== undefined)
+
+  // In synonymous mode the table shows one row per amino-acid variant. Each nucleotide variant's own
+  // fit stays in summaryPf, which the graphs read.
+  .output("synonymous", (ctx) => variantSummaryCols(ctx) !== undefined)
+
   .outputWithStatus("summaryTable", (ctx) => {
     // One row per variant: the summary columns only. The per-concentration signal, keyed by
     // concentration and replicate as well, would repeat each variant once per measured point; it
-    // is plotted on the Titration Curves page and exported in `pf`.
-    const summaryCols = ctx.outputs?.resolve("summaryPf")?.getPColumns();
+    // is plotted on the Titration Curves page and exported in `pf`. In synonymous mode the rows are
+    // amino-acid variants.
+    const summaryCols = variantSummaryCols(ctx) ?? ctx.outputs?.resolve("summaryPf")?.getPColumns();
     if (summaryCols === undefined) return undefined;
 
     const kdCol = summaryCols.find((c) => c.spec.name === "pl7.app/vdj/kd");

@@ -5,6 +5,7 @@ import {
   DEFAULT_REPLICATE_ERROR_MODEL,
   EQUATIONS,
   REPLICATE_ERROR_MODELS,
+  SYNONYMOUS_WEIGHTINGS,
   kind,
 } from "./index";
 
@@ -90,6 +91,16 @@ describe("the equation", () => {
       expect(() => parse({ equation: v })).toThrow("'equation' must be");
     },
   );
+});
+
+describe("the synonymous weighting", () => {
+  it.each(SYNONYMOUS_WEIGHTINGS)("accepts %s", (synonymousWeighting) => {
+    expect(parse({ synonymousWeighting })).toEqual({ synonymousWeighting });
+  });
+
+  it.each(["", "Reads", "depth", 1, null])("refuses %o", (v) => {
+    expect(() => parse({ synonymousWeighting: v })).toThrow("'synonymousWeighting' must be");
+  });
 });
 
 describe("the plateau floor", () => {

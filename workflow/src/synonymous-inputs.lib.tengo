@@ -1,0 +1,151 @@
+// Finds the nt -> aa linker and the amino-acid parent columns among the bundle's candidates.
+// Every input must resolve to exactly one column; several matches count as no match.
+
+ll := import("@platforma-sdk/workflow-tengo:ll")
+
+PARENT_ID_AXIS := "pl7.app/repertoire/parentId"
+ALPHABET := "pl7.app/alphabet"
+
+domainOf := func(axis) {
+	return is_undefined(axis.domain) ? {} : axis.domain
+}
+
+sameAxis := func(a, b) {
+	if a.name != b.name || a.type != b.type {
+		return false
+	}
+	da := domainOf(a)
+	db := domainOf(b)
+	if len(da) != len(db) {
+		return false
+	}
+	for k, v in da {
+		if db[k] != v {
+			return false
+		}
+	}
+	return true
+}
+
+single := func(cols, pred) {
+	if is_undefined(cols) {
+		return undefined
+	}
+	found := []
+	for col in cols {
+		if pred(col) {
+			found = append(found, col)
+		}
+	}
+	return len(found) == 1 ? found[0] : undefined
+}
+
+otherAxis := func(col, axis) {
+	for a in col.spec.axesSpec {
+		if !sameAxis(a, axis) {
+			return a
+		}
+	}
+	return undefined
+}
+
+isOnlyOn := func(axis) {
+	return func(col) {
+		return len(col.spec.axesSpec) == 1 && sameAxis(col.spec.axesSpec[0], axis)
+	}
+}
+
+isParentLinkOn := func(axis) {
+	return func(col) {
+		axes := col.spec.axesSpec
+		if len(axes) != 2 {
+			return false
+		}
+		return (sameAxis(axes[0], axis) && axes[1].name == PARENT_ID_AXIS) ||
+			(sameAxis(axes[1], axis) && axes[0].name == PARENT_ID_AXIS)
+	}
+}
+
+isProteinLinkOf := func(ntAxis) {
+	return func(col) {
+		axes := col.spec.axesSpec
+		if len(axes) != 2 {
+			return false
+		}
+		if !sameAxis(axes[0], ntAxis) && !sameAxis(axes[1], ntAxis) {
+			return false
+		}
+		other := otherAxis(col, ntAxis)
+		return !is_undefined(other) && other.name == ntAxis.name && domainOf(other)[ALPHABET] == "aminoacid"
+	}
+}
+
+parentAxisOf := func(linker) {
+	for a in linker.spec.axesSpec {
+		if a.name == PARENT_ID_AXIS {
+			return a
+		}
+	}
+	return undefined
+}
+
+/**
+ * Synonymous mode is on exactly when the variant axis is nucleotide and the nt -> aa linker resolves.
+ * The parent delta is on when, in addition, both amino-acid parent columns resolve.
+ *
+ * @param candidates: {aaToNt, aaMutationCounts, parentLinks}, each an array of bundle columns
+ *   ({spec, data}) or undefined
+ * @param variantAxis: the abundance's variant axis spec
+ * @return {synonymous, linker, aaAxis, parentMode, aaMutationCount, aaParentLink, parentAxis}
+ */
+resolve := func(candidates, variantAxis) {
+	res := {
+		synonymous: false,
+		parentMode: false
+	}
+	if domainOf(variantAxis)[ALPHABET] != "nucleotide" {
+		return res
+	}
+	res.linker = single(candidates.aaToNt, isProteinLinkOf(variantAxis))
+	if is_undefined(res.linker) {
+		return res
+	}
+	res.synonymous = true
+	res.aaAxis = otherAxis(res.linker, variantAxis)
+
+	res.aaMutationCount = single(candidates.aaMutationCounts, isOnlyOn(res.aaAxis))
+	res.aaParentLink = single(candidates.parentLinks, isParentLinkOn(res.aaAxis))
+	res.parentMode = !is_undefined(res.aaMutationCount) && !is_undefined(res.aaParentLink)
+	if res.parentMode {
+		res.parentAxis = parentAxisOf(res.aaParentLink)
+	}
+	return res
+}
+
+// What one row of the abundance is, as a lower-case noun for labels. Mirrors the model's input kind.
+nounOf := func(axis) {
+	if axis.name != "pl7.app/variantKey" {
+		return "clonotype"
+	}
+	dom := domainOf(axis)
+	if dom["pl7.app/modality"] == "vdj" || !is_undefined(dom["pl7.app/vdj/clonotypingRunId"]) {
+		return "clonotype"
+	}
+	if !is_undefined(dom["pl7.app/peptide/extractionRunId"]) {
+		return "peptide"
+	}
+	return "variant"
+}
+
+CAPITALIZED := {
+	clonotype: "Clonotype",
+	variant: "Variant",
+	peptide: "Peptide"
+}
+
+export ll.toStrict({
+	sameAxis: sameAxis,
+	resolve: resolve,
+	nounOf: nounOf,
+	CAPITALIZED: CAPITALIZED
+})

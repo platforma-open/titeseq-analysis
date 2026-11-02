@@ -18,8 +18,22 @@ import {
 import { computed, ref, watch } from "vue";
 import { useApp } from "../app";
 import TiteseqPage from "../components/TiteseqPage.vue";
+import { useNoun } from "../composables/useNoun";
 
 const app = useApp();
+const { noun, Noun } = useNoun();
+
+// Synonymous mode shows one row per amino-acid variant.
+const title = computed(() =>
+  app.model.outputs.synonymous === true
+    ? "Amino Acid Variant Fit Results"
+    : `${Noun.value} Fit Results`,
+);
+const noRowsText = computed(() =>
+  app.model.outputs.synonymous === true
+    ? "No amino acid variants available."
+    : `No ${noun.value}s available.`,
+);
 
 const tableSettings = usePlDataTableSettingsV2({
   model: () => app.model.outputs.summaryTable,
@@ -123,14 +137,14 @@ const cellRendererSelector = computed(() => {
 </script>
 
 <template>
-  <TiteseqPage title="Clonotype Fit Results" mode="table" main>
+  <TiteseqPage :title="title" mode="table" main>
     <PlAgDataTableV2
       v-model="app.model.data.tableState"
       :settings="tableSettings"
       show-export-button
       :cell-renderer-selector="cellRendererSelector"
       not-ready-text="Open Inputs (top right) to configure the block and run it."
-      no-rows-text="No clonotypes available."
+      :no-rows-text="noRowsText"
       @row-double-clicked="openDrilldown"
     />
     <PlSlideModal v-model="drilldownOpen" width="80%">

@@ -16,11 +16,17 @@ import { computed, watch } from "vue";
 import { useApp } from "../app";
 import { aboveZero, boundedBy, emptyError, wholeNumber } from "../fieldValidation";
 import { useFitSettings } from "../composables/useFitSettings";
-import { EQUATION_OPTIONS, REPLICATE_ERROR_MODEL_OPTIONS } from "../fitSettings";
+import { useNoun } from "../composables/useNoun";
+import {
+  EQUATION_OPTIONS,
+  REPLICATE_ERROR_MODEL_OPTIONS,
+  SYNONYMOUS_WEIGHTING_OPTIONS,
+} from "../fitSettings";
 
 const open = defineModel<boolean>({ required: true });
 
 const app = useApp();
+const { noun, Noun } = useNoun();
 
 // The selector picks an abundance, or an abundance narrowed by one of its subset columns.
 // Stored as two refs so blocks saved before filters existed keep their `abundanceRef`.
@@ -134,8 +140,10 @@ function setBinColumn(ref: PlRef | undefined): void {
       required
     >
       <template #tooltip>
-        Per-sample, per-clonotype integer read counts from MiXCR. Selecting this column also anchors
-        the block to that upstream dataset. Normalized per-sample inside the block.
+        Per-sample, per-{{ noun }} integer read counts. Selecting this column also anchors the block
+        to that upstream dataset. Normalized per-sample inside the block. On a nucleotide variant
+        dataset whose amino-acid linker is present, each nucleotide variant is fitted on its own and
+        the fits are combined per amino-acid variant.
       </template>
     </PlDatasetSelector>
     <PlDropdownRef
@@ -158,10 +166,9 @@ function setBinColumn(ref: PlRef | undefined): void {
       @update:model-value="(eq) => eq && setEquation(eq)"
     >
       <template #tooltip>
-        Log fluorescence fit: fits a Hill curve to the mean log10 fluorescence of each clonotype.
-        The Hill exponent is fixed at 1. New blocks use this fit.
-        <br /><br />
-        Mean bin fit: fits a Hill curve to the read-weighted mean bin of each clonotype. The Hill
+        Log fluorescence fit: fits a Hill curve to the mean log10 fluorescence of each {{ noun }}.
+        The Hill exponent is fixed at 1. New blocks use this fit. <br /><br />
+        Mean bin fit: fits a Hill curve to the read-weighted mean bin of each {{ noun }}. The Hill
         exponent is free. Blocks created before the equation choice existed keep this fit.
         <br /><br />
         Each equation rates fit quality in its own way. "Good" means that the equation found a
@@ -243,7 +250,7 @@ function setBinColumn(ref: PlRef | undefined): void {
     >
       <template #tooltip>
         Optional. A per-sample column naming the replicate each sample belongs to. Each replicate is
-        a titration of its own: it is fitted alone, and the per-clonotype values are then combined.
+        a titration of its own: it is fitted alone, and the per-{{ noun }} values are then combined.
         The table then shows the combined Kd,app with its standard error and the SD across the
         replicates, and the Replicates page shows each replicate's own Kd,app. Leave empty to fit
         one titration.
@@ -268,9 +275,9 @@ function setBinColumn(ref: PlRef | undefined): void {
         :error-message="emptyError(app.model.data.plateauFloor)"
       >
         <template #tooltip>
-          The plateau that each clonotype must be able to reach at saturation, as a fraction of the
+          The plateau that each {{ noun }} must be able to reach at saturation, as a fraction of the
           gate range. The default is 0.667, for a screening library. For a library in which most
-          clonotypes bind, use a lower value, for example 0.4.
+          {{ noun }}s bind, use a lower value, for example 0.4.
         </template>
       </PlNumberField>
       <PlNumberField
@@ -394,6 +401,24 @@ function setBinColumn(ref: PlRef | undefined): void {
     </PlAccordionSection>
     -->
 
+    <PlAccordionSection v-if="app.model.outputs.synonymousCapable" label="Synonymous variants">
+      <PlDropdown
+        :model-value="app.model.data.synonymousWeighting ?? 'none'"
+        :options="SYNONYMOUS_WEIGHTING_OPTIONS"
+        label="Combine nucleotide variants"
+        @update:model-value="(w) => w && (app.model.data.synonymousWeighting = w)"
+      >
+        <template #tooltip>
+          How the fits of the synonymous nucleotide variants of one amino-acid variant are combined.
+          <br /><br />
+          Plain mean: the mean of their log10 Kd,app, each variant counted once, as in Starr et al.
+          The default. <br /><br />
+          Weighted by reads: each variant is weighted by its total reads over the titration, as the
+          enrichment and sort-seq blocks weight theirs.
+        </template>
+      </PlDropdown>
+    </PlAccordionSection>
+
     <PlAccordionSection label="Read coverage">
       <PlNumberField
         v-model="app.model.data.minReadsPerConcentration"
@@ -405,8 +430,8 @@ function setBinColumn(ref: PlRef | undefined): void {
         :error-message="emptyError(app.model.data.minReadsPerConcentration)"
       >
         <template #tooltip>
-          The fewest reads a clonotype needs at one concentration for that point to enter the fit. A
-          point below the floor is dropped, and the weighting handles what coverage is left. Both
+          The fewest reads a {{ noun }} needs at one concentration for that point to enter the fit.
+          A point below the floor is dropped, and the weighting handles what coverage is left. Both
           equations read it. The default is 3.
         </template>
       </PlNumberField>
@@ -443,7 +468,7 @@ function setBinColumn(ref: PlRef | undefined): void {
         :error-message="emptyError(app.model.data.r2ThresholdGood)"
       >
         <template #tooltip>
-          Clonotypes with weighted R² at or above this threshold and Hill coefficient in range
+          {{ Noun }}s with weighted R² at or above this threshold and Hill coefficient in range
           classify as Good. Default 0.8.
         </template>
       </PlNumberField>
@@ -458,7 +483,7 @@ function setBinColumn(ref: PlRef | undefined): void {
         :error-message="emptyError(app.model.data.r2ThresholdFailed)"
       >
         <template #tooltip>
-          Clonotypes with weighted R² below this threshold classify as Failed regardless of n.
+          {{ Noun }}s with weighted R² below this threshold classify as Failed regardless of n.
           Default 0.5.
         </template>
       </PlNumberField>
@@ -518,7 +543,7 @@ function setBinColumn(ref: PlRef | undefined): void {
       >
         <template #tooltip>
           Flags non-monotonic signals (potentially genuine tight binders showing a hook effect) when
-          the top concentration's clonotype frequency drops by more than this.
+          the top concentration's {{ noun }} frequency drops by more than this.
         </template>
       </PlNumberField>
       <PlNumberField

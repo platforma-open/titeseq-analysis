@@ -54,6 +54,7 @@ from constants import (
     COL_CLONOTYPE,
     COL_CONC_STR,
     COL_CONC_VAL,
+    COL_READS,
     COL_REPLICATE,
     DEFAULT_PARAMS,
     GATE_WIDTH_DECADES,
@@ -115,6 +116,7 @@ from replicate_combine import (
     collect_values,
     merge_all,
 )
+from synonymous import SynonymousInputs, combine_synonymous
 
 
 def _validate_inputs(
@@ -692,7 +694,8 @@ def run(
     antigen_column_ref: str | None = None,
     sort_fraction_col: str | None = None,
     replicates: ReplicateInputs | None = None,
-) -> dict[str, pl.DataFrame]:
+    synonymous: SynonymousInputs | None = None,
+) -> dict:
     """Execute the full pipeline on an in-memory reads frame.
 
     `sort_fraction_col`, when set, activates the Adams, Mora, Walczak, Kinney 2016
@@ -704,6 +707,9 @@ def run(
     per-replicate values. It adds `per_replicate` to the outputs and puts the replicate on the
     signal frames' key. Unset, every output, every grouping and every command line is the one the
     block had before replicates existed.
+
+    `synonymous`, when set, adds `per_variant` (one row per amino-acid variant) and
+    `synonymous_summary` (a JSON-ready dict) to the outputs. Every other output is unchanged.
     """
     log(f"Pipeline start: {reads.height} reads rows")
     reads = canonicalize_concentration(reads)
@@ -803,6 +809,9 @@ def run(
         f"fitted_mean_bin={outputs['fitted_mean_bin'].height}"
     )
     outputs.update(replicate_outputs)
+    if synonymous is not None:
+        reads_per_copy = _reads_per_copy(reads) if synonymous.weighting == "reads" else None
+        outputs.update(_combine_synonymous(outputs["per_clonotype"], synonymous, conc_bounds, reads_per_copy))
     return outputs
 
 
@@ -879,3 +888,41 @@ def _log_filters(replicates: ReplicateInputs, collected: Collected) -> None:
         named.append(f"R² below {filters.r2_floor}")
     dropped = sum(1 for values in collected.values() for v, _ in values if v.state == "filtered")
     log(f"Replicate filters: {', '.join(named)}; {dropped} replicate fits left out of the means")
+
+
+def _reads_per_copy(reads: pl.DataFrame) -> dict[str, float]:
+    """Each nt variant's total reads over the samples of the titration, after the antigen filter."""
+    totals = reads.group_by(pl.col(COL_CLONOTYPE).cast(pl.Utf8)).agg(pl.col(COL_READS).fill_null(0).sum())
+    return dict(zip(totals[COL_CLONOTYPE].to_list(), totals[COL_READS].cast(pl.Float64).to_list()))
+
+
+def _combine_synonymous(
+    per_clonotype: pl.DataFrame,
+    synonymous: SynonymousInputs,
+    conc_bounds: tuple[float | None, float | None],
+    reads_per_copy: dict[str, float] | None,
+) -> dict:
+    """The amino-acid outputs: each nt variant's own fit, combined per amino-acid variant."""
+    lo, hi = conc_bounds
+    per_variant, summary = combine_synonymous(
+        per_clonotype,
+        synonymous,
+        log10_lo=math.log10(lo) if lo is not None else None,
+        log10_hi=math.log10(hi) if hi is not None else None,
+        reads=reads_per_copy,
+    )
+    weighting = "each nt variant weighted by its total reads" if reads_per_copy is not None else "unweighted"
+    log(f"Synonymous combination: mean of log10 Kd,app, {weighting}")
+    log(
+        f"Synonymous variants: {summary['ntVariants']} nucleotide variants -> {summary['aaVariants']} "
+        f"amino-acid variants; left out: {summary['unmappedNtVariants']} with no amino-acid variant, "
+        f"{summary['ambiguousNtVariants']} with several"
+    )
+    if summary["parentMode"]:
+        log(
+            f"Parent delta: {summary['parents']} parents, {len(summary['unidentifiableParents'])} not identifiable; "
+            f"{summary['multiParentVariants']} variants with several parents get no delta"
+        )
+    else:
+        log("Parent delta: off (no amino-acid mutation count and parent link)")
+    return {"per_variant": per_variant, "synonymous_summary": summary}

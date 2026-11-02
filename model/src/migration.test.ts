@@ -230,6 +230,35 @@ describe("the R² and SE limits", () => {
   });
 });
 
+describe("the synonymous weighting", () => {
+  const configured: BlockData = {
+    ...initBlockData(),
+    abundanceRef: ref("abundance"),
+    concentrationColumnRef: ref("concentration"),
+    binColumnRef: ref("bin"),
+  };
+  const equations = ["log_fluorescence", "hill_gate_index"] as const;
+
+  it.each(equations)("left unset or none, %s projects the args it always did", (equation) => {
+    const base = { ...configured, equation };
+    expect(Object.hasOwn(argsOf(base), "synonymousWeighting")).toBe(false);
+    expect(JSON.stringify(argsOf({ ...base, synonymousWeighting: "none" }))).toBe(
+      JSON.stringify(argsOf(base)),
+    );
+  });
+
+  it.each(equations)("set to reads, %s sends it last", (equation) => {
+    const args = argsOf({ ...configured, equation, synonymousWeighting: "reads" });
+    expect(args.synonymousWeighting).toBe("reads");
+    expect(Object.keys(args).at(-1)).toBe("synonymousWeighting");
+  });
+
+  it("is unset on a new block and on an upgraded project", () => {
+    expect(initBlockData().synonymousWeighting).toBeUndefined();
+    expect(upgraded().synonymousWeighting).toBeUndefined();
+  });
+});
+
 describe("the migration function on its own", () => {
   it("writes the equation into the data, not only into the args", () => {
     expect(migrateV1ToV2(v240Project).equation).toBe("hill_gate_index");

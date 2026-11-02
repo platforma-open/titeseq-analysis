@@ -14,6 +14,7 @@ from io_layer import read_reads_table
 from log import log
 from pipeline import run
 from replicate_combine import Filters, ReplicateInputs
+from synonymous import COL_AA, COL_MUTATIONS, COL_NT, COL_PARENT, WEIGHTINGS, SynonymousInputs
 
 
 def _write_frame(frame: pl.DataFrame, path: str) -> None:
@@ -51,6 +52,32 @@ def _replicate_inputs(args: argparse.Namespace, parser: argparse.ArgumentParser)
         error_model=args.replicate_error_model,
         filters=Filters(fit_error_cutoff=args.replicate_fit_error_cutoff, r2_floor=args.replicate_r2_floor),
         censored_majority=args.replicate_censored_majority,
+    )
+
+
+def _read_keys(path: str | None, columns: dict[str, pl.DataType]) -> pl.DataFrame | None:
+    """A workflow-built TSV, reduced to `columns`. Keys are read as strings, whatever they look like."""
+    if path is None:
+        return None
+    return pl.read_csv(path, separator="\t", columns=list(columns), schema_overrides=columns)
+
+
+def _synonymous_inputs(args: argparse.Namespace, parser: argparse.ArgumentParser) -> SynonymousInputs | None:
+    if args.nt_to_aa is None:
+        if args.out_per_variant or args.aa_mutations or args.aa_parent_links or args.synonymous_weighting != "none":
+            parser.error(
+                "--out-per-variant, --aa-mutations, --aa-parent-links and --synonymous-weighting need --nt-to-aa"
+            )
+        return None
+    if not args.out_per_variant or not args.out_synonymous_summary:
+        parser.error("--nt-to-aa needs --out-per-variant and --out-synonymous-summary")
+    if (args.aa_mutations is None) != (args.aa_parent_links is None):
+        parser.error("--aa-mutations and --aa-parent-links come together")
+    return SynonymousInputs(
+        nt_to_aa=_read_keys(args.nt_to_aa, {COL_NT: pl.Utf8, COL_AA: pl.Utf8}),
+        aa_mutations=_read_keys(args.aa_mutations, {COL_AA: pl.Utf8, COL_MUTATIONS: pl.Utf8}),
+        aa_parent_links=_read_keys(args.aa_parent_links, {COL_AA: pl.Utf8, COL_PARENT: pl.Utf8}),
+        weighting=args.synonymous_weighting,
     )
 
 
@@ -99,8 +126,20 @@ def main(argv: list[str] | None = None) -> int:
         help="Share of the entered replicates one censoring side must hold to set the bound.",
     )
     parser.add_argument("--out-per-replicate", default=None, help="one row per (variant, replicate)")
+    parser.add_argument("--nt-to-aa", default=None, help="TSV [ntKey, aaKey]: the nt -> aa linker")
+    parser.add_argument("--aa-mutations", default=None, help="TSV [aaKey, mutationCount]")
+    parser.add_argument("--aa-parent-links", default=None, help="TSV [aaKey, parentId]: the aa parent linker")
+    parser.add_argument("--out-per-variant", default=None, help="one row per amino-acid variant")
+    parser.add_argument("--out-synonymous-summary", default=None, help="JSON run summary of the combination")
+    parser.add_argument(
+        "--synonymous-weighting",
+        choices=WEIGHTINGS,
+        default="none",
+        help="none: plain mean of the synonymous nt variants; reads: each weighted by its total reads",
+    )
     args = parser.parse_args(argv)
     replicates = _replicate_inputs(args, parser)
+    synonymous = _synonymous_inputs(args, parser)
 
     log(f"Reading input table: {args.reads}")
     reads = read_reads_table(args.reads)
@@ -120,6 +159,7 @@ def main(argv: list[str] | None = None) -> int:
         antigen_column_ref=args.antigen_column_ref,
         sort_fraction_col=args.sort_fraction_column,
         replicates=replicates,
+        synonymous=synonymous,
     )
     log("Writing output frames")
     _write_frame(outputs["per_clonotype"], args.out_per_clonotype)
@@ -128,6 +168,10 @@ def main(argv: list[str] | None = None) -> int:
     _write_frame(outputs["concentration_value"], args.out_concentration_value)
     if args.out_per_replicate is not None:
         _write_frame(outputs["per_replicate"], args.out_per_replicate)
+    if synonymous is not None:
+        _write_frame(outputs["per_variant"], args.out_per_variant)
+        with open(args.out_synonymous_summary, "w") as f:
+            json.dump(outputs["synonymous_summary"], f, sort_keys=True)
     log("CLI done")
     return 0
 

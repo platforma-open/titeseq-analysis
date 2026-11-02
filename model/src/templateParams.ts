@@ -38,6 +38,7 @@ export function deriveTemplateParams(data: BlockData): BlockParams {
     hookEffectThresholdBin: data.hookEffectThresholdBin,
     hookEffectThresholdNoBin: data.hookEffectThresholdNoBin,
     hookEffectMinReads: data.hookEffectMinReads,
+    synonymousWeighting: data.synonymousWeighting,
     customBlockLabel: data.customBlockLabel,
   };
 }
