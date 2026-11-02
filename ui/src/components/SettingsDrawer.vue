@@ -14,11 +14,13 @@ import { computed, watch } from "vue";
 import { useApp } from "../app";
 import { useFieldValidation } from "../composables/useFieldValidation";
 import { useFitSettings } from "../composables/useFitSettings";
+import { useNoun } from "../composables/useNoun";
 import { EQUATION_OPTIONS } from "../fitSettings";
 
 const open = defineModel<boolean>({ required: true });
 
 const app = useApp();
+const { noun, Noun } = useNoun();
 
 // The selector picks an abundance, or an abundance narrowed by one of its subset columns.
 // Stored as two refs so blocks saved before filters existed keep their `abundanceRef`.
@@ -116,8 +118,10 @@ function setBinColumn(ref: PlRef | undefined): void {
       required
     >
       <template #tooltip>
-        Per-sample, per-clonotype integer read counts from MiXCR. Selecting this column also anchors
-        the block to that upstream dataset. Normalized per-sample inside the block.
+        Per-sample, per-{{ noun }} integer read counts. Selecting this column also anchors the block
+        to that upstream dataset. Normalized per-sample inside the block. On a nucleotide variant
+        dataset whose amino-acid linker is present, each nucleotide variant is fitted on its own and
+        the fits are combined per amino-acid variant.
       </template>
     </PlDatasetSelector>
     <PlDropdownRef
@@ -220,10 +224,9 @@ function setBinColumn(ref: PlRef | undefined): void {
         @update:model-value="(eq) => eq && setEquation(eq)"
       >
         <template #tooltip>
-          Log fluorescence fit: fits a Hill curve to the mean log10 fluorescence of each clonotype.
-          The Hill exponent is fixed at 1. New blocks use this fit.
-          <br /><br />
-          Mean bin fit: fits a Hill curve to the read-weighted mean bin of each clonotype. The Hill
+          Log fluorescence fit: fits a Hill curve to the mean log10 fluorescence of each {{ noun }}.
+          The Hill exponent is fixed at 1. New blocks use this fit. <br /><br />
+          Mean bin fit: fits a Hill curve to the read-weighted mean bin of each {{ noun }}. The Hill
           exponent is free. Blocks created before the equation choice existed keep this fit.
           <br /><br />
           Each equation rates fit quality in its own way. "Good" means that the equation found a
@@ -241,9 +244,9 @@ function setBinColumn(ref: PlRef | undefined): void {
         required
       >
         <template #tooltip>
-          The plateau that each clonotype must be able to reach at saturation, as a fraction of the
+          The plateau that each {{ noun }} must be able to reach at saturation, as a fraction of the
           gate range. The default is 2/3, for a screening library. For a library in which most
-          clonotypes bind, use a lower value, for example 0.4.
+          {{ noun }}s bind, use a lower value, for example 0.4.
         </template>
       </PlNumberField>
     </PlAccordionSection>
@@ -258,7 +261,7 @@ function setBinColumn(ref: PlRef | undefined): void {
         required
       >
         <template #tooltip>
-          Floor applied per clonotype per concentration. Points below the floor are excluded;
+          Floor applied per {{ noun }} per concentration. Points below the floor are excluded;
           weighting handles remaining coverage variation. Default 3.
         </template>
       </PlNumberField>
@@ -288,7 +291,7 @@ function setBinColumn(ref: PlRef | undefined): void {
         required
       >
         <template #tooltip>
-          Clonotypes with weighted R² at or above this threshold and Hill coefficient in range
+          {{ Noun }}s with weighted R² at or above this threshold and Hill coefficient in range
           classify as Good. Default 0.8.
         </template>
       </PlNumberField>
@@ -302,7 +305,7 @@ function setBinColumn(ref: PlRef | undefined): void {
         required
       >
         <template #tooltip>
-          Clonotypes with weighted R² below this threshold classify as Failed regardless of n.
+          {{ Noun }}s with weighted R² below this threshold classify as Failed regardless of n.
           Default 0.5.
         </template>
       </PlNumberField>
@@ -360,7 +363,7 @@ function setBinColumn(ref: PlRef | undefined): void {
       >
         <template #tooltip>
           Flags non-monotonic signals (potentially genuine tight binders showing a hook effect) when
-          the top concentration's clonotype frequency drops by more than this.
+          the top concentration's {{ noun }} frequency drops by more than this.
         </template>
       </PlNumberField>
       <PlNumberField

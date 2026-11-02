@@ -6,17 +6,27 @@ import type {
   PFrameHandle,
   PlDataTableStateV2,
   PlRef,
+  RenderCtx,
 } from "@platforma-sdk/model";
 import type { BlockParams } from "@platforma-open/platforma-open.titeseq-analysis.kind";
 import { kind } from "@platforma-open/platforma-open.titeseq-analysis.kind";
 import type { FitSettings, PresetId } from "./presets";
 import { DEFAULT_EQUATION, DEFAULT_PLATEAU_FLOOR, HILL_GATE_INDEX_DEFAULTS } from "./presets";
 import { deriveTemplateParams } from "./templateParams";
+import type { InputKind, SynonymousSummary } from "./synonymous";
+import {
+  halfMatchedParentInput,
+  inputKindOf,
+  synonymousAaAxis,
+  synonymousMessages,
+} from "./synonymous";
 
 export type { BlockParams, Equation } from "@platforma-open/platforma-open.titeseq-analysis.kind";
 export { EQUATIONS } from "@platforma-open/platforma-open.titeseq-analysis.kind";
 export * from "./presets";
 export { deriveTemplateParams };
+export type { InputKind, SynonymousSummary } from "./synonymous";
+export { nounOf } from "./synonymous";
 import {
   BlockModelV3,
   ColumnsCollection,
@@ -423,6 +433,39 @@ function hillGateIndexArgs(data: BlockData, inputs: ArgsInputs, labels: ArgsLabe
   };
 }
 
+type Ctx = RenderCtx<BlockArgs, BlockData>;
+
+/** The amino-acid frame of the last run; undefined outside synonymous mode. */
+function variantSummaryCols(ctx: Ctx) {
+  return ctx.outputs
+    ?.resolve({ field: "variantSummaryPf", allowPermanentAbsence: true })
+    ?.getPColumns();
+}
+
+function synonymousSummary(ctx: Ctx): SynonymousSummary | undefined {
+  // A summary from a run on another dataset says nothing about this one.
+  if (!plRefsEqualOrBothAbsent(ctx.activeArgs?.abundanceRef, ctx.data.abundanceRef))
+    return undefined;
+  return ctx.outputs
+    ?.resolve({ field: "synonymousSummary", allowPermanentAbsence: true })
+    ?.getDataAsJson<SynonymousSummary>();
+}
+
+function plRefsEqualOrBothAbsent(a: PlRef | undefined, b: PlRef | undefined): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return plRefsEqual(a, b);
+}
+
+/** Read from the result pool, so the warning shows before the first run. */
+function halfMatchedParent(ctx: Ctx) {
+  if (ctx.data.abundanceRef === undefined) return undefined;
+  const ntAxis = ctx.resultPool.getPColumnSpecByRef(ctx.data.abundanceRef)?.axesSpec[1];
+  if (ntAxis === undefined) return undefined;
+  const specs = ctx.resultPool.getSpecs().entries.map((e) => e.obj);
+  const aaAxis = synonymousAaAxis(specs, ntAxis);
+  return aaAxis === undefined ? undefined : halfMatchedParentInput(specs, aaAxis);
+}
+
 export const platforma = BlockModelV3.create({ dataModel, kind })
 
   .templateParams(deriveTemplateParams)
@@ -538,9 +581,18 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     // appears in server logs while the block silently shows empty panels.
     // CIDConflictError is typically transient — the platform's "zebra"
     // self-recovery retries the write — so we label it as such.
-    const outputKeys = ["summaryPf", "signalPf", "logHandle"] as const;
+    // The last two exist in synonymous mode only.
+    const outputKeys = [
+      "summaryPf",
+      "signalPf",
+      "logHandle",
+      "variantSummaryPf",
+      "synonymousSummary",
+    ] as const;
     for (const key of outputKeys) {
-      const errorAcc = ctx.outputs?.resolve(key)?.getError();
+      const errorAcc = ctx.outputs
+        ?.resolve({ field: key, allowPermanentAbsence: true })
+        ?.getError();
       if (!errorAcc) continue;
       const typeName = errorAcc.resourceType.name;
       const detail = errorAcc.getDataAsJson<{ message?: string }>()?.message ?? typeName;
@@ -599,6 +651,9 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     // its `:error-message` prop (see ui/src/composables/useFieldValidation.ts).
     // The args() throw above gates Run.
 
+    for (const message of synonymousMessages(halfMatchedParent(ctx), synonymousSummary(ctx)))
+      issues.push({ severity: "warning", scope: "everywhere", message });
+
     return issues;
   })
 
@@ -606,10 +661,23 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
 
   .output("isRunning", (ctx) => ctx.outputs?.getIsReadyOrError() === false)
 
+  .output("inputKind", (ctx): InputKind | undefined => {
+    if (ctx.data.abundanceRef === undefined) return undefined;
+    const axis = ctx.resultPool.getPColumnSpecByRef(ctx.data.abundanceRef)?.axesSpec[1];
+    return axis === undefined ? undefined : inputKindOf(axis);
+  })
+
+  // In synonymous mode the table shows one row per amino-acid variant. Each nucleotide variant's own
+  // fit stays in summaryPf, which the graphs read.
+  .output("synonymous", (ctx) => variantSummaryCols(ctx) !== undefined)
+
   .outputWithStatus("summaryTable", (ctx) => {
-    const summaryCols = ctx.outputs?.resolve("summaryPf")?.getPColumns();
+    const variantCols = variantSummaryCols(ctx);
+    const summaryCols = variantCols ?? ctx.outputs?.resolve("summaryPf")?.getPColumns();
     if (summaryCols === undefined) return undefined;
-    const signalCols = ctx.outputs?.resolve("signalPf")?.getPColumns() ?? [];
+    // The signal is per nucleotide variant and does not join amino-acid rows.
+    const signalCols =
+      variantCols !== undefined ? [] : (ctx.outputs?.resolve("signalPf")?.getPColumns() ?? []);
 
     const kdCol = summaryCols.find((c) => c.spec.name === "pl7.app/vdj/kd");
     if (!kdCol) return undefined;
