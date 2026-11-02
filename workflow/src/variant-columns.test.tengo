@@ -1,0 +1,52 @@
+test := import("@platforma-sdk/workflow-tengo:test")
+variantColumns := import(":variant-columns")
+
+KD := { "pl7.app/label": "Kd,app", "pl7.app/unit": "nM" }
+
+byHeader := func(cols) {
+	res := {}
+	for c in cols {
+		res[c.column] = c
+	}
+	return res
+}
+
+Test_headers_match_the_software_and_ids_stay_apart_from_the_nt_grain := func() {
+	cols := byHeader(variantColumns.variantColumns("blk", KD, true))
+	headers := ["kd", "kdLog10Se", "affinityClass", "kdOutOfRange", "ntVariants", "ntMeasured",
+		"ntCensoredBelow", "ntCensoredAbove", "ntFailed", "kdLog10ParentDelta", "kdLog10ParentDeltaSe"]
+	test.isEqual(len(headers), len(cols), "one column per per_variant.tsv value header")
+	for h in headers {
+		test.isFalse(is_undefined(cols[h]), "header " + h)
+		test.isEqual("aa_" + h, cols[h].id, "id of " + h)
+	}
+}
+
+Test_values_reuse_the_nt_grain_names := func() {
+	cols := byHeader(variantColumns.variantColumns("blk", KD, false))
+	test.isEqual("pl7.app/vdj/kd", cols.kd.spec.name, "Kd,app")
+	test.isEqual("pl7.app/vdj/kdLog10Se", cols.kdLog10Se.spec.name, "its error")
+	test.isEqual("pl7.app/vdj/affinityClass", cols.affinityClass.spec.name, "class")
+	test.isEqual("pl7.app/vdj/kdOutOfRange", cols.kdOutOfRange.spec.name, "bound flag")
+	test.isEqual("nM", cols.kd.spec.annotations["pl7.app/unit"], "unit carried over")
+	test.isEqual({ "pl7.app/block": "blk" }, cols.kd.spec.domain, "the nt grain's domain")
+}
+
+Test_counts_share_one_name_and_differ_by_state := func() {
+	cols := byHeader(variantColumns.variantColumns("blk", KD, false))
+	states := { ntVariants: "all", ntMeasured: "measured", ntCensoredBelow: "censoredBelow",
+		ntCensoredAbove: "censoredAbove", ntFailed: "failed" }
+	for h, state in states {
+		test.isEqual(variantColumns.COUNT_NAME, cols[h].spec.name, "name of " + h)
+		test.isEqual(state, cols[h].spec.domain[variantColumns.COUNT_STATE], "state of " + h)
+		test.isEqual("blk", cols[h].spec.domain["pl7.app/block"], "block of " + h)
+		test.isEqual("Int", cols[h].spec.valueType, "count of " + h)
+	}
+}
+
+Test_the_parent_delta_only_in_parent_mode := func() {
+	test.isEqual(9, len(variantColumns.variantColumns("blk", KD, false)), "no delta columns")
+	cols := byHeader(variantColumns.variantColumns("blk", KD, true))
+	test.isEqual("pl7.app/vdj/kdLog10ParentDelta", cols.kdLog10ParentDelta.spec.name, "delta")
+	test.isEqual("pl7.app/vdj/kdLog10ParentDeltaSe", cols.kdLog10ParentDeltaSe.spec.name, "its error")
+}

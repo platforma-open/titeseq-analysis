@@ -13,6 +13,9 @@ canonical := import("@platforma-sdk/workflow-tengo:canonical")
 maps := import("@platforma-sdk/workflow-tengo:maps")
 json := import("json")
 
+synonymousInputs := import(":synonymous-inputs")
+variantColumnsLib := import(":variant-columns")
+
 fitCurvesSw := assets.importSoftware("@platforma-open/platforma-open.titeseq-analysis.software:fit-curves")
 
 wf.prepare(func(args) {
@@ -39,6 +42,24 @@ wf.prepare(func(args) {
 		bb.addRef(json.decode(args.inputFilter))
 	}
 
+	// Synonymous-mode inputs: the nt -> aa linker and the amino-acid parent columns. Small per-variant
+	// columns, so awaiting their data here is cheap. The aa parent columns sit on the aa axis, which no
+	// anchor reaches: matched by name here, narrowed to the linker's aa axis in the body.
+	bb.addMulti({
+		axes: [{ anchor: "abundance", idx: 1 }],
+		name: "pl7.app/repertoire/aaToNt",
+		annotations: { "pl7.app/isLinkerColumn": "true" },
+		partialAxesMatch: true
+	}, "aaToNt")
+	bb.addMulti({
+		name: "pl7.app/repertoire/mutationCount",
+		domain: { "pl7.app/alphabet": "aminoacid" }
+	}, "aaMutationCounts")
+	bb.addMulti({
+		name: "pl7.app/repertoire/parentLink",
+		annotations: { "pl7.app/isLinkerColumn": "true" }
+	}, "parentLinks")
+
 	return { columns: bb.build() }
 })
 
@@ -58,6 +79,14 @@ wf.body(func(args) {
 	// The gate's measured mean log10 fluorescence. The model sends it only under
 	// "log_fluorescence", which requires gates. Python detects it by the column's presence.
 	hasBinFluorescence := !is_undefined(args.binFluorescenceColumnRef)
+
+	// Synonymous mode: a nucleotide dataset whose nt -> aa linker resolves. Each nt variant is still
+	// fitted on its own; the software then combines the fits per amino-acid variant.
+	syn := synonymousInputs.resolve({
+		aaToNt: columns.getColumns("aaToNt"),
+		aaMutationCounts: columns.getColumns("aaMutationCounts"),
+		parentLinks: columns.getColumns("parentLinks")
+	}, abundanceSpec.axesSpec[1])
 
 	unitLabel := ""
 	if !is_undefined(concSpec.annotations) && !is_undefined(concSpec.annotations["pl7.app/label"]) {
@@ -173,6 +202,42 @@ wf.body(func(args) {
 		execBuilder.arg("--sort-fraction-column").arg("sort_fraction")
 	}
 
+	if syn.synonymous {
+		keyTable := func(fill) {
+			b := pframes.tsvFileBuilder()
+			fill(b)
+			b.mem("4GiB")
+			b.cpu(1)
+			return b.build()
+		}
+		ntAxis := abundanceSpec.axesSpec[1]
+		execBuilder.
+			addFile("nt_to_aa.tsv", keyTable(func(b) {
+				b.add(syn.linker, { header: "link" })
+				b.setAxisHeader(ntAxis, "ntKey")
+				b.setAxisHeader(syn.aaAxis, "aaKey")
+			})).
+			arg("--nt-to-aa").arg("nt_to_aa.tsv").
+			arg("--out-per-variant").arg("per_variant.tsv").
+			arg("--out-synonymous-summary").arg("synonymous_summary.json").
+			saveFile("per_variant.tsv").
+			saveFileContent("synonymous_summary.json")
+		if syn.parentMode {
+			execBuilder.
+				addFile("aa_mutations.tsv", keyTable(func(b) {
+					b.add(syn.aaMutationCount, { header: "mutationCount" })
+					b.setAxisHeader(syn.aaAxis, "aaKey")
+				})).
+				addFile("aa_parent_links.tsv", keyTable(func(b) {
+					b.add(syn.aaParentLink, { header: "link" })
+					b.setAxisHeader(syn.aaAxis, "aaKey")
+					b.setAxisHeader(syn.parentAxis, "parentId")
+				})).
+				arg("--aa-mutations").arg("aa_mutations.tsv").
+				arg("--aa-parent-links").arg("aa_parent_links.tsv")
+		}
+	}
+
 	fit := execBuilder.run()
 
 	// Shared axis specs for the output PColumns.
@@ -198,12 +263,14 @@ wf.body(func(args) {
 		}
 	}
 
-	// R19b: swap "Mean bin" → "Clonotype frequency" in no-bin mode.
+	// R19b: swap "Mean bin" → "Clonotype frequency" in no-bin mode. The noun follows the input in
+	// synonymous mode only, so every other input keeps its exported labels.
+	noun := syn.synonymous ? synonymousInputs.nounOf(clonotypeAxisSpec) : "clonotype"
 	meanBinLabel := "Mean bin"
 	fittedMeanBinLabel := "Fitted mean bin"
 	if !hasBin {
-		meanBinLabel = "Clonotype frequency"
-		fittedMeanBinLabel = "Fitted clonotype frequency"
+		meanBinLabel = synonymousInputs.CAPITALIZED[noun] + " frequency"
+		fittedMeanBinLabel = "Fitted " + noun + " frequency"
 	} else if hasBinFluorescence {
 		// Measured gate positions put the signal and the fitted curve in log10 fluorescence.
 		meanBinLabel = "Mean log10 fluorescence"
@@ -394,6 +461,19 @@ wf.body(func(args) {
 		partitionKeyLength: 0
 	}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
 
+	// Synonymous mode: one row per amino-acid variant, on the linker's aa axis taken verbatim, so the
+	// columns join the profiler's aa columns. Names are the nt grain's; the axis alphabet tells the
+	// grains apart. Ids carry an "aa" prefix to stay apart from the nt columns in one frame.
+	variantImported := undefined
+	if syn.synonymous {
+		variantImported = xsv.importFile(fit.getFile("per_variant.tsv"), "tsv", {
+			axes: [{ column: "aaKey", spec: syn.aaAxis }],
+			columns: variantColumnsLib.variantColumns(blockId, kdAnnotations, syn.parentMode),
+			storageFormat: "Parquet",
+			partitionKeyLength: 0
+		}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
+	}
+
 	// One import per TSV. Each pcolumn resource is reused in both signalPf and
 	// exportPf — one logical column, one resource. Replaces the prior
 	// *Internal/*Export dual-import pattern.
@@ -504,6 +584,7 @@ wf.body(func(args) {
 	}
 
 	summaryPf := buildTracedPf([summaryImported], [])
+	variantSources := is_undefined(variantImported) ? [] : [variantImported]
 	// signalPf feeds this block's Titration Curves graph: meanBin (Y),
 	// fittedMeanBin (curve overlay), concentrationValue (numeric X).
 	signalPf := buildTracedPf([meanBinImported, fittedMeanBinImported, concValueImported], [])
@@ -520,16 +601,22 @@ wf.body(func(args) {
 		exportExcluded = append(exportExcluded, "hillCoefficient")
 	}
 	exportPf := buildTracedPf(
-		[summaryImported, meanBinImported, fittedMeanBinImported, concValueImported],
+		[summaryImported, meanBinImported, fittedMeanBinImported, concValueImported] + variantSources,
 		exportExcluded
 	)
 
+	outputs := {
+		summaryPf: pframes.exportFrame(summaryPf),
+		signalPf: pframes.exportFrame(signalPf),
+		logHandle: fit.getStdoutStream()
+	}
+	if syn.synonymous {
+		outputs.variantSummaryPf = pframes.exportFrame(buildTracedPf(variantSources, []))
+		outputs.synonymousSummary = fit.getFileContent("synonymous_summary.json")
+	}
+
 	return {
-		outputs: {
-			summaryPf: pframes.exportFrame(summaryPf),
-			signalPf: pframes.exportFrame(signalPf),
-			logHandle: fit.getStdoutStream()
-		},
+		outputs: outputs,
 		exports: {
 			pf: exportPf
 		}
