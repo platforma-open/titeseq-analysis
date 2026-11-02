@@ -122,6 +122,39 @@ resolve := func(candidates, variantAxis) {
 	return res
 }
 
+NT_LEVEL := "NT Variants"
+AA_LEVEL := "AA Variants"
+
+hasAxis := func(spec, axis) {
+	for a in spec.axesSpec {
+		if sameAxis(a, axis) {
+			return true
+		}
+	}
+	return false
+}
+
+/**
+ * The level step label of an output column: AA_LEVEL on the aa axis, NT_LEVEL on the nt axis,
+ * undefined outside synonymous mode and for a column on neither axis.
+ *
+ * @param spec: the output column spec
+ * @param syn: the result of resolve
+ * @param ntAxis: the abundance's variant axis spec
+ */
+levelOf := func(spec, syn, ntAxis) {
+	if !syn.synonymous {
+		return undefined
+	}
+	if hasAxis(spec, syn.aaAxis) {
+		return AA_LEVEL
+	}
+	if hasAxis(spec, ntAxis) {
+		return NT_LEVEL
+	}
+	return undefined
+}
+
 // What one row of the abundance is, as a lower-case noun for labels. Mirrors the model's input kind.
 nounOf := func(axis) {
 	if axis.name != "pl7.app/variantKey" {
@@ -146,6 +179,9 @@ CAPITALIZED := {
 export ll.toStrict({
 	sameAxis: sameAxis,
 	resolve: resolve,
+	levelOf: levelOf,
+	NT_LEVEL: NT_LEVEL,
+	AA_LEVEL: AA_LEVEL,
 	nounOf: nounOf,
 	CAPITALIZED: CAPITALIZED
 })

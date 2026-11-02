@@ -564,11 +564,33 @@ wf.body(func(args) {
 	if traceLabel == "" {
 		traceLabel = args.defaultBlockLabel
 	}
-	trace := pSpec.makeTrace(traceSpec, {
+	blockStep := {
 		type: "milaboratories.titeseq-analysis",
 		importance: 30,
 		label: traceLabel
-	})
+	}
+	trace := pSpec.makeTrace(traceSpec, blockStep)
+
+	// Synonymous mode: the nt and aa grains share names and labels, so a level step tells them
+	// apart. The type is the profiler's level type: label derivation counts a type from the newest
+	// step, so this step shadows the inherited "NT Variants". A column on neither variant axis keeps
+	// the plain trace.
+	levelTrace := func(label) {
+		return pSpec.makeTrace(traceSpec, blockStep, {
+			type: "milaboratories.synthetic-repertoire-profiler.level",
+			importance: 80,
+			label: label
+		})
+	}
+	levelTraces := {}
+	if syn.synonymous {
+		levelTraces[synonymousInputs.NT_LEVEL] = levelTrace(synonymousInputs.NT_LEVEL)
+		levelTraces[synonymousInputs.AA_LEVEL] = levelTrace(synonymousInputs.AA_LEVEL)
+	}
+	traceOf := func(spec) {
+		level := synonymousInputs.levelOf(spec, syn, clonotypeAxisSpec)
+		return is_undefined(level) ? trace : levelTraces[level]
+	}
 
 	buildTracedPf := func(sources, excludeKeys) {
 		excluded := {}
@@ -582,7 +604,7 @@ wf.body(func(args) {
 			for k in maps.getKeys(src) {
 				if excluded[k] { continue }
 				v := src[k]
-				spec := trace.inject(v.spec)
+				spec := traceOf(v.spec).inject(v.spec)
 				// A run on a subset says so: its outputs cover only the subset's clonotypes.
 				if !is_undefined(filterColumn) {
 					spec.domain["pl7.app/inputSubset"] = args.inputFilter

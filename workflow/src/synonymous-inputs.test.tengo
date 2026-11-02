@@ -85,3 +85,17 @@ Test_noun_follows_the_input := func() {
 	test.isEqual("peptide", synonymousInputs.nounOf(peptide), "peptide extraction")
 	test.isEqual("Variant", synonymousInputs.CAPITALIZED["variant"], "capitalized form")
 }
+
+Test_level_follows_the_column_axis_in_synonymous_mode_only := func() {
+	conc := {name: "pl7.app/vdj/concentration", type: "String"}
+	syn := synonymousInputs.resolve(full, nt)
+	test.isEqual(synonymousInputs.AA_LEVEL, synonymousInputs.levelOf({axesSpec: [aa]}, syn, nt), "aa grain")
+	test.isEqual(synonymousInputs.NT_LEVEL, synonymousInputs.levelOf({axesSpec: [nt]}, syn, nt), "nt grain")
+	test.isEqual(synonymousInputs.NT_LEVEL, synonymousInputs.levelOf({axesSpec: [nt, conc]}, syn, nt), "nt signal")
+	test.isTrue(is_undefined(synonymousInputs.levelOf({axesSpec: [conc]}, syn, nt)), "on neither variant axis")
+	test.isTrue(is_undefined(synonymousInputs.levelOf({axesSpec: [otherAa]}, syn, nt)), "another run's aa axis")
+	off := synonymousInputs.resolve({}, nt)
+	test.isTrue(is_undefined(synonymousInputs.levelOf({axesSpec: [nt]}, off, nt)), "off outside synonymous mode")
+	test.isEqual("NT Variants", synonymousInputs.NT_LEVEL, "the profiler's nt label")
+	test.isEqual("AA Variants", synonymousInputs.AA_LEVEL, "the profiler's aa label")
+}

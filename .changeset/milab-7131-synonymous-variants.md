@@ -28,6 +28,10 @@ variants as repeats.
   `pl7.app/vdj/kdNtVariantState` (all, measured, censored low, censored high, failed).
 - Where the amino-acid mutation count and parent link resolve, `pl7.app/vdj/kdLog10ParentDelta` and
   `pl7.app/vdj/kdLog10ParentDeltaSe` give each variant's log10 Kd,app against its parent's.
+- Every output column on a variant axis carries a level step in its trace, as sort-seq-analysis does
+  (type `milaboratories.synthetic-repertoire-profiler.level`, importance 80): "NT Variants" on the
+  nucleotide axis, "AA Variants" on the amino-acid axis. A column on neither axis, and every column
+  outside this mode, keeps the trace it had.
 - The table shows amino-acid rows in this mode. Each nucleotide variant's own fit stays in the
   export and in the graphs.
 - Page titles and help text name the input: clonotype, variant or peptide.
