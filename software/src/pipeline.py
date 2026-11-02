@@ -40,7 +40,6 @@ import math
 import os
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor
-from dataclasses import replace
 from functools import partial
 from pathlib import Path
 
@@ -59,8 +58,6 @@ from constants import (
     DEFAULT_PARAMS,
     GATE_WIDTH_DECADES,
     HILL_EXPONENT_FIXED,
-    LF_MIN_CONCENTRATION_POINTS,
-    LF_MIN_READS_PER_CONCENTRATION,
     SINGLE_REPLICATE,
     FitParams,
     KdRangeSide,
@@ -96,6 +93,7 @@ from output_build import (
     FITTED_MEAN_BIN_SCHEMA,
     PER_CLONOTYPE_SCHEMA,
     add_diagnostic_plot_columns,
+    add_neg_log10_kd,
     build_concentration_value_frame,
     build_mean_bin_frame,
     flag_kd_out_of_range,
@@ -441,15 +439,15 @@ def _fit_all_log_fluorescence(
         # A signal with no variance has no R²; NaN would ship as a number, so it stays null.
         columns["r2"][i] = fit.r2 if fit.r2 is not None and math.isfinite(fit.r2) else None
         columns["kdOutOfRange"][i] = censor is not None
-        columns["kdRangeSide"][i] = _RANGE_SIDE[censor]
+        range_side = _RANGE_SIDE[censor]
+        columns["kdRangeSide"][i] = range_side
         # A pinned K_D is a bound. The fit's SE describes the unpinned estimate, so a bound gets none.
         se = fit.log10_kd_se
         columns["kdLog10Se"][i] = se if censor is None and se is not None and math.isfinite(se) else None
         batch.rate(
             i,
             classify_log_fluorescence(
-                non_binder=curve_class == "Censored Low",
-                censored=censor is not None,
+                range_side=range_side,
                 log10_kd_se=se,
                 r2=fit.r2,
                 r2_gate_min=r2_gate_min,
@@ -475,6 +473,8 @@ def _run_hill_gate_index(
     log(f"Classifying {len(all_clonotypes)} clonotypes for sufficiency")
     insufficient = classify_insufficient(floor_frame, all_clonotypes, params)
     insufficient_map = dict(zip(insufficient[COL_CLONOTYPE].to_list(), insufficient["insufficient_reason"].to_list()))
+    if params.require_all_concentrations:
+        _gate_incomplete_titrations(signal_frame, insufficient_map)
 
     c0_points, fit_points = split_c0(floor_frame)
     global_b = compute_global_baseline(c0_points)
@@ -558,18 +558,12 @@ def _run_log_fluorescence(
     log(f"Gate scale: {scale.floor:.3f} to {scale.top:.3f} log10, {scale.range_decades:.3f} decades")
     log(f"Plateau floor: {params.plateau_floor:.4f} of the gate range")
 
-    # The equation ignores the user's read floor and point count and uses its own constants.
-    gate_params = replace(
-        params,
-        min_reads_per_concentration=LF_MIN_READS_PER_CONCENTRATION,
-        min_concentration_points=LF_MIN_CONCENTRATION_POINTS,
-    )
     log("Applying floor and weights")
-    floor_frame = apply_floor_and_weights(lf_frame, gate_params)
+    floor_frame = apply_floor_and_weights(lf_frame, params)
 
     all_clonotypes = signal_frame[COL_CLONOTYPE].unique().to_list()
     log(f"Classifying {len(all_clonotypes)} clonotypes for sufficiency")
-    insufficient = classify_insufficient(floor_frame, all_clonotypes, gate_params)
+    insufficient = classify_insufficient(floor_frame, all_clonotypes, params)
     insufficient_map = dict(zip(insufficient[COL_CLONOTYPE].to_list(), insufficient["insufficient_reason"].to_list()))
     if params.require_all_concentrations:
         _gate_incomplete_titrations(signal_frame, insufficient_map)
@@ -618,6 +612,7 @@ def _build_outputs(
     min_c, max_c = conc_bounds
     if flag_out_of_range and min_c is not None and max_c is not None:
         per_clonotype = flag_kd_out_of_range(per_clonotype, min_c, max_c)
+    per_clonotype = add_neg_log10_kd(per_clonotype)
     per_clonotype = add_diagnostic_plot_columns(per_clonotype, max_c if max_c is not None else 1.0)
 
     # Don't add a .sort() here. _FitBatch builds both frames in deterministic order (sorted
@@ -850,12 +845,20 @@ def _fit_replicates(
         frames.append((label, per_clonotype))
         curves.append(fitted.with_columns(pl.lit(label, dtype=pl.Utf8).alias(COL_REPLICATE)))
 
+    # Reads behind each replicate's fit, summed over its concentrations.
+    per_replicate_reads = {
+        (row[COL_CLONOTYPE], row[COL_REPLICATE]): row["reads"]
+        for row in signal_frame.group_by([COL_CLONOTYPE, COL_REPLICATE])
+        .agg(pl.col(CLONOTYPE_READS_AT_CONC).sum().alias("reads"))
+        .iter_rows(named=True)
+    }
     collected = collect_values(frames, COL_CLONOTYPE, log10_lo=log10_lo, log10_hi=log10_hi, filters=replicates.filters)
     merged = merge_all(collected, error_model=replicates.error_model, censored_majority=replicates.censored_majority)
     _log_filters(replicates, collected)
     combined = build_combined_clonotype_frame(collected, merged)
     fitted_curves = pl.concat(curves).select([COL_CLONOTYPE, COL_REPLICATE, COL_CONC_STR, "fittedMeanBin"])
-    return combined, fitted_curves, {"per_replicate": build_per_replicate_frame(collected, COL_CLONOTYPE)}
+    per_replicate = build_per_replicate_frame(collected, COL_CLONOTYPE, per_replicate_reads)
+    return combined, fitted_curves, {"per_replicate": per_replicate}
 
 
 def _log_filters(replicates: ReplicateInputs, collected: Collected) -> None:

@@ -186,8 +186,7 @@ def _bound(entered: list[ReplicateValue], counts: dict[ReplicateState, int], maj
     Averaging opposite walls would land inside the titrated range and mean nothing, so one side
     must hold the majority. The threshold is the block's own rule; no paper defines one.
 
-    A high-wall bound is a Non-binder only when every replicate on that wall is one: a replicate
-    whose curve rose is a weak binder, and the variant stays Partial.
+    A bound's class is the wall it sits at, as it is for a single fit.
     """
     n = len(entered)
     sides: tuple[Side, Side] = ("below", "above")
@@ -195,8 +194,7 @@ def _bound(entered: list[ReplicateValue], counts: dict[ReplicateState, int], maj
     for side, other in (sides, sides[::-1]):
         if share[side] >= majority and share[side] > share[other]:
             on_side = [v for v in entered if v.state == side]
-            non_binder = side == "above" and all(v.affinity_class == "Non-binder" for v in on_side)
-            cls = "Non-binder" if non_binder else "Partial"
+            cls = RANGE_SIDE[side]
             return Merged(on_side[0].log10_kd, None, None, Classification(cls, None), True, counts, side)
     return Merged(None, None, None, Classification("Failed", REASON_CONFLICTING), None, counts)
 
@@ -245,17 +243,19 @@ class ReplicateInputs:
     censored_majority: float = DEFAULT_CENSORED_MAJORITY
 
 
-# How each replicate's state reads in the per-replicate output.
+# How each replicate's state reads in the per-replicate output: what it contributed to the mean,
+# in the words the panel shows.
 STATE_LABELS: dict[ReplicateState, str] = {
-    "measured": "measured",
-    "below": "censoredBelow",
-    "above": "censoredAbove",
-    "failed": "failed",
-    "filtered": "filtered",
+    "measured": "In the mean",
+    "below": "In the mean, at the tight wall",
+    "above": "In the mean, at the weak wall",
+    "failed": "Left out, no fit",
+    "filtered": "Left out by a filter",
 }
 
 PER_REPLICATE_COLUMNS: dict[str, pl.DataType] = {
     COL_REPLICATE: pl.Utf8,
+    "replicateReads": pl.Int64,
     "kd": pl.Float64,
     "kdLog10Se": pl.Float64,
     "r2": pl.Float64,
@@ -312,11 +312,14 @@ def merge_all(
     }
 
 
-def build_per_replicate_frame(collected: Collected, key_col: str) -> pl.DataFrame:
+def build_per_replicate_frame(
+    collected: Collected, key_col: str, reads: dict[tuple[str, str], int] | None = None
+) -> pl.DataFrame:
     """One row per (variant, replicate): the value that replicate contributed, and its state.
 
     `kd` is the value as it enters the mean, so a censored replicate reports the wall it passed
-    and a filtered one reports the K_D the filter rejected.
+    and a filtered one reports the K_D the filter rejected. `reads` maps (variant, replicate) to
+    the reads that replicate's fit saw, which is what separates a wide value from a wrong one.
     """
     schema: dict[str, pl.DataType] = {key_col: pl.Utf8, **PER_REPLICATE_COLUMNS}
     cols: dict[str, list] = {name: [] for name in schema}
@@ -324,6 +327,7 @@ def build_per_replicate_frame(collected: Collected, key_col: str) -> pl.DataFram
         for value, _row in collected[key]:
             cols[key_col].append(key)
             cols[COL_REPLICATE].append(value.replicate)
+            cols["replicateReads"].append(None if reads is None else reads.get((key, value.replicate)))
             cols["kd"].append(None if value.log10_kd is None else 10.0**value.log10_kd)
             cols["kdLog10Se"].append(value.log10_kd_se)
             cols["r2"].append(value.r2)

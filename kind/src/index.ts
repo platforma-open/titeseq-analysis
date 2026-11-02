@@ -78,7 +78,7 @@ export type BlockParams = {
    *  `log_fluorescence` only. */
   kdSeGateMax?: number;
   /** Whether a clonotype with no reads at one of the titration's concentrations rates Failed
-   *  before any fit. Read by `log_fluorescence` only. */
+   *  before any fit. Read by both equations. */
   requireAllConcentrations?: boolean;
   minReadsPerConcentration?: number;
   minConcentrationPoints?: number;

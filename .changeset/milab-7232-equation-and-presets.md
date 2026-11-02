@@ -7,15 +7,14 @@
 "@platforma-open/platforma-open.titeseq-analysis.software": minor
 ---
 
-Choose the fit equation, with presets that reproduce published studies.
+Choose the fit equation.
 
 - Two equations:
   - "Log fluorescence fit" (`log_fluorescence`), the new default: a Hill fit on log gate
-    fluorescence with the exponent fixed at 1. Its one setting is the plateau floor. An optional
+    fluorescence with the exponent fixed at 1. Its one setting is the plateau floor, 0.667 by default. An optional
     column gives each gate's measured fluorescence. Without it, the gates are equally spaced.
     With 0 M samples, every clonotype shares one baseline, the read-weighted mean 0 M signal.
   - "Mean bin fit" (`hill_gate_index`): the 2.4.0 fit, unchanged.
-- Presets set the values that Adams 2016, Phillips 2021 (CR6261) and Starr 2020/2022 used.
 - Under `log_fluorescence` the block outputs `pl7.app/vdj/kdLog10Se`, the SE of log10 Kd,app. The
   Affinity vs Fit Quality page plots Kd,app against it, on a log y-axis. The Hill coefficient is a
   constant 1, hidden in the table and not exported. With measured gate fluorescence, the titration

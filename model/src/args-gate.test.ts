@@ -27,7 +27,7 @@ const hillConfigured: BlockData = { ...configured, equation: "hill_gate_index" }
  * already holds results, so this pair has to stay fixed unless a change to the fit intends it.
  */
 const LOG_FLUORESCENCE_ARGS_JSON =
-  '{"abundanceRef":{"__isRef":true,"blockId":"b1","name":"abundance"},"concentrationColumnRef":{"__isRef":true,"blockId":"b1","name":"concentration"},"binColumnRef":{"__isRef":true,"blockId":"b1","name":"bin"},"antigenColumnRef":{"__isRef":true,"blockId":"b1","name":"antigen"},"sortFractionColumnRef":{"__isRef":true,"blockId":"b1","name":"sortFraction"},"targetAntigen":"CD19","binFluorescenceColumnRef":{"__isRef":true,"blockId":"b1","name":"binFluorescence"},"equation":"log_fluorescence","plateauFloor":0.6666666666666666,"defaultBlockLabel":"Tite-Seq Analysis","customBlockLabel":"CD19 titration","inputFilter":"{\\"__isRef\\":true,\\"blockId\\":\\"b1\\",\\"name\\":\\"filter\\"}"}';
+  '{"abundanceRef":{"__isRef":true,"blockId":"b1","name":"abundance"},"concentrationColumnRef":{"__isRef":true,"blockId":"b1","name":"concentration"},"binColumnRef":{"__isRef":true,"blockId":"b1","name":"bin"},"antigenColumnRef":{"__isRef":true,"blockId":"b1","name":"antigen"},"sortFractionColumnRef":{"__isRef":true,"blockId":"b1","name":"sortFraction"},"targetAntigen":"CD19","binFluorescenceColumnRef":{"__isRef":true,"blockId":"b1","name":"binFluorescence"},"equation":"log_fluorescence","plateauFloor":0.667,"minReadsPerConcentration":3,"minConcentrationPoints":5,"defaultBlockLabel":"Tite-Seq Analysis","customBlockLabel":"CD19 titration","inputFilter":"{\\"__isRef\\":true,\\"blockId\\":\\"b1\\",\\"name\\":\\"filter\\"}"}';
 
 const HILL_GATE_INDEX_ARGS_JSON =
   '{"abundanceRef":{"__isRef":true,"blockId":"b1","name":"abundance"},"concentrationColumnRef":{"__isRef":true,"blockId":"b1","name":"concentration"},"binColumnRef":{"__isRef":true,"blockId":"b1","name":"bin"},"antigenColumnRef":{"__isRef":true,"blockId":"b1","name":"antigen"},"sortFractionColumnRef":{"__isRef":true,"blockId":"b1","name":"sortFraction"},"targetAntigen":"CD19","minReadsPerConcentration":3,"minConcentrationPoints":5,"r2ThresholdGood":0.8,"r2ThresholdFailed":0.5,"nMin":0.5,"nMax":2,"hookEffectThresholdBin":0.2,"hookEffectThresholdNoBin":0.02,"hookEffectMinReads":20,"defaultBlockLabel":"Tite-Seq Analysis","customBlockLabel":"CD19 titration","inputFilter":"{\\"__isRef\\":true,\\"blockId\\":\\"b1\\",\\"name\\":\\"filter\\"}"}';
@@ -91,8 +91,6 @@ describe("a setting the selected equation never reads cannot disable Run", () =>
   it("log fluorescence runs with every hill_gate_index setting cleared", () => {
     const cleared: BlockData = {
       ...configured,
-      minReadsPerConcentration: undefined,
-      minConcentrationPoints: undefined,
       r2ThresholdGood: undefined,
       r2ThresholdFailed: undefined,
       nMin: undefined,

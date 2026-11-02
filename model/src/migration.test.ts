@@ -85,7 +85,7 @@ describe("a project created on v2.4.0 or earlier", () => {
   });
 
   it("carries a plateau floor its equation never reads", () => {
-    expect(upgraded().plateauFloor).toBe(2 / 3);
+    expect(upgraded().plateauFloor).toBe(0.667);
   });
 
   it("carries an R² gate its equation never reads, and its args name none", () => {
@@ -115,7 +115,7 @@ describe("a project created on a v2 development build", () => {
 describe("a block created on the v2 data model", () => {
   it("fits the log-fluorescence equation", () => {
     expect(initBlockData().equation).toBe("log_fluorescence");
-    expect(initBlockData().plateauFloor).toBe(2 / 3);
+    expect(initBlockData().plateauFloor).toBe(0.667);
   });
 
   it("sends its equation and floor by name, so nothing has to be inferred", () => {
@@ -126,7 +126,7 @@ describe("a block created on the v2 data model", () => {
       // The default equation fits gate fluorescence, so a new block needs gates.
       binColumnRef: ref("bin"),
     });
-    expect(args).toMatchObject({ equation: "log_fluorescence", plateauFloor: 2 / 3 });
+    expect(args).toMatchObject({ equation: "log_fluorescence", plateauFloor: 0.667 });
   });
 
   it("cannot run the default equation on frequency-only data", () => {
@@ -302,17 +302,14 @@ describe("a project stored on the v3 data model", () => {
 });
 
 describe("the sections", () => {
-  const hrefs = (replicates: boolean) => sectionsFor(replicates).map((s) => s.href);
-
-  it("show the per-replicate page only when replicates were combined", () => {
-    expect(hrefs(true)).toEqual([
+  it("are the same whether or not replicates were combined", () => {
+    // Per-replicate values are read by clicking a variant in the main table, not on a page.
+    expect(sectionsFor().map((s) => s.href)).toEqual([
       "/",
-      "/replicates",
       "/titration-curves",
       "/kd-distribution",
       "/affinity-vs-fit",
     ]);
-    expect(hrefs(false)).not.toContain("/replicates");
   });
 });
 

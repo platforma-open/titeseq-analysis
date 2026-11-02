@@ -6,7 +6,9 @@ from dataclasses import dataclass
 from typing import Literal
 
 # "Non-binder" is "log_fluorescence" only: a flat, dim curve, its K_D pinned at the weak wall.
-AffinityClass = Literal["Good", "Partial", "Non-binder", "Failed"]
+# "Below range" and "Above range" are written by "log_fluorescence" only: they say which wall a
+# bound K_D sits at. "hill_gate_index" keeps the three classes it shipped with.
+AffinityClass = Literal["Good", "Partial", "Below range", "Above range", "Failed"]
 
 # Where the reported K_D sits against the titrated range. Null when the fit set no K_D.
 KdRangeSide = Literal["Below range", "In range", "Above range"]
@@ -54,10 +56,7 @@ DELTA_NO_BIN: float = 0.05
 
 # --- Fixed internal constants for "log_fluorescence". ------------------------------------------
 # These are constants, not parameters: each takes one value across Adams 2016, Phillips 2021 and
-# Starr 2020/2022. They are not in BlockData and not in the UI. The equation ignores the user's
-# min_reads_per_concentration / min_concentration_points and uses the two below instead.
-LF_MIN_READS_PER_CONCENTRATION: int = 3
-LF_MIN_CONCENTRATION_POINTS: int = 5
+# Starr 2020/2022. They are not in BlockData and not in the UI.
 # Observed rise, max(F̄) − min(F̄), at or above which a curve counts as a measurement rather than a
 # bound. Feeds the rating's bound test only; it changes no fitted K_D.
 LF_RISE_THRESHOLD_DECADES: float = 0.70
@@ -85,18 +84,18 @@ class FitParams:
     # means "a pre-existing project running v2.4.0's fit", and it must keep meaning that.
     equation: Equation = "hill_gate_index"
     # Read by "log_fluorescence" only. A params file for "hill_gate_index" may omit it.
-    plateau_floor: float = 2.0 / 3.0
+    plateau_floor: float = 0.667
     # Read by "log_fluorescence" only. An in-range fit with R² below this rates Failed, low_r2.
     # None turns the gate off.
     r2_gate_min: float | None = None
     # Read by "log_fluorescence" only. An in-range fit with SE(log10 K_D) above this rates Failed,
     # high_kd_se. None sets no limit.
     kd_se_gate_max: float | None = None
-    # Read by "log_fluorescence" only. True rates a clonotype with no reads at one or more of the
-    # titration's concentrations, 0 M included, Failed, incomplete_titration, before any fit.
-    # Phillips 2021 fits complete titrations only.
+    # True rates a clonotype with no reads at one or more of the titration's concentrations, 0 M
+    # included, Failed, incomplete_titration, before any fit. Phillips 2021 fits complete
+    # titrations only.
     require_all_concentrations: bool = False
-    # Everything below is read by "hill_gate_index" only.
+    # Read by both equations.
     min_reads_per_concentration: int = 3
     min_concentration_points: int = 5
     r2_threshold_good: float = 0.8

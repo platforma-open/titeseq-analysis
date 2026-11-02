@@ -146,7 +146,9 @@ wf.body(func(args) {
 	if args.equation == "log_fluorescence" {
 		paramsPayload = {
 			equation: args.equation,
-			plateau_floor: args.plateauFloor
+			plateau_floor: args.plateauFloor,
+			min_reads_per_concentration: args.minReadsPerConcentration,
+			min_concentration_points: args.minConcentrationPoints
 		}
 		// Absent means the R² gate is off.
 		if !is_undefined(args.r2GateMin) {
@@ -171,6 +173,10 @@ wf.body(func(args) {
 			hook_effect_threshold_bin: args.hookEffectThresholdBin,
 			hook_effect_threshold_no_bin: args.hookEffectThresholdNoBin,
 			hook_effect_min_reads: args.hookEffectMinReads
+		}
+		// Absent means a titration with a gap is still fitted, which is what v2.4.0 did.
+		if !is_undefined(args.requireAllConcentrations) {
+			paramsPayload.require_all_concentrations = args.requireAllConcentrations
 		}
 	}
 	// FACS-correction status flows via the --sort-fraction-column CLI arg; the
@@ -278,11 +284,11 @@ wf.body(func(args) {
 	// Kd,app unit annotation read from the concentration column label (R2).
 	kdAnnotations := {
 		"pl7.app/label": "Kd,app",
-		"pl7.app/description": "Apparent dissociation constant: the antigen concentration at which half of a variant's displayed binding sites are bound, read from this assay. Avidity on the display surface and the staining and washing steps shift it, so it ranks variants within one experiment and is not comparable to a solution measurement such as SPR or BLI.",
+		"pl7.app/description": "Apparent dissociation constant: the antigen concentration at which half of a variant's displayed binding sites are bound, read from this assay. Avidity on the display surface and the staining and washing steps shift it, so it ranks variants within one experiment and is not comparable to a solution measurement such as SPR or BLI. The table shows -log10 Kd,app instead, which carries the same value in the form published analyses report.",
 		"pl7.app/isScore": "true",
 		"pl7.app/score/rankingOrder": "increasing",
 		"pl7.app/table/visibility": "default",
-		"pl7.app/table/orderPriority": "201"
+		"pl7.app/table/orderPriority": "198"
 	}
 	if concUnit != "" {
 		kdAnnotations["pl7.app/unit"] = concUnit
@@ -292,22 +298,28 @@ wf.body(func(args) {
 	// Python writes column `r2`; the output spec name `pl7.app/vdj/curveFitR2` is
 	// what discovery & the UI see, so the rename is invisible downstream.
 	// Each equation's presentation of the shared columns. "log_fluorescence" fixes the Hill exponent
-	// at 1, so that column is a constant there; its range side carries kdOutOfRange's fact; and its
-	// R² rates nothing unless the R² gate is on. "Non-binder" is its class only, and the
-	// defaultCutoff below leaves it out.
+	// at 1, so that column is a constant there, and its R² rates nothing unless the R² gate is on.
+	// It rates a bound by the wall it sits at, so "Below range" and "Above range" are its classes
+	// only. The defaultCutoff keeps "Below range", the library's tightest binders, and drops
+	// "Above range", its weakest.
 	hillVisibility := "default"
 	outOfRangeVisibility := "default"
 	r2Visibility := "default"
 	affinityClassValues := "[\"Good\",\"Partial\",\"Failed\"]"
+	affinityClassCutoff := "[\"Good\",\"Partial\"]"
 	affinityClassDescription := "Good: R² at or above the Good threshold and the Hill coefficient within its limits. Partial: R² between the two thresholds, or a Good R² with the Hill coefficient outside its limits. Failed: no fit, or R² below the Failed threshold; see the fit failure reason."
 	if args.equation == "log_fluorescence" {
+		// -log10 Kd,app carries the same value in the published form, so the molar column is there
+		// to be switched on rather than shown.
+		kdAnnotations["pl7.app/table/visibility"] = "optional"
 		hillVisibility = "hidden"
 		outOfRangeVisibility = "optional"
 		if is_undefined(args.r2GateMin) {
 			r2Visibility = "hidden"
 		}
-		affinityClassValues = "[\"Good\",\"Partial\",\"Non-binder\",\"Failed\"]"
-		affinityClassDescription = "Good: Kd,app inside the titrated range, with a standard error of log10 Kd,app at or below 0.5. Partial: Kd,app is a bound at the edge of the titration, or its standard error is larger. Non-binder: the signal stayed flat and dim at every concentration. Failed: no fit, a gap in the titration while complete titrations are required, or the fit-quality gate is on and an in-range fit's R² is below its minimum or its standard error above its maximum; see the fit failure reason."
+		affinityClassValues = "[\"Good\",\"Partial\",\"Below range\",\"Above range\",\"Failed\"]"
+		affinityClassDescription = "Good: Kd,app inside the titrated range, with a standard error of log10 Kd,app at or below 0.5. Partial: Kd,app is inside the range and its standard error is larger. Below range: Kd,app is at most the lowest concentration titrated, so the variant binds tighter than this titration resolves. Above range: Kd,app is at least the highest concentration titrated, which covers a signal that stayed flat and dim and one that rose without reaching half-maximum. Failed: no fit, a gap in the titration while complete titrations are required, or the fit-quality gate is on and an in-range fit's R² is below its minimum or its standard error above its maximum; see the fit failure reason."
+		affinityClassCutoff = "[\"Good\",\"Partial\",\"Below range\"]"
 	}
 	summaryColumns := [
 		{
@@ -330,7 +342,7 @@ wf.body(func(args) {
 					"pl7.app/isScore": "false",
 					"pl7.app/description": "Hill coefficient n from the Hill fit. n = 1 is the expected Langmuir isotherm value for simple 1:1 monovalent binding; n in roughly [0.7, 1.3] behaves as expected. n > 2 typically reflects heterogeneous yeast display populations rather than genuine cooperativity. n < 1 often indicates a non-functional display fraction (misfolding, non-binding orientation) diluting the signal. Diagnostic only — not a primary ranking criterion.",
 					"pl7.app/table/visibility": hillVisibility,
-					"pl7.app/table/orderPriority": "198"
+					"pl7.app/table/orderPriority": "195"
 				}
 			}
 		},
@@ -344,7 +356,7 @@ wf.body(func(args) {
 					"pl7.app/label": "Curve fit R²",
 					"pl7.app/isScore": "false",
 					"pl7.app/table/visibility": r2Visibility,
-					"pl7.app/table/orderPriority": "199"
+					"pl7.app/table/orderPriority": "196"
 				}
 			}
 		},
@@ -361,7 +373,7 @@ wf.body(func(args) {
 					"pl7.app/description": affinityClassDescription,
 					"pl7.app/discreteValues": affinityClassValues,
 					"pl7.app/score/rankingOrder": "decreasing",
-					"pl7.app/score/defaultCutoff": "[\"Good\",\"Partial\"]",
+					"pl7.app/score/defaultCutoff": affinityClassCutoff,
 					"pl7.app/table/visibility": "default",
 					"pl7.app/table/orderPriority": "202"
 				}
@@ -401,7 +413,7 @@ wf.body(func(args) {
 					"pl7.app/isDiscreteFilter": "true",
 					"pl7.app/discreteValues": "[\"true\",\"false\"]",
 					"pl7.app/table/visibility": outOfRangeVisibility,
-					"pl7.app/table/orderPriority": "195"
+					"pl7.app/table/orderPriority": "194"
 				}
 			}
 		},
@@ -439,6 +451,27 @@ wf.body(func(args) {
 	// Only "log_fluorescence" writes the SE of log10 K_D from a single fit, and the range side.
 	// With replicates the SE is the spread across them, which every equation reports, beside the SD
 	// and the replicate counts. "hill_gate_index" without replicates keeps the v2.4.0 columns.
+	// log10 K_D is the unit the fit solves in and the unit every error column carries, with or
+	// without replicates.
+	if args.equation == "log_fluorescence" {
+		summaryColumns = append(summaryColumns, {
+			column: "kdNegLog10",
+			spec: {
+				name: "pl7.app/vdj/kdNegLog10",
+				valueType: "Double",
+				domain: { "pl7.app/block": blockId },
+				annotations: {
+					"pl7.app/label": "-log10 Kd,app",
+					"pl7.app/description": "Kd,app as -log10, the form every published analysis of this assay reports: a larger number is tighter binding. Its magnitude is the unit the fit solves in, so it shares a scale with the standard error beside it. Empty where there is no Kd,app.",
+					"pl7.app/isScore": "true",
+					"pl7.app/score/rankingOrder": "decreasing",
+					"pl7.app/format": ".2f",
+					"pl7.app/table/visibility": "default",
+					"pl7.app/table/orderPriority": "201"
+				}
+			}
+		})
+	}
 	if hasReplicate {
 		summaryColumns = append(summaryColumns, replicateColumnsLib.seColumn(blockId, "", replicateErrorModel))
 		summaryColumns = append(summaryColumns, replicateColumnsLib.sdColumn(blockId, ""))
@@ -457,25 +490,6 @@ wf.body(func(args) {
 					"pl7.app/score/rankingOrder": "increasing",
 					"pl7.app/table/visibility": "default",
 					"pl7.app/table/orderPriority": "200"
-				}
-			}
-		})
-	}
-	if args.equation == "log_fluorescence" {
-		summaryColumns = append(summaryColumns, {
-			column: "kdRangeSide",
-			spec: {
-				name: "pl7.app/vdj/kdRangeSide",
-				valueType: "String",
-				domain: { "pl7.app/block": blockId },
-				annotations: {
-					"pl7.app/label": "Kd,app vs titration",
-					"pl7.app/description": "Where Kd,app sits against the titrated concentrations. Below range: the variant binds tighter than the lowest concentration resolves, so Kd,app is at most the value shown. Above range: Kd,app is at least the value shown. Empty when no Kd,app was fitted.",
-					"pl7.app/isScore": "false",
-					"pl7.app/isDiscreteFilter": "true",
-					"pl7.app/discreteValues": "[\"Below range\",\"In range\",\"Above range\"]",
-					"pl7.app/table/visibility": "default",
-					"pl7.app/table/orderPriority": "196"
 				}
 			}
 		})

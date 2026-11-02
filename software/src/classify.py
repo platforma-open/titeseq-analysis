@@ -21,7 +21,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from constants import KD_SD_GOOD, AffinityClass, FailureReason, FitParams
+from constants import KD_SD_GOOD, AffinityClass, FailureReason, FitParams, KdRangeSide
 
 
 def r2_undefined(r2: float | None) -> bool:
@@ -73,8 +73,7 @@ def classify(
 
 def classify_log_fluorescence(
     *,
-    non_binder: bool,
-    censored: bool,
+    range_side: KdRangeSide,
     log10_kd_se: float | None,
     r2: float | None,
     r2_gate_min: float | None,
@@ -82,23 +81,26 @@ def classify_log_fluorescence(
 ) -> Classification:
     """The "log_fluorescence" derivation for a fit that converged. In order:
 
-      Non-binder  the curve is flat and dim, so its K_D is pinned at the weak wall
-      Partial     the reported K_D is a bound: a flat bright curve, or a fit pinned at either wall
-      Failed      low_r2: the R² gate is on and an in-range fit's R² is below it or undefined
-      Failed      high_kd_se: an SE limit is set and an in-range fit's SE(log10 K_D) is above it or
-                  undefined
-      Partial     SE(log10 K_D) above KD_SD_GOOD or not finite
-      Good        K_D inside the titrated range, SE(log10 K_D) at or below KD_SD_GOOD
+      Below range  K_D is pinned at the tight wall: it is at most the lowest concentration
+      Above range  K_D is pinned at the weak wall: it is at least the highest concentration. A
+                   curve that stayed flat and dim lands here, and so does one that rose without
+                   reaching half-maximum
+      Failed       low_r2: the R² gate is on and an in-range fit's R² is below it or undefined
+      Failed       high_kd_se: an SE limit is set and an in-range fit's SE(log10 K_D) is above it
+                   or undefined
+      Partial      SE(log10 K_D) above KD_SD_GOOD or not finite
+      Good         K_D inside the titrated range, SE(log10 K_D) at or below KD_SD_GOOD
+
+    A bound is its own class rather than Partial, because which wall it sits at is what a reader
+    acts on: below the range is the tightest binder in the library, above it is the weakest.
 
     Both gates read in-range fits only, as Phillips 2021 filters them (R² >= 0.8, SE <= 1). A bound has no curve
     through its midpoint for R² to measure. The Hill exponent gates nothing, so `n_out_of_range`
     never fires. The pipeline rates a gated clonotype or a fit that did not converge Failed
     before this runs.
     """
-    if non_binder:
-        return Classification("Non-binder", None)
-    if censored:
-        return Classification("Partial", None)
+    if range_side != "In range":
+        return Classification(range_side, None)
     if r2_gate_min is not None and (r2 is None or not math.isfinite(r2) or r2 < r2_gate_min):
         return Classification("Failed", "low_r2")
     if kd_se_gate_max is not None and (

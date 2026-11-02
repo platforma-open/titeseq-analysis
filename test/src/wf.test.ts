@@ -356,11 +356,11 @@ blockTest(
       "log_fluorescence summary has the Kd,app standard error",
     ).toBe(true);
     expect(specByName.has("pl7.app/vdj/kdLog10Se"), "mean bin fit has no Kd,app SE").toBe(false);
+    // The wall is the affinity class under this equation, so no column carries it separately.
     expect(
       lfSpec.some((c) => c.type === "column" && c.spec.name === "pl7.app/vdj/kdRangeSide"),
-      "log_fluorescence summary has the Kd,app range side",
-    ).toBe(true);
-    expect(specByName.has("pl7.app/vdj/kdRangeSide"), "mean bin fit has no range side").toBe(false);
+      "log_fluorescence summary has no separate range side column",
+    ).toBe(false);
 
     const lfHillIdx = lfSpec.findIndex(
       (c) => c.type === "column" && c.spec.name === "pl7.app/vdj/hillCoefficient",

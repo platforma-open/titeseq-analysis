@@ -7,8 +7,7 @@ import type { BlockData } from "./index";
  * but not to this function is silently dropped from every template exported afterwards.
  *
  * The fields `BlockParams` leaves out are left out here for the reasons the contract records:
- * the derived label, the settings drawer's own open flag, and view state. `appliedPreset` joins
- * them: it names where settings came from rather than what they are.
+ * the derived label, the settings drawer's own open flag, and view state.
  */
 export function deriveTemplateParams(data: BlockData): BlockParams {
   return {

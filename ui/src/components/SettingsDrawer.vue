@@ -49,7 +49,7 @@ const r2FailedAtMostGood = boundedBy(
 const nMinBelowMax = boundedBy("<", () => app.model.data.nMax, "Hill coefficient — max");
 const nMaxAboveMin = boundedBy(">", () => app.model.data.nMin, "Hill coefficient — min");
 
-const { presetOptions, selectedPreset, setEquation } = useFitSettings();
+const { setEquation } = useFitSettings();
 
 watch(
   () => app.model.outputs.isRunning,
@@ -221,19 +221,6 @@ function setBinColumn(ref: PlRef | undefined): void {
 
     <PlAccordionSection label="Fit method">
       <PlDropdown
-        v-model="selectedPreset"
-        :options="presetOptions"
-        label="Published study preset"
-        placeholder="None"
-        clearable
-      >
-        <template #tooltip>
-          Sets the fit settings to the values that a published study used. You can change each
-          setting after you select a preset. The selector then shows "(modified)". To use the
-          published values again, clear the preset and select it again.
-        </template>
-      </PlDropdown>
-      <PlDropdown
         :model-value="app.model.data.equation"
         :options="EQUATION_OPTIONS"
         label="Equation"
@@ -263,18 +250,10 @@ function setBinColumn(ref: PlRef | undefined): void {
       >
         <template #tooltip>
           The plateau that each clonotype must be able to reach at saturation, as a fraction of the
-          gate range. The default is 2/3, for a screening library. For a library in which most
+          gate range. The default is 0.667, for a screening library. For a library in which most
           clonotypes bind, use a lower value, for example 0.4.
         </template>
       </PlNumberField>
-      <!-- Absent reads as off: the field has no migration default. -->
-      <PlCheckbox
-        v-if="isLogFluorescence"
-        :model-value="app.model.data.requireAllConcentrations === true"
-        @update:model-value="(on: boolean) => (app.model.data.requireAllConcentrations = on)"
-      >
-        Require reads at every concentration
-      </PlCheckbox>
       <PlCheckbox v-if="isLogFluorescence" v-model="app.model.data.r2GateEnabled">
         Fail in-range fits of poor quality
       </PlCheckbox>
@@ -291,8 +270,8 @@ function setBinColumn(ref: PlRef | undefined): void {
         <template #tooltip>
           The lowest R² that a fit can have. A fit with a lower R², or with no R², gets the rating
           Failed, with the reason low_r2. The block checks only a fit whose Kd,app is inside the
-          titrated range. With sample replicates, the block checks the fit of each replicate. The
-          Phillips 2021 preset sets 0.8. Its authors used this value.
+          titrated range. With sample replicates, the block checks the fit of each replicate.
+          Phillips 2021 used 0.8.
         </template>
       </PlNumberField>
       <PlNumberField
@@ -309,8 +288,7 @@ function setBinColumn(ref: PlRef | undefined): void {
           or with no error, gets the rating Failed, with the reason high_kd_se. The block checks
           only a fit whose Kd,app is inside the titrated range. With sample replicates, the block
           checks the fit of each replicate. An error above 0.5 always changes the rating from Good
-          to Partial. Leave this field empty to set no Failed limit. The Phillips 2021 preset sets
-          1. Its authors used this value.
+          to Partial. Leave this field empty to set no Failed limit. Phillips 2021 used 1.
         </template>
       </PlNumberField>
     </PlAccordionSection>
@@ -324,12 +302,14 @@ function setBinColumn(ref: PlRef | undefined): void {
       >
         <template #tooltip>
           How the error of the combined Kd,app is computed. The value itself is the plain mean of
-          log10 Kd,app either way. <br /><br />
-          SD / √n: the sample standard deviation over the square root of the replicate count. With
-          one replicate it is that fit's own standard error. The default. <br /><br />
-          Phillips 2021: the population standard deviation over the square root of the count plus
-          one, which reproduces the standard error published with Phillips 2021. With one replicate
-          it is that fit's own standard error, as above: the paper's form gives 0 there.
+          log10 Kd,app either way, and with one replicate both report that fit's own standard error.
+          <br /><br />
+          Sample SD / √n: the standard error of the mean, over the replicates that entered. The
+          default. <br /><br />
+          Population SD / √(n+1): divides by one more than the replicate count and uses the
+          population standard deviation, which makes it the smaller of the two. Phillips 2021
+          published this form. Its own value at one replicate is 0, which would rate every
+          single-replicate variant Good, so the fit's own error stands in.
         </template>
       </PlDropdown>
       <PlNumberField
@@ -378,7 +358,7 @@ function setBinColumn(ref: PlRef | undefined): void {
       </PlNumberField>
     </PlAccordionSection>
 
-    <PlAccordionSection v-if="!isLogFluorescence" label="Read coverage">
+    <PlAccordionSection label="Read coverage">
       <PlNumberField
         v-model="app.model.data.minReadsPerConcentration"
         label="Min reads per concentration"
@@ -389,8 +369,9 @@ function setBinColumn(ref: PlRef | undefined): void {
         :error-message="emptyError(app.model.data.minReadsPerConcentration)"
       >
         <template #tooltip>
-          Floor applied per clonotype per concentration. Points below the floor are excluded;
-          weighting handles remaining coverage variation. Default 3.
+          The fewest reads a clonotype needs at one concentration for that point to enter the fit. A
+          point below the floor is dropped, and the weighting handles what coverage is left. Both
+          equations read it. The default is 3.
         </template>
       </PlNumberField>
       <PlNumberField
@@ -403,10 +384,18 @@ function setBinColumn(ref: PlRef | undefined): void {
         :error-message="emptyError(app.model.data.minConcentrationPoints)"
       >
         <template #tooltip>
-          Minimum number of concentration points (after floor filtering) to attempt a fit. Default 5
-          — the practical minimum for a 4-parameter Hill fit.
+          The fewest concentration points a clonotype needs, after the read floor has dropped
+          points, for the block to fit it. Below this it rates Failed, insufficient_points. Both
+          equations read it. The default is 5, the practical minimum for this curve shape.
         </template>
       </PlNumberField>
+      <!-- Absent reads as off: the field has no migration default. -->
+      <PlCheckbox
+        :model-value="app.model.data.requireAllConcentrations === true"
+        @update:model-value="(on: boolean) => (app.model.data.requireAllConcentrations = on)"
+      >
+        Require reads at every concentration
+      </PlCheckbox>
     </PlAccordionSection>
 
     <PlAccordionSection v-if="!isLogFluorescence" label="Fit quality">

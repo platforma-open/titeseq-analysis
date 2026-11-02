@@ -265,7 +265,7 @@ class TestFiltersEndToEnd:
         inputs = ReplicateInputs(column="replicate", filters=Filters(r2_floor=1.5))
         outputs = run(_frame(self._design()), params=LF, replicates=inputs)
         assert outputs["per_clonotype"]["fitFailureReason"].to_list() == ["all_replicates_filtered"]
-        assert outputs["per_replicate"]["kdState"].unique().to_list() == ["filtered"]
+        assert outputs["per_replicate"]["kdState"].unique().to_list() == ["Left out by a filter"]
 
     def test_a_reachable_cutoff_keeps_the_replicates(self):
         inputs = ReplicateInputs(column="replicate", filters=Filters(fit_error_cutoff=5.0, r2_floor=0.0))
@@ -328,17 +328,17 @@ class TestReplicateCli:
 class TestReviewClassesAcrossReplicates:
     DESIGN = {r: {"dim": 1e3, "v1": 1e-8} for r in ("A", "B")}
 
-    def test_a_flat_dim_variant_in_every_replicate_is_a_non_binder(self):
+    def test_a_flat_dim_variant_in_every_replicate_is_above_range(self):
         per_clonotype = run(_frame(self.DESIGN), params=LF, replicates=REPS)["per_clonotype"]
         row = per_clonotype.filter(pl.col("clonotypeKey") == "dim").row(0, named=True)
-        assert (row["affinityClass"], row["kdRangeSide"]) == ("Non-binder", "Above range")
+        assert (row["affinityClass"], row["kdRangeSide"]) == ("Above range", "Above range")
         assert _kd(per_clonotype, "v1", "kdRangeSide") == "In range"
 
     def test_the_r2_gate_fails_each_replicate_inside_its_own_fit(self):
         gated = FitParams(equation="log_fluorescence", r2_gate_min=1.0)
         outputs = run(_frame(self.DESIGN), params=gated, replicates=REPS)
         per_replicate = outputs["per_replicate"].filter(pl.col("clonotypeKey") == "v1")
-        assert per_replicate["kdState"].to_list() == ["failed", "failed"]
+        assert per_replicate["kdState"].to_list() == ["Left out, no fit", "Left out, no fit"]
         assert per_replicate["fitFailureReason"].to_list() == ["low_r2", "low_r2"]
         assert _kd(outputs["per_clonotype"], "v1", "affinityClass") == "Failed"
         assert _kd(outputs["per_clonotype"], "v1", "fitFailureReason") == "all_replicates_failed"

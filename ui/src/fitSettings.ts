@@ -16,9 +16,10 @@ const EQUATION_LABELS: Record<Equation, string> = {
 export const EQUATION_OPTIONS: readonly { readonly value: Equation; readonly label: string }[] =
   EQUATIONS.map((value) => ({ value, label: EQUATION_LABELS[value] }));
 
+// Named by their formula: the two differ only in which SD and which denominator.
 const REPLICATE_ERROR_MODEL_LABELS: Record<ReplicateErrorModel, string> = {
-  sd_over_sqrt_n: "SD / √n",
-  phillips: "Phillips 2021",
+  sd_over_sqrt_n: "Sample SD / √n",
+  phillips: "Population SD / √(n+1)",
 };
 
 export const REPLICATE_ERROR_MODEL_OPTIONS: readonly {

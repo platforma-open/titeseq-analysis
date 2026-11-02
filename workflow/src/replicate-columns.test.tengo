@@ -58,7 +58,7 @@ Test_the_spread_column_is_shown_and_not_a_score := func() {
 
 Test_the_per_replicate_columns_are_hidden_and_carry_the_state := func() {
 	cols := byHeader(replicateColumns.perReplicateColumns("blk", "rep_", KD, CLASSES))
-	headers := ["kd", "kdLog10Se", "r2", "affinityClass", "fitFailureReason", "kdState"]
+	headers := ["kd", "kdLog10Se", "r2", "affinityClass", "fitFailureReason", "replicateReads", "kdState"]
 	test.isEqual(len(headers), len(cols), "one column per per_replicate.tsv value header")
 	for h in headers {
 		test.isEqual("rep_" + h, cols[h].id, "id of " + h)
@@ -68,7 +68,9 @@ Test_the_per_replicate_columns_are_hidden_and_carry_the_state := func() {
 	}
 	test.isEqual("nM", cols.kd.spec.annotations["pl7.app/unit"], "the unit carries over")
 	test.isEqual(replicateColumns.STATE_NAME, cols.kdState.spec.name, "the state's own name")
-	test.isEqual(["measured", "censoredBelow", "censoredAbove", "failed", "filtered"],
+	test.isEqual(["In the mean", "In the mean, at the tight wall", "In the mean, at the weak wall",
+		"Left out, no fit", "Left out by a filter"],
 		json.decode(cols.kdState.spec.annotations["pl7.app/discreteValues"]), "every state the software writes")
+	test.isEqual("Long", cols.replicateReads.spec.valueType, "the read count is a whole number")
 	test.isEqual(CLASSES, cols.affinityClass.spec.annotations["pl7.app/discreteValues"], "the equation's classes")
 }

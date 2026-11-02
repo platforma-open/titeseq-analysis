@@ -121,10 +121,10 @@ class TestLogFluorescenceFit:
 
 
 class TestBounds:
-    def test_a_curve_saturated_across_the_titration_is_pinned_low_and_rated_partial(self):
+    def test_a_curve_saturated_across_the_titration_is_pinned_low_and_rated_below_range(self):
         # No 0 M point, so nothing in the titration is dim: the curve is flat and bright.
         row = _row(run(_frame(_lf_reads("SAT", 1e-14)), params=LF), "SAT")
-        assert row["affinityClass"] == "Partial"
+        assert row["affinityClass"] == "Below range"
         assert row["fitFailureReason"] is None
         assert row["kdOutOfRange"] is True
         assert row["kdRangeSide"] == "Below range"
@@ -136,40 +136,44 @@ class TestBounds:
         assert row["kdOutOfRange"] is True
         assert row["kdLog10Se"] is None
 
-    def test_a_flat_dim_curve_is_pinned_high_and_rated_a_non_binder(self):
+    def test_a_flat_dim_curve_is_pinned_high_and_rated_above_range(self):
         row = _row(run(_frame(_lf_reads("DIM", 1e3)), params=LF), "DIM")
-        assert (row["affinityClass"], row["fitFailureReason"]) == ("Non-binder", None)
+        assert (row["affinityClass"], row["fitFailureReason"]) == ("Above range", None)
         assert row["kdOutOfRange"] is True
         assert row["kdRangeSide"] == "Above range"
         assert math.log10(row["kd"]) == pytest.approx(LOG_HI, abs=1e-9)
 
     def test_the_plateau_floor_decides_which_wall_a_flat_mid_bright_curve_is_pinned_to(self):
         # Observed top at 50 percent of the gate range, rising 0.65 decades — under the rise
-        # threshold, so the level test alone decides. Saturated at 0.4, a non-binder at 2/3.
+        # threshold, so the level test alone decides. Pinned low at 0.4, pinned high at 2/3.
         reads = _frame(_lf_reads("MID", 1e-8, top=10 ** (0.50 * 1.95)))
         lenient = _row(run(reads, params=FitParams(equation="log_fluorescence", plateau_floor=0.4)), "MID")
         strict = _row(run(reads, params=FitParams(equation="log_fluorescence", plateau_floor=2 / 3)), "MID")
         assert math.log10(lenient["kd"]) == pytest.approx(LOG_LO, abs=1e-9)
         assert math.log10(strict["kd"]) == pytest.approx(LOG_HI, abs=1e-9)
-        assert (lenient["affinityClass"], strict["affinityClass"]) == ("Partial", "Non-binder")
+        assert (lenient["affinityClass"], strict["affinityClass"]) == ("Below range", "Above range")
         assert (lenient["kdRangeSide"], strict["kdRangeSide"]) == ("Below range", "Above range")
         assert lenient["kdOutOfRange"] is True and strict["kdOutOfRange"] is True
 
 
 class TestGates:
     def test_too_few_points_fails_without_fitting(self):
-        # Four concentrations, under the equation's fixed minimum of five.
+        # Four concentrations, under the default minimum of five.
         row = _row(run(_frame(_lf_reads("SHORT", 1e-8, concs=CONCS[:4])), params=LF), "SHORT")
         assert (row["affinityClass"], row["fitFailureReason"]) == ("Failed", "insufficient_points")
         assert row["kd"] is None
         assert row["hillCoefficient"] is None
 
-    def test_the_user_read_floor_is_not_read_by_this_equation(self):
-        # min_reads_per_concentration 10_000 would gate every point under v2.4.0's fit.
+    def test_the_read_floor_gates_this_equation_too(self):
         reads = _frame(_lf_reads("G1", 1e-8))
-        loose = run(reads, params=LF)
-        tight = run(reads, params=FitParams(equation="log_fluorescence", min_reads_per_concentration=10_000))
-        assert loose["per_clonotype"].equals(tight["per_clonotype"])
+        tight = FitParams(equation="log_fluorescence", min_reads_per_concentration=10_000)
+        assert _row(run(reads, params=LF), "G1")["affinityClass"] != "Failed"
+        assert _row(run(reads, params=tight), "G1")["fitFailureReason"] == "insufficient_reads"
+
+    def test_the_point_count_gates_this_equation_too(self):
+        reads = _frame(_lf_reads("G1", 1e-8))
+        tight = FitParams(equation="log_fluorescence", min_concentration_points=99)
+        assert _row(run(reads, params=tight), "G1")["fitFailureReason"] == "insufficient_points"
 
     def test_no_bin_mode_is_refused_with_a_reason(self):
         reads = _frame(_lf_reads("G1", 1e-8)).drop("bin")
@@ -413,7 +417,7 @@ class TestR2Gate:
     def test_a_bound_is_not_gated(self):
         gated = FitParams(equation="log_fluorescence", r2_gate_min=1.0)
         row = _row(run(_frame(_lf_reads("SAT", 1e-14)), params=gated), "SAT")
-        assert row["affinityClass"] == "Partial"
+        assert row["affinityClass"] == "Below range"
 
     def test_the_mean_bin_fit_ignores_the_gate(self):
         gated = FitParams(equation="hill_gate_index", r2_gate_min=1.0)

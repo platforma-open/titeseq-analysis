@@ -1,7 +1,8 @@
 """The "log_fluorescence" rating of a converged fit, at its boundaries.
 
-Non-binder  a flat, dim curve, its K_D pinned at the weak wall
-Partial     the reported K_D is a bound
+Above range  the K_D is pinned at the weak wall: a flat dim curve, or one that rose without
+             reaching half-maximum
+Below range  the K_D is pinned at the tight wall
 Failed      low_r2: the R² gate is on and an in-range fit's R² is below it or undefined
 Partial     SE(log10 K_D) > KD_SD_GOOD / not finite
 Good        K_D inside the titrated range, and SE(log10 K_D) <= KD_SD_GOOD
@@ -21,7 +22,7 @@ from constants import KD_SD_GOOD
 
 
 def _rate(**kwargs):
-    base = {"non_binder": False, "censored": False, "log10_kd_se": 0.1, "r2": 0.95, "r2_gate_min": None}
+    base = {"range_side": "In range", "log10_kd_se": 0.1, "r2": 0.95, "r2_gate_min": None}
     return classify_log_fluorescence(**{**base, **kwargs})
 
 
@@ -37,19 +38,19 @@ class TestGood:
         assert _rate(log10_kd_se=0.0).affinity_class == "Good"
 
 
-class TestNonBinder:
-    def test_a_flat_dim_curve_is_a_non_binder(self):
-        result = _rate(non_binder=True, censored=True)
-        assert (result.affinity_class, result.failure_reason) == ("Non-binder", None)
+class TestBounds:
+    def test_a_flat_dim_curve_is_above_range(self):
+        result = _rate(range_side="Above range")
+        assert (result.affinity_class, result.failure_reason) == ("Above range", None)
 
-    def test_the_r2_gate_does_not_reach_a_non_binder(self):
-        assert _rate(non_binder=True, censored=True, r2=-1.0, r2_gate_min=0.8).affinity_class == "Non-binder"
+    def test_the_r2_gate_does_not_reach_a_bound(self):
+        assert _rate(range_side="Above range", r2=-1.0, r2_gate_min=0.8).affinity_class == "Above range"
 
 
 class TestPartial:
-    def test_a_bound_is_partial_however_tight_the_fit_looked(self):
-        result = _rate(censored=True, log10_kd_se=0.0)
-        assert (result.affinity_class, result.failure_reason) == ("Partial", None)
+    def test_a_bound_reports_its_wall_however_tight_the_fit_looked(self):
+        result = _rate(range_side="Below range", log10_kd_se=0.0)
+        assert (result.affinity_class, result.failure_reason) == ("Below range", None)
 
     def test_just_above_the_standard_error_threshold_is_partial(self):
         assert _rate(log10_kd_se=KD_SD_GOOD + 1e-9).affinity_class == "Partial"
@@ -60,7 +61,7 @@ class TestPartial:
         assert (result.affinity_class, result.failure_reason) == ("Partial", None)
 
     def test_partial_never_carries_a_failure_reason(self):
-        assert _rate(censored=True).failure_reason is None
+        assert _rate(range_side="Below range").failure_reason is None
         assert _rate(log10_kd_se=None).failure_reason is None
 
 
@@ -81,7 +82,7 @@ class TestR2Gate:
 
     def test_a_bound_is_not_gated(self):
         # Phillips 2021 filters in-range fits only.
-        assert _rate(censored=True, r2=0.1, r2_gate_min=0.8).affinity_class == "Partial"
+        assert _rate(range_side="Below range", r2=0.1, r2_gate_min=0.8).affinity_class == "Below range"
 
     def test_the_gate_runs_before_the_standard_error(self):
         assert _rate(r2=0.5, r2_gate_min=0.8, log10_kd_se=5.0).affinity_class == "Failed"
@@ -103,7 +104,7 @@ class TestSeGate:
         assert _rate(log10_kd_se=se, kd_se_gate_max=1.0).failure_reason == "high_kd_se"
 
     def test_a_bound_is_not_gated(self):
-        assert _rate(censored=True, log10_kd_se=None, kd_se_gate_max=1.0).affinity_class == "Partial"
+        assert _rate(range_side="Below range", log10_kd_se=None, kd_se_gate_max=1.0).affinity_class == "Below range"
 
     def test_the_r2_gate_reads_first(self):
         result = _rate(r2=0.1, r2_gate_min=0.8, log10_kd_se=5.0, kd_se_gate_max=1.0)

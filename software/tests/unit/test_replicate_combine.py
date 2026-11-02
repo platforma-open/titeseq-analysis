@@ -109,7 +109,7 @@ class TestCensoring:
     def test_every_replicate_censored_low_reports_that_wall_with_no_error(self):
         m = combine_replicates([_value("A", LO, state="below"), _value("B", LO, state="below")])
         assert (m.log10_kd, m.log10_kd_se, m.out_of_range) == (LO, None, True)
-        assert m.classification.affinity_class == "Partial"
+        assert m.classification.affinity_class == "Below range"
 
     def test_every_replicate_censored_high_reports_that_wall(self):
         m = combine_replicates([_value("A", HI, state="above")])
@@ -219,10 +219,11 @@ class TestFrames:
     def test_the_per_replicate_frame_holds_one_row_a_replicate(self):
         frame = build_per_replicate_frame(self._collected(), "clonotypeKey")
         assert frame.columns == [
-            "clonotypeKey", "replicate", "kd", "kdLog10Se", "r2", "affinityClass", "fitFailureReason", "kdState",
+            "clonotypeKey", "replicate", "replicateReads", "kd", "kdLog10Se", "r2", "affinityClass",
+            "fitFailureReason", "kdState",
         ]  # fmt: skip
         assert frame.height == 4
-        assert frame.filter(kdState="failed").height == 2
+        assert frame.filter(kdState="Left out, no fit").height == 2
 
     def test_the_counts_add_up_to_the_replicates_seen(self):
         merged = merge_all(self._collected())
@@ -230,23 +231,23 @@ class TestFrames:
         assert merged["v2"].counts["failed"] == 2
 
 
-class TestNonBinderAndRangeSide:
-    def test_every_high_wall_replicate_a_non_binder_combines_as_a_non_binder(self):
-        values = [_value(r, HI, state="above", cls="Non-binder") for r in ("A", "B")]
+class TestBoundClassAndRangeSide:
+    def test_every_replicate_at_the_high_wall_combines_as_above_range(self):
+        values = [_value(r, HI, state="above", cls="Above range") for r in ("A", "B")]
         merged = combine_replicates(values)
-        assert merged.classification.affinity_class == "Non-binder"
+        assert merged.classification.affinity_class == "Above range"
         assert merged.range_side == "Above range"
 
-    def test_one_high_wall_replicate_that_rose_keeps_the_variant_partial(self):
+    def test_the_wall_decides_the_class_whatever_each_replicate_was_rated(self):
         values = [
-            _value("A", HI, state="above", cls="Non-binder"),
+            _value("A", HI, state="above", cls="Above range"),
             _value("B", HI, state="above", cls="Partial"),
         ]
-        assert combine_replicates(values).classification.affinity_class == "Partial"
+        assert combine_replicates(values).classification.affinity_class == "Above range"
 
-    def test_a_low_wall_bound_is_partial_below_range(self):
-        merged = combine_replicates([_value(r, LO, state="below", cls="Partial") for r in ("A", "B")])
-        assert (merged.classification.affinity_class, merged.range_side) == ("Partial", "Below range")
+    def test_a_low_wall_bound_is_below_range(self):
+        merged = combine_replicates([_value(r, LO, state="below", cls="Below range") for r in ("A", "B")])
+        assert (merged.classification.affinity_class, merged.range_side) == ("Below range", "Below range")
 
     def test_a_mean_of_measured_values_is_in_range(self):
         merged = combine_replicates([_value("A", -8.0, se=0.1), _value("B", -8.2, se=0.1)])

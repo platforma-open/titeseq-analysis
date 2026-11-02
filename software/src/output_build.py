@@ -45,6 +45,22 @@ def flag_kd_out_of_range(frame: pl.DataFrame, min_concentration: float, max_conc
     )
 
 
+def add_neg_log10_kd(frame: pl.DataFrame) -> pl.DataFrame:
+    """Append -log10 of K_D, the form every paper on this assay publishes: larger is tighter.
+
+    The magnitude is the unit the fit solves in and the unit kdLog10Se and kdLog10Sd carry, so the
+    value and its error share a scale. Derived, so it is appended after the frame is built rather
+    than carried in PER_CLONOTYPE_SCHEMA. Null where there is no K_D, and for a pinned K_D it is
+    the pinned value's.
+    """
+    return frame.with_columns(
+        pl.when(pl.col("kd").is_null() | (pl.col("kd") <= 0.0))
+        .then(None)
+        .otherwise(-pl.col("kd").log10())
+        .alias("kdNegLog10")
+    )
+
+
 def add_diagnostic_plot_columns(frame: pl.DataFrame, max_concentration: float) -> pl.DataFrame:
     """R17: append plot-only positions so Failed rows with null Kd render on the scatter.
 

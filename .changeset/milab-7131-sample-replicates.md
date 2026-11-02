@@ -22,7 +22,8 @@ to two.
 - Each replicate is fitted alone; reads are never pooled across replicates. The combined value is
   the plain mean of log10 Kd,app. A replicate whose Kd,app ran past a wall of the titration enters
   pinned at that wall, as Adams's and Phillips's code both do.
-- New setting `replicateErrorModel`. `sd_over_sqrt_n` (the default) is the sample SD over the square
+- New setting `replicateErrorModel`, shown as "Sample SD / √n" (the default) and
+  "Population SD / √(n+1)". `sd_over_sqrt_n` is the sample SD over the square
   root of the replicate count, falling back to the single fit's own standard error for one
   replicate. `phillips` is the population SD over the square root of the count plus one, which is 0
   for one replicate; it reproduces the standard error published with Phillips 2021.
@@ -37,9 +38,8 @@ to two.
 - `replicateCensoredMajority` (default 0.5): when no replicate measured a Kd,app, one censoring side
   must hold at least this share of the replicates and exceed the other side for that wall to be
   reported; otherwise the clonotype is Failed with reason `conflicting_censoring`. This is the
-  block's own rule — no published method defines one. A high-wall bound stays `Non-binder` when
-  every replicate on that wall is one, and is `Partial` otherwise. The combined value carries its
-  "Kd,app vs titration" side under the log fluorescence fit.
+  block's own rule — no published method defines one. Under the log fluorescence fit the combined
+  bound rates by the wall it sits at, `Below range` or `Above range`, as a single fit does.
 - `pl7.app/vdj/replicateCount` and its family — `replicateMeasuredCount`,
   `replicateCensoredBelowCount`, `replicateCensoredAboveCount`, `replicateFailedCount`,
   `replicateFilteredCount` — count what each clonotype's replicates produced.
@@ -49,19 +49,18 @@ to two.
   `pl7.app/vdj/kd`, `kdLog10Se`, `curveFitR2`, `affinityClass` and `kdReplicateState` (measured,
   censoredBelow, censoredAbove, failed, filtered). It is its own output, out of the exported bundle:
   the extra axis would fan out every row of the main table.
-- A new page, Replicates, shows those values as a table and as a chart that puts the replicates of
-  one clonotype side by side. The page exists only when a run combined replicates. Its table and
-  chart state and the replicate settings are new block data, added by a v3 -> v4 migration that
-  moves no argument.
+- Clicking a variant in the main table opens its replicates beside it: each replicate's own
+  Kd,app, standard error, R², class and fit failure reason. The panel's state and the replicate
+  settings are new block data, added by a v3 -> v4 migration that moves no argument.
 - The signal frames gain the replicate on their key when a replicate column is set, so the
   Titration Curves graph draws each replicate's own curve instead of one pooled curve that belongs
   to no fit.
 
 A variant whose every replicate failed rates `Failed` with the reason `all_replicates_failed`, and
-each replicate's row on the Replicates page carries its own fit failure reason. The count of
+each replicate's row in that panel carries its own fit failure reason. The count of
 replicates that entered the mean is labelled "Replicates in mean". The main table shows the fit
 failure reason by default.
 
-Under the Phillips 2021 error model, a variant with one replicate in the mean reports that
+Under the "Population SD / √(n+1)" error model, a variant with one replicate in the mean reports that
 replicate's own fit error, not the paper's 0. A zero error rated every single-replicate variant
 Good and left the log-scale Affinity vs Fit Quality chart without a range.

@@ -3,9 +3,12 @@ import type {
   DatasetOption,
   InferOutputsType,
   PColumnIdAndSpec,
+  PColumnSpec,
   PFrameHandle,
+  PlDataTableFilters,
   PlDataTableStateV2,
   PlRef,
+  PTableKey,
   RenderCtx,
 } from "@platforma-sdk/model";
 import type {
@@ -17,14 +20,14 @@ import {
   DEFAULT_REPLICATE_ERROR_MODEL,
   kind,
 } from "@platforma-open/platforma-open.titeseq-analysis.kind";
-import type { FitSettings, FitSettingsDraft, PresetId } from "./presets";
-import type { LogFluorescenceSetting } from "./presets";
+import type { FitSettings, FitSettingsDraft, LogFluorescenceSetting } from "./fitSettings";
 import {
   DEFAULT_EQUATION,
   DEFAULT_PLATEAU_FLOOR,
   DEFAULT_R2_GATE,
   HILL_GATE_INDEX_DEFAULTS,
-} from "./presets";
+  READ_COVERAGE_DEFAULTS,
+} from "./fitSettings";
 import { deriveTemplateParams } from "./templateParams";
 
 export type {
@@ -38,8 +41,9 @@ export {
   EQUATIONS,
   REPLICATE_ERROR_MODELS,
 } from "@platforma-open/platforma-open.titeseq-analysis.kind";
-export * from "./presets";
+export * from "./fitSettings";
 export { deriveTemplateParams };
+export type { PTableKey } from "@platforma-sdk/model";
 import {
   BlockModelV3,
   ColumnsCollection,
@@ -50,6 +54,7 @@ import {
   createPFrameForGraphs,
   createPlDataTableStateV2,
   createPlDataTableV3,
+  getAxisId,
   isPColumnSpec,
   plRefsEqual,
 } from "@platforma-sdk/model";
@@ -120,6 +125,8 @@ export type BlockArgs =
   | (CommonArgs & {
       equation: "log_fluorescence";
       plateauFloor: number;
+      minReadsPerConcentration: number;
+      minConcentrationPoints: number;
       /** Present only while the gate is on, so an ungated block's args name no gate. */
       r2GateMin?: number;
       /** Present only while the gate is on and an SE limit is set. */
@@ -140,12 +147,16 @@ export type BlockData = FitInputs &
     replicateCensoredMajority?: number;
     /** The per-replicate table, shown only when a run combined replicates. */
     replicateTableState: PlDataTableStateV2;
+    /**
+     * The variant whose replicates the drill-down shows: the main grid's row key. UI-only, never
+     * projected to args. Undefined means the drill-down is closed and its table is not built.
+     */
+    replicateDrilldownKey?: PTableKey;
+    /** Grid state of the drill-down table. UI-only. Optional so no migration is needed. */
+    replicateDrilldownTableState?: PlDataTableStateV2;
     graphStateReplicates: GraphMakerState;
     /** Subset column picked with the abundance in PlDatasetSelector (e.g. a Repertoire Labeling label). */
     filterRef?: PlRef;
-    /** The preset last applied, kept so the drawer can name a preset the scientist then edited.
-     *  Not authoritative: the settings themselves are. Never reaches the workflow. */
-    appliedPreset?: PresetId;
     tableState: PlDataTableStateV2;
     graphStateTitrationCurves: GraphMakerState;
     graphStateKDHistogram: GraphMakerState;
@@ -157,7 +168,7 @@ export type BlockData = FitInputs &
  * v1: the block as published through 2.4.0 — one fit, the free-exponent Hill on the read-weighted
  * mean gate index, with no equation to choose. This is the shape every released project stores.
  */
-export type BlockDataV1 = Omit<BlockDataV2, "equation" | "plateauFloor" | "appliedPreset">;
+export type BlockDataV1 = Omit<BlockDataV2, "equation" | "plateauFloor">;
 
 /** v2: the equation choice, before the log-fluorescence R² gate. Never released. */
 export type BlockDataV2 = Omit<BlockDataV3, "r2GateEnabled" | "r2GateMin">;
@@ -172,6 +183,8 @@ export type BlockDataV3 = Omit<
   | "replicateCensoredMajority"
   | "replicateTableState"
   | "graphStateReplicates"
+  | "replicateDrilldownKey"
+  | "replicateDrilldownTableState"
 >;
 
 /**
@@ -287,9 +300,9 @@ export const initBlockData = (params?: BlockParams): BlockData => ({
   replicateTableState: createPlDataTableStateV2(),
   graphStateReplicates: REPLICATES_DEFAULT_STATE,
   minReadsPerConcentration:
-    params?.minReadsPerConcentration ?? HILL_GATE_INDEX_DEFAULTS.minReadsPerConcentration,
+    params?.minReadsPerConcentration ?? READ_COVERAGE_DEFAULTS.minReadsPerConcentration,
   minConcentrationPoints:
-    params?.minConcentrationPoints ?? HILL_GATE_INDEX_DEFAULTS.minConcentrationPoints,
+    params?.minConcentrationPoints ?? READ_COVERAGE_DEFAULTS.minConcentrationPoints,
   r2ThresholdGood: params?.r2ThresholdGood ?? HILL_GATE_INDEX_DEFAULTS.r2ThresholdGood,
   r2ThresholdFailed: params?.r2ThresholdFailed ?? HILL_GATE_INDEX_DEFAULTS.r2ThresholdFailed,
   nMin: params?.nMin ?? HILL_GATE_INDEX_DEFAULTS.nMin,
@@ -379,6 +392,35 @@ type Ctx = RenderCtx<BlockArgs, BlockData>;
 /** The per-replicate frame of the last run. Undefined when the run combined no replicates. */
 function replicateCols(ctx: Ctx) {
   return ctx.outputs?.resolve({ field: "replicatePf", allowPermanentAbsence: true })?.getPColumns();
+}
+
+const REPLICATE_AXIS = "pl7.app/vdj/replicate";
+
+/**
+ * The filter that narrows the per-replicate frame to one variant. The variant axis is whichever
+ * axis is not the replicate one, taken from the frame's own spec so the domain matches exactly.
+ * Undefined when nothing is selected or the frame has no such axis.
+ */
+export function replicateDrilldownFilter(
+  specs: PColumnSpec[],
+  key: PTableKey | undefined,
+): PlDataTableFilters | undefined {
+  const value = key?.[0];
+  if (value === undefined || value === null) return undefined;
+  const axis = specs
+    .find((s) => s.name === "pl7.app/vdj/kd")
+    ?.axesSpec.find((a) => a.name !== REPLICATE_AXIS);
+  if (axis === undefined) return undefined;
+  return {
+    type: "and",
+    filters: [
+      {
+        type: "patternEquals",
+        column: { type: "axis", id: getAxisId(axis) },
+        value: String(value),
+      },
+    ],
+  };
 }
 
 function isIntegerValueType(vt: string | undefined): boolean {
@@ -505,6 +547,30 @@ export const deriveArgs = (data: BlockData): BlockArgs => {
   }
 };
 
+/**
+ * Read coverage, which both equations read: a point below the read floor is dropped, and a
+ * clonotype left with fewer than the point count is refused before any fit. Narrowed here because
+ * a check in the caller does not narrow `data` inside each equation's builder.
+ */
+function readCoverage(data: BlockData): {
+  minReadsPerConcentration: number;
+  minConcentrationPoints: number;
+  requireAllConcentrations?: true;
+} {
+  if (data.minReadsPerConcentration === undefined)
+    throw new Error("Min reads per concentration is required");
+  if (data.minConcentrationPoints === undefined)
+    throw new Error("Min concentration points is required");
+  if (data.minReadsPerConcentration < 1) throw new Error("Min reads per concentration must be ≥ 1");
+  if (data.minConcentrationPoints < 3) throw new Error("Min concentration points must be ≥ 3");
+  return {
+    minReadsPerConcentration: data.minReadsPerConcentration,
+    minConcentrationPoints: data.minConcentrationPoints,
+    // Only as true: absent means a titration with a gap is still fitted.
+    ...(data.requireAllConcentrations === true && { requireAllConcentrations: true as const }),
+  };
+}
+
 function logFluorescenceArgs(data: BlockData, inputs: ArgsInputs, labels: ArgsLabels): BlockArgs {
   // Reject undefined before the range comparison. `undefined <= 0` and `undefined > 1` are both
   // false, so a cleared floor would pass the range check and reach the Python fit.
@@ -530,9 +596,9 @@ function logFluorescenceArgs(data: BlockData, inputs: ArgsInputs, labels: ArgsLa
     binFluorescenceColumnRef: data.binFluorescenceColumnRef,
     equation: "log_fluorescence",
     plateauFloor: data.plateauFloor,
+    ...readCoverage(data),
     ...(data.r2GateEnabled && { r2GateMin: data.r2GateMin }),
     ...(data.r2GateEnabled && data.kdSeGateMax !== undefined && { kdSeGateMax: data.kdSeGateMax }),
-    ...(data.requireAllConcentrations === true && { requireAllConcentrations: true as const }),
     ...labels,
   };
 }
@@ -540,11 +606,7 @@ function logFluorescenceArgs(data: BlockData, inputs: ArgsInputs, labels: ArgsLa
 function hillGateIndexArgs(data: BlockData, inputs: ArgsInputs, labels: ArgsLabels): BlockArgs {
   // Reject undefined before any range comparison runs. `undefined < 1` returns false, so a
   // stored block that lacks one of these fields would pass validation and send undefined to
-  // the Python fit.
-  if (data.minReadsPerConcentration === undefined)
-    throw new Error("Min reads per concentration is required");
-  if (data.minConcentrationPoints === undefined)
-    throw new Error("Min concentration points is required");
+  // the Python fit. Read coverage is checked once, before the equation is chosen.
   if (data.r2ThresholdGood === undefined) throw new Error("R² threshold (Good) is required");
   if (data.r2ThresholdFailed === undefined) throw new Error("R² threshold (Failed) is required");
   if (data.nMin === undefined) throw new Error("Hill coefficient nMin is required");
@@ -567,12 +629,9 @@ function hillGateIndexArgs(data: BlockData, inputs: ArgsInputs, labels: ArgsLabe
     throw new Error("R² threshold (Good) out of range");
   if (data.r2ThresholdFailed < 0 || data.r2ThresholdFailed > 1)
     throw new Error("R² threshold (Failed) out of range");
-  if (data.minReadsPerConcentration < 1) throw new Error("Min reads per concentration must be ≥ 1");
-  if (data.minConcentrationPoints < 3) throw new Error("Min concentration points must be ≥ 3");
   return {
     ...inputs,
-    minReadsPerConcentration: data.minReadsPerConcentration,
-    minConcentrationPoints: data.minConcentrationPoints,
+    ...readCoverage(data),
     r2ThresholdGood: data.r2ThresholdGood,
     r2ThresholdFailed: data.r2ThresholdFailed,
     nMin: data.nMin,
@@ -588,12 +647,9 @@ function hillGateIndexArgs(data: BlockData, inputs: ArgsInputs, labels: ArgsLabe
   };
 }
 
-/** The block's pages. Replicates appears only after a run that combined sample replicates. */
-export const sectionsFor = (replicates: boolean) => [
+/** The block's pages. Per-replicate values are read by clicking a variant in the main table. */
+export const sectionsFor = () => [
   { type: "link" as const, href: "/" as const, label: "Table" },
-  ...(replicates
-    ? [{ type: "link" as const, href: "/replicates" as const, label: "Replicates" }]
-    : []),
   { type: "link" as const, href: "/titration-curves" as const, label: "Titration Curves" },
   { type: "link" as const, href: "/kd-distribution" as const, label: "Kd Distribution" },
   { type: "link" as const, href: "/affinity-vs-fit" as const, label: "Affinity vs Fit Quality" },
@@ -905,6 +961,70 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     });
   })
 
+  // The main grid's key axis. Feeds `showCellButtonForAxisId`, which matches by exact JSON.
+  .output("summaryKeyAxisId", (ctx) => {
+    const axis = ctx.outputs
+      ?.resolve("summaryPf")
+      ?.getPColumns()
+      ?.find((c) => c.spec.name === "pl7.app/vdj/kd")?.spec.axesSpec[0];
+    return axis === undefined ? undefined : getAxisId(axis);
+  })
+
+  // The selected variant's own name, for the panel's title. Read off the label column the
+  // upstream attaches to the variant axis; undefined when it attaches none.
+  .output("replicateDrilldownLabel", (ctx): string | undefined => {
+    const value = ctx.data.replicateDrilldownKey?.[0];
+    if (value === undefined || value === null) return undefined;
+    const axis = ctx.outputs
+      ?.resolve("summaryPf")
+      ?.getPColumns()
+      ?.find((c) => c.spec.name === "pl7.app/vdj/kd")?.spec.axesSpec[0];
+    if (axis === undefined) return undefined;
+    return ctx.resultPool.findLabels(axis)?.[String(value)];
+  })
+
+  // The combined value the replicates below it produced, so the panel shows inputs and result
+  // together. The same filter as the per-replicate table, over the summary columns.
+  .outputWithStatus("replicateDrilldownSummary", (ctx) => {
+    if (replicateCols(ctx) === undefined) return undefined;
+    const summaryCols = ctx.outputs?.resolve("summaryPf")?.getPColumns();
+    if (summaryCols === undefined) return undefined;
+    const filters = replicateDrilldownFilter(
+      summaryCols.map((c) => c.spec),
+      ctx.data.replicateDrilldownKey,
+    );
+    if (filters === undefined) return undefined;
+    return createPlDataTableV3(ctx, {
+      primaryColumns: summaryCols.map((c) => DataColumn.fromColumn(c)),
+      columns: undefined,
+      tableState: undefined,
+      filters,
+    });
+  })
+
+  // One variant's replicates, opened from the main table. No table while nothing is selected:
+  // unfiltered it would be every variant's replicates.
+  .outputWithStatus("replicateDrilldownTable", (ctx) => {
+    const cols = replicateCols(ctx);
+    if (cols === undefined) return undefined;
+    const filters = replicateDrilldownFilter(
+      cols.map((c) => c.spec),
+      ctx.data.replicateDrilldownKey,
+    );
+    if (filters === undefined) return undefined;
+    return createPlDataTableV3(ctx, {
+      primaryColumns: cols.map((c) => DataColumn.fromColumn(c)),
+      columns: undefined,
+      tableState: ctx.data.replicateDrilldownTableState,
+      displayOptions: {
+        visibility: [
+          { match: { name: cols.map((c) => exactly(c.spec.name)) }, visibility: "default" },
+        ],
+      },
+      filters,
+    });
+  })
+
   .outputWithStatus("replicatePfHandle", (ctx): PFrameHandle | undefined => {
     const cols = replicateCols(ctx);
     if (cols === undefined) return undefined;
@@ -921,7 +1041,7 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
 
   .subtitle((ctx) => ctx.data.customBlockLabel || ctx.data.defaultBlockLabel || "")
 
-  .sections((ctx) => sectionsFor(replicateCols(ctx) !== undefined))
+  .sections(() => sectionsFor())
 
   .done();
 

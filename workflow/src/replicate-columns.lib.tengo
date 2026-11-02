@@ -7,7 +7,7 @@ maps := import("@platforma-sdk/workflow-tengo:maps")
 
 COUNT_NAME := "pl7.app/vdj/replicateCount"
 STATE_NAME := "pl7.app/vdj/kdReplicateState"
-STATE_VALUES := "[\"measured\",\"censoredBelow\",\"censoredAbove\",\"failed\",\"filtered\"]"
+STATE_VALUES := "[\"In the mean\",\"In the mean, at the tight wall\",\"In the mean, at the weak wall\",\"Left out, no fit\",\"Left out by a filter\"]"
 
 /**
  * The replicate axis. String rather than Int for the same reason the concentration axis is: the
@@ -50,7 +50,7 @@ SD_DESCRIPTION := "SD of log10 Kd,app across the replicates in the mean. Empty w
 
 SE_DESCRIPTIONS := {
 	sd_over_sqrt_n: "Standard error of the mean log10 Kd,app across the replicates: their sample SD over the square root of their number. With one replicate, that fit's own standard error where the equation reports one. Empty for a bound and for a failed variant. At or below 0.5, Kd,app is rated Good.",
-	phillips: "Standard error of the mean log10 Kd,app across the replicates: their population SD over the square root of their number plus one, which is the form Phillips 2021 published. With one replicate it is that replicate's own fit error, not the paper's 0. Empty for a bound and for a failed variant."
+	phillips: "Standard error of the mean log10 Kd,app across the replicates: their population SD over the square root of their number plus one, the form Phillips 2021 published. With one replicate it is that replicate's own fit error, not that form's 0. Empty for a bound and for a failed variant."
 }
 
 /**
@@ -101,7 +101,7 @@ sdColumn := func(blockId, idPrefix) {
 				"pl7.app/isScore": "false",
 				"pl7.app/format": ".2f",
 				"pl7.app/table/visibility": "default",
-				"pl7.app/table/orderPriority": "201"
+				"pl7.app/table/orderPriority": "199"
 			}
 		}
 	}
@@ -207,10 +207,16 @@ perReplicateColumns := func(blockId, idPrefix, kdAnnotations, classValues) {
 				"Why this replicate's own fit rated Failed. Empty when it did not.", {})
 		},
 		{
+			column: "replicateReads",
+			id: idPrefix + "replicateReads",
+			spec: hidden("pl7.app/vdj/replicateReads", "Long", "Reads in this replicate",
+				"Reads behind this replicate's own fit, summed over the concentrations it was fitted on. A wide or missing value usually reads back to a low count here.", {})
+		},
+		{
 			column: "kdState",
 			id: idPrefix + "kdState",
-			spec: hidden(STATE_NAME, "String", "Replicate state",
-				"What this replicate contributed: measured inside the titrated range, censored at an edge, failed to fit, or dropped by a pre-combine filter.",
+			spec: hidden(STATE_NAME, "String", "Entered the mean",
+				"What this replicate contributed. In the mean: its Kd,app was measured inside the titrated range. At the tight or weak wall: its Kd,app was a bound and entered at that wall. Left out: it produced no fit, or a pre-combine filter rejected it.",
 				{
 					"pl7.app/isDiscreteFilter": "true",
 					"pl7.app/discreteValues": STATE_VALUES
