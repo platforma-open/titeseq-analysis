@@ -73,6 +73,7 @@ from io_layer import (
     validate_bin_concentration_grid,
     validate_bin_fluorescence,
     validate_concentration_column,
+    validate_reads_present,
     validate_reads_schema,
     validate_sample_metadata_uniqueness,
     validate_sort_fraction,
@@ -596,6 +597,8 @@ def run(
     `synonymous_summary` (a JSON-ready dict) to the outputs. Every other output is unchanged.
     """
     log(f"Pipeline start: {reads.height} reads rows")
+    # Precedes canonicalization, which reports an empty frame as a missing concentration.
+    validate_reads_present(reads)
     reads = canonicalize_concentration(reads)
     has_bin = COL_BIN in reads.columns
     has_antigen = COL_ANTIGEN in reads.columns

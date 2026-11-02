@@ -42,6 +42,19 @@ def validate_reads_schema(df: pl.DataFrame, has_bin: bool, has_antigen: bool) ->
         raise InputValidationError(f"missing required columns: {sorted(missing)}")
 
 
+def validate_reads_present(df: pl.DataFrame) -> None:
+    """At least one row carries a read count. A frame without a reads column is left to
+    `validate_reads_schema`."""
+    if COL_READS not in df.columns:
+        return
+    counts = df.get_column(COL_READS).cast(pl.Float64, strict=False)
+    if counts.is_not_null().sum() == 0:
+        raise InputValidationError(
+            "the abundance column has no reads for any selected sample: every read count is empty. "
+            "Check that the selected abundance holds read counts for these samples."
+        )
+
+
 def validate_concentration_column(df: pl.DataFrame, has_bin: bool) -> list[str]:
     """R2: concentrations must be finite non-negative floats. Unit-agnostic.
 

@@ -52,3 +52,6 @@ variants as repeats.
   its fit, its class and parent delta, and the result pool's columns on the nucleotide axis. The
   page exists in this mode only. Its table state is new block data, added by a v2 -> v3 migration.
 - Page titles and help text name the input: clonotype, variant or peptide.
+- A run whose abundance holds no read count for any selected sample stops with "the abundance column
+  has no reads for any selected sample", instead of a polars type error during normalization. This
+  applies to every input kind.
