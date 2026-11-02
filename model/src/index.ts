@@ -531,7 +531,10 @@ export const deriveArgs = (data: BlockData): BlockArgs => {
     // projects no replicate byte at all.
     ...(data.replicateColumnRef !== undefined && {
       replicateColumnRef: data.replicateColumnRef,
-      replicateErrorModel: data.replicateErrorModel,
+      // Pinned to the sample SD while the Sample replicates section is hidden, so a block that
+      // stored the other model before the section went away does not keep using it unseen.
+      // Restore `data.replicateErrorModel` when that section comes back.
+      replicateErrorModel: DEFAULT_REPLICATE_ERROR_MODEL,
       // The cutoff reads a replicate's own fit standard error. The mean bin fit reports none, so
       // the setting is inert there and is not sent — the UI hides it for the same reason.
       ...(data.equation === "log_fluorescence" &&

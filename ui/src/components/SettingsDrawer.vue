@@ -292,6 +292,13 @@ function setBinColumn(ref: PlRef | undefined): void {
       </PlNumberField>
     </PlAccordionSection>
 
+    <!--
+      The whole Sample replicates section is hidden while it is being decided what stays. The
+      error across replicates is the sample SD over the square root of the replicate count; the
+      other model and the two pre-combine filters are not offered. `deriveArgs` pins the error
+      model to match, so a block that stored the other one still gets the sample SD. The code
+      behind every field here is untouched: uncomment this block and drop that pin to restore it.
+
     <PlAccordionSection v-if="hasReplicates" label="Sample replicates">
       <PlDropdown
         :model-value="app.model.data.replicateErrorModel"
@@ -312,7 +319,6 @@ function setBinColumn(ref: PlRef | undefined): void {
         </template>
       </PlDropdown>
       <!--
-        Three settings are hidden while it is still being decided which of them the block keeps.
         The code behind each one is untouched, so uncommenting a field brings it back as it was.
 
         Each hidden field holds its default, which is what the block now does:
@@ -369,8 +375,8 @@ function setBinColumn(ref: PlRef | undefined): void {
           defines one, and averaging opposite edges would land inside the range and mean nothing.
         </template>
       </PlNumberField>
-      -->
     </PlAccordionSection>
+    -->
 
     <PlAccordionSection label="Read coverage">
       <PlNumberField
