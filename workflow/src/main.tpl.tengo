@@ -13,6 +13,7 @@ canonical := import("@platforma-sdk/workflow-tengo:canonical")
 maps := import("@platforma-sdk/workflow-tengo:maps")
 json := import("json")
 text := import("text")
+replicateColumnsLib := import(":replicate-columns")
 
 fitCurvesSw := assets.importSoftware("@platforma-open/platforma-open.titeseq-analysis.software:fit-curves")
 
@@ -34,6 +35,9 @@ wf.prepare(func(args) {
 	}
 	if !is_undefined(args.binFluorescenceColumnRef) {
 		bb.addAnchor("binFluorescence", args.binFluorescenceColumnRef)
+	}
+	if !is_undefined(args.replicateColumnRef) {
+		bb.addAnchor("replicate", args.replicateColumnRef)
 	}
 	// Optional subset column picked alongside the abundance (PlDatasetSelector)
 	if !is_undefined(args.inputFilter) {
@@ -59,6 +63,10 @@ wf.body(func(args) {
 	// The gate's measured mean log10 fluorescence. The model sends it only under
 	// "log_fluorescence", which requires gates. Python detects it by the column's presence.
 	hasBinFluorescence := !is_undefined(args.binFluorescenceColumnRef)
+	// Which replicate each sample belongs to. Unbound, the block fits one titration and no
+	// replicate reaches the command line, the grouping or any output.
+	hasReplicate := !is_undefined(args.replicateColumnRef)
+	replicateErrorModel := args.replicateErrorModel == "phillips" ? "phillips" : "sd_over_sqrt_n"
 
 	// The concentration column's label, and the unit read from it: the text in its trailing
 	// parentheses when it has them ("Antigen concentration (M)" -> "M"), else the whole label.
@@ -115,6 +123,9 @@ wf.body(func(args) {
 	}
 	if hasAntigen {
 		addReadsColumn(columns.getColumn("antigen"), { header: "antigen" })
+	}
+	if hasReplicate {
+		addReadsColumn(columns.getColumn("replicate"), { header: "replicate" })
 	}
 	if hasSortFraction {
 		addReadsColumn(columns.getColumn("sortFraction"), { header: "sort_fraction" })
@@ -190,10 +201,30 @@ wf.body(func(args) {
 		execBuilder.arg("--sort-fraction-column").arg("sort_fraction")
 	}
 
+	// Every replicate argument is absent unless the column is bound, so a run without replicates
+	// keeps the command line it always had.
+	if hasReplicate {
+		execBuilder.
+			arg("--replicate-column").arg("replicate").
+			arg("--replicate-error-model").arg(replicateErrorModel).
+			arg("--out-per-replicate").arg("per_replicate.tsv").
+			saveFile("per_replicate.tsv")
+		if !is_undefined(args.replicateFitErrorCutoff) {
+			execBuilder.arg("--replicate-fit-error-cutoff").arg(string(args.replicateFitErrorCutoff))
+		}
+		if !is_undefined(args.replicateR2Floor) {
+			execBuilder.arg("--replicate-r2-floor").arg(string(args.replicateR2Floor))
+		}
+		if !is_undefined(args.replicateCensoredMajority) {
+			execBuilder.arg("--replicate-censored-majority").arg(string(args.replicateCensoredMajority))
+		}
+	}
+
 	fit := execBuilder.run()
 
 	// Shared axis specs for the output PColumns.
 	clonotypeAxisSpec := abundanceSpec.axesSpec[1]
+	replicateAxisSpec := replicateColumnsLib.axisSpec(blockId)
 
 	// Canonical String concentration axis — the join key, byte-identical from
 	// upstream metadata through Python (R14). Spec calls for Float
@@ -397,9 +428,14 @@ wf.body(func(args) {
 			}
 		}
 	]
-	// Only "log_fluorescence" writes the SE of log10 K_D and the range side. "hill_gate_index" keeps
-	// the v2.4.0 columns.
-	if args.equation == "log_fluorescence" {
+	// Only "log_fluorescence" writes the SE of log10 K_D from a single fit, and the range side.
+	// With replicates the SE is the spread across them, which every equation reports, beside the SD
+	// and the replicate counts. "hill_gate_index" without replicates keeps the v2.4.0 columns.
+	if hasReplicate {
+		summaryColumns = append(summaryColumns, replicateColumnsLib.seColumn(blockId, "", replicateErrorModel))
+		summaryColumns = append(summaryColumns, replicateColumnsLib.sdColumn(blockId, ""))
+		summaryColumns = summaryColumns + replicateColumnsLib.countColumns(blockId, "")
+	} else if args.equation == "log_fluorescence" {
 		summaryColumns = append(summaryColumns, {
 			column: "kdLog10Se",
 			spec: {
@@ -416,6 +452,8 @@ wf.body(func(args) {
 				}
 			}
 		})
+	}
+	if args.equation == "log_fluorescence" {
 		summaryColumns = append(summaryColumns, {
 			column: "kdRangeSide",
 			spec: {
@@ -447,10 +485,13 @@ wf.body(func(args) {
 	// One import per TSV. Each pcolumn resource is reused in both signalPf and
 	// exportPf — one logical column, one resource. Replaces the prior
 	// *Internal/*Export dual-import pattern.
-	concAxes := [
-		{ column: "clonotypeKey", spec: clonotypeAxisSpec },
-		{ column: "concentrationStr", spec: concAxisSpec }
-	]
+	// With replicates the signal keeps each replicate's own curve: the fits are per replicate, so
+	// one pooled curve would belong to no fit.
+	concAxes := [{ column: "clonotypeKey", spec: clonotypeAxisSpec }]
+	if hasReplicate {
+		concAxes = append(concAxes, { column: "replicate", spec: replicateAxisSpec })
+	}
+	concAxes = append(concAxes, { column: "concentrationStr", spec: concAxisSpec })
 
 	meanBinColSpec := {
 		name: "pl7.app/vdj/meanBin",
@@ -513,6 +554,22 @@ wf.body(func(args) {
 		[{ column: "concentrationStr", spec: concAxisSpec }]
 	)
 
+	// Each replicate's own value, keyed by (clonotype, replicate). The names are the combined
+	// columns' — the extra axis is what distinguishes them — and they are hidden by default so a
+	// downstream picker offers the combined answer first.
+	replicateImported := undefined
+	if hasReplicate {
+		replicateImported = xsv.importFile(fit.getFile("per_replicate.tsv"), "tsv", {
+			axes: [
+				{ column: "clonotypeKey", spec: clonotypeAxisSpec },
+				{ column: "replicate", spec: replicateAxisSpec }
+			],
+			columns: replicateColumnsLib.perReplicateColumns(blockId, "rep_", kdAnnotations, affinityClassValues),
+			storageFormat: "Parquet",
+			partitionKeyLength: 0
+		}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
+	}
+
 	// Trace injection. `makeTrace` bundles the upstream abundance provenance
 	// with a self-descriptor; `trace.inject` rewrites only the small spec resources
 	// (data resources are untouched thanks to splitDataAndSpec).
@@ -574,12 +631,19 @@ wf.body(func(args) {
 		exportExcluded
 	)
 
+	outputs := {
+		summaryPf: pframes.exportFrame(summaryPf),
+		signalPf: pframes.exportFrame(signalPf),
+		logHandle: fit.getStdoutStream()
+	}
+	// The per-replicate values stay out of exportPf and out of the main table: their extra axis
+	// would fan every row out by the replicate count.
+	if hasReplicate {
+		outputs.replicatePf = pframes.exportFrame(buildTracedPf([replicateImported], []))
+	}
+
 	return {
-		outputs: {
-			summaryPf: pframes.exportFrame(summaryPf),
-			signalPf: pframes.exportFrame(signalPf),
-			logHandle: fit.getStdoutStream()
-		},
+		outputs: outputs,
 		exports: {
 			pf: exportPf
 		}

@@ -18,7 +18,22 @@ FailureReason = Literal[
     "convergence_failure",
     "low_r2",
     "n_out_of_range",
+    "all_replicates_filtered",
+    "conflicting_censoring",
 ]
+
+# How the error of a value combined over sample replicates is computed.
+#   "sd_over_sqrt_n"  — sample SD (ddof 1) / sqrt(n); for n = 1 the fit's own SE, where the
+#                       equation reports one, else empty.
+#   "phillips"        — population SD (ddof 0) / sqrt(n + 1); 0 for n = 1. Reproduces the SEM
+#                       published with Phillips 2021.
+ReplicateErrorModel = Literal["sd_over_sqrt_n", "phillips"]
+REPLICATE_ERROR_MODELS: tuple[ReplicateErrorModel, ...] = ("sd_over_sqrt_n", "phillips")
+
+# Share of the entered replicates one censoring side must hold, and exceed the other side by, for
+# the combined value to be reported as that side's bound. Below it the sides conflict and the
+# variant fails. The block's own rule: no paper defines one.
+DEFAULT_CENSORED_MAJORITY: float = 0.5
 
 # The equation fitted to each clonotype.
 #   "log_fluorescence"  — log10(A*c/(c+K) + B) on mean log10 gate fluorescence, exponent fixed at 1,
@@ -118,3 +133,10 @@ COL_SORT_FRACTION = "sort_fraction"
 # change to workflow/src/main.tpl.tengo. Read by "log_fluorescence" only. Absent means the gates
 # are assumed evenly spaced at GATE_WIDTH_DECADES.
 COL_BIN_FLUORESCENCE = "bin_fluorescence"
+# Column header the Tengo workflow writes into reads.tsv when replicateColumnRef is bound: which
+# sample replicate each sample belongs to. Named on the command line by --replicate-column. Do not
+# change without a simultaneous change to workflow/src/main.tpl.tengo.
+COL_REPLICATE = "replicate"
+# The label every row carries when no replicate column is bound. The replicate combination does not
+# run then, and no output carries a replicate.
+SINGLE_REPLICATE = "1"

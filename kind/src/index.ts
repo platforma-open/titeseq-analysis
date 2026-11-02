@@ -17,6 +17,27 @@ export const EQUATIONS = ["log_fluorescence", "hill_gate_index"] as const;
 export type Equation = (typeof EQUATIONS)[number];
 
 /**
+ * How the error of a value combined over sample replicates is computed.
+ *
+ * `sd_over_sqrt_n` is the sample SD over the square root of the replicate count, falling back to
+ * the single fit's own standard error for one replicate. `phillips` is the population SD over the
+ * square root of the count plus one, which is 0 for one replicate; it reproduces the SEM published
+ * with Phillips 2021.
+ */
+export const REPLICATE_ERROR_MODELS = ["sd_over_sqrt_n", "phillips"] as const;
+
+export type ReplicateErrorModel = (typeof REPLICATE_ERROR_MODELS)[number];
+
+export const DEFAULT_REPLICATE_ERROR_MODEL: ReplicateErrorModel = "sd_over_sqrt_n";
+
+/**
+ * Share of the entered replicates one censoring side must hold, and exceed the other side by, for
+ * the combined value to be reported as that side's bound. The block's own rule: no published
+ * method defines one, and opposite bounds cannot be averaged into anything meaningful.
+ */
+export const DEFAULT_CENSORED_MAJORITY = 0.5;
+
+/**
  * This block's init-params contract — what a creator or a project template supplies to seed a
  * new instance: the columns a titration is read from (and an optional subset of the dataset), the
  * fit's tuning, and the user's own label.
@@ -62,6 +83,16 @@ export type BlockParams = {
   hookEffectThresholdBin?: number;
   hookEffectThresholdNoBin?: number;
   hookEffectMinReads?: number;
+  /** Which replicate each sample belongs to. Absent fits one titration. */
+  replicateColumnRef?: PlRef;
+  /** Read only beside a replicate column. Absent reads as `sd_over_sqrt_n`. */
+  replicateErrorModel?: ReplicateErrorModel;
+  /** Decades. Absent leaves the fit-error filter off. */
+  replicateFitErrorCutoff?: number;
+  /** Absent leaves the R² filter off. */
+  replicateR2Floor?: number;
+  /** Absent reads as 0.5. */
+  replicateCensoredMajority?: number;
   customBlockLabel?: string;
 };
 
@@ -129,6 +160,15 @@ const isPositiveFraction: Guard<number> = (v): v is number => isFiniteNumber(v) 
 const isEquation: Guard<Equation> = (v): v is Equation =>
   isString(v) && (EQUATIONS as readonly string[]).includes(v);
 
+const isReplicateErrorModel: Guard<ReplicateErrorModel> = (v): v is ReplicateErrorModel =>
+  isString(v) && (REPLICATE_ERROR_MODELS as readonly string[]).includes(v);
+
+/** A positive number: a cutoff of 0 decades rejects every fit. */
+const isPositiveNumber: Guard<number> = (v): v is number => isFiniteNumber(v) && v > 0;
+
+/** A share from one half to the whole: below one half no side can be the majority. */
+const isMajority: Guard<number> = (v): v is number => isFiniteNumber(v) && v >= 0.5 && v <= 1;
+
 /**
  * The runtime half of the contract. The `satisfies` clause is what stops it drifting: every
  * field `BlockParams` declares must appear here, and each guard must narrow to that field's own
@@ -161,5 +201,13 @@ const CONTRACT = {
   hookEffectThresholdBin: check(isFiniteNumber, "a number"),
   hookEffectThresholdNoBin: check(isFiniteNumber, "a number"),
   hookEffectMinReads: check(isFiniteNumber, "a number"),
+  replicateColumnRef: check(isPlRef, "a reference to a replicate column"),
+  replicateErrorModel: check(
+    isReplicateErrorModel,
+    `one of ${REPLICATE_ERROR_MODELS.map((m) => `"${m}"`).join(" or ")}`,
+  ),
+  replicateFitErrorCutoff: check(isPositiveNumber, "a number above 0"),
+  replicateR2Floor: check(isFraction, "a number between 0 and 1"),
+  replicateCensoredMajority: check(isMajority, "a number between 0.5 and 1"),
   customBlockLabel: check(isString, "a string"),
 } satisfies { [K in keyof Required<BlockParams>]: Check<NonNullable<BlockParams[K]>> };

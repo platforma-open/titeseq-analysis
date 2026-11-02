@@ -15,7 +15,7 @@ import { computed, watch } from "vue";
 import { useApp } from "../app";
 import { aboveZero, boundedBy, emptyError, wholeNumber } from "../fieldValidation";
 import { useFitSettings } from "../composables/useFitSettings";
-import { EQUATION_OPTIONS } from "../fitSettings";
+import { EQUATION_OPTIONS, REPLICATE_ERROR_MODEL_OPTIONS } from "../fitSettings";
 
 const open = defineModel<boolean>({ required: true });
 
@@ -64,6 +64,10 @@ watch(
 const warnings = computed(() => app.model.outputs.validationWarnings ?? []);
 
 const binMode = computed(() => app.model.outputs.binMode === true);
+
+// Every replicate setting rides on the column, so clearing it hides them all. The stored values
+// stay: re-picking a column brings the previous combination back.
+const hasReplicates = computed(() => app.model.data.replicateColumnRef !== undefined);
 
 // Each equation reads only its own settings. A hidden setting keeps its stored value.
 const isLogFluorescence = computed(() => app.model.data.equation === "log_fluorescence");
@@ -196,6 +200,20 @@ function setBinColumn(ref: PlRef | undefined): void {
         Which antigen to analyse. Required when an antigen column is set.
       </template>
     </PlDropdown>
+    <PlDropdownRef
+      v-model="app.model.data.replicateColumnRef"
+      :options="app.model.outputs.replicateOptions"
+      label="Sample replicate (optional)"
+      clearable
+    >
+      <template #tooltip>
+        Optional. A per-sample column naming the replicate each sample belongs to. Each replicate is
+        a titration of its own: it is fitted alone, and the per-clonotype values are then combined.
+        The table then shows the combined Kd,app with its standard error and the SD across the
+        replicates, and the Replicates page shows each replicate's own Kd,app. Leave empty to fit
+        one titration.
+      </template>
+    </PlDropdownRef>
 
     <PlAlert v-for="(w, i) in warnings" :key="i" :type="w.severity === 'error' ? 'error' : 'warn'">
       {{ w.message }}
@@ -265,7 +283,71 @@ function setBinColumn(ref: PlRef | undefined): void {
         <template #tooltip>
           A fit with its Kd,app inside the titrated range and an R² below this value is rated
           Failed, with the reason low_r2. A Kd,app at the edge of the range is not checked. Off by
-          default; the Phillips 2021 preset turns it on at 0.8, the value its authors used.
+          default; the Phillips 2021 preset turns it on at 0.8, the value its authors used. With
+          sample replicates, the gate rates each replicate's own fit.
+        </template>
+      </PlNumberField>
+    </PlAccordionSection>
+
+    <PlAccordionSection v-if="hasReplicates" label="Sample replicates">
+      <PlDropdown
+        :model-value="app.model.data.replicateErrorModel"
+        :options="REPLICATE_ERROR_MODEL_OPTIONS"
+        label="Error across replicates"
+        @update:model-value="(m) => m && (app.model.data.replicateErrorModel = m)"
+      >
+        <template #tooltip>
+          How the error of the combined Kd,app is computed. The value itself is the plain mean of
+          log10 Kd,app either way. <br /><br />
+          SD / √n: the sample standard deviation over the square root of the replicate count. With
+          one replicate it is that fit's own standard error. The default. <br /><br />
+          Phillips 2021: the population standard deviation over the square root of the count plus
+          one. With one replicate it is 0. This reproduces the standard error published with
+          Phillips 2021.
+        </template>
+      </PlDropdown>
+      <PlNumberField
+        v-model="app.model.data.replicateFitErrorCutoff"
+        label="Fit error cutoff (decades)"
+        :min-value="0"
+        :step="0.1"
+        clearable
+      >
+        <template #tooltip>
+          Optional. Leaves out a replicate whose own fit error is above this, before the mean. Off
+          unless you set it. Phillips 2021 published 1.0. A replicate censored at an edge of the
+          titration is not affected: the edge, not the fit, set its value.
+        </template>
+      </PlNumberField>
+      <PlNumberField
+        v-model="app.model.data.replicateR2Floor"
+        label="R² floor"
+        :min-value="0"
+        :max-value="1"
+        :step="0.05"
+        clearable
+      >
+        <template #tooltip>
+          Optional. Leaves out a replicate whose fit R² is below this, before the mean, and counts
+          it as filtered. Off unless you set it. Phillips 2021 published 0.8. This differs from the
+          R² gate under Fit method: the gate rates the replicate's own fit Failed, and a failed
+          replicate is counted as failed.
+        </template>
+      </PlNumberField>
+      <PlNumberField
+        v-model="app.model.data.replicateCensoredMajority"
+        label="Censoring majority"
+        :min-value="0.5"
+        :max-value="1"
+        :step="0.05"
+        clearable
+        :error-message="emptyError(app.model.data.replicateCensoredMajority)"
+      >
+        <template #tooltip>
+          When no replicate measured a Kd,app inside the titrated range, the share of the replicates
+          one edge must hold, and exceed the other edge by, for that edge to be reported. Below it
+          the clonotype is reported as Failed. This is the block's own rule: no published method
+          defines one, and averaging opposite edges would land inside the range and mean nothing.
         </template>
       </PlNumberField>
     </PlAccordionSection>

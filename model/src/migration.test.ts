@@ -1,6 +1,6 @@
 import type { PlRef } from "@platforma-sdk/model";
 import { describe, expect, it } from "vitest";
-import type { BlockArgs, BlockData, BlockDataV1 } from "./index";
+import type { BlockArgs, BlockData, BlockDataV1, BlockDataV3 } from "./index";
 import {
   HILL_GATE_INDEX_DEFAULTS,
   dataModel,
@@ -8,6 +8,8 @@ import {
   initBlockData,
   migrateV1ToV2,
   migrateV2ToV3,
+  migrateV3ToV4,
+  sectionsFor,
 } from "./index";
 
 const ref = (name: string): PlRef => ({ __isRef: true, blockId: "b1", name });
@@ -46,7 +48,7 @@ const v240Project: BlockDataV1 = {
 /** The project as the block will hold it after the upgrade, through the real version chain. */
 const upgraded = (): BlockData => {
   const migrated = dataModel.migrate({ version: "v1", data: v240Project });
-  expect(migrated.version).toBe("v3");
+  expect(migrated.version).toBe("v4");
   return migrated.data;
 };
 
@@ -95,12 +97,12 @@ describe("a project created on v2.4.0 or earlier", () => {
 describe("a project created on a v2 development build", () => {
   const v2Project = migrateV1ToV2(v240Project);
 
-  it("arrives at v3 with the R² gate off, so it rates its fits as it did", () => {
+  it("arrives at v4 with the R² gate off, so it rates its fits as it did", () => {
     const migrated = dataModel.migrate({
       version: "v2",
       data: { ...v2Project, equation: "log_fluorescence" },
     });
-    expect(migrated.version).toBe("v3");
+    expect(migrated.version).toBe("v4");
     expect(migrated.data).toMatchObject({ r2GateEnabled: false, r2GateMin: 0.8 });
   });
 
@@ -234,5 +236,127 @@ describe("the migration function on its own", () => {
   it("is a no-op for everything else", () => {
     const { equation: _e, plateauFloor: _p, ...rest } = migrateV1ToV2(v240Project);
     expect(rest).toEqual(v240Project);
+  });
+});
+
+describe("a project stored on the v3 data model", () => {
+  const stored: BlockDataV3 = migrateV2ToV3(migrateV1ToV2(v240Project));
+  const migrated = () => dataModel.migrate({ version: "v3", data: stored });
+
+  it("gains unset replicates and the per-replicate view state", () => {
+    expect(migrated().version).toBe("v4");
+    expect(migrated().data).toMatchObject({
+      replicateErrorModel: "sd_over_sqrt_n",
+      replicateCensoredMajority: 0.5,
+    });
+    expect(migrated().data.replicateColumnRef).toBeUndefined();
+    expect(migrated().data.replicateTableState).toEqual(initBlockData().replicateTableState);
+    expect(migrated().data.graphStateReplicates).toEqual(initBlockData().graphStateReplicates);
+  });
+
+  it("moves nothing else", () => {
+    const {
+      replicateErrorModel: _m,
+      replicateCensoredMajority: _c,
+      replicateTableState: _t,
+      graphStateReplicates: _g,
+      ...rest
+    } = migrateV3ToV4(stored);
+    expect(rest).toEqual(stored);
+  });
+
+  it("projects not one byte of replicate argument", () => {
+    const args = argsOf(migrated().data);
+    expect(Object.keys(args).filter((k) => k.startsWith("replicate"))).toEqual([]);
+  });
+});
+
+describe("the sections", () => {
+  const hrefs = (replicates: boolean) => sectionsFor(replicates).map((s) => s.href);
+
+  it("show the per-replicate page only when replicates were combined", () => {
+    expect(hrefs(true)).toEqual([
+      "/",
+      "/replicates",
+      "/titration-curves",
+      "/kd-distribution",
+      "/affinity-vs-fit",
+    ]);
+    expect(hrefs(false)).not.toContain("/replicates");
+  });
+});
+
+describe("the sample replicates", () => {
+  const configured: BlockData = {
+    ...initBlockData(),
+    abundanceRef: ref("abundance"),
+    concentrationColumnRef: ref("concentration"),
+    binColumnRef: ref("bin"),
+  };
+  const equations = ["log_fluorescence", "hill_gate_index"] as const;
+  const replicateKeys = (data: BlockData) =>
+    Object.keys(argsOf(data)).filter((k) => k.startsWith("replicate"));
+
+  it.each(equations)("%s sends no replicate byte without a column", (equation) => {
+    expect(replicateKeys({ ...configured, equation })).toEqual([]);
+  });
+
+  it("a stored setting alone changes nothing: the column is what turns the mode on", () => {
+    const tuned = {
+      ...configured,
+      replicateErrorModel: "phillips" as const,
+      replicateFitErrorCutoff: 1,
+      replicateR2Floor: 0.8,
+      replicateCensoredMajority: 0.9,
+    };
+    expect(JSON.stringify(argsOf(tuned))).toBe(JSON.stringify(argsOf(configured)));
+  });
+
+  it("the column brings the error model and the censoring majority with it", () => {
+    const args = argsOf({ ...configured, replicateColumnRef: ref("replicate") });
+    expect(args).toMatchObject({
+      replicateColumnRef: ref("replicate"),
+      replicateErrorModel: "sd_over_sqrt_n",
+      replicateCensoredMajority: 0.5,
+    });
+  });
+
+  it("leaves both filters out of the args until they are set", () => {
+    const args = argsOf({ ...configured, replicateColumnRef: ref("replicate") });
+    expect(Object.hasOwn(args, "replicateFitErrorCutoff")).toBe(false);
+    expect(Object.hasOwn(args, "replicateR2Floor")).toBe(false);
+  });
+
+  it("sends each filter once it is set", () => {
+    const args = argsOf({
+      ...configured,
+      replicateColumnRef: ref("replicate"),
+      replicateFitErrorCutoff: 1,
+      replicateR2Floor: 0.8,
+    });
+    expect(args).toMatchObject({ replicateFitErrorCutoff: 1, replicateR2Floor: 0.8 });
+  });
+
+  it("refuses a filter or a majority the software would reject", () => {
+    const withColumn = { ...configured, replicateColumnRef: ref("replicate") };
+    expect(() => argsOf({ ...withColumn, replicateFitErrorCutoff: 0 })).toThrow();
+    expect(() => argsOf({ ...withColumn, replicateR2Floor: 1.5 })).toThrow();
+    expect(() => argsOf({ ...withColumn, replicateCensoredMajority: 0.4 })).toThrow();
+  });
+
+  it("disables Run while the column is set and the majority is cleared", () => {
+    expect(() =>
+      argsOf({
+        ...configured,
+        replicateColumnRef: ref("replicate"),
+        replicateCensoredMajority: undefined,
+      }),
+    ).toThrow("Replicate censoring majority is required");
+  });
+
+  it("is unset on a new block and on an upgraded project", () => {
+    expect(initBlockData().replicateColumnRef).toBeUndefined();
+    expect(upgraded().replicateColumnRef).toBeUndefined();
+    expect(replicateKeys(upgraded())).toEqual([]);
   });
 });

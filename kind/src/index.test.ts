@@ -1,6 +1,12 @@
 import type { PlRef } from "@platforma-sdk/model";
 import { describe, expect, it } from "vitest";
-import { EQUATIONS, kind } from "./index";
+import {
+  DEFAULT_CENSORED_MAJORITY,
+  DEFAULT_REPLICATE_ERROR_MODEL,
+  EQUATIONS,
+  REPLICATE_ERROR_MODELS,
+  kind,
+} from "./index";
 
 const parse = (v: unknown) => kind.parseInitializationParams(v);
 
@@ -188,5 +194,54 @@ describe("identity", () => {
   it("names this package and its published version", () => {
     expect(kind.name).toBe("@platforma-open/platforma-open.titeseq-analysis.kind");
     expect(kind.version).toMatch(/^\d+\.\d+\.\d+/);
+  });
+});
+
+describe("the replicate settings", () => {
+  it("accepts a replicate column reference", () => {
+    expect(parse({ replicateColumnRef: ref("replicate") })).toEqual({
+      replicateColumnRef: ref("replicate"),
+    });
+  });
+
+  it.each(REPLICATE_ERROR_MODELS)("accepts the %s error model", (model) => {
+    expect(parse({ replicateErrorModel: model })).toEqual({ replicateErrorModel: model });
+  });
+
+  it.each(["sd", "SD_OVER_SQRT_N", 1, null])("refuses %o as an error model", (v) => {
+    expect(() => parse({ replicateErrorModel: v })).toThrow("'replicateErrorModel' must be");
+  });
+
+  it.each([0.1, 1, 5])("accepts %o decades as a fit-error cutoff", (v) => {
+    expect(parse({ replicateFitErrorCutoff: v })).toEqual({ replicateFitErrorCutoff: v });
+  });
+
+  it.each([0, -1, Number.NaN])("refuses %o decades as a fit-error cutoff", (v) => {
+    expect(() => parse({ replicateFitErrorCutoff: v })).toThrow(
+      "'replicateFitErrorCutoff' must be",
+    );
+  });
+
+  it.each([0, 0.8, 1])("accepts %o as an R² floor", (v) => {
+    expect(parse({ replicateR2Floor: v })).toEqual({ replicateR2Floor: v });
+  });
+
+  it.each([-0.1, 1.5])("refuses %o as an R² floor", (v) => {
+    expect(() => parse({ replicateR2Floor: v })).toThrow("'replicateR2Floor' must be");
+  });
+
+  it.each([0.5, 0.67, 1])("accepts %o as a censoring majority", (v) => {
+    expect(parse({ replicateCensoredMajority: v })).toEqual({ replicateCensoredMajority: v });
+  });
+
+  it.each([0, 0.49, 1.1])("refuses %o as a censoring majority", (v) => {
+    expect(() => parse({ replicateCensoredMajority: v })).toThrow(
+      "'replicateCensoredMajority' must be",
+    );
+  });
+
+  it("names the default error model and the default censoring majority", () => {
+    expect(REPLICATE_ERROR_MODELS).toContain(DEFAULT_REPLICATE_ERROR_MODEL);
+    expect(DEFAULT_CENSORED_MAJORITY).toBe(0.5);
   });
 });

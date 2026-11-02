@@ -55,11 +55,13 @@ from constants import (
     COL_CLONOTYPE,
     COL_CONC_STR,
     COL_CONC_VAL,
+    COL_REPLICATE,
     DEFAULT_PARAMS,
     GATE_WIDTH_DECADES,
     HILL_EXPONENT_FIXED,
     LF_MIN_CONCENTRATION_POINTS,
     LF_MIN_READS_PER_CONCENTRATION,
+    SINGLE_REPLICATE,
     FitParams,
     KdRangeSide,
 )
@@ -74,6 +76,7 @@ from io_layer import (
     validate_bin_fluorescence,
     validate_concentration_column,
     validate_reads_schema,
+    validate_replicate_column,
     validate_sample_metadata_uniqueness,
     validate_sort_fraction,
 )
@@ -105,6 +108,14 @@ from pre_fit import (
     compute_read_weighted_baseline,
     detect_hook_effect,
     split_c0,
+)
+from replicate_combine import (
+    Collected,
+    ReplicateInputs,
+    build_combined_clonotype_frame,
+    build_per_replicate_frame,
+    collect_values,
+    merge_all,
 )
 
 
@@ -569,12 +580,13 @@ def _build_outputs(
     conc_bounds: tuple[float | None, float | None],
     *,
     flag_out_of_range: bool,
+    replicate_keys: list[str] | None = None,
 ) -> dict[str, pl.DataFrame]:
     """Apply R14b kdOutOfRange flag and assemble the four-frame output dict.
 
     `flag_out_of_range=False` keeps the flag the caller already set. "log_fluorescence" clamps its
     K_D into the titrated range, so a comparison against that range would read every pinned value
-    as in-range.
+    as in-range. The replicate combination sets the flag itself, so it passes False too.
     """
     min_c, max_c = conc_bounds
     if flag_out_of_range and min_c is not None and max_c is not None:
@@ -586,10 +598,65 @@ def _build_outputs(
     # breaks dedup against cached resources from earlier runs.
     return {
         "per_clonotype": per_clonotype,
-        "mean_bin": build_mean_bin_frame(signal_frame),
+        "mean_bin": build_mean_bin_frame(signal_frame, replicate_keys),
         "fitted_mean_bin": fitted,
         "concentration_value": build_concentration_value_frame(signal_frame),
     }
+
+
+def _resolve_replicates(reads: pl.DataFrame, inputs: ReplicateInputs | None) -> tuple[pl.DataFrame, list[str]]:
+    """Label every row with its replicate; return the frame and the replicate key columns.
+
+    With no replicate column asked for, the key list is empty, and every grouping, output and
+    command line is the one a run had before the column existed. A column that was asked for but
+    cannot be used is a warning, never an error: the whole run becomes one replicate, so every
+    output the caller was promised still exists and carries one replicate each.
+    """
+    if inputs is None:
+        return reads, []
+    warnings = validate_replicate_column(reads, inputs.column)
+    if warnings:
+        for warning in warnings:
+            log(f"WARN: {warning}")
+        return reads.with_columns(pl.lit(SINGLE_REPLICATE, dtype=pl.Utf8).alias(COL_REPLICATE)), [COL_REPLICATE]
+    labelled = reads.with_columns(pl.col(inputs.column).cast(pl.Utf8).alias(COL_REPLICATE))
+    log(f"Replicates: {labelled[COL_REPLICATE].n_unique()} (column '{inputs.column}')")
+    return labelled, [COL_REPLICATE]
+
+
+def _warn_grid(reads: pl.DataFrame, replicate_keys: list[str]) -> None:
+    """The (bin, concentration) grid, within each replicate: each replicate sorts its own samples."""
+    if not replicate_keys:
+        for w in validate_bin_concentration_grid(reads):
+            log(f"WARN: {w}")
+        return
+    for label in sorted(reads[COL_REPLICATE].unique().to_list()):
+        for w in validate_bin_concentration_grid(reads.filter(pl.col(COL_REPLICATE) == label)):
+            log(f"WARN: replicate '{label}': {w}")
+
+
+def _fit(
+    signal_frame: pl.DataFrame,
+    reads: pl.DataFrame,
+    *,
+    params: FitParams,
+    has_bin: bool,
+    max_bin: int | None,
+    conc_bounds: tuple[float | None, float | None],
+    gates_measured: bool,
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """One titration's fit: the equation's branch, from the signal frame to the two fit frames."""
+    if params.equation == "log_fluorescence":
+        return _run_log_fluorescence(
+            signal_frame,
+            reads,
+            params=params,
+            has_bin=has_bin,
+            max_bin=max_bin,
+            conc_bounds=conc_bounds,
+            gates_measured=gates_measured,
+        )
+    return _run_hill_gate_index(signal_frame, params=params, has_bin=has_bin, max_bin=max_bin)
 
 
 def run(
@@ -599,6 +666,7 @@ def run(
     target_antigen: str | None = None,
     antigen_column_ref: str | None = None,
     sort_fraction_col: str | None = None,
+    replicates: ReplicateInputs | None = None,
 ) -> dict[str, pl.DataFrame]:
     """Execute the full pipeline on an in-memory reads frame.
 
@@ -606,6 +674,11 @@ def run(
     eq. A3 correction inside `compute_mean_bin`. The column must be present in
     `reads`; validation runs before normalization so a bad upstream join is caught
     before any downstream computation. Only consulted in bin mode.
+
+    `replicates`, when set and usable, fits each replicate's titration on its own and combines the
+    per-replicate values. It adds `per_replicate` to the outputs and puts the replicate on the
+    signal frames' key. Unset, every output, every grouping and every command line is the one the
+    block had before replicates existed.
     """
     log(f"Pipeline start: {reads.height} reads rows")
     reads = canonicalize_concentration(reads)
@@ -625,16 +698,23 @@ def run(
     if target_antigen is not None:
         log(f"Applying antigen filter: {target_antigen}")
     reads = apply_antigen_filter(reads, target_antigen)
+
+    reads, replicate_keys = _resolve_replicates(reads, replicates)
+    if not replicate_keys:
+        replicates = None
+
     # The grid describes the samples the block fits, so it reads the filtered frame.
     if has_bin:
-        for w in validate_bin_concentration_grid(reads):
-            log(f"WARN: {w}")
+        _warn_grid(reads, replicate_keys)
 
     # Sort fractions sum to 1 within one antigen's sorts, so the check reads the filtered frame.
+    # Each replicate sorts its own cells, so with replicates the sum is within (replicate,
+    # concentration): pooled, two replicates sum to two.
     if sort_fraction_col is not None and has_bin:
-        validate_sort_fraction(reads, sort_fraction_col)
+        validate_sort_fraction(reads, sort_fraction_col, [*replicate_keys, COL_CONC_STR])
         n_conc = reads.select(COL_CONC_STR).n_unique()
-        log(f"sort_fraction validated: {n_conc} concentrations, all sums within 1e-3 of 1.0")
+        per = "concentration and replicate" if replicate_keys else "concentration"
+        log(f"sort_fraction validated: {n_conc} concentrations, all sums within 1e-3 of 1.0 per {per}")
         log(f"Mean-bin correction: FACS-weighted (column '{sort_fraction_col}')")
     elif has_bin:
         log("Mean-bin correction: uncorrected")
@@ -660,22 +740,25 @@ def run(
         bin_mode=has_bin,
         sort_fraction_col=sort_fraction_col if has_bin else None,
         gate_position_col=measured_gates,
+        replicate_keys=replicate_keys,
     )
 
     conc_bounds = _concentration_bounds(reads)
     log(f"Equation: {params.equation}")
-    if params.equation == "log_fluorescence":
-        per_clonotype, fitted = _run_log_fluorescence(
-            signal_frame,
-            reads,
-            params=params,
-            has_bin=has_bin,
-            max_bin=mbl,
-            conc_bounds=conc_bounds,
-            gates_measured=measured_gates is not None,
+    fit_args = {
+        "params": params,
+        "has_bin": has_bin,
+        "max_bin": mbl,
+        "conc_bounds": conc_bounds,
+        "gates_measured": measured_gates is not None,
+    }
+    replicate_outputs: dict[str, pl.DataFrame] = {}
+    if replicates is not None:
+        per_clonotype, fitted, replicate_outputs = _fit_replicates(
+            signal_frame, reads, replicates=replicates, **fit_args
         )
     else:
-        per_clonotype, fitted = _run_hill_gate_index(signal_frame, params=params, has_bin=has_bin, max_bin=mbl)
+        per_clonotype, fitted = _fit(signal_frame, reads, **fit_args)
 
     log("Assembling output frames")
     outputs = _build_outputs(
@@ -683,11 +766,80 @@ def run(
         fitted,
         signal_frame,
         conc_bounds,
-        flag_out_of_range=params.equation == "hill_gate_index",
+        # The replicate combination sets kdOutOfRange on each replicate's fit and again on the
+        # combined value, so a second comparison against the range would overwrite both.
+        flag_out_of_range=replicates is None and params.equation == "hill_gate_index",
+        replicate_keys=replicate_keys,
     )
     log(
         f"Pipeline done: per_clonotype={outputs['per_clonotype'].height}, "
         f"mean_bin={outputs['mean_bin'].height}, "
         f"fitted_mean_bin={outputs['fitted_mean_bin'].height}"
     )
+    outputs.update(replicate_outputs)
     return outputs
+
+
+def _fit_replicates(
+    signal_frame: pl.DataFrame,
+    reads: pl.DataFrame,
+    *,
+    replicates: ReplicateInputs,
+    params: FitParams,
+    has_bin: bool,
+    max_bin: int | None,
+    conc_bounds: tuple[float | None, float | None],
+    gates_measured: bool,
+) -> tuple[pl.DataFrame, pl.DataFrame, dict[str, pl.DataFrame]]:
+    """Fit each replicate's titration on its own, then combine the per-replicate values.
+
+    Returns the combined per-clonotype frame, the fitted curves keyed by replicate as well, and
+    the outputs only a replicate run has. The R² gate, when on, runs inside each replicate's fit.
+    """
+    lo, hi = conc_bounds
+    log10_lo = math.log10(lo) if lo is not None else None
+    log10_hi = math.log10(hi) if hi is not None else None
+    labels = sorted(signal_frame[COL_REPLICATE].unique().to_list())
+    log(f"Fitting {len(labels)} replicates on their own: {', '.join(labels)}")
+
+    frames: list[tuple[str, pl.DataFrame]] = []
+    curves: list[pl.DataFrame] = []
+    for label in labels:
+        log(f"Replicate '{label}'")
+        part = signal_frame.filter(pl.col(COL_REPLICATE) == label)
+        per_clonotype, fitted = _fit(
+            part,
+            reads,
+            params=params,
+            has_bin=has_bin,
+            max_bin=max_bin,
+            conc_bounds=conc_bounds,
+            gates_measured=gates_measured,
+        )
+        # Each replicate's own censoring state, against the titration they share. "log_fluorescence"
+        # pins and flags inside the fit; "hill_gate_index" reports the raw K_D and is flagged here.
+        if params.equation == "hill_gate_index" and lo is not None and hi is not None:
+            per_clonotype = flag_kd_out_of_range(per_clonotype, lo, hi)
+        frames.append((label, per_clonotype))
+        curves.append(fitted.with_columns(pl.lit(label, dtype=pl.Utf8).alias(COL_REPLICATE)))
+
+    collected = collect_values(frames, COL_CLONOTYPE, log10_lo=log10_lo, log10_hi=log10_hi, filters=replicates.filters)
+    merged = merge_all(collected, error_model=replicates.error_model, censored_majority=replicates.censored_majority)
+    _log_filters(replicates, collected)
+    combined = build_combined_clonotype_frame(collected, merged)
+    fitted_curves = pl.concat(curves).select([COL_CLONOTYPE, COL_REPLICATE, COL_CONC_STR, "fittedMeanBin"])
+    return combined, fitted_curves, {"per_replicate": build_per_replicate_frame(collected, COL_CLONOTYPE)}
+
+
+def _log_filters(replicates: ReplicateInputs, collected: Collected) -> None:
+    filters = replicates.filters
+    if not filters.active:
+        log("Replicate filters: off")
+        return
+    named = []
+    if filters.fit_error_cutoff is not None:
+        named.append(f"fit error above {filters.fit_error_cutoff} decades")
+    if filters.r2_floor is not None:
+        named.append(f"R² below {filters.r2_floor}")
+    dropped = sum(1 for values in collected.values() for v, _ in values if v.state == "filtered")
+    log(f"Replicate filters: {', '.join(named)}; {dropped} replicate fits left out of the means")
