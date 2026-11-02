@@ -137,5 +137,6 @@ describe("the template round trip", () => {
     expect(restored.defaultBlockLabel).toBe("Tite-Seq Analysis");
     expect(restored.settingsOpen).toBe(false);
     expect(restored.tableState).toEqual(initBlockData().tableState);
+    expect(restored.ntTableState).toEqual(initBlockData().ntTableState);
   });
 });

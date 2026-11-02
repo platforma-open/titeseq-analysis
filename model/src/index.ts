@@ -173,6 +173,8 @@ export type BlockData = FitInputs &
     /** How synonymous nucleotide variants are combined per amino-acid variant. Absent reads as "none". */
     synonymousWeighting?: SynonymousWeighting;
     tableState: PlDataTableStateV2;
+    /** The nucleotide variant table, shown in synonymous mode only. */
+    ntTableState: PlDataTableStateV2;
     graphStateTitrationCurves: GraphMakerState;
     graphStateKDHistogram: GraphMakerState;
     graphStateAffinityVsFit: GraphMakerState;
@@ -188,8 +190,11 @@ export type BlockDataV1 = Omit<BlockDataV2, "equation" | "plateauFloor">;
 /** v2: the equation choice, before the log-fluorescence R² gate. Never released. */
 export type BlockDataV2 = Omit<BlockDataV3, "r2GateEnabled" | "r2GateMin">;
 
+/** v6: before the nucleotide variant table. */
+export type BlockDataV6 = Omit<BlockData, "ntTableState">;
+
 /** v4 and v5: a checkbox turned the R² and SE limits on and off. */
-export type BlockDataV5 = BlockData & { r2GateEnabled: boolean };
+export type BlockDataV5 = BlockDataV6 & { r2GateEnabled: boolean };
 
 /** v3: the R² gate, before sample replicates. Never released. */
 export type BlockDataV3 = Omit<
@@ -336,6 +341,7 @@ export const initBlockData = (params?: BlockParams): BlockData => ({
   defaultBlockLabel: "Tite-Seq Analysis",
   customBlockLabel: params?.customBlockLabel ?? "",
   tableState: createPlDataTableStateV2(),
+  ntTableState: createPlDataTableStateV2(),
   graphStateTitrationCurves: {
     title: "",
     template: "dots",
@@ -425,10 +431,16 @@ export const migrateV4ToV5 = (v4: BlockDataV5): BlockDataV5 => ({
  * clears both limits, and one with it on keeps them, so the args do not move and it does not
  * re-run.
  */
-export const migrateV5ToV6 = ({ r2GateEnabled, ...v5 }: BlockDataV5): BlockData => ({
+export const migrateV5ToV6 = ({ r2GateEnabled, ...v5 }: BlockDataV5): BlockDataV6 => ({
   ...v5,
   r2GateMin: r2GateEnabled ? v5.r2GateMin : undefined,
   kdSeGateMax: r2GateEnabled ? v5.kdSeGateMax : undefined,
+});
+
+/** v6 -> v7. Adds the nucleotide variant table's state, empty. View state only: the args do not move. */
+export const migrateV6ToV7 = (v6: BlockDataV6): BlockData => ({
+  ...v6,
+  ntTableState: createPlDataTableStateV2(),
 });
 
 export const dataModel = new DataModelBuilder({ kind })
@@ -437,7 +449,8 @@ export const dataModel = new DataModelBuilder({ kind })
   .migrate<BlockDataV3>("v3", migrateV2ToV3)
   .migrate<BlockDataV5>("v4", migrateV3ToV4)
   .migrate<BlockDataV5>("v5", migrateV4ToV5)
-  .migrate<BlockData>("v6", migrateV5ToV6)
+  .migrate<BlockDataV6>("v6", migrateV5ToV6)
+  .migrate<BlockData>("v7", migrateV6ToV7)
   .init(({ params }) => initBlockData(params));
 
 type Ctx = RenderCtx<BlockArgs, BlockData>;
@@ -705,13 +718,6 @@ function hillGateIndexArgs(data: BlockData, inputs: ArgsInputs, labels: ArgsLabe
 }
 
 /** The block's pages. Per-replicate values are read by clicking a variant in the main table. */
-export const sectionsFor = () => [
-  { type: "link" as const, href: "/" as const, label: "Table" },
-  { type: "link" as const, href: "/titration-curves" as const, label: "Titration Curves" },
-  { type: "link" as const, href: "/kd-distribution" as const, label: "Kd Distribution" },
-  { type: "link" as const, href: "/affinity-vs-fit" as const, label: "Affinity vs Fit Quality" },
-];
-
 /** The amino-acid frame of the last run; undefined outside synonymous mode. */
 function variantSummaryCols(ctx: Ctx) {
   return ctx.outputs
@@ -747,6 +753,69 @@ function poolSynonymousAaAxis(ctx: Ctx) {
 function halfMatchedParent(ctx: Ctx) {
   const found = poolSynonymousAaAxis(ctx);
   return found === undefined ? undefined : halfMatchedParentInput(found.specs, found.aaAxis);
+}
+
+/**
+ * The block's pages. The nucleotide variant table exists in synonymous mode only, beside the
+ * amino-acid table. Each entry stays an `as const` literal: the routes are typed from the hrefs.
+ */
+export const sectionsFor = (synonymous: boolean) => [
+  { type: "link" as const, href: "/" as const, label: "Table" },
+  ...(synonymous
+    ? [{ type: "link" as const, href: "/nt-variants" as const, label: "NT Variants" }]
+    : []),
+  { type: "link" as const, href: "/titration-curves" as const, label: "Titration Curves" },
+  { type: "link" as const, href: "/kd-distribution" as const, label: "Kd Distribution" },
+  { type: "link" as const, href: "/affinity-vs-fit" as const, label: "Affinity vs Fit Quality" },
+];
+
+type FitColumns = NonNullable<ReturnType<typeof variantSummaryCols>>;
+
+/**
+ * A fit results table: `summaryCols` as primary columns, joined with the result pool's columns on
+ * the Kd,app column's axis.
+ */
+function fitTable(ctx: Ctx, summaryCols: FitColumns, tableState: PlDataTableStateV2) {
+  const kdCol = summaryCols.find((c) => c.spec.name === "pl7.app/vdj/kd");
+  if (!kdCol) return undefined;
+
+  // Include result pool columns keyed by the same clonotype axis as the kd
+  // column — i.e., the same cohort of clonotypes. Each axis is matched by
+  // full spec (name + domain), not just name, so when the upstream is a
+  // redefine-clonotypes run, columns keyed by the original (pre-redefine)
+  // clonotype axis are correctly excluded — those have the same axis name but
+  // a different domain and a disjoint key space, which would otherwise fail
+  // spec integration with "axes sets are disjoint".
+  const resultPoolCols = ColumnsCollection(["result_pool"], { ctx: ctx.ctx })
+    .filter({
+      include: {
+        axes: kdCol.spec.axesSpec.map((axis) => ({
+          name: [exactly(axis.name)],
+          domain: Object.fromEntries(
+            Object.entries(axis.domain ?? {}).map(([key, value]) => [key, [exactly(value)]]),
+          ),
+        })),
+        partialAxesMatch: false,
+      },
+      // The table attaches axis labels itself; a copy re-annotated below
+      // would get its own id and show up as a second label column.
+      exclude: { name: [exactly("pl7.app/label")] },
+    })
+    .getColumns()
+    .filter((c) => {
+      const spec = c.getSpec();
+      return (
+        (spec.valueType as string) !== "File" &&
+        !spec.annotations?.["pl7.app/trace"]?.includes("milaboratories.titeseq-analysis")
+      );
+    })
+    .map((c) => c.withSpecs({ annotations: { "pl7.app/table/visibility": "optional" } }));
+
+  return createPlDataTableV3(ctx, {
+    primaryColumns: summaryCols.map((c) => DataColumn.fromColumn(c)),
+    columns: resultPoolCols,
+    tableState,
+  });
 }
 
 export const platforma = BlockModelV3.create({ dataModel, kind })
@@ -979,46 +1048,18 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     const summaryCols = variantSummaryCols(ctx) ?? ctx.outputs?.resolve("summaryPf")?.getPColumns();
     if (summaryCols === undefined) return undefined;
 
-    const kdCol = summaryCols.find((c) => c.spec.name === "pl7.app/vdj/kd");
-    if (!kdCol) return undefined;
+    return fitTable(ctx, summaryCols, ctx.data.tableState);
+  })
 
-    // Include result pool columns keyed by the same clonotype axis as the kd
-    // column — i.e., the same cohort of clonotypes. Each axis is matched by
-    // full spec (name + domain), not just name, so when the upstream is a
-    // redefine-clonotypes run, columns keyed by the original (pre-redefine)
-    // clonotype axis are correctly excluded — those have the same axis name but
-    // a different domain and a disjoint key space, which would otherwise fail
-    // spec integration with "axes sets are disjoint".
-    const resultPoolCols = ColumnsCollection(["result_pool"], { ctx: ctx.ctx })
-      .filter({
-        include: {
-          axes: kdCol.spec.axesSpec.map((axis) => ({
-            name: [exactly(axis.name)],
-            domain: Object.fromEntries(
-              Object.entries(axis.domain ?? {}).map(([key, value]) => [key, [exactly(value)]]),
-            ),
-          })),
-          partialAxesMatch: false,
-        },
-        // The table attaches axis labels itself; a copy re-annotated below
-        // would get its own id and show up as a second label column.
-        exclude: { name: [exactly("pl7.app/label")] },
-      })
-      .getColumns()
-      .filter((c) => {
-        const spec = c.getSpec();
-        return (
-          (spec.valueType as string) !== "File" &&
-          !spec.annotations?.["pl7.app/trace"]?.includes("milaboratories.titeseq-analysis")
-        );
-      })
-      .map((c) => c.withSpecs({ annotations: { "pl7.app/table/visibility": "optional" } }));
-
-    return createPlDataTableV3(ctx, {
-      primaryColumns: summaryCols.map((c) => DataColumn.fromColumn(c)),
-      columns: resultPoolCols,
-      tableState: ctx.data.tableState,
-    });
+  // Synonymous mode only: one row per nucleotide variant, its own fit and its nt-grain columns.
+  .outputWithStatus("ntVariantTable", (ctx) => {
+    if (variantSummaryCols(ctx) === undefined) return undefined;
+    const summaryCols = ctx.outputs?.resolve("summaryPf")?.getPColumns();
+    if (summaryCols === undefined) return undefined;
+    const ntCols =
+      ctx.outputs?.resolve({ field: "ntVariantPf", allowPermanentAbsence: true })?.getPColumns() ??
+      [];
+    return fitTable(ctx, [...summaryCols, ...ntCols], ctx.data.ntTableState);
   })
 
   .outputWithStatus("titrationCurvesPf", (ctx): PFrameHandle | undefined => {
@@ -1138,7 +1179,7 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
 
   .subtitle((ctx) => ctx.data.customBlockLabel || ctx.data.defaultBlockLabel || "")
 
-  .sections(() => sectionsFor())
+  .sections((ctx) => sectionsFor(variantSummaryCols(ctx) !== undefined))
 
   .done();
 

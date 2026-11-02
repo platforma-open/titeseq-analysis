@@ -1,6 +1,13 @@
 import type { PlRef } from "@platforma-sdk/model";
 import { describe, expect, it } from "vitest";
-import type { BlockArgs, BlockData, BlockDataV1, BlockDataV3, BlockDataV5 } from "./index";
+import type {
+  BlockArgs,
+  BlockData,
+  BlockDataV1,
+  BlockDataV3,
+  BlockDataV5,
+  BlockDataV6,
+} from "./index";
 import {
   HILL_GATE_INDEX_DEFAULTS,
   dataModel,
@@ -50,7 +57,7 @@ const v240Project: BlockDataV1 = {
 /** The project as the block will hold it after the upgrade, through the real version chain. */
 const upgraded = (): BlockData => {
   const migrated = dataModel.migrate({ version: "v1", data: v240Project });
-  expect(migrated.version).toBe("v6");
+  expect(migrated.version).toBe("v7");
   return migrated.data;
 };
 
@@ -105,7 +112,7 @@ describe("a project created on a v2 development build", () => {
       version: "v2",
       data: { ...v2Project, equation: "log_fluorescence" },
     });
-    expect(migrated.version).toBe("v6");
+    expect(migrated.version).toBe("v7");
     expect(migrated.data.r2GateMin).toBeUndefined();
   });
 
@@ -259,6 +266,58 @@ describe("the synonymous weighting", () => {
   });
 });
 
+describe("a project stored on the v6 data model", () => {
+  const { ntTableState: _n, ...v6Project }: BlockData = {
+    ...initBlockData(),
+    abundanceRef: ref("abundance"),
+    concentrationColumnRef: ref("concentration"),
+    binColumnRef: ref("bin"),
+    customBlockLabel: "CD19 titration",
+    settingsOpen: true,
+  };
+  const stored: BlockDataV6 = v6Project;
+  const migrated = () => dataModel.migrate({ version: "v6", data: stored });
+
+  it("gains an empty nucleotide variant table state", () => {
+    expect(migrated().version).toBe("v7");
+    expect(migrated().data.ntTableState).toEqual(initBlockData().ntTableState);
+  });
+
+  it("keeps everything it stored", () => {
+    const { ntTableState: _added, ...rest } = migrated().data;
+    expect(rest).toEqual(stored);
+  });
+
+  it("projects the args it projected", () => {
+    expect(JSON.stringify(argsOf(migrated().data))).toBe(
+      JSON.stringify(argsOf({ ...stored, ntTableState: initBlockData().ntTableState })),
+    );
+  });
+});
+
+describe("the pages", () => {
+  const hrefs = (synonymous: boolean) => sectionsFor(synonymous).map((s) => s.href);
+
+  it("show the nucleotide variant table in synonymous mode, after the main table", () => {
+    expect(hrefs(true)).toEqual([
+      "/",
+      "/nt-variants",
+      "/titration-curves",
+      "/kd-distribution",
+      "/affinity-vs-fit",
+    ]);
+  });
+
+  it("leave every other input with the four pages it had", () => {
+    expect(sectionsFor(false)).toEqual([
+      { type: "link", href: "/", label: "Table" },
+      { type: "link", href: "/titration-curves", label: "Titration Curves" },
+      { type: "link", href: "/kd-distribution", label: "Kd Distribution" },
+      { type: "link", href: "/affinity-vs-fit", label: "Affinity vs Fit Quality" },
+    ]);
+  });
+});
+
 describe("the migration function on its own", () => {
   it("writes the equation into the data, not only into the args", () => {
     expect(migrateV1ToV2(v240Project).equation).toBe("hill_gate_index");
@@ -275,7 +334,7 @@ describe("a project stored on the v3 data model", () => {
   const migrated = () => dataModel.migrate({ version: "v3", data: stored });
 
   it("gains unset replicates and the per-replicate view state", () => {
-    expect(migrated().version).toBe("v6");
+    expect(migrated().version).toBe("v7");
     expect(migrated().data).toMatchObject({
       replicateErrorModel: "sd_over_sqrt_n",
       replicateCensoredMajority: 0.5,
@@ -310,7 +369,7 @@ describe("a project stored on the v4 data model", () => {
   const migrated = (n: number | undefined) => dataModel.migrate({ version: "v4", data: stored(n) });
 
   it.each([3, 4])("raises a point count of %i to 5", (n) => {
-    expect(migrated(n).version).toBe("v6");
+    expect(migrated(n).version).toBe("v7");
     expect(migrated(n).data.minConcentrationPoints).toBe(5);
   });
 
@@ -332,7 +391,7 @@ describe("a project stored on the v4 data model", () => {
 describe("the sections", () => {
   it("are the same whether or not replicates were combined", () => {
     // Per-replicate values are read by clicking a variant in the main table, not on a page.
-    expect(sectionsFor().map((s) => s.href)).toEqual([
+    expect(sectionsFor(false).map((s) => s.href)).toEqual([
       "/",
       "/titration-curves",
       "/kd-distribution",
@@ -426,7 +485,7 @@ describe("a project stored on the v5 data model", () => {
   const migrated = (r2GateEnabled: boolean) =>
     dataModel.migrate({ version: "v5", data: { ...base(), r2GateEnabled } });
   it("with the checkbox off, clears both limits", () => {
-    expect(migrated(false).version).toBe("v6");
+    expect(migrated(false).version).toBe("v7");
     expect(migrated(false).data.r2GateMin).toBeUndefined();
     expect(migrated(false).data.kdSeGateMax).toBeUndefined();
   });
