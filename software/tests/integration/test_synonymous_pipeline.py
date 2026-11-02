@@ -120,6 +120,13 @@ class TestLogFluorescence:
         assert wt["affinityClass"] == "Good"
         assert wt["kdOutOfRange"] is False
 
+    def test_the_se_is_the_larger_of_the_spread_and_the_copies_fit_errors(self, lf):
+        copies = lf["per_clonotype"].filter(pl.col("clonotypeKey").is_in(["wt_a", "wt_b", "wt_c"]))
+        values = [math.log10(kd) for kd in copies["kd"].to_list()]
+        spread = float(np.std(values, ddof=1)) / math.sqrt(3)
+        fit_term = math.sqrt(sum(se**2 for se in copies["kdLog10Se"].to_list())) / 3
+        assert _aa(lf, "WT")["kdLog10Se"] == pytest.approx(max(spread, fit_term), rel=1e-9)
+
     def test_copies_saturated_across_the_titration_give_a_lower_bound(self, lf):
         tight = _aa(lf, "TIGHT")
         assert math.log10(tight["kd"]) == pytest.approx(LOG_LO, abs=1e-9)

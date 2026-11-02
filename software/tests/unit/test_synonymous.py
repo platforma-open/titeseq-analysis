@@ -65,9 +65,28 @@ class TestCombine:
         assert c.log10_kd_se == pytest.approx(1.0 / math.sqrt(3))
         assert c.counts == {"measured": 3, "below": 0, "above": 0, "failed": 0}
 
-    def test_the_fit_se_of_copies_is_ignored_once_there_are_two(self):
-        c = combine([_measured(-8.0, se=5.0), _measured(-8.2, se=5.0)])
+    def test_the_fit_error_term_floors_the_se_when_the_copies_agree_better_than_their_fits(self):
+        c = combine([_measured(-8.0, se=0.3), _measured(-8.2, se=0.4)])
+        # spread 0.1; fit-error term sqrt(0.3^2 + 0.4^2) / 2 = 0.25
+        assert c.log10_kd_se == pytest.approx(0.25)
+        assert c.classification.affinity_class == "Good"
+
+    def test_the_spread_stands_when_it_exceeds_the_fit_error_term(self):
+        c = combine([_measured(-7.0, se=0.1), _measured(-9.0, se=0.1)])
+        assert c.log10_kd_se == pytest.approx(1.0)
+
+    def test_a_copy_without_a_fit_se_is_left_out_of_the_sum_but_not_the_divisor(self):
+        c = combine([_measured(-8.0, se=0.6), _measured(-8.0), Copy("above", -8.0, None, "Partial")])
+        assert c.log10_kd_se == pytest.approx(0.6 / 3)
+
+    def test_no_copy_with_a_fit_se_leaves_the_spread(self):
+        c = combine([_measured(-8.0), _measured(-8.2)])
         assert c.log10_kd_se == pytest.approx(0.1)
+
+    def test_the_floor_can_lift_a_good_spread_to_partial(self):
+        c = combine([_measured(-8.0, se=1.2), _measured(-8.0, se=1.2)])
+        assert c.log10_kd_se == pytest.approx(math.sqrt(2 * 1.2**2) / 2)
+        assert c.classification.affinity_class == "Partial"
 
     def test_tight_agreement_rates_good_and_scatter_rates_partial(self):
         assert combine([_measured(-8.0), _measured(-8.1)]).classification.affinity_class == "Good"
@@ -224,11 +243,12 @@ class TestCombineSynonymous:
             "parentMode": False,
         }
 
-    def test_two_identical_copies_have_zero_scatter(self):
+    def test_two_identical_copies_have_the_fit_error_term_as_their_se(self):
         frame, _ = combine_synonymous(self.PER_CLONOTYPE, SynonymousInputs(self.LINKS), log10_lo=LO, log10_hi=HI)
         wt = frame.filter(pl.col("aaKey") == "WT").row(0, named=True)
         assert wt["kd"] == pytest.approx(1e-8)
-        assert wt["kdLog10Se"] == 0.0
+        # zero scatter; the fit-error term is sqrt(0.1^2 + 0.1^2) / 2
+        assert wt["kdLog10Se"] == pytest.approx(math.sqrt(0.02) / 2)
         assert wt["affinityClass"] == "Good"
 
     def test_the_parent_delta_is_added_when_the_parent_columns_come(self):
@@ -241,8 +261,8 @@ class TestCombineSynonymous:
         rows = {r["aaKey"]: r for r in frame.iter_rows(named=True)}
         assert (rows["WT"]["kdLog10ParentDelta"], rows["WT"]["kdLog10ParentDeltaSe"]) == (0.0, 0.0)
         assert rows["M"]["kdLog10ParentDelta"] == pytest.approx(-1.0)
-        # M has one copy with a fit SE of 0.2; WT's two identical copies scatter by 0.
-        assert rows["M"]["kdLog10ParentDeltaSe"] == pytest.approx(0.2)
+        # M has one copy with a fit SE of 0.2; WT's two identical copies carry their fit-error term.
+        assert rows["M"]["kdLog10ParentDeltaSe"] == pytest.approx(math.hypot(0.2, math.sqrt(0.02) / 2))
         assert summary["parents"] == 1
         assert summary["unidentifiableParents"] == []
         assert summary["multiParentVariants"] == 0

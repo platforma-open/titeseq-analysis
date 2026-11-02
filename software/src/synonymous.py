@@ -10,8 +10,10 @@ The combination is the arithmetic mean of the copies' log10 K_D (Starr 2020, 202
   censored     a copy whose K_D sits outside the titrated range; enters at the wall it passed, and is
                counted by direction ("below" the lowest concentration, "above" the highest)
   measured     every other copy; enters at its own log10 K_D
-  SE           sample SD / sqrt(n) for n >= 2 copies in the mean; for n = 1, the copy's own fit SE
-               where the equation reports one, else null
+  SE           for n >= 2 copies in the mean, the larger of two terms: the spread, sample SD / sqrt(n),
+               and the fit-error term, sqrt(sum of se_i^2) / n over the copies that have a fit SE
+               (null when none has one, and the SE is then the spread); for n = 1, the copy's own
+               fit SE where the equation reports one, else null
   bound        every copy in the mean censored on the same side; the value is that wall, with no SE
 
 The class is decided once, on the combined value:
@@ -134,6 +136,16 @@ def copy_from_fit(row: dict, log10_lo: float | None, log10_hi: float | None) -> 
     return Copy("measured", value, se if se is not None and math.isfinite(se) else None, cls)
 
 
+def _floored_se(entered: list[Copy]) -> float:
+    """max(spread, fit-error term) over n >= 2 copies; the spread alone when no copy has a fit SE."""
+    n = len(entered)
+    spread = statistics.stdev([c.log10_kd for c in entered]) / math.sqrt(n)
+    fit_ses = [c.log10_kd_se for c in entered if c.log10_kd_se is not None]
+    if not fit_ses:
+        return spread
+    return max(spread, math.sqrt(math.fsum(se * se for se in fit_ses)) / n)
+
+
 def combine(copies: list[Copy]) -> Combined:
     """The Starr mean over one amino-acid variant's copies, and its class."""
     counts: dict[CopyState, int] = {"measured": 0, "below": 0, "above": 0, "failed": 0}
@@ -151,7 +163,7 @@ def combine(copies: list[Copy]) -> Combined:
     if bound:
         return Combined(mean, None, Classification("Partial", None), True, counts)
 
-    se = statistics.stdev(values) / math.sqrt(n) if n >= 2 else entered[0].log10_kd_se
+    se = _floored_se(entered) if n >= 2 else entered[0].log10_kd_se
     if se is not None:
         cls = "Good" if math.isfinite(se) and se <= KD_SD_GOOD else "Partial"
         return Combined(mean, se, Classification(cls, None), False, counts)

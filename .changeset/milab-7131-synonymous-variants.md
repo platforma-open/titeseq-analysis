@@ -12,9 +12,11 @@ variants as repeats.
 - Turns on by itself when the dataset's variant axis is nucleotide and its nt -> aa linker
   (`pl7.app/repertoire/aaToNt`) resolves. There is no setting. Every other input runs as before.
 - Each nucleotide variant is fitted on its own, exactly as before. Reads of two variants are never
-  pooled. The fits are then combined per amino-acid variant: the mean of their log10 Kd,app, with
-  SE = SD / sqrt(n). With one variant, its own fit SE where the equation reports one. A variant
-  censored at the edge of the titration enters at that edge; a Failed one is left out and counted.
+  pooled. The fits are then combined per amino-acid variant: the mean of their log10 Kd,app. With
+  two or more variants, the SE is the larger of their spread, SD / sqrt(n), and their own fit SEs
+  combined, sqrt(sum of se_i^2) / n, where the equation reports a fit SE. With one variant, its own
+  fit SE where the equation reports one. A variant censored at the edge of the titration enters at
+  that edge; a Failed one is left out and counted.
 - Amino-acid columns sit on the linker's amino-acid axis and reuse the nucleotide names:
   `pl7.app/vdj/kd`, `pl7.app/vdj/kdLog10Se`, `pl7.app/vdj/affinityClass`, `pl7.app/vdj/kdOutOfRange`.
   `pl7.app/vdj/kdNtVariants` counts the nucleotide variants behind each value, split by
