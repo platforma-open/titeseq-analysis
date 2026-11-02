@@ -1,6 +1,6 @@
 import type { PlRef } from "@platforma-sdk/model";
 import { describe, expect, it } from "vitest";
-import type { BlockArgs, BlockData, BlockDataV1, BlockDataV2 } from "./index";
+import type { BlockArgs, BlockData, BlockDataV1, BlockDataV2, BlockDataV3 } from "./index";
 import {
   HILL_GATE_INDEX_DEFAULTS,
   dataModel,
@@ -46,7 +46,7 @@ const v240Project: BlockDataV1 = {
 /** The project as the block will hold it after the upgrade, through the real version chain. */
 const upgraded = (): BlockData => {
   const migrated = dataModel.migrate({ version: "v1", data: v240Project });
-  expect(migrated.version).toBe("v3");
+  expect(migrated.version).toBe("v4");
   return migrated.data;
 };
 
@@ -192,7 +192,12 @@ describe("the synonymous weighting", () => {
 });
 
 describe("a project stored on the v2 data model", () => {
-  const { ntTableState: _n, ...v2Project }: BlockData = {
+  const {
+    ntTableState: _n,
+    replicateTableState: _r,
+    graphStateReplicates: _g,
+    ...v2Project
+  }: BlockData = {
     ...initBlockData(),
     abundanceRef: ref("abundance"),
     concentrationColumnRef: ref("concentration"),
@@ -204,24 +209,64 @@ describe("a project stored on the v2 data model", () => {
   const migrated = () => dataModel.migrate({ version: "v2", data: stored });
 
   it("gains an empty nucleotide variant table state", () => {
-    expect(migrated().version).toBe("v3");
+    expect(migrated().version).toBe("v4");
     expect(migrated().data.ntTableState).toEqual(initBlockData().ntTableState);
   });
 
   it("keeps everything it stored", () => {
-    const { ntTableState: _added, ...rest } = migrated().data;
+    const {
+      ntTableState: _added,
+      replicateTableState: _addedTable,
+      graphStateReplicates: _addedGraph,
+      ...rest
+    } = migrated().data;
     expect(rest).toEqual(stored);
   });
 
   it("projects the args it projected", () => {
     expect(JSON.stringify(argsOf(migrated().data))).toBe(
-      JSON.stringify(argsOf({ ...stored, ntTableState: initBlockData().ntTableState })),
+      JSON.stringify(argsOf({ ...initBlockData(), ...stored })),
     );
   });
 });
 
+describe("a project stored on the v3 data model", () => {
+  const {
+    replicateTableState: _r,
+    graphStateReplicates: _g,
+    ...v3Project
+  }: BlockData = {
+    ...initBlockData(),
+    abundanceRef: ref("abundance"),
+    concentrationColumnRef: ref("concentration"),
+    binColumnRef: ref("bin"),
+    customBlockLabel: "CD19 titration",
+    settingsOpen: true,
+  };
+  const stored: BlockDataV3 = v3Project;
+  const migrated = () => dataModel.migrate({ version: "v3", data: stored });
+
+  it("gains the per-replicate view state and nothing else", () => {
+    expect(migrated().version).toBe("v4");
+    expect(migrated().data.replicateTableState).toEqual(initBlockData().replicateTableState);
+    expect(migrated().data.graphStateReplicates).toEqual(initBlockData().graphStateReplicates);
+  });
+
+  it("keeps everything it stored", () => {
+    const { replicateTableState: _t, graphStateReplicates: _s, ...rest } = migrated().data;
+    expect(rest).toEqual(stored);
+  });
+
+  it("projects not one byte of replicate argument", () => {
+    const args = argsOf(migrated().data);
+    expect(Object.keys(args).filter((k) => k.startsWith("replicate"))).toEqual([]);
+    expect(JSON.stringify(args)).toBe(JSON.stringify(argsOf({ ...initBlockData(), ...stored })));
+  });
+});
+
 describe("the pages", () => {
-  const hrefs = (synonymous: boolean) => sectionsFor(synonymous).map((s) => s.href);
+  const hrefs = (synonymous: boolean, replicates = false) =>
+    sectionsFor(synonymous, replicates).map((s) => s.href);
 
   it("show the nucleotide variant table in synonymous mode, after the main table", () => {
     expect(hrefs(true)).toEqual([
@@ -241,6 +286,28 @@ describe("the pages", () => {
       { type: "link", href: "/affinity-vs-fit", label: "Affinity vs Fit Quality" },
     ]);
   });
+
+  it("show the per-replicate page only when replicates were combined", () => {
+    expect(hrefs(false, true)).toEqual([
+      "/",
+      "/replicates",
+      "/titration-curves",
+      "/kd-distribution",
+      "/affinity-vs-fit",
+    ]);
+    expect(hrefs(false, false)).not.toContain("/replicates");
+  });
+
+  it("put the per-replicate page after the nucleotide table in synonymous mode", () => {
+    expect(hrefs(true, true)).toEqual([
+      "/",
+      "/nt-variants",
+      "/replicates",
+      "/titration-curves",
+      "/kd-distribution",
+      "/affinity-vs-fit",
+    ]);
+  });
 });
 
 describe("the migration function on its own", () => {
@@ -251,5 +318,70 @@ describe("the migration function on its own", () => {
   it("is a no-op for everything else", () => {
     const { equation: _e, plateauFloor: _p, ...rest } = migrateV1ToV2(v240Project);
     expect(rest).toEqual(v240Project);
+  });
+});
+
+describe("the sample replicates", () => {
+  const configured: BlockData = {
+    ...initBlockData(),
+    abundanceRef: ref("abundance"),
+    concentrationColumnRef: ref("concentration"),
+    binColumnRef: ref("bin"),
+  };
+  const equations = ["log_fluorescence", "hill_gate_index"] as const;
+  const replicateKeys = (data: BlockData) =>
+    Object.keys(argsOf(data)).filter((k) => k.startsWith("replicate"));
+
+  it.each(equations)("%s sends no replicate byte without a column", (equation) => {
+    expect(replicateKeys({ ...configured, equation })).toEqual([]);
+  });
+
+  it("a stored setting alone changes nothing: the column is what turns the mode on", () => {
+    const tuned = {
+      ...configured,
+      replicateErrorModel: "phillips" as const,
+      replicateFitErrorCutoff: 1,
+      replicateR2Floor: 0.8,
+      replicateCensoredMajority: 0.9,
+    };
+    expect(JSON.stringify(argsOf(tuned))).toBe(JSON.stringify(argsOf(configured)));
+  });
+
+  it("the column brings the error model and the censoring majority with it", () => {
+    const args = argsOf({ ...configured, replicateColumnRef: ref("replicate") });
+    expect(args).toMatchObject({
+      replicateColumnRef: ref("replicate"),
+      replicateErrorModel: "sd_over_sqrt_n",
+      replicateCensoredMajority: 0.5,
+    });
+  });
+
+  it("leaves both filters out of the args until they are set", () => {
+    const args = argsOf({ ...configured, replicateColumnRef: ref("replicate") });
+    expect(Object.hasOwn(args, "replicateFitErrorCutoff")).toBe(false);
+    expect(Object.hasOwn(args, "replicateR2Floor")).toBe(false);
+  });
+
+  it("sends each filter once it is set", () => {
+    const args = argsOf({
+      ...configured,
+      replicateColumnRef: ref("replicate"),
+      replicateFitErrorCutoff: 1,
+      replicateR2Floor: 0.8,
+    });
+    expect(args).toMatchObject({ replicateFitErrorCutoff: 1, replicateR2Floor: 0.8 });
+  });
+
+  it("refuses a filter or a majority the software would reject", () => {
+    const withColumn = { ...configured, replicateColumnRef: ref("replicate") };
+    expect(() => argsOf({ ...withColumn, replicateFitErrorCutoff: 0 })).toThrow();
+    expect(() => argsOf({ ...withColumn, replicateR2Floor: 1.5 })).toThrow();
+    expect(() => argsOf({ ...withColumn, replicateCensoredMajority: 0.4 })).toThrow();
+  });
+
+  it("is unset on a new block and on an upgraded project", () => {
+    expect(initBlockData().replicateColumnRef).toBeUndefined();
+    expect(upgraded().replicateColumnRef).toBeUndefined();
+    expect(replicateKeys(upgraded())).toEqual([]);
   });
 });

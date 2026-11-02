@@ -162,6 +162,7 @@ blockTest(
       customBlockLabel: "",
       tableState: createPlDataTableStateV2(),
       ntTableState: createPlDataTableStateV2(),
+      replicateTableState: createPlDataTableStateV2(),
       graphStateTitrationCurves: {
         title: "Titration Curves",
         template: "dots",
@@ -182,6 +183,13 @@ blockTest(
         currentTab: null,
         layersSettings: { dots: {} },
         axesSettings: { axisX: { scale: "log" } },
+      },
+      graphStateReplicates: {
+        title: "Replicates",
+        template: "dots",
+        currentTab: null,
+        layersSettings: { dots: {} },
+        axesSettings: { axisY: { scale: "log" } },
       },
       settingsOpen: false,
       // Pinned to the fit this test was written against, so it keeps asserting the
@@ -468,6 +476,7 @@ blockTest(
         customBlockLabel: "",
         tableState: createPlDataTableStateV2(),
         ntTableState: createPlDataTableStateV2(),
+        replicateTableState: createPlDataTableStateV2(),
         graphStateTitrationCurves: {
           title: "Titration Curves",
           template: "dots",
@@ -488,6 +497,13 @@ blockTest(
           currentTab: null,
           layersSettings: { dots: {} },
           axesSettings: { axisX: { scale: "log" } },
+        },
+        graphStateReplicates: {
+          title: "Replicates",
+          template: "dots",
+          currentTab: null,
+          layersSettings: { dots: {} },
+          axesSettings: { axisY: { scale: "log" } },
         },
         settingsOpen: false,
         // Pinned to the fit this test was written against, so it keeps asserting the

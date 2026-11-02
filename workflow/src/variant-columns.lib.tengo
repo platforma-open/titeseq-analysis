@@ -4,6 +4,8 @@
 ll := import("@platforma-sdk/workflow-tengo:ll")
 maps := import("@platforma-sdk/workflow-tengo:maps")
 
+replicateColumnsLib := import(":replicate-columns")
+
 COUNT_NAME := "pl7.app/vdj/kdNtVariants"
 CLASS_NAME := "pl7.app/vdj/variantClass"
 CLASS_VALUES := ["wildtype", "synonymous", "stop", "1 nonsynonymous", ">1 nonsynonymous"]
@@ -112,21 +114,19 @@ deltaColumns := func(blockId, idPrefix, description) {
 /**
  * @param blockId: the block id stamped into every domain, as on the nucleotide grain
  * @param kdAnnotations: the nucleotide grain's Kd,app annotations, unit included
- * @param opts: {parentMode, weighting, variantClass}; parentMode emits the parent delta and its
- *   error, weighting is "none" or "reads", variantClass emits the class column
+ * @param opts: {parentMode, weighting, variantClass, replicates, errorModel}; parentMode emits the
+ *   parent delta and its error, weighting is "none" or "reads", variantClass emits the class
+ *   column, replicates says the value is combined over sample replicates after the synonymous
+ *   copies, and errorModel then names which error the SE carries
  * @return xsv column descriptors
  */
 variantColumns := func(blockId, kdAnnotations, opts) {
 	domain := { "pl7.app/block": blockId }
-	cols := [
-		column("kd", {
-			name: "pl7.app/vdj/kd",
-			valueType: "Double",
-			domain: domain,
-			annotations: maps.merge(kdAnnotations, {
-				"pl7.app/description": KD_DESCRIPTION[opts.weighting]
-			})
-		}),
+	kdDescription := KD_DESCRIPTION[opts.weighting]
+	if opts.replicates {
+		kdDescription = kdDescription + " Each replicate combines its own copies first; the amino-acid value is then the plain mean over the replicates."
+	}
+	errorColumns := [
 		// Error of the value above, on the same axes. The absence-declaration annotation is pending its key.
 		column("kdLog10Se", {
 			name: "pl7.app/vdj/kdLog10Se",
@@ -153,7 +153,26 @@ variantColumns := func(blockId, kdAnnotations, opts) {
 				"pl7.app/table/visibility": "default",
 				"pl7.app/table/orderPriority": "201"
 			}
-		}),
+		})
+	]
+	// With replicates the spread the two columns report is the one across the replicates, not the
+	// one across the synonymous copies.
+	if opts.replicates {
+		errorColumns = [
+			replicateColumnsLib.seColumn(blockId, "aa_", opts.errorModel),
+			replicateColumnsLib.sdColumn(blockId, "aa_")
+		]
+	}
+	cols := [
+		column("kd", {
+			name: "pl7.app/vdj/kd",
+			valueType: "Double",
+			domain: domain,
+			annotations: maps.merge(kdAnnotations, {
+				"pl7.app/description": kdDescription
+			})
+		})
+	] + errorColumns + [
 		column("affinityClass", {
 			name: "pl7.app/vdj/affinityClass",
 			valueType: "String",
@@ -198,6 +217,9 @@ variantColumns := func(blockId, kdAnnotations, opts) {
 		countColumn("ntFailed", blockId, "failed", "NT variants failed",
 			"Nucleotide variants rated Failed. They are left out of the mean.", "optional", "191")
 	]
+	if opts.replicates {
+		cols = cols + replicateColumnsLib.countColumns(blockId, "aa_")
+	}
 	if opts.variantClass {
 		cols = append(cols, classColumn(blockId, "aa_variantClass",
 			"stop: the amino-acid variant is not productive, and has no Kd,app. Otherwise by its amino-acid mutation count: wildtype 0, 1 nonsynonymous 1, >1 nonsynonymous more."))

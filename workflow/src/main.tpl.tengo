@@ -15,6 +15,7 @@ json := import("json")
 
 synonymousInputs := import(":synonymous-inputs")
 variantColumnsLib := import(":variant-columns")
+replicateColumnsLib := import(":replicate-columns")
 
 fitCurvesSw := assets.importSoftware("@platforma-open/platforma-open.titeseq-analysis.software:fit-curves")
 
@@ -36,6 +37,9 @@ wf.prepare(func(args) {
 	}
 	if !is_undefined(args.binFluorescenceColumnRef) {
 		bb.addAnchor("binFluorescence", args.binFluorescenceColumnRef)
+	}
+	if !is_undefined(args.replicateColumnRef) {
+		bb.addAnchor("replicate", args.replicateColumnRef)
 	}
 	// Optional subset column picked alongside the abundance (PlDatasetSelector)
 	if !is_undefined(args.inputFilter) {
@@ -89,6 +93,10 @@ wf.body(func(args) {
 	// The gate's measured mean log10 fluorescence. The model sends it only under
 	// "log_fluorescence", which requires gates. Python detects it by the column's presence.
 	hasBinFluorescence := !is_undefined(args.binFluorescenceColumnRef)
+	// Which replicate each sample belongs to. Unbound, the block fits one titration and no
+	// replicate reaches the command line, the grouping or any output.
+	hasReplicate := !is_undefined(args.replicateColumnRef)
+	replicateErrorModel := args.replicateErrorModel == "phillips" ? "phillips" : "sd_over_sqrt_n"
 
 	// Synonymous mode: a nucleotide dataset whose nt -> aa linker resolves. Each nt variant is still
 	// fitted on its own; the software then combines the fits per amino-acid variant.
@@ -157,6 +165,9 @@ wf.body(func(args) {
 	if hasBinFluorescence {
 		addReadsColumn(columns.getColumn("binFluorescence"), { header: "bin_fluorescence" })
 	}
+	if hasReplicate {
+		addReadsColumn(columns.getColumn("replicate"), { header: "replicate" })
+	}
 	readsBuilder.mem("16GiB")
 	readsBuilder.cpu(1)
 	readsTsv := readsBuilder.build()
@@ -221,6 +232,25 @@ wf.body(func(args) {
 		execBuilder.arg("--sort-fraction-column").arg("sort_fraction")
 	}
 
+	// Every replicate argument is absent unless the column is bound, so a run without replicates
+	// keeps the command line it always had.
+	if hasReplicate {
+		execBuilder.
+			arg("--replicate-column").arg("replicate").
+			arg("--replicate-error-model").arg(replicateErrorModel).
+			arg("--out-per-replicate").arg("per_replicate.tsv").
+			saveFile("per_replicate.tsv")
+		if !is_undefined(args.replicateFitErrorCutoff) {
+			execBuilder.arg("--replicate-fit-error-cutoff").arg(string(args.replicateFitErrorCutoff))
+		}
+		if !is_undefined(args.replicateR2Floor) {
+			execBuilder.arg("--replicate-r2-floor").arg(string(args.replicateR2Floor))
+		}
+		if !is_undefined(args.replicateCensoredMajority) {
+			execBuilder.arg("--replicate-censored-majority").arg(string(args.replicateCensoredMajority))
+		}
+	}
+
 	if syn.synonymous {
 		keyTable := func(fill) {
 			b := pframes.tsvFileBuilder()
@@ -241,6 +271,11 @@ wf.body(func(args) {
 			arg("--out-synonymous-summary").arg("synonymous_summary.json").
 			saveFile("per_variant.tsv").
 			saveFileContent("synonymous_summary.json")
+		if hasReplicate {
+			execBuilder.
+				arg("--out-per-variant-replicate").arg("per_variant_replicate.tsv").
+				saveFile("per_variant_replicate.tsv")
+		}
 		// Absent unless "reads", so a run without the setting keeps its command line.
 		if synonymousWeighting == "reads" {
 			execBuilder.arg("--synonymous-weighting").arg("reads")
@@ -329,6 +364,8 @@ wf.body(func(args) {
 		meanBinLabel = "Mean log10 fluorescence"
 		fittedMeanBinLabel = "Fitted log10 fluorescence"
 	}
+
+	replicateAxisSpec := replicateColumnsLib.axisSpec(blockId)
 
 	// Provenance annotation for the FACS sort-fraction correction. Always emitted
 	// (even when false) so downstream consumers can read a stable key instead of
@@ -485,8 +522,14 @@ wf.body(func(args) {
 			}
 		}
 	]
-	// Only "log_fluorescence" writes the SE of log10 K_D. "hill_gate_index" keeps the v2.4.0 columns.
-	if args.equation == "log_fluorescence" {
+	// Only "log_fluorescence" writes the SE of log10 K_D from a single fit. With replicates the SE
+	// is the spread across them, which every equation reports. "hill_gate_index" without
+	// replicates keeps the v2.4.0 columns.
+	if hasReplicate {
+		summaryColumns = append(summaryColumns, replicateColumnsLib.seColumn(blockId, "", replicateErrorModel))
+		summaryColumns = append(summaryColumns, replicateColumnsLib.sdColumn(blockId, ""))
+		summaryColumns = summaryColumns + replicateColumnsLib.countColumns(blockId, "")
+	} else if args.equation == "log_fluorescence" {
 		summaryColumns = append(summaryColumns, {
 			column: "kdLog10Se",
 			spec: {
@@ -524,7 +567,9 @@ wf.body(func(args) {
 			columns: variantColumnsLib.variantColumns(blockId, kdAnnotations, {
 				parentMode: syn.parentMode,
 				weighting: synonymousWeighting,
-				variantClass: syn.aaClass
+				variantClass: syn.aaClass,
+				replicates: hasReplicate,
+				errorModel: replicateErrorModel
 			}),
 			storageFormat: "Parquet",
 			partitionKeyLength: 0
@@ -545,10 +590,13 @@ wf.body(func(args) {
 	// One import per TSV. Each pcolumn resource is reused in both signalPf and
 	// exportPf — one logical column, one resource. Replaces the prior
 	// *Internal/*Export dual-import pattern.
-	concAxes := [
-		{ column: "clonotypeKey", spec: clonotypeAxisSpec },
-		{ column: "concentrationStr", spec: concAxisSpec }
-	]
+	// With replicates the signal keeps each replicate's own curve: the fits are per replicate, so
+	// one pooled curve would belong to no fit.
+	concAxes := [{ column: "clonotypeKey", spec: clonotypeAxisSpec }]
+	if hasReplicate {
+		concAxes = append(concAxes, { column: "replicate", spec: replicateAxisSpec })
+	}
+	concAxes = append(concAxes, { column: "concentrationStr", spec: concAxisSpec })
 
 	meanBinColSpec := {
 		name: "pl7.app/vdj/meanBin",
@@ -610,6 +658,31 @@ wf.body(func(args) {
 		concValueColSpec,
 		[{ column: "concentrationStr", spec: concAxisSpec }]
 	)
+
+	// Each replicate's own value, keyed by (variant, replicate). The names are the combined
+	// grain's — the extra axis is what distinguishes them — and they are hidden by default so a
+	// downstream picker offers the combined answer first.
+	importReplicates := func(file, keyColumn, keyAxis, idPrefix) {
+		return xsv.importFile(file, "tsv", {
+			axes: [
+				{ column: keyColumn, spec: keyAxis },
+				{ column: "replicate", spec: replicateAxisSpec }
+			],
+			columns: replicateColumnsLib.perReplicateColumns(blockId, idPrefix, kdAnnotations),
+			storageFormat: "Parquet",
+			partitionKeyLength: 0
+		}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
+	}
+	replicateImported := undefined
+	variantReplicateImported := undefined
+	if hasReplicate {
+		replicateImported = importReplicates(
+			fit.getFile("per_replicate.tsv"), "clonotypeKey", clonotypeAxisSpec, "rep_")
+		if syn.synonymous {
+			variantReplicateImported = importReplicates(
+				fit.getFile("per_variant_replicate.tsv"), "aaKey", syn.aaAxis, "aarep_")
+		}
+	}
 
 	// Trace injection. `makeTrace` bundles the upstream abundance provenance
 	// with a self-descriptor; `trace.inject` rewrites only the small spec resources
@@ -706,6 +779,14 @@ wf.body(func(args) {
 		outputs.synonymousSummary = fit.getFileContent("synonymous_summary.json")
 		if hasNtVariantColumns {
 			outputs.ntVariantPf = pframes.exportFrame(buildTracedPf(ntVariantSources, []))
+		}
+	}
+	// The per-replicate values stay out of exportPf and out of the main table: their extra axis
+	// would fan every row out by the replicate count.
+	if hasReplicate {
+		outputs.replicatePf = pframes.exportFrame(buildTracedPf([replicateImported], []))
+		if syn.synonymous {
+			outputs.variantReplicatePf = pframes.exportFrame(buildTracedPf([variantReplicateImported], []))
 		}
 	}
 

@@ -32,6 +32,11 @@ export function deriveTemplateParams(data: BlockData): BlockParams {
     hookEffectThresholdNoBin: data.hookEffectThresholdNoBin,
     hookEffectMinReads: data.hookEffectMinReads,
     synonymousWeighting: data.synonymousWeighting,
+    replicateColumnRef: data.replicateColumnRef,
+    replicateErrorModel: data.replicateErrorModel,
+    replicateFitErrorCutoff: data.replicateFitErrorCutoff,
+    replicateR2Floor: data.replicateR2Floor,
+    replicateCensoredMajority: data.replicateCensoredMajority,
     customBlockLabel: data.customBlockLabel,
   };
 }

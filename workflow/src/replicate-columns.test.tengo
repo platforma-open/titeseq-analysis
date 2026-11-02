@@ -1,0 +1,115 @@
+test := import("@platforma-sdk/workflow-tengo:test")
+replicateColumns := import(":replicate-columns")
+variantColumns := import(":variant-columns")
+text := import("text")
+json := import("json")
+
+KD := { "pl7.app/label": "Kd,app", "pl7.app/unit": "nM" }
+
+byHeader := func(cols) {
+	res := {}
+	for c in cols {
+		res[c.column] = c
+	}
+	return res
+}
+
+Test_the_replicate_axis_is_a_string_in_the_block_domain := func() {
+	axis := replicateColumns.axisSpec("blk")
+	test.isEqual("pl7.app/vdj/replicate", axis.name, "name")
+	test.isEqual("String", axis.type, "a user column's values, which axes carry as strings")
+	test.isEqual({ "pl7.app/block": "blk" }, axis.domain, "the block domain")
+	test.isEqual("Replicate", axis.annotations["pl7.app/label"], "label")
+}
+
+Test_the_counts_name_every_state_a_replicate_can_reach := func() {
+	cols := byHeader(replicateColumns.countColumns("blk", ""))
+	headers := ["replicateCount", "replicateMeasuredCount", "replicateCensoredBelowCount",
+		"replicateCensoredAboveCount", "replicateFailedCount", "replicateFilteredCount"]
+	test.isEqual(len(headers), len(cols), "one column per count")
+	for h in headers {
+		test.isEqual("pl7.app/vdj/" + h, cols[h].spec.name, "name of " + h)
+		test.isEqual("Int", cols[h].spec.valueType, "a count")
+		test.isEqual({ "pl7.app/block": "blk" }, cols[h].spec.domain, "the block domain for " + h)
+		test.isEqual(h, cols[h].id, "the nucleotide grain's id of " + h)
+	}
+	test.isEqual(replicateColumns.COUNT_NAME, cols.replicateCount.spec.name, "the family's own name")
+}
+
+Test_the_two_grains_counts_differ_only_by_id := func() {
+	nt := byHeader(replicateColumns.countColumns("blk", ""))
+	aa := byHeader(replicateColumns.countColumns("blk", "aa_"))
+	for h, c in nt {
+		test.isEqual(c.spec, aa[h].spec, "one spec on both grains: " + h)
+		test.isEqual("aa_" + h, aa[h].id, "aa id of " + h)
+	}
+}
+
+Test_the_error_description_names_the_model := func() {
+	plain := replicateColumns.seColumn("blk", "", "sd_over_sqrt_n")
+	phillips := replicateColumns.seColumn("blk", "", "phillips")
+	test.isEqual(plain.spec.name, phillips.spec.name, "the name does not move with the model")
+	test.isTrue(text.contains(plain.spec.annotations["pl7.app/description"], "sample SD"), "sample SD")
+	test.isTrue(text.contains(phillips.spec.annotations["pl7.app/description"], "population SD"), "population SD")
+	test.isTrue(text.contains(phillips.spec.annotations["pl7.app/description"], "Phillips 2021"), "the study it reproduces")
+	test.isEqual("true", plain.spec.annotations["pl7.app/isScore"], "a ranking score")
+}
+
+Test_the_spread_column_is_not_a_score := func() {
+	sd := replicateColumns.sdColumn("blk", "aa_")
+	test.isEqual("pl7.app/vdj/kdLog10Sd", sd.spec.name, "name")
+	test.isEqual("aa_kdLog10Sd", sd.id, "aa id")
+	test.isEqual("false", sd.spec.annotations["pl7.app/isScore"], "a spread is not a ranking score")
+	test.isTrue(text.contains(sd.spec.annotations["pl7.app/description"], "across the replicates"), "wording")
+}
+
+Test_the_per_replicate_columns_are_hidden_and_carry_the_state := func() {
+	cols := byHeader(replicateColumns.perReplicateColumns("blk", "rep_", KD))
+	headers := ["kd", "kdLog10Se", "r2", "affinityClass", "kdState"]
+	test.isEqual(len(headers), len(cols), "one column per per_replicate.tsv value header")
+	for h in headers {
+		test.isEqual("rep_" + h, cols[h].id, "id of " + h)
+		test.isEqual("hidden", cols[h].spec.annotations["pl7.app/table/visibility"], h + " stays out of pickers")
+		test.isEqual("false", cols[h].spec.annotations["pl7.app/isScore"], h + " is not a ranking score")
+		test.isEqual({ "pl7.app/block": "blk" }, cols[h].spec.domain, "the block domain for " + h)
+	}
+	test.isEqual("nM", cols.kd.spec.annotations["pl7.app/unit"], "the unit carries over")
+	test.isEqual(replicateColumns.STATE_NAME, cols.kdState.spec.name, "the state's own name")
+	test.isEqual(["measured", "censoredBelow", "censoredAbove", "failed", "filtered"],
+		json.decode(cols.kdState.spec.annotations["pl7.app/discreteValues"]), "every state the software writes")
+}
+
+Test_the_two_per_replicate_grains_differ_only_by_id := func() {
+	nt := byHeader(replicateColumns.perReplicateColumns("blk", "rep_", KD))
+	aa := byHeader(replicateColumns.perReplicateColumns("blk", "aarep_", KD))
+	for h, c in nt {
+		test.isEqual(c.spec, aa[h].spec, "one spec on both grains: " + h)
+		test.isEqual("aarep_" + h, aa[h].id, "aa id of " + h)
+	}
+}
+
+OPTS := { parentMode: false, weighting: "none", variantClass: false }
+
+Test_the_amino_acid_grain_gains_the_counts_only_with_replicates := func() {
+	without := byHeader(variantColumns.variantColumns("blk", KD, OPTS))
+	with := byHeader(variantColumns.variantColumns("blk", KD,
+		{ parentMode: false, weighting: "none", variantClass: false, replicates: true, errorModel: "phillips" }))
+	test.isTrue(is_undefined(without.replicateCount), "no count without replicates")
+	test.isFalse(is_undefined(with.replicateCount), "the counts arrive with replicates")
+	test.isEqual("aa_replicateCount", with.replicateCount.id, "the aa grain's id")
+	test.isEqual(len(without) + 6, len(with), "six counts and nothing else")
+}
+
+Test_the_amino_acid_error_follows_the_replicates_when_they_are_on := func() {
+	without := byHeader(variantColumns.variantColumns("blk", KD, OPTS))
+	with := byHeader(variantColumns.variantColumns("blk", KD,
+		{ parentMode: false, weighting: "none", variantClass: false, replicates: true, errorModel: "phillips" }))
+	test.isEqual(without.kdLog10Se.spec.name, with.kdLog10Se.spec.name, "the name does not move")
+	test.isEqual(without.kdLog10Se.id, with.kdLog10Se.id, "the id does not move")
+	test.isTrue(text.contains(without.kdLog10Se.spec.annotations["pl7.app/description"], "synonymous nucleotide variants"),
+		"without replicates the error spans the copies")
+	test.isTrue(text.contains(with.kdLog10Se.spec.annotations["pl7.app/description"], "across the replicates"),
+		"with replicates the error spans the replicates")
+	test.isTrue(text.contains(with.kd.spec.annotations["pl7.app/description"], "plain mean over the replicates"),
+		"Starr's order is written down")
+}
