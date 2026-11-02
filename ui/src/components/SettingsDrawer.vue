@@ -15,7 +15,11 @@ import { useApp } from "../app";
 import { useFieldValidation } from "../composables/useFieldValidation";
 import { useFitSettings } from "../composables/useFitSettings";
 import { useNoun } from "../composables/useNoun";
-import { EQUATION_OPTIONS, SYNONYMOUS_WEIGHTING_OPTIONS } from "../fitSettings";
+import {
+  EQUATION_OPTIONS,
+  REPLICATE_ERROR_MODEL_OPTIONS,
+  SYNONYMOUS_WEIGHTING_OPTIONS,
+} from "../fitSettings";
 
 const open = defineModel<boolean>({ required: true });
 
@@ -105,6 +109,10 @@ function setBinColumn(ref: PlRef | undefined): void {
   app.model.data.binColumnRef = ref;
   if (ref === undefined) app.model.data.sortFractionColumnRef = undefined;
 }
+
+// Every replicate setting rides on the column, so clearing it hides them all. The stored values
+// stay: re-picking a column brings the previous combination back.
+const hasReplicates = computed(() => app.model.data.replicateColumnRef !== undefined);
 </script>
 
 <template>
@@ -199,6 +207,19 @@ function setBinColumn(ref: PlRef | undefined): void {
       </template>
     </PlDropdown>
 
+    <PlDropdownRef
+      v-model="app.model.data.replicateColumnRef"
+      :options="app.model.outputs.replicateOptions"
+      label="Sample replicate (optional)"
+      clearable
+    >
+      <template #tooltip>
+        Optional. A per-sample column naming the replicate each sample belongs to. Each replicate is
+        a titration of its own: it is fitted alone, and the per-variant values are then combined.
+        Leave empty to fit one titration, which is what the block does without this column.
+      </template>
+    </PlDropdownRef>
+
     <PlAlert v-for="(w, i) in warnings" :key="i" :type="w.severity === 'error' ? 'error' : 'warn'">
       {{ w.message }}
     </PlAlert>
@@ -247,6 +268,65 @@ function setBinColumn(ref: PlRef | undefined): void {
           The plateau that each {{ noun }} must be able to reach at saturation, as a fraction of the
           gate range. The default is 2/3, for a screening library. For a library in which most
           {{ noun }}s bind, use a lower value, for example 0.4.
+        </template>
+      </PlNumberField>
+    </PlAccordionSection>
+
+    <PlAccordionSection v-if="hasReplicates" label="Sample replicates">
+      <PlDropdown
+        :model-value="app.model.data.replicateErrorModel ?? 'sd_over_sqrt_n'"
+        :options="REPLICATE_ERROR_MODEL_OPTIONS"
+        label="Error across replicates"
+        @update:model-value="(m) => m && (app.model.data.replicateErrorModel = m)"
+      >
+        <template #tooltip>
+          How the error of the combined Kd,app is computed. The value itself is the plain mean of
+          log10 Kd,app either way. <br /><br />
+          SD / √n: the sample standard deviation over the square root of the replicate count. With
+          one replicate it is that fit's own standard error. The default. <br /><br />
+          Phillips 2021: the population standard deviation over the square root of the count plus
+          one. With one replicate it is 0. This reproduces the standard error published with
+          Phillips 2021.
+        </template>
+      </PlDropdown>
+      <PlNumberField
+        v-model="app.model.data.replicateFitErrorCutoff"
+        label="Fit error cutoff (decades)"
+        :min-value="0"
+        :step="0.1"
+        clearable
+      >
+        <template #tooltip>
+          Optional. Leaves out a replicate whose own fit error is above this, before the mean. Off
+          unless you set it. Phillips 2021 published 1.0. A replicate censored at an edge of the
+          titration is not affected: the edge, not the fit, set its value.
+        </template>
+      </PlNumberField>
+      <PlNumberField
+        v-model="app.model.data.replicateR2Floor"
+        label="R² floor"
+        :min-value="0"
+        :max-value="1"
+        :step="0.05"
+        clearable
+      >
+        <template #tooltip>
+          Optional. Leaves out a replicate whose fit R² is below this, before the mean. Off unless
+          you set it. Phillips 2021 published 0.8.
+        </template>
+      </PlNumberField>
+      <PlNumberField
+        v-model="app.model.data.replicateCensoredMajority"
+        label="Censoring majority"
+        :min-value="0.5"
+        :max-value="1"
+        :step="0.05"
+      >
+        <template #tooltip>
+          When no replicate measured a Kd,app inside the titrated range, the share of the replicates
+          one edge must hold, and exceed the other edge by, for that edge to be reported. Below it
+          the variant is reported as Failed. This is the block's own rule: no published method
+          defines one, and averaging opposite edges would land inside the range and mean nothing.
         </template>
       </PlNumberField>
     </PlAccordionSection>

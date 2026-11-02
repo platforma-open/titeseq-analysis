@@ -1,9 +1,11 @@
 import type {
   Equation,
+  ReplicateErrorModel,
   SynonymousWeighting,
 } from "@platforma-open/platforma-open.titeseq-analysis.model";
 import {
   EQUATIONS,
+  REPLICATE_ERROR_MODELS,
   SYNONYMOUS_WEIGHTINGS,
 } from "@platforma-open/platforma-open.titeseq-analysis.model";
 
@@ -25,3 +27,16 @@ export const SYNONYMOUS_WEIGHTING_OPTIONS: readonly {
   readonly value: SynonymousWeighting;
   readonly label: string;
 }[] = SYNONYMOUS_WEIGHTINGS.map((value) => ({ value, label: SYNONYMOUS_WEIGHTING_LABELS[value] }));
+
+const REPLICATE_ERROR_MODEL_LABELS: Record<ReplicateErrorModel, string> = {
+  sd_over_sqrt_n: "SD / √n",
+  phillips: "Phillips 2021",
+};
+
+export const REPLICATE_ERROR_MODEL_OPTIONS: readonly {
+  readonly value: ReplicateErrorModel;
+  readonly label: string;
+}[] = REPLICATE_ERROR_MODELS.map((value) => ({
+  value,
+  label: REPLICATE_ERROR_MODEL_LABELS[value],
+}));

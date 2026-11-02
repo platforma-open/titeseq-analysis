@@ -4,6 +4,7 @@ import TitrationCurvesPage from "./pages/TitrationCurvesPage.vue";
 import KDDistributionPage from "./pages/KDDistributionPage.vue";
 import AffinityVsFitPage from "./pages/AffinityVsFitPage.vue";
 import NtVariantsPage from "./pages/NtVariantsPage.vue";
+import ReplicatesPage from "./pages/ReplicatesPage.vue";
 import TablePage from "./pages/TablePage.vue";
 
 export const sdkPlugin = defineAppV3(platforma, (app) => {
@@ -14,6 +15,7 @@ export const sdkPlugin = defineAppV3(platforma, (app) => {
     routes: {
       "/": () => TablePage,
       "/nt-variants": () => NtVariantsPage,
+      "/replicates": () => ReplicatesPage,
       "/titration-curves": () => TitrationCurvesPage,
       "/kd-distribution": () => KDDistributionPage,
       "/affinity-vs-fit": () => AffinityVsFitPage,
