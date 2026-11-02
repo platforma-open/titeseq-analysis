@@ -13,6 +13,7 @@ from constants import DEFAULT_PARAMS, FitParams
 from io_layer import read_reads_table
 from log import log
 from pipeline import run
+from synonymous import COL_AA, COL_MUTATIONS, COL_NT, COL_PARENT, SynonymousInputs
 
 
 def _write_frame(frame: pl.DataFrame, path: str) -> None:
@@ -21,6 +22,29 @@ def _write_frame(frame: pl.DataFrame, path: str) -> None:
         frame.write_parquet(p)
     else:
         frame.write_csv(p, separator="\t")
+
+
+def _read_keys(path: str | None, columns: dict[str, pl.DataType]) -> pl.DataFrame | None:
+    """A workflow-built TSV, reduced to `columns`. Keys are read as strings, whatever they look like."""
+    if path is None:
+        return None
+    return pl.read_csv(path, separator="\t", columns=list(columns), schema_overrides=columns)
+
+
+def _synonymous_inputs(args: argparse.Namespace, parser: argparse.ArgumentParser) -> SynonymousInputs | None:
+    if args.nt_to_aa is None:
+        if args.out_per_variant or args.aa_mutations or args.aa_parent_links:
+            parser.error("--out-per-variant, --aa-mutations and --aa-parent-links need --nt-to-aa")
+        return None
+    if not args.out_per_variant or not args.out_synonymous_summary:
+        parser.error("--nt-to-aa needs --out-per-variant and --out-synonymous-summary")
+    if (args.aa_mutations is None) != (args.aa_parent_links is None):
+        parser.error("--aa-mutations and --aa-parent-links come together")
+    return SynonymousInputs(
+        nt_to_aa=_read_keys(args.nt_to_aa, {COL_NT: pl.Utf8, COL_AA: pl.Utf8}),
+        aa_mutations=_read_keys(args.aa_mutations, {COL_AA: pl.Utf8, COL_MUTATIONS: pl.Utf8}),
+        aa_parent_links=_read_keys(args.aa_parent_links, {COL_AA: pl.Utf8, COL_PARENT: pl.Utf8}),
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -38,7 +62,13 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Column name in reads.tsv carrying sort fraction C_bc/C_c per sample. Absent ⇒ no FACS correction.",
     )
+    parser.add_argument("--nt-to-aa", default=None, help="TSV [ntKey, aaKey]: the nt -> aa linker")
+    parser.add_argument("--aa-mutations", default=None, help="TSV [aaKey, mutationCount]")
+    parser.add_argument("--aa-parent-links", default=None, help="TSV [aaKey, parentId]: the aa parent linker")
+    parser.add_argument("--out-per-variant", default=None, help="one row per amino-acid variant")
+    parser.add_argument("--out-synonymous-summary", default=None, help="JSON run summary of the combination")
     args = parser.parse_args(argv)
+    synonymous = _synonymous_inputs(args, parser)
 
     log(f"Reading input table: {args.reads}")
     reads = read_reads_table(args.reads)
@@ -57,12 +87,17 @@ def main(argv: list[str] | None = None) -> int:
         target_antigen=args.target_antigen,
         antigen_column_ref=args.antigen_column_ref,
         sort_fraction_col=args.sort_fraction_column,
+        synonymous=synonymous,
     )
     log("Writing output frames")
     _write_frame(outputs["per_clonotype"], args.out_per_clonotype)
     _write_frame(outputs["mean_bin"], args.out_mean_bin)
     _write_frame(outputs["fitted_mean_bin"], args.out_fitted_mean_bin)
     _write_frame(outputs["concentration_value"], args.out_concentration_value)
+    if synonymous is not None:
+        _write_frame(outputs["per_variant"], args.out_per_variant)
+        with open(args.out_synonymous_summary, "w") as f:
+            json.dump(outputs["synonymous_summary"], f, sort_keys=True)
     log("CLI done")
     return 0
 

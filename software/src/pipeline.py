@@ -105,6 +105,7 @@ from pre_fit import (
     detect_hook_effect,
     split_c0,
 )
+from synonymous import SynonymousInputs, combine_synonymous
 
 
 def _validate_inputs(
@@ -581,13 +582,17 @@ def run(
     target_antigen: str | None = None,
     antigen_column_ref: str | None = None,
     sort_fraction_col: str | None = None,
-) -> dict[str, pl.DataFrame]:
+    synonymous: SynonymousInputs | None = None,
+) -> dict:
     """Execute the full pipeline on an in-memory reads frame.
 
     `sort_fraction_col`, when set, activates the Adams, Mora, Walczak, Kinney 2016
     eq. A3 correction inside `compute_mean_bin`. The column must be present in
     `reads`; validation runs before normalization so a bad upstream join is caught
     before any downstream computation. Only consulted in bin mode.
+
+    `synonymous`, when set, adds `per_variant` (one row per amino-acid variant) and
+    `synonymous_summary` (a JSON-ready dict) to the outputs. Every other output is unchanged.
     """
     log(f"Pipeline start: {reads.height} reads rows")
     reads = canonicalize_concentration(reads)
@@ -668,4 +673,34 @@ def run(
         f"mean_bin={outputs['mean_bin'].height}, "
         f"fitted_mean_bin={outputs['fitted_mean_bin'].height}"
     )
+    if synonymous is not None:
+        outputs.update(_combine_synonymous(outputs["per_clonotype"], synonymous, conc_bounds))
     return outputs
+
+
+def _combine_synonymous(
+    per_clonotype: pl.DataFrame,
+    synonymous: SynonymousInputs,
+    conc_bounds: tuple[float | None, float | None],
+) -> dict:
+    """The amino-acid outputs: each nt variant's own fit, combined per amino-acid variant."""
+    lo, hi = conc_bounds
+    per_variant, summary = combine_synonymous(
+        per_clonotype,
+        synonymous,
+        log10_lo=math.log10(lo) if lo is not None else None,
+        log10_hi=math.log10(hi) if hi is not None else None,
+    )
+    log(
+        f"Synonymous variants: {summary['ntVariants']} nucleotide variants -> {summary['aaVariants']} "
+        f"amino-acid variants; left out: {summary['unmappedNtVariants']} with no amino-acid variant, "
+        f"{summary['ambiguousNtVariants']} with several"
+    )
+    if summary["parentMode"]:
+        log(
+            f"Parent delta: {summary['parents']} parents, {len(summary['unidentifiableParents'])} not identifiable; "
+            f"{summary['multiParentVariants']} variants with several parents get no delta"
+        )
+    else:
+        log("Parent delta: off (no amino-acid mutation count and parent link)")
+    return {"per_variant": per_variant, "synonymous_summary": summary}
