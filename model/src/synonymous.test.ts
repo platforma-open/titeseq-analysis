@@ -150,6 +150,21 @@ describe("synonymousMessages", () => {
     );
   });
 
+  it("names an nt parent that cannot be identified", () => {
+    const messages = synonymousMessages(undefined, {
+      ...summary,
+      ntParentMode: true,
+      ntParents: 2,
+      ntUnidentifiableParents: [{ parentId: "P2", reason: "several-unmutated-variants" }],
+      ntMultiParentVariants: 4,
+    });
+    expect(messages).toEqual([
+      "Parent P2 cannot be identified at nucleotide level: several nucleotide variants have zero " +
+        "mutations. Its nucleotide variants have no parent delta.",
+      "4 nucleotide variants link to several parents and have no parent delta.",
+    ]);
+  });
+
   it("counts the stop variants", () => {
     expect(synonymousMessages(undefined, { ...summary, stopAaVariants: 3 })).toEqual([
       "3 amino-acid variants carry a stop codon. They have no Kd,app and are rated Failed; " +

@@ -715,6 +715,14 @@ def _combine_synonymous(
         )
     else:
         log("Parent delta: off (no amino-acid mutation count and parent link)")
+    if summary.get("ntParentMode"):
+        log(
+            f"Nucleotide parent delta: {summary['ntParents']} parents, "
+            f"{len(summary['ntUnidentifiableParents'])} not identifiable; "
+            f"{summary['ntMultiParentVariants']} nucleotide variants with several parents get no delta"
+        )
+    else:
+        log("Nucleotide parent delta: off (no nucleotide mutation count and parent link)")
     if "stopAaVariants" in summary:
         log(f"Stop codons: {summary['stopAaVariants']} amino-acid variants not productive; they get no Kd,app")
     else:

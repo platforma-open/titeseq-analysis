@@ -101,8 +101,8 @@ wf.body(func(args) {
 	}, abundanceSpec.axesSpec[1])
 
 	// The nt grain's own synonymous columns, in per_nt_variant.tsv.
-	ntVariantOpts := { variantClass: syn.ntClass }
-	hasNtVariantColumns := syn.ntClass
+	ntVariantOpts := { variantClass: syn.ntClass, parentMode: syn.ntParentMode }
+	hasNtVariantColumns := syn.ntClass || syn.ntParentMode
 
 	// "none" when the setting is absent: Starr's plain mean.
 	synonymousWeighting := args.synonymousWeighting == "reads" ? "reads" : "none"
@@ -270,6 +270,15 @@ wf.body(func(args) {
 				arg("--nt-mutations").arg("nt_mutations.tsv").
 				arg("--out-per-nt-variant").arg("per_nt_variant.tsv").
 				saveFile("per_nt_variant.tsv")
+		}
+		if syn.ntParentMode {
+			execBuilder.
+				addFile("nt_parent_links.tsv", keyTable(func(b) {
+					b.add(syn.ntParentLink, { header: "link" })
+					b.setAxisHeader(ntAxis, "ntKey")
+					b.setAxisHeader(syn.ntParentAxis, "parentId")
+				})).
+				arg("--nt-parent-links").arg("nt_parent_links.tsv")
 		}
 		if syn.parentMode {
 			execBuilder.

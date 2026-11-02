@@ -39,7 +39,9 @@ nucleotide variants keep their own fits.
 
 The parent delta is log10 K_D of the variant minus that of its parent, both at amino-acid grain, with
 error sqrt(se_v^2 + se_p^2). A parent's own row is 0 with error 0. A parent is the one amino-acid variant
-with zero mutations linked to it; a parent with none or several cannot be identified.
+with zero mutations linked to it; a parent with none or several cannot be identified. The nucleotide grain
+has its own parent delta, by the same rule on the nucleotide parent link and mutation count: each fitted
+nt variant's own log10 K_D, as it enters the mean, minus that of the one unmutated nt variant of its parent.
 """
 
 from __future__ import annotations
@@ -109,10 +111,13 @@ class SynonymousInputs:
     weighting: Weighting = "none"
     aa_productive: pl.DataFrame | None = None  # [aaKey, productive], "true" / "false"
     nt_mutations: pl.DataFrame | None = None  # [ntKey, mutationCount]
+    nt_parent_links: pl.DataFrame | None = None  # [ntKey, parentId]
 
     def __post_init__(self) -> None:
         if self.aa_parent_links is not None and self.aa_mutations is None:
             raise ValueError("the amino-acid parent links need the amino-acid mutation counts")
+        if self.nt_parent_links is not None and self.nt_mutations is None:
+            raise ValueError("the nucleotide parent links need the nucleotide mutation counts")
         if self.weighting not in WEIGHTINGS:
             raise ValueError(f"unknown weighting: {self.weighting}")
 
@@ -260,27 +265,27 @@ STOP = Combined(None, None, Classification("Failed", None), None, {})
 
 
 def resolve_parents(
-    links: pl.DataFrame, mutations: pl.DataFrame
+    links: pl.DataFrame, mutations: pl.DataFrame, key: str = COL_AA
 ) -> tuple[dict[str, str], dict[str, str], list[dict[str, str]], int]:
     """Each variant's single parent, each parent's own variant, the parents that cannot be identified,
-    and how many variants have several parents."""
-    links = _keys(links, COL_AA, COL_PARENT)
-    per_variant = links.group_by(COL_AA).agg(pl.col(COL_PARENT).unique())
+    and how many variants have several parents. `key` names the variant column of both frames."""
+    links = _keys(links, key, COL_PARENT)
+    per_variant = links.group_by(key).agg(pl.col(COL_PARENT).unique())
     assignment: dict[str, str] = {}
     several = 0
-    for aa, parents in zip(per_variant[COL_AA].to_list(), per_variant[COL_PARENT].to_list()):
+    for variant, parents in zip(per_variant[key].to_list(), per_variant[COL_PARENT].to_list()):
         if len(parents) == 1:
-            assignment[aa] = parents[0]
+            assignment[variant] = parents[0]
         else:
             several += 1
 
     mutation_count = pl.col(COL_MUTATIONS).cast(pl.Int64, strict=False)
-    unmutated = set(mutations.filter(mutation_count == 0)[COL_AA].cast(pl.Utf8).to_list())
+    unmutated = set(mutations.filter(mutation_count == 0)[key].cast(pl.Utf8).to_list())
     candidates: dict[str, list[str]] = {}
-    for aa, parent in zip(links[COL_AA].to_list(), links[COL_PARENT].to_list()):
+    for variant, parent in zip(links[key].to_list(), links[COL_PARENT].to_list()):
         candidates.setdefault(parent, [])
-        if aa in unmutated:
-            candidates[parent].append(aa)
+        if variant in unmutated:
+            candidates[parent].append(variant)
 
     own: dict[str, str] = {}
     unidentifiable: list[dict[str, str]] = []
@@ -295,7 +300,7 @@ def resolve_parents(
 
 
 def parent_delta(
-    variant: Combined | None, parent: Combined | None, is_parent: bool
+    variant: Combined | Copy | None, parent: Combined | Copy | None, is_parent: bool
 ) -> tuple[float | None, float | None]:
     """deltaLog10Kd and its error. None where either side has no K_D."""
     if variant is None or parent is None or variant.log10_kd is None or parent.log10_kd is None:
@@ -306,6 +311,28 @@ def parent_delta(
     if variant.log10_kd_se is not None and parent.log10_kd_se is not None:
         se = math.hypot(variant.log10_kd_se, parent.log10_kd_se)
     return variant.log10_kd - parent.log10_kd, se
+
+
+def parent_deltas(
+    values: dict[str, Combined | Copy], links: pl.DataFrame, mutations: pl.DataFrame, key: str
+) -> tuple[list[float | None], list[float | None], dict]:
+    """The parent delta and its error for each variant of `values`, in its order, and the summary counts."""
+    assignment, own, unidentifiable, several = resolve_parents(links, mutations, key)
+    deltas: list[float | None] = []
+    ses: list[float | None] = []
+    for variant, value in values.items():
+        parent_id = assignment.get(variant)
+        parent_key = own.get(parent_id) if parent_id is not None else None
+        parent = values.get(parent_key) if parent_key is not None else None
+        delta, se = parent_delta(value, parent, variant == parent_key)
+        deltas.append(delta)
+        ses.append(se)
+    counts = {
+        "parents": len(own) + len(unidentifiable),
+        "unidentifiableParents": unidentifiable,
+        "multiParentVariants": several,
+    }
+    return deltas, ses, counts
 
 
 def combine_synonymous(
@@ -331,8 +358,9 @@ def combine_synonymous(
     fitted = per_clonotype[COL_CLONOTYPE].cast(pl.Utf8).to_list()
     mapping, unmapped, ambiguous = resolve_nt_to_aa(inputs.nt_to_aa, fitted)
 
+    rows = list(per_clonotype.with_columns(pl.col(COL_CLONOTYPE).cast(pl.Utf8)).iter_rows(named=True))
     copies: dict[str, list[Copy]] = {}
-    for row in per_clonotype.with_columns(pl.col(COL_CLONOTYPE).cast(pl.Utf8)).iter_rows(named=True):
+    for row in rows:
         aa = mapping.get(row[COL_CLONOTYPE])
         if aa is not None:
             c = copy_from_fit(row, log10_lo, log10_hi)
@@ -374,22 +402,11 @@ def combine_synonymous(
         schema.update(CLASS_SCHEMA)
 
     if inputs.aa_parent_links is not None and inputs.aa_mutations is not None:
-        assignment, own, unidentifiable, several = resolve_parents(inputs.aa_parent_links, inputs.aa_mutations)
-        deltas: list[float | None] = []
-        delta_ses: list[float | None] = []
-        for aa, c in combined.items():
-            parent_id = assignment.get(aa)
-            parent_key = own.get(parent_id) if parent_id is not None else None
-            parent = combined.get(parent_key) if parent_key is not None else None
-            delta, se = parent_delta(c, parent, aa == parent_key)
-            deltas.append(delta)
-            delta_ses.append(se)
+        deltas, delta_ses, counts = parent_deltas(combined, inputs.aa_parent_links, inputs.aa_mutations, COL_AA)
         columns["kdLog10ParentDelta"] = deltas
         columns["kdLog10ParentDeltaSe"] = delta_ses
         schema.update(DELTA_SCHEMA)
-        summary["parents"] = len(own) + len(unidentifiable)
-        summary["unidentifiableParents"] = unidentifiable
-        summary["multiParentVariants"] = several
+        summary.update(counts)
 
     per_nt = None
     if inputs.nt_mutations is not None:
@@ -404,6 +421,14 @@ def combine_synonymous(
                 for nt in fitted
             ]
             nt_schema.update(CLASS_SCHEMA)
+        summary["ntParentMode"] = inputs.nt_parent_links is not None
+        if inputs.nt_parent_links is not None:
+            nt_copies = {row[COL_CLONOTYPE]: copy_from_fit(row, log10_lo, log10_hi) for row in rows}
+            deltas, delta_ses, counts = parent_deltas(nt_copies, inputs.nt_parent_links, inputs.nt_mutations, COL_NT)
+            nt_columns["kdLog10ParentDelta"] = deltas
+            nt_columns["kdLog10ParentDeltaSe"] = delta_ses
+            nt_schema.update(DELTA_SCHEMA)
+            summary.update({"nt" + k[0].upper() + k[1:]: v for k, v in counts.items()})
         per_nt = pl.DataFrame(nt_columns, schema=nt_schema)
 
     return pl.DataFrame(columns, schema=schema), per_nt, summary

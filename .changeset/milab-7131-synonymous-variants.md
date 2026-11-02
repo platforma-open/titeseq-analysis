@@ -41,6 +41,12 @@ variants as repeats.
   (type `milaboratories.synthetic-repertoire-profiler.level`, importance 80): "NT Variants" on the
   nucleotide axis, "AA Variants" on the amino-acid axis. A column on neither axis, and every column
   outside this mode, keeps the trace it had.
+- Where the nucleotide mutation count and parent link (`[parentId, ntKey]`) resolve, the same two
+  delta columns sit on the nucleotide axis: each nucleotide variant's own log10 Kd,app against the
+  single unmutated nucleotide variant under its parent. A Failed variant has none; a variant
+  censored at the edge of the titration reads from that edge. Parents that cannot be identified,
+  and variants with several parents, are counted and named in the block's warnings, as at the
+  amino-acid grain.
 - The table shows amino-acid rows in this mode. Each nucleotide variant's own fit stays in the
   export and in the graphs.
 - Page titles and help text name the input: clonotype, variant or peptide.

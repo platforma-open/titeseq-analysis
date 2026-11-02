@@ -245,6 +245,52 @@ class TestVariantClassAndStops:
         assert (classes["amb"], classes["orphan"]) == (None, None)
 
 
+class TestNucleotideParentDelta:
+    NT_PARENT_LINKS = pl.DataFrame({"ntKey": NT_MUTATIONS["ntKey"], "parentId": ["P1"] * NT_MUTATIONS.height})
+
+    @pytest.fixture(scope="class")
+    def nt_delta(self, reads):
+        # The only unmutated nt variant under P1 is wt_a: every other aa variant's first copy is mutated here.
+        mutations = NT_MUTATIONS.with_columns(
+            pl.when(pl.col("ntKey") == "wt_a").then(pl.lit("0")).otherwise(pl.lit("1")).alias("mutationCount")
+        )
+        inputs = SynonymousInputs(_links(), nt_mutations=mutations, nt_parent_links=self.NT_PARENT_LINKS)
+        return run(reads, params=LF, synonymous=inputs)
+
+    def _nt(self, outputs, nt):
+        return outputs["per_nt_variant"].filter(pl.col("ntKey") == nt).row(0, named=True)
+
+    def _fit(self, outputs, nt):
+        return outputs["per_clonotype"].filter(pl.col("clonotypeKey") == nt).row(0, named=True)
+
+    def test_the_parent_row_is_zero_with_zero_error(self, nt_delta):
+        row = self._nt(nt_delta, "wt_a")
+        assert (row["kdLog10ParentDelta"], row["kdLog10ParentDeltaSe"]) == (0.0, 0.0)
+
+    def test_a_copy_reads_against_the_parent_copy(self, nt_delta):
+        own, parent = self._fit(nt_delta, "s_a"), self._fit(nt_delta, "wt_a")
+        row = self._nt(nt_delta, "s_a")
+        assert row["kdLog10ParentDelta"] == pytest.approx(math.log10(own["kd"]) - math.log10(parent["kd"]), abs=1e-12)
+        assert row["kdLog10ParentDeltaSe"] == pytest.approx(math.hypot(own["kdLog10Se"], parent["kdLog10Se"]))
+
+    def test_a_failed_copy_has_no_delta(self, nt_delta):
+        assert self._nt(nt_delta, "l_a")["kdLog10ParentDelta"] is None
+
+    def test_the_summary_counts_the_nt_parents(self, nt_delta):
+        summary = nt_delta["synonymous_summary"]
+        assert summary["ntParentMode"] is True
+        assert (summary["ntParents"], summary["ntUnidentifiableParents"]) == (1, [])
+        assert summary["parentMode"] is False
+
+    def test_an_unidentifiable_nt_parent_gives_no_delta(self, reads):
+        inputs = SynonymousInputs(_links(), nt_mutations=NT_MUTATIONS, nt_parent_links=self.NT_PARENT_LINKS)
+        out = run(reads, params=LF, synonymous=inputs)
+        assert out["per_nt_variant"]["kdLog10ParentDelta"].null_count() == out["per_nt_variant"].height
+        assert out["synonymous_summary"]["ntUnidentifiableParents"] == [
+            {"parentId": "P1", "reason": "several-unmutated-variants"}
+        ]
+
+
 class TestReadWeighting:
     @pytest.fixture(scope="class")
     def weighted(self, reads):
@@ -344,6 +390,7 @@ def test_the_cli_writes_the_nucleotide_frame_with_the_nt_mutation_count(tmp_path
     PARENT_INPUTS["aa_mutations"].write_csv(tmp_path / "aa_mutations.tsv", separator="\t")
     AA_PRODUCTIVE.write_csv(tmp_path / "aa_productive.tsv", separator="\t")
     NT_MUTATIONS.write_csv(tmp_path / "nt_mutations.tsv", separator="\t")
+    TestNucleotideParentDelta.NT_PARENT_LINKS.write_csv(tmp_path / "nt_parent_links.tsv", separator="\t")
     (tmp_path / "params.json").write_text(json.dumps({"equation": "log_fluorescence", "plateau_floor": 2 / 3}))
     out = {name: str(tmp_path / f"{name}.tsv") for name in ("pc", "mb", "fmb", "cv", "pv", "pnv")}
     rc = main(
@@ -358,6 +405,7 @@ def test_the_cli_writes_the_nucleotide_frame_with_the_nt_mutation_count(tmp_path
             "--aa-mutations", str(tmp_path / "aa_mutations.tsv"),
             "--aa-productive", str(tmp_path / "aa_productive.tsv"),
             "--nt-mutations", str(tmp_path / "nt_mutations.tsv"),
+            "--nt-parent-links", str(tmp_path / "nt_parent_links.tsv"),
             "--out-per-variant", out["pv"],
             "--out-per-nt-variant", out["pnv"],
             "--out-synonymous-summary", str(tmp_path / "summary.json"),
@@ -365,7 +413,7 @@ def test_the_cli_writes_the_nucleotide_frame_with_the_nt_mutation_count(tmp_path
     )  # fmt: skip
     assert rc == 0
     per_nt = pl.read_csv(out["pnv"], separator="\t")
-    assert per_nt.columns == ["ntKey", "variantClass"]
+    assert per_nt.columns == ["ntKey", "variantClass", "kdLog10ParentDelta", "kdLog10ParentDeltaSe"]
     assert per_nt.height == 13
     per_variant = pl.read_csv(out["pv"], separator="\t")
     assert "variantClass" in per_variant.columns

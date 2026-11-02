@@ -438,6 +438,77 @@ class TestCombineSynonymous:
         assert per_nt is None
         assert summary["parentMode"] is False
 
+    NT_PARENT_LINKS = pl.DataFrame({"ntKey": ["wt1", "wt2", "m1", "m2"], "parentId": ["P", "P", "P", "P"]})
+
+    def test_the_nt_parent_delta_reads_each_copy_against_the_unmutated_copy(self):
+        per_clonotype = _per_clonotype(
+            [
+                ("wt1", 1e-8, "Good", False, 0.1),
+                ("wt2", 1e-7, "Good", False, 0.2),
+                ("m1", 1e-9, "Good", False, None),
+                ("m2", None, "Failed", None, None),
+            ]
+        )
+        inputs = SynonymousInputs(
+            self.LINKS,
+            nt_mutations=self.CLASS_INPUTS["nt_mutations"],
+            nt_parent_links=self.NT_PARENT_LINKS,
+        )
+        _, per_nt, summary = combine_synonymous(per_clonotype, inputs, log10_lo=LO, log10_hi=HI)
+        rows = {r["ntKey"]: r for r in per_nt.iter_rows(named=True)}
+        assert (rows["wt1"]["kdLog10ParentDelta"], rows["wt1"]["kdLog10ParentDeltaSe"]) == (0.0, 0.0)
+        assert rows["wt2"]["kdLog10ParentDelta"] == pytest.approx(1.0)
+        assert rows["wt2"]["kdLog10ParentDeltaSe"] == pytest.approx(math.hypot(0.1, 0.2))
+        assert rows["m1"]["kdLog10ParentDelta"] == pytest.approx(-1.0)
+        assert rows["m1"]["kdLog10ParentDeltaSe"] is None
+        assert (rows["m2"]["kdLog10ParentDelta"], rows["m2"]["kdLog10ParentDeltaSe"]) == (None, None)
+        assert "variantClass" not in per_nt.columns
+        assert summary["ntParentMode"] is True
+        assert (summary["ntParents"], summary["ntUnidentifiableParents"], summary["ntMultiParentVariants"]) == (
+            1,
+            [],
+            0,
+        )
+
+    def test_a_censored_copy_reads_from_its_wall(self):
+        per_clonotype = _per_clonotype([("wt1", 1e-8, "Good", False, 0.1), ("m1", 1e-13, "Partial", True, None)])
+        inputs = SynonymousInputs(
+            self.LINKS,
+            nt_mutations=self.CLASS_INPUTS["nt_mutations"],
+            nt_parent_links=self.NT_PARENT_LINKS,
+        )
+        _, per_nt, _ = combine_synonymous(per_clonotype, inputs, log10_lo=LO, log10_hi=HI)
+        m1 = per_nt.filter(pl.col("ntKey") == "m1").row(0, named=True)
+        assert m1["kdLog10ParentDelta"] == pytest.approx(LO - -8.0)
+        assert m1["kdLog10ParentDeltaSe"] is None
+
+    def test_an_nt_parent_with_none_or_several_unmutated_copies_is_not_identifiable(self):
+        per_clonotype = _per_clonotype([(nt, 1e-8, "Good", False, 0.1) for nt in ("wt1", "wt2", "m1", "m2")])
+        links = pl.DataFrame({"ntKey": ["wt1", "wt2", "m1", "m2"], "parentId": ["P", "P", "Q", "Q"]})
+        mutations = pl.DataFrame({"ntKey": ["wt1", "wt2", "m1", "m2"], "mutationCount": ["0", "0", "1", "2"]})
+        inputs = SynonymousInputs(self.LINKS, nt_mutations=mutations, nt_parent_links=links)
+        _, per_nt, summary = combine_synonymous(per_clonotype, inputs, log10_lo=LO, log10_hi=HI)
+        assert per_nt["kdLog10ParentDelta"].to_list() == [None, None, None, None]
+        assert summary["ntUnidentifiableParents"] == [
+            {"parentId": "P", "reason": REASON_SEVERAL_UNMUTATED},
+            {"parentId": "Q", "reason": REASON_NO_UNMUTATED},
+        ]
+
+    def test_a_stop_copy_keeps_its_nt_parent_delta(self):
+        productive = pl.DataFrame({"aaKey": ["WT", "M"], "productive": ["true", "false"]})
+        inputs = SynonymousInputs(
+            self.LINKS,
+            aa_productive=productive,
+            nt_mutations=self.CLASS_INPUTS["nt_mutations"],
+            nt_parent_links=self.NT_PARENT_LINKS,
+        )
+        _, per_nt, _ = combine_synonymous(self.PER_CLONOTYPE, inputs, log10_lo=LO, log10_hi=HI)
+        assert per_nt.filter(pl.col("ntKey") == "m1")["kdLog10ParentDelta"].item() == pytest.approx(-1.0)
+
+    def test_nt_parent_links_without_nt_mutation_counts_are_refused(self):
+        with pytest.raises(ValueError, match="nucleotide mutation counts"):
+            SynonymousInputs(self.LINKS, nt_parent_links=self.NT_PARENT_LINKS)
+
     def test_parent_links_without_mutation_counts_are_refused(self):
         with pytest.raises(ValueError, match="mutation counts"):
             SynonymousInputs(self.LINKS, aa_parent_links=pl.DataFrame({"aaKey": [], "parentId": []}))

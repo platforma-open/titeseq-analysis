@@ -66,7 +66,7 @@ Test_descriptions_name_the_weighting := func() {
 
 Test_the_class_column_on_each_grain := func() {
 	aaCols := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: false, weighting: "none", variantClass: true }))
-	ntCols := byHeader(variantColumns.ntVariantColumns("blk", { variantClass: true }))
+	ntCols := byHeader(variantColumns.ntVariantColumns("blk", { variantClass: true, parentMode: false }))
 	for c in [aaCols.variantClass, ntCols.variantClass] {
 		test.isEqual(variantColumns.CLASS_NAME, c.spec.name, "one name on both grains")
 		test.isEqual("String", c.spec.valueType, "a string")
@@ -77,6 +77,20 @@ Test_the_class_column_on_each_grain := func() {
 	}
 	test.isEqual("aa_variantClass", aaCols.variantClass.id, "aa id")
 	test.isEqual("nt_variantClass", ntCols.variantClass.id, "nt id")
-	test.isEqual(0, len(variantColumns.ntVariantColumns("blk", { variantClass: false })), "no nt columns without the class")
+	test.isEqual(0, len(variantColumns.ntVariantColumns("blk", { variantClass: false, parentMode: false })), "no nt columns without the class")
 	test.isTrue(is_undefined(byHeader(variantColumns.variantColumns("blk", KD, { parentMode: false, weighting: "none", variantClass: false })).variantClass), "no aa class without the mutation count")
+}
+
+Test_the_nt_parent_delta_reuses_the_aa_specs := func() {
+	aaCols := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: true, weighting: "none", variantClass: false }))
+	ntCols := byHeader(variantColumns.ntVariantColumns("blk", { variantClass: false, parentMode: true }))
+	test.isEqual(2, len(ntCols), "the delta and its error")
+	for h in ["kdLog10ParentDelta", "kdLog10ParentDeltaSe"] {
+		test.isEqual("nt_" + h, ntCols[h].id, "nt id of " + h)
+		test.isEqual("aa_" + h, aaCols[h].id, "aa id of " + h)
+		test.isEqual(aaCols[h].spec.name, ntCols[h].spec.name, "one name on both grains: " + h)
+		test.isEqual(aaCols[h].spec.domain, ntCols[h].spec.domain, "one domain on both grains: " + h)
+	}
+	test.isTrue(text.contains(ntCols.kdLog10ParentDelta.spec.annotations["pl7.app/description"], "nucleotide variant"), "nt wording")
+	test.isEqual(3, len(variantColumns.ntVariantColumns("blk", { variantClass: true, parentMode: true })), "class and delta")
 }

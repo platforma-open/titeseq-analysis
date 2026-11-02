@@ -142,3 +142,17 @@ Test_no_class_outside_synonymous_mode := func() {
 	test.isFalse(res.aaClass, "aa dataset")
 	test.isFalse(res.ntClass, "aa dataset")
 }
+
+Test_the_nt_parent_delta_needs_the_nt_mutation_count_and_parent_link := func() {
+	res := synonymousInputs.resolve(full, nt)
+	test.isTrue(res.ntParentMode, "both nt parent columns resolve")
+	test.isTrue(synonymousInputs.sameAxis(nt, res.ntMutationCount.spec.axesSpec[0]), "nt mutation count")
+	test.isEqual(parentAxis, res.ntParentAxis, "parent axis from the nt parent link")
+	res = synonymousInputs.resolve({aaToNt: [col(aa, nt)], parentLinks: [col(parentAxis, nt)]}, nt)
+	test.isFalse(res.ntParentMode, "no nt mutation count")
+	res = synonymousInputs.resolve({aaToNt: [col(aa, nt)], ntMutationCounts: [col(nt)], parentLinks: [col(parentAxis, aa)]}, nt)
+	test.isFalse(res.ntParentMode, "only the aa parent link")
+	res = synonymousInputs.resolve({aaToNt: [col(aa, nt)], ntMutationCounts: [col(nt)], parentLinks: [col(parentAxis, nt)]}, nt)
+	test.isTrue(res.ntParentMode, "no aa input needed")
+	test.isFalse(res.parentMode, "and the aa delta stays off")
+}

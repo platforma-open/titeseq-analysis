@@ -65,6 +65,45 @@ SE_DESCRIPTION := {
 	reads: "Standard error of the read-weighted mean log10 Kd,app. With two or more synonymous nucleotide variants, the larger of two terms: their read-weighted spread; and their own fit SEs, each weighted by its reads, added in quadrature and divided by the total reads, where the equation reports a fit SE. With one variant, its own fit SE where the equation reports one. Empty for a bound and for a failed variant. At or below 0.5, Kd,app is rated Good."
 }
 
+// The parent delta and its error, on the grain whose ids start with `idPrefix`.
+deltaColumns := func(blockId, idPrefix, description) {
+	domain := { "pl7.app/block": blockId }
+	return [{
+		column: "kdLog10ParentDelta",
+		id: idPrefix + "kdLog10ParentDelta",
+		spec: {
+			name: "pl7.app/vdj/kdLog10ParentDelta",
+			valueType: "Double",
+			domain: domain,
+			annotations: {
+				"pl7.app/label": "Kd,app vs parent (log10)",
+				"pl7.app/description": description,
+				"pl7.app/isScore": "false",
+				"pl7.app/format": "+.2f",
+				"pl7.app/table/visibility": "default",
+				"pl7.app/table/orderPriority": "199"
+			}
+		}
+	}, {
+		// Error of the value above, on the same axes. The absence-declaration annotation is pending its key.
+		column: "kdLog10ParentDeltaSe",
+		id: idPrefix + "kdLog10ParentDeltaSe",
+		spec: {
+			name: "pl7.app/vdj/kdLog10ParentDeltaSe",
+			valueType: "Double",
+			domain: domain,
+			annotations: {
+				"pl7.app/label": "Kd,app vs parent SE (log10)",
+				"pl7.app/description": "The variant's and the parent's SE added in quadrature. Empty where either has none. The parent's own row is 0.",
+				"pl7.app/isScore": "false",
+				"pl7.app/format": ".2f",
+				"pl7.app/table/visibility": "default",
+				"pl7.app/table/orderPriority": "198"
+			}
+		}
+	}]
+}
+
 /**
  * @param blockId: the block id stamped into every domain, as on the nucleotide grain
  * @param kdAnnotations: the nucleotide grain's Kd,app annotations, unit included
@@ -146,33 +185,8 @@ variantColumns := func(blockId, kdAnnotations, opts) {
 			"stop: the amino-acid variant is not productive, and has no Kd,app. Otherwise by its amino-acid mutation count: wildtype 0, 1 nonsynonymous 1, >1 nonsynonymous more."))
 	}
 	if opts.parentMode {
-		cols = append(cols, column("kdLog10ParentDelta", {
-			name: "pl7.app/vdj/kdLog10ParentDelta",
-			valueType: "Double",
-			domain: domain,
-			annotations: {
-				"pl7.app/label": "Kd,app vs parent (log10)",
-				"pl7.app/description": "log10 Kd,app of this amino-acid variant minus that of its parent. Negative binds tighter than the parent. The parent's own row is 0.",
-				"pl7.app/isScore": "false",
-				"pl7.app/format": "+.2f",
-				"pl7.app/table/visibility": "default",
-				"pl7.app/table/orderPriority": "199"
-			}
-		}))
-		// Error of the value above, on the same axes. The absence-declaration annotation is pending its key.
-		cols = append(cols, column("kdLog10ParentDeltaSe", {
-			name: "pl7.app/vdj/kdLog10ParentDeltaSe",
-			valueType: "Double",
-			domain: domain,
-			annotations: {
-				"pl7.app/label": "Kd,app vs parent SE (log10)",
-				"pl7.app/description": "The variant's and the parent's SE added in quadrature. Empty where either has none. The parent's own row is 0.",
-				"pl7.app/isScore": "false",
-				"pl7.app/format": ".2f",
-				"pl7.app/table/visibility": "default",
-				"pl7.app/table/orderPriority": "198"
-			}
-		}))
+		cols = cols + deltaColumns(blockId, "aa_",
+			"log10 Kd,app of this amino-acid variant minus that of its parent. Negative binds tighter than the parent. The parent's own row is 0.")
 	}
 	return cols
 }
@@ -182,7 +196,7 @@ variantColumns := func(blockId, kdAnnotations, opts) {
  * match the software's per_nt_variant.tsv.
  *
  * @param blockId: the block id stamped into every domain
- * @param opts: {variantClass}
+ * @param opts: {variantClass, parentMode}
  * @return xsv column descriptors
  */
 ntVariantColumns := func(blockId, opts) {
@@ -190,6 +204,10 @@ ntVariantColumns := func(blockId, opts) {
 	if opts.variantClass {
 		cols = append(cols, classColumn(blockId, "nt_variantClass",
 			"The class of the nucleotide variant's amino-acid variant: stop, 1 nonsynonymous or >1 nonsynonymous. Under an unmutated amino-acid variant, wildtype with no nucleotide mutation and synonymous with some. A stop variant keeps its own fit."))
+	}
+	if opts.parentMode {
+		cols = cols + deltaColumns(blockId, "nt_",
+			"log10 Kd,app of this nucleotide variant minus that of its parent's unmutated nucleotide variant. A variant censored at the edge of the titration reads from that edge. Negative binds tighter than the parent. The parent's own row is 0.")
 	}
 	return cols
 }

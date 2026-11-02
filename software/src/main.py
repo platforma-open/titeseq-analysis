@@ -38,6 +38,7 @@ _SYNONYMOUS_ONLY = (
     "aa_parent_links",
     "aa_productive",
     "nt_mutations",
+    "nt_parent_links",
 )
 
 
@@ -52,6 +53,8 @@ def _synonymous_inputs(args: argparse.Namespace, parser: argparse.ArgumentParser
         parser.error("--aa-parent-links needs --aa-mutations")
     if (args.nt_mutations is None) != (args.out_per_nt_variant is None):
         parser.error("--nt-mutations and --out-per-nt-variant come together")
+    if args.nt_parent_links is not None and args.nt_mutations is None:
+        parser.error("--nt-parent-links needs --nt-mutations")
     return SynonymousInputs(
         nt_to_aa=_read_keys(args.nt_to_aa, {COL_NT: pl.Utf8, COL_AA: pl.Utf8}),
         aa_mutations=_read_keys(args.aa_mutations, {COL_AA: pl.Utf8, COL_MUTATIONS: pl.Utf8}),
@@ -59,6 +62,7 @@ def _synonymous_inputs(args: argparse.Namespace, parser: argparse.ArgumentParser
         weighting=args.synonymous_weighting,
         aa_productive=_read_keys(args.aa_productive, {COL_AA: pl.Utf8, COL_PRODUCTIVE: pl.Utf8}),
         nt_mutations=_read_keys(args.nt_mutations, {COL_NT: pl.Utf8, COL_MUTATIONS: pl.Utf8}),
+        nt_parent_links=_read_keys(args.nt_parent_links, {COL_NT: pl.Utf8, COL_PARENT: pl.Utf8}),
     )
 
 
@@ -84,6 +88,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out-synonymous-summary", default=None, help="JSON run summary of the combination")
     parser.add_argument("--aa-productive", default=None, help='TSV [aaKey, productive]: "true" / "false"')
     parser.add_argument("--nt-mutations", default=None, help="TSV [ntKey, mutationCount]")
+    parser.add_argument("--nt-parent-links", default=None, help="TSV [ntKey, parentId]: the nt parent linker")
     parser.add_argument("--out-per-nt-variant", default=None, help="the nt-grain synonymous columns")
     parser.add_argument(
         "--synonymous-weighting",

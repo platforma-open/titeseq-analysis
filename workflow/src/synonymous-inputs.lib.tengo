@@ -95,20 +95,22 @@ parentAxisOf := func(linker) {
  *   parentMode   the amino-acid mutation count and parent link: the amino-acid parent delta
  *   aaClass      the amino-acid mutation count: the amino-acid variant class
  *   ntClass      aaClass and the nucleotide mutation count: the nucleotide variant class
+ *   ntParentMode the nucleotide mutation count and parent link: the nucleotide parent delta
  *   aaProductive the amino-acid productive flag: the stop class, and no Kd,app for a stop variant
  *
  * @param candidates: {aaToNt, aaMutationCounts, parentLinks, aaProductive, ntMutationCounts}, each an
  *   array of bundle columns ({spec, data}) or undefined
  * @param variantAxis: the abundance's variant axis spec
  * @return {synonymous, linker, aaAxis, parentMode, aaMutationCount, aaParentLink, parentAxis,
- *   aaClass, ntClass, aaProductive, ntMutationCount}
+ *   aaClass, ntClass, aaProductive, ntMutationCount, ntParentMode, ntParentLink, ntParentAxis}
  */
 resolve := func(candidates, variantAxis) {
 	res := {
 		synonymous: false,
 		parentMode: false,
 		aaClass: false,
-		ntClass: false
+		ntClass: false,
+		ntParentMode: false
 	}
 	if domainOf(variantAxis)[ALPHABET] != "nucleotide" {
 		return res
@@ -131,6 +133,11 @@ resolve := func(candidates, variantAxis) {
 	res.ntMutationCount = single(candidates.ntMutationCounts, isOnlyOn(variantAxis))
 	res.aaClass = !is_undefined(res.aaMutationCount)
 	res.ntClass = res.aaClass && !is_undefined(res.ntMutationCount)
+	res.ntParentLink = single(candidates.parentLinks, isParentLinkOn(variantAxis))
+	res.ntParentMode = !is_undefined(res.ntMutationCount) && !is_undefined(res.ntParentLink)
+	if res.ntParentMode {
+		res.ntParentAxis = parentAxisOf(res.ntParentLink)
+	}
 	return res
 }
 
