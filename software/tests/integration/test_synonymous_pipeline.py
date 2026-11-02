@@ -140,6 +140,12 @@ class TestLogFluorescence:
         fit_term = math.sqrt(sum(se**2 for se in copies["kdLog10Se"].to_list())) / 3
         assert _aa(lf, "WT")["kdLog10Se"] == pytest.approx(max(spread, fit_term), rel=1e-9)
 
+    def test_the_sd_is_the_spread_of_the_synonyms_alone(self, lf):
+        copies = lf["per_clonotype"].filter(pl.col("clonotypeKey").is_in(["wt_a", "wt_b", "wt_c"]))
+        values = [math.log10(kd) for kd in copies["kd"].to_list()]
+        assert _aa(lf, "WT")["kdLog10Sd"] == pytest.approx(float(np.std(values, ddof=1)), rel=1e-9)
+        assert _aa(lf, "TIGHT")["kdLog10Sd"] is None
+
     def test_copies_saturated_across_the_titration_give_a_lower_bound(self, lf):
         tight = _aa(lf, "TIGHT")
         assert math.log10(tight["kd"]) == pytest.approx(LOG_LO, abs=1e-9)
@@ -213,7 +219,7 @@ class TestVariantClassAndStops:
 
     def test_a_stop_aa_variant_has_no_kd_and_is_failed(self, classed):
         single = _aa(classed, "SINGLE")
-        assert (single["kd"], single["kdLog10Se"]) == (None, None)
+        assert (single["kd"], single["kdLog10Se"], single["kdLog10Sd"]) == (None, None, None)
         assert (single["kdLog10ParentDelta"], single["kdLog10ParentDeltaSe"]) == (None, None)
         assert single["affinityClass"] == "Failed"
         assert single["variantClass"] == "stop"

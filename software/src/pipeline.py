@@ -110,13 +110,22 @@ from pre_fit import (
 )
 from replicate_combine import (
     Collected,
+    Merged,
     ReplicateInputs,
     build_combined_clonotype_frame,
+    build_combined_variant_frame,
     build_per_replicate_frame,
     collect_values,
     merge_all,
 )
-from synonymous import SynonymousInputs, combine_synonymous
+from synonymous import (
+    COL_AA,
+    SynonymousInputs,
+    annotate_variants,
+    combine_synonymous,
+    resolve_nt_to_aa,
+    stop_variants,
+)
 
 
 def _validate_inputs(
@@ -787,7 +796,7 @@ def run(
     replicate_outputs: dict[str, pl.DataFrame] = {}
     if replicates is not None:
         per_clonotype, fitted, replicate_outputs = _fit_replicates(
-            signal_frame, reads, replicates=replicates, **fit_args
+            signal_frame, reads, replicates=replicates, synonymous=synonymous, **fit_args
         )
     else:
         per_clonotype, fitted = _fit(signal_frame, reads, **fit_args)
@@ -809,7 +818,8 @@ def run(
         f"fitted_mean_bin={outputs['fitted_mean_bin'].height}"
     )
     outputs.update(replicate_outputs)
-    if synonymous is not None:
+    # With replicates the synonymous combination already ran inside each replicate.
+    if synonymous is not None and replicates is None:
         reads_per_copy = _reads_per_copy(reads) if synonymous.weighting == "reads" else None
         outputs.update(_combine_synonymous(outputs["per_clonotype"], synonymous, conc_bounds, reads_per_copy))
     return outputs
@@ -820,12 +830,13 @@ def _fit_replicates(
     reads: pl.DataFrame,
     *,
     replicates: ReplicateInputs,
+    synonymous: SynonymousInputs | None,
     params: FitParams,
     has_bin: bool,
     max_bin: int | None,
     conc_bounds: tuple[float | None, float | None],
     gates_measured: bool,
-) -> tuple[pl.DataFrame, pl.DataFrame, dict[str, pl.DataFrame]]:
+) -> tuple[pl.DataFrame, pl.DataFrame, dict]:
     """Fit each replicate's titration on its own, then combine the per-replicate values.
 
     Returns the combined per-clonotype frame, the fitted curves keyed by replicate as well, and
@@ -872,8 +883,21 @@ def _fit_replicates(
     _log_filters(replicates, collected)
     combined = build_combined_clonotype_frame(collected, merged)
     fitted_curves = pl.concat(curves).select([COL_CLONOTYPE, COL_REPLICATE, COL_CONC_STR, "fittedMeanBin"])
-    per_replicate = build_per_replicate_frame(collected, COL_CLONOTYPE, per_replicate_reads)
-    return combined, fitted_curves, {"per_replicate": per_replicate}
+    if synonymous is None:
+        per_replicate = build_per_replicate_frame(collected, COL_CLONOTYPE, per_replicate_reads)
+        return combined, fitted_curves, {"per_replicate": per_replicate}
+    outputs = _combine_replicate_synonymous(
+        frames,
+        reads,
+        synonymous=synonymous,
+        replicates=replicates,
+        collected=collected,
+        merged=merged,
+        per_replicate_reads=per_replicate_reads,
+        log10_lo=log10_lo,
+        log10_hi=log10_hi,
+    )
+    return combined, fitted_curves, outputs
 
 
 def _log_filters(replicates: ReplicateInputs, collected: Collected) -> None:
@@ -938,6 +962,98 @@ def _combine_synonymous(
     else:
         log("Stop codons: off (no amino-acid productive column)")
     outputs = {"per_variant": per_variant, "synonymous_summary": summary}
+    if per_nt_variant is not None:
+        outputs["per_nt_variant"] = per_nt_variant
+    return outputs
+
+
+def _mask_filtered(frame: pl.DataFrame, filtered: set[str]) -> pl.DataFrame:
+    """Rows a pre-combine filter rejected read as Failed, so the synonymous combination leaves them out."""
+    if not filtered:
+        return frame
+    rejected = pl.col(COL_CLONOTYPE).cast(pl.Utf8).is_in(sorted(filtered))
+    return frame.with_columns(
+        pl.when(rejected).then(None).otherwise(pl.col("kd")).alias("kd"),
+        pl.when(rejected).then(pl.lit("Failed")).otherwise(pl.col("affinityClass")).alias("affinityClass"),
+    )
+
+
+def _combine_replicate_synonymous(
+    frames: list[tuple[str, pl.DataFrame]],
+    reads: pl.DataFrame,
+    *,
+    synonymous: SynonymousInputs,
+    replicates: ReplicateInputs,
+    collected: Collected,
+    merged: dict[str, Merged],
+    per_replicate_reads: dict[tuple[str, str], int],
+    log10_lo: float | None,
+    log10_hi: float | None,
+) -> dict:
+    """Starr's order: synonymous copies combine inside each replicate, then the replicates combine.
+
+    The class, the stop rule and both parent deltas are decided once, on the combined values. The
+    per-replicate pass therefore reads the linker, the weighting and the productive flag only. The
+    per-replicate output is the amino-acid one: the main table's rows are amino-acid variants.
+    """
+    copies_only = SynonymousInputs(
+        nt_to_aa=synonymous.nt_to_aa, weighting=synonymous.weighting, aa_productive=synonymous.aa_productive
+    )
+    filtered_by_replicate: dict[str, set[str]] = {}
+    for key, values in collected.items():
+        for value, _row in values:
+            if value.state == "filtered":
+                filtered_by_replicate.setdefault(value.replicate, set()).add(key)
+
+    aa_frames: list[tuple[str, pl.DataFrame]] = []
+    for label, per_clonotype in frames:
+        masked = _mask_filtered(per_clonotype, filtered_by_replicate.get(label, set()))
+        reads_per_copy = None
+        if synonymous.weighting == "reads":
+            reads_per_copy = _reads_per_copy(reads.filter(pl.col(COL_REPLICATE) == label))
+        per_variant, _nt, _summary = combine_synonymous(
+            masked, copies_only, log10_lo=log10_lo, log10_hi=log10_hi, reads=reads_per_copy
+        )
+        aa_frames.append((label, per_variant))
+
+    aa_collected = collect_values(aa_frames, COL_AA, log10_lo=log10_lo, log10_hi=log10_hi)
+    aa_merged = merge_all(
+        aa_collected, error_model=replicates.error_model, censored_majority=replicates.censored_majority
+    )
+
+    fitted_nt = sorted(merged)
+    mapping, unmapped, ambiguous = resolve_nt_to_aa(synonymous.nt_to_aa, fitted_nt)
+    stops = stop_variants(synonymous.aa_productive) if synonymous.aa_productive is not None else set()
+    summary: dict = {
+        "ntVariants": len(fitted_nt),
+        "aaVariants": len(aa_merged),
+        "unmappedNtVariants": unmapped,
+        "ambiguousNtVariants": ambiguous,
+        "parentMode": synonymous.aa_parent_links is not None,
+        "weighting": synonymous.weighting,
+        "replicates": len(frames),
+        "errorModel": replicates.error_model,
+    }
+    if synonymous.aa_productive is not None:
+        summary["stopAaVariants"] = sum(1 for aa in aa_merged if aa in stops)
+    per_variant, per_nt_variant = annotate_variants(
+        build_combined_variant_frame(aa_collected, aa_merged), aa_merged, merged, mapping, stops, synonymous, summary
+    )
+
+    aa_reads: dict[tuple[str, str], int] = {}
+    for (nt, label), n in per_replicate_reads.items():
+        aa = mapping.get(nt)
+        if aa is not None:
+            aa_reads[(aa, label)] = aa_reads.get((aa, label), 0) + n
+    log(
+        f"Replicate combination: Starr order, {len(frames)} replicates, error '{replicates.error_model}'; "
+        f"{summary['ntVariants']} nucleotide variants -> {summary['aaVariants']} amino-acid variants"
+    )
+    outputs: dict = {
+        "per_replicate": build_per_replicate_frame(aa_collected, COL_AA, aa_reads),
+        "per_variant": per_variant,
+        "synonymous_summary": summary,
+    }
     if per_nt_variant is not None:
         outputs["per_nt_variant"] = per_nt_variant
     return outputs

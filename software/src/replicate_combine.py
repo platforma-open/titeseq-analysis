@@ -53,6 +53,7 @@ from constants import (
     ReplicateErrorModel,
 )
 from output_build import PER_CLONOTYPE_SCHEMA
+from synonymous import COL_AA, PER_VARIANT_SCHEMA
 
 ReplicateState = Literal["measured", "below", "above", "failed", "filtered"]
 STATES: tuple[ReplicateState, ...] = ("measured", "below", "above", "failed", "filtered")
@@ -388,3 +389,31 @@ def build_combined_clonotype_frame(collected: Collected, merged: dict[str, Merge
         for name, count in zip(COUNT_SCHEMA, _counts_of(m)):
             cols[name].append(count)
     return pl.DataFrame(cols, schema=COMBINED_CLONOTYPE_SCHEMA)
+
+
+# The counts the synonymous combination produced inside each replicate, summed over them.
+_NT_COUNT_FIELDS = ("ntVariants", "ntMeasured", "ntCensoredBelow", "ntCensoredAbove", "ntFailed")
+
+COMBINED_VARIANT_SCHEMA: dict[str, pl.DataType] = {**PER_VARIANT_SCHEMA, **COUNT_SCHEMA}
+
+
+def build_combined_variant_frame(collected: Collected, merged: dict[str, Merged]) -> pl.DataFrame:
+    """The amino-acid frame, combined over the replicates after the synonymous combination.
+
+    The nucleotide counts are the sum over the replicates: each replicate fitted its own copies.
+    """
+    cols: dict[str, list] = {name: [] for name in COMBINED_VARIANT_SCHEMA}
+    for key, m in merged.items():
+        rows = collected[key]
+        cols[COL_AA].append(key)
+        cols["kd"].append(None if m.log10_kd is None else 10.0**m.log10_kd)
+        cols["kdNegLog10"].append(None if m.log10_kd is None else -m.log10_kd)
+        cols["kdLog10Se"].append(m.log10_kd_se)
+        cols["kdLog10Sd"].append(m.log10_kd_sd)
+        cols["affinityClass"].append(m.classification.affinity_class)
+        cols["kdOutOfRange"].append(m.out_of_range)
+        for name in _NT_COUNT_FIELDS:
+            cols[name].append(sum(int(row[name] or 0) for _, row in rows))
+        for name, count in zip(COUNT_SCHEMA, _counts_of(m)):
+            cols[name].append(count)
+    return pl.DataFrame(cols, schema=COMBINED_VARIANT_SCHEMA)

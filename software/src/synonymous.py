@@ -19,7 +19,10 @@ fit; a copy with no reads carries no weight and stays out of the mean:
                  unweighted   spread sample SD / sqrt(n); fit-error sqrt(sum se_i^2) / n
                  weighted     spread sqrt(n / (n - 1) * sum w_i^2 (x_i - x_w)^2) / sum w_i, around the
                               weighted mean x_w; fit-error sqrt(sum w_i^2 se_i^2) / sum w_i
+  SD           the spread of the copies in the mean alone, never floored: for n >= 2, the sample SD
+               unweighted, sqrt(n / (n - 1) * sum w_i (x_i - x_w)^2 / sum w_i) weighted; null for n = 1
   bound        every copy in the mean censored on the same side; the value is that wall, with no SE
+               and no SD
 
 The class is decided once, on the combined value:
 
@@ -48,8 +51,9 @@ from __future__ import annotations
 
 import math
 import statistics
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from typing import Literal
+from typing import Literal, Protocol
 
 import polars as pl
 
@@ -80,7 +84,9 @@ WEIGHTINGS: tuple[Weighting, ...] = ("none", "reads")
 PER_VARIANT_SCHEMA: dict[str, pl.DataType] = {
     COL_AA: pl.Utf8,
     "kd": pl.Float64,
+    "kdNegLog10": pl.Float64,
     "kdLog10Se": pl.Float64,
+    "kdLog10Sd": pl.Float64,
     "affinityClass": pl.Utf8,
     "kdOutOfRange": pl.Boolean,
     "ntVariants": pl.Int64,
@@ -122,6 +128,16 @@ class SynonymousInputs:
             raise ValueError(f"unknown weighting: {self.weighting}")
 
 
+class HasKd(Protocol):
+    """A value the parent delta reads: a copy, a synonymous combination, or a replicate mean."""
+
+    @property
+    def log10_kd(self) -> float | None: ...
+
+    @property
+    def log10_kd_se(self) -> float | None: ...
+
+
 @dataclass(frozen=True)
 class Copy:
     state: CopyState
@@ -138,6 +154,7 @@ class Combined:
     classification: Classification
     out_of_range: bool | None
     counts: dict[CopyState, int]
+    log10_kd_sd: float | None = None
 
 
 def _keys(frame: pl.DataFrame, *cols: str) -> pl.DataFrame:
@@ -199,6 +216,16 @@ def _floored_weighted_se(entered: list[Copy], mean: float) -> float:
     return max(spread, math.sqrt(math.fsum(fit)) / total)
 
 
+def _spread_sd(entered: list[Copy], mean: float, weighted: bool) -> float:
+    """The SD of n >= 2 copies around `mean`."""
+    if not weighted:
+        return statistics.stdev([c.log10_kd for c in entered])
+    n = len(entered)
+    total = math.fsum(c.weight for c in entered)
+    scatter = math.fsum(c.weight * (c.log10_kd - mean) ** 2 for c in entered)
+    return math.sqrt(n / (n - 1) * scatter / total)
+
+
 def combine(copies: list[Copy], *, weighted: bool = False) -> Combined:
     """The mean over one amino-acid variant's copies, and its class. `weighted` reads each copy's
     `weight`."""
@@ -220,16 +247,17 @@ def combine(copies: list[Copy], *, weighted: bool = False) -> Combined:
         return Combined(mean, None, Classification("Partial", None), True, counts)
 
     if n == 1:
-        se = entered[0].log10_kd_se
+        se, sd = entered[0].log10_kd_se, None
     else:
         se = _floored_weighted_se(entered, mean) if weighted else _floored_se(entered)
+        sd = _spread_sd(entered, mean, weighted)
     if se is not None:
         cls = "Good" if math.isfinite(se) and se <= KD_SD_GOOD else "Partial"
-        return Combined(mean, se, Classification(cls, None), False, counts)
-    return Combined(mean, None, Classification(entered[0].affinity_class, None), False, counts)
+        return Combined(mean, se, Classification(cls, None), False, counts, sd)
+    return Combined(mean, None, Classification(entered[0].affinity_class, None), False, counts, sd)
 
 
-def _mutation_counts(frame: pl.DataFrame, key: str) -> dict[str, int]:
+def mutation_counts(frame: pl.DataFrame, key: str) -> dict[str, int]:
     counts = frame.select(pl.col(key).cast(pl.Utf8), pl.col(COL_MUTATIONS).cast(pl.Int64, strict=False)).drop_nulls()
     return dict(zip(counts[key].to_list(), counts[COL_MUTATIONS].to_list()))
 
@@ -299,9 +327,7 @@ def resolve_parents(
     return assignment, own, unidentifiable, several
 
 
-def parent_delta(
-    variant: Combined | Copy | None, parent: Combined | Copy | None, is_parent: bool
-) -> tuple[float | None, float | None]:
+def parent_delta(variant: HasKd | None, parent: HasKd | None, is_parent: bool) -> tuple[float | None, float | None]:
     """deltaLog10Kd and its error. None where either side has no K_D."""
     if variant is None or parent is None or variant.log10_kd is None or parent.log10_kd is None:
         return None, None
@@ -314,7 +340,7 @@ def parent_delta(
 
 
 def parent_deltas(
-    values: dict[str, Combined | Copy], links: pl.DataFrame, mutations: pl.DataFrame, key: str
+    values: Mapping[str, HasKd], links: pl.DataFrame, mutations: pl.DataFrame, key: str
 ) -> tuple[list[float | None], list[float | None], dict]:
     """The parent delta and its error for each variant of `values`, in its order, and the summary counts."""
     assignment, own, unidentifiable, several = resolve_parents(links, mutations, key)
@@ -386,7 +412,9 @@ def combine_synonymous(
     for aa, c in combined.items():
         columns[COL_AA].append(aa)
         columns["kd"].append(None if c.log10_kd is None else 10.0**c.log10_kd)
+        columns["kdNegLog10"].append(None if c.log10_kd is None else -c.log10_kd)
         columns["kdLog10Se"].append(c.log10_kd_se)
+        columns["kdLog10Sd"].append(c.log10_kd_sd)
         columns["affinityClass"].append(c.classification.affinity_class)
         columns["kdOutOfRange"].append(c.out_of_range)
         columns["ntVariants"].append(sum(c.counts.values()))
@@ -394,41 +422,60 @@ def combine_synonymous(
         columns["ntCensoredBelow"].append(c.counts["below"])
         columns["ntCensoredAbove"].append(c.counts["above"])
         columns["ntFailed"].append(c.counts["failed"])
-    schema = dict(PER_VARIANT_SCHEMA)
+    nt_copies = {row[COL_CLONOTYPE]: copy_from_fit(row, log10_lo, log10_hi) for row in rows}
+    per_variant, per_nt = annotate_variants(
+        pl.DataFrame(columns, schema=PER_VARIANT_SCHEMA), combined, nt_copies, mapping, stops, inputs, summary
+    )
+    return per_variant, per_nt, summary
 
-    aa_mutations = _mutation_counts(inputs.aa_mutations, COL_AA) if inputs.aa_mutations is not None else None
+
+def annotate_variants(
+    per_variant: pl.DataFrame,
+    aa_values: Mapping[str, HasKd],
+    nt_values: Mapping[str, HasKd],
+    mapping: dict[str, str],
+    stops: set[str],
+    inputs: SynonymousInputs,
+    summary: dict,
+) -> tuple[pl.DataFrame, pl.DataFrame | None]:
+    """The class and parent-delta columns of the amino-acid frame, and the nucleotide frame.
+
+    Decided once, on the final values: `aa_values` in the order of `per_variant`'s rows, `nt_values`
+    one per fitted nt variant. Adds the parent counts to `summary`.
+    """
+    aa_mutations = mutation_counts(inputs.aa_mutations, COL_AA) if inputs.aa_mutations is not None else None
     if aa_mutations is not None:
-        columns[COL_CLASS] = [aa_class(aa_mutations.get(aa), aa in stops) for aa in combined]
-        schema.update(CLASS_SCHEMA)
+        per_variant = per_variant.with_columns(
+            pl.Series(COL_CLASS, [aa_class(aa_mutations.get(aa), aa in stops) for aa in aa_values], dtype=pl.Utf8)
+        )
 
     if inputs.aa_parent_links is not None and inputs.aa_mutations is not None:
-        deltas, delta_ses, counts = parent_deltas(combined, inputs.aa_parent_links, inputs.aa_mutations, COL_AA)
-        columns["kdLog10ParentDelta"] = deltas
-        columns["kdLog10ParentDeltaSe"] = delta_ses
-        schema.update(DELTA_SCHEMA)
+        deltas, delta_ses, counts = parent_deltas(aa_values, inputs.aa_parent_links, inputs.aa_mutations, COL_AA)
+        per_variant = per_variant.with_columns(
+            pl.Series("kdLog10ParentDelta", deltas, dtype=pl.Float64),
+            pl.Series("kdLog10ParentDeltaSe", delta_ses, dtype=pl.Float64),
+        )
         summary.update(counts)
 
-    per_nt = None
-    if inputs.nt_mutations is not None:
-        nt_columns: dict[str, list] = {COL_NT: fitted}
-        nt_schema: dict[str, pl.DataType] = {COL_NT: pl.Utf8}
-        if aa_mutations is not None:
-            nt_mutations = _mutation_counts(inputs.nt_mutations, COL_NT)
-            nt_columns[COL_CLASS] = [
-                None
-                if nt not in mapping
-                else nt_class(aa_mutations.get(mapping[nt]), nt_mutations.get(nt), mapping[nt] in stops)
-                for nt in fitted
-            ]
-            nt_schema.update(CLASS_SCHEMA)
-        summary["ntParentMode"] = inputs.nt_parent_links is not None
-        if inputs.nt_parent_links is not None:
-            nt_copies = {row[COL_CLONOTYPE]: copy_from_fit(row, log10_lo, log10_hi) for row in rows}
-            deltas, delta_ses, counts = parent_deltas(nt_copies, inputs.nt_parent_links, inputs.nt_mutations, COL_NT)
-            nt_columns["kdLog10ParentDelta"] = deltas
-            nt_columns["kdLog10ParentDeltaSe"] = delta_ses
-            nt_schema.update(DELTA_SCHEMA)
-            summary.update({"nt" + k[0].upper() + k[1:]: v for k, v in counts.items()})
-        per_nt = pl.DataFrame(nt_columns, schema=nt_schema)
-
-    return pl.DataFrame(columns, schema=schema), per_nt, summary
+    if inputs.nt_mutations is None:
+        return per_variant, None
+    fitted = list(nt_values)
+    nt_columns: dict[str, list] = {COL_NT: fitted}
+    nt_schema: dict[str, pl.DataType] = {COL_NT: pl.Utf8}
+    if aa_mutations is not None:
+        nt_mutations = mutation_counts(inputs.nt_mutations, COL_NT)
+        nt_columns[COL_CLASS] = [
+            None
+            if nt not in mapping
+            else nt_class(aa_mutations.get(mapping[nt]), nt_mutations.get(nt), mapping[nt] in stops)
+            for nt in fitted
+        ]
+        nt_schema.update(CLASS_SCHEMA)
+    summary["ntParentMode"] = inputs.nt_parent_links is not None
+    if inputs.nt_parent_links is not None:
+        deltas, delta_ses, counts = parent_deltas(nt_values, inputs.nt_parent_links, inputs.nt_mutations, COL_NT)
+        nt_columns["kdLog10ParentDelta"] = deltas
+        nt_columns["kdLog10ParentDeltaSe"] = delta_ses
+        nt_schema.update(DELTA_SCHEMA)
+        summary.update({"nt" + k[0].upper() + k[1:]: v for k, v in counts.items()})
+    return per_variant, pl.DataFrame(nt_columns, schema=nt_schema)

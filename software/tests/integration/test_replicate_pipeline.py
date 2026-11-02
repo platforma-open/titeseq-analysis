@@ -20,6 +20,7 @@ from io_layer import InputValidationError
 from main import main
 from pipeline import run
 from replicate_combine import Filters, ReplicateInputs
+from synonymous import SynonymousInputs
 
 CONCS = [1e-10, 3e-10, 1e-9, 3e-9, 1e-8, 3e-8, 1e-7, 3e-7, 1e-6]
 BINS = [1, 2, 3, 4]
@@ -384,3 +385,57 @@ class TestReviewClassesAcrossReplicates:
         assert per_replicate["fitFailureReason"].to_list() == ["low_r2", "low_r2"]
         assert _kd(outputs["per_clonotype"], "v1", "affinityClass") == "Failed"
         assert _kd(outputs["per_clonotype"], "v1", "fitFailureReason") == "all_replicates_failed"
+
+
+# One amino-acid variant with two synonymous copies in replicate A and one in replicate B. The
+# copies' K_D differ, so Starr's order (combine the copies, then the replicates) and a flat mean
+# over all three fits do not agree.
+UNBALANCED = pl.DataFrame(
+    [
+        row
+        for nt, kd, rep in (
+            ("c1", 1e-8, "A"),
+            ("c2", 1e-7, "A"),
+            ("c1", 1e-8, "B"),
+        )
+        for row in _reads(nt, kd, rep)
+    ]
+)
+UNBALANCED_LINKS = pl.DataFrame({"ntKey": ["c1", "c2"], "aaKey": ["X", "X"]})
+
+
+class TestStarrOrdering:
+    @pytest.fixture(scope="class")
+    def outputs(self):
+        return run(UNBALANCED, params=LF, synonymous=SynonymousInputs(nt_to_aa=UNBALANCED_LINKS), replicates=REPS)
+
+    def test_the_copies_combine_inside_each_replicate_before_the_replicates_combine(self, outputs):
+        # The nt fits do not depend on the linker, so a run without it gives each copy's own value.
+        nt = run(UNBALANCED, params=LF, replicates=REPS)["per_replicate"]
+        log10 = {(r["clonotypeKey"], r["replicate"]): math.log10(r["kd"]) for r in nt.iter_rows(named=True)}
+        starr = ((log10[("c1", "A")] + log10[("c2", "A")]) / 2 + log10[("c1", "B")]) / 2
+        flat = (log10[("c1", "A")] + log10[("c2", "A")] + log10[("c1", "B")]) / 3
+        got = math.log10(outputs["per_variant"].filter(pl.col("aaKey") == "X")["kd"].item())
+        assert got == pytest.approx(starr)
+        assert got != pytest.approx(flat)
+
+    def test_the_per_replicate_frame_is_on_the_amino_acid_grain(self, outputs):
+        frame = outputs["per_replicate"]
+        assert frame.columns[:2] == ["aaKey", "replicate"]
+        assert sorted(frame["replicate"].to_list()) == ["A", "B"]
+        # Replicate A's reads are both copies'.
+        reads = dict(zip(frame["replicate"].to_list(), frame["replicateReads"].to_list()))
+        assert reads["A"] > reads["B"]
+
+    def test_the_nucleotide_counts_add_up_over_the_replicates(self, outputs):
+        row = outputs["per_variant"].row(0, named=True)
+        assert row["ntVariants"] == 3
+        assert row["ntMeasured"] == 3
+        assert row["replicateCount"] == 2
+
+    def test_the_summary_names_the_replicates_and_the_error_model(self, outputs):
+        summary = outputs["synonymous_summary"]
+        assert summary["replicates"] == 2
+        assert summary["errorModel"] == "sd_over_sqrt_n"
+        assert summary["aaVariants"] == 1
+        assert summary["ntVariants"] == 2

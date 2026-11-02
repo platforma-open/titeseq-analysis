@@ -1124,7 +1124,8 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
   // displayed column that sits on this axis alone. Both columns carry the same axis, so the id is
   // the same either way.
   .output("summaryKeyAxisId", (ctx) => {
-    const cols = ctx.outputs?.resolve("summaryPf")?.getPColumns();
+    // In synonymous mode the grid's rows are amino-acid variants, and so is the per-replicate frame.
+    const cols = variantSummaryCols(ctx) ?? ctx.outputs?.resolve("summaryPf")?.getPColumns();
     const axis = (
       cols?.find((c) => c.spec.name === "pl7.app/vdj/affinityClass") ??
       cols?.find((c) => c.spec.name === "pl7.app/vdj/kd")

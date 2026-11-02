@@ -571,23 +571,21 @@ wf.body(func(args) {
 	// single fit, and the range side. With replicates the SE is the spread across them, which every
 	// equation reports, beside the SD and the replicate counts. log10 K_D is the unit the fit solves
 	// in and the unit every error column carries, with or without replicates.
-	summaryColumns = append(summaryColumns, {
-		column: "kdNegLog10",
-		spec: {
-			name: "pl7.app/vdj/kdNegLog10",
-			valueType: "Double",
-			domain: { "pl7.app/block": blockId },
-			annotations: {
-				"pl7.app/label": "-log10 Kd,app",
-				"pl7.app/description": "Kd,app as -log10, the form every published analysis of this assay reports: a larger number is tighter binding. Its magnitude is the unit the fit solves in, so it shares a scale with the standard error beside it. Empty where there is no Kd,app.",
-				"pl7.app/isScore": "true",
-				"pl7.app/score/rankingOrder": "decreasing",
-				"pl7.app/format": ".2f",
-				"pl7.app/table/visibility": "default",
-				"pl7.app/table/orderPriority": "201"
-			}
+	kdNegLog10Spec := {
+		name: "pl7.app/vdj/kdNegLog10",
+		valueType: "Double",
+		domain: { "pl7.app/block": blockId },
+		annotations: {
+			"pl7.app/label": "-log10 Kd,app",
+			"pl7.app/description": "Kd,app as -log10, the form every published analysis of this assay reports: a larger number is tighter binding. Its magnitude is the unit the fit solves in, so it shares a scale with the standard error beside it. Empty where there is no Kd,app.",
+			"pl7.app/isScore": "true",
+			"pl7.app/score/rankingOrder": "decreasing",
+			"pl7.app/format": ".2f",
+			"pl7.app/table/visibility": "default",
+			"pl7.app/table/orderPriority": "201"
 		}
-	})
+	}
+	summaryColumns = append(summaryColumns, { column: "kdNegLog10", spec: kdNegLog10Spec })
 	if hasReplicate {
 		// With replicates, R² shows per replicate in the drill-down only.
 		withoutR2 := []
@@ -639,7 +637,12 @@ wf.body(func(args) {
 			columns: variantColumnsLib.variantColumns(blockId, kdAnnotations, {
 				parentMode: syn.parentMode,
 				weighting: synonymousWeighting,
-				variantClass: syn.aaClass
+				variantClass: syn.aaClass,
+				kdNegLog10Spec: kdNegLog10Spec,
+				replicateColumns: hasReplicate ? [
+					replicateColumnsLib.seColumn(blockId, "aa_", replicateErrorModel),
+					replicateColumnsLib.sdColumn(blockId, "aa_")
+				] + replicateColumnsLib.countColumns(blockId, "aa_") : undefined
 			}),
 			storageFormat: "Parquet",
 			partitionKeyLength: 0
@@ -729,14 +732,19 @@ wf.body(func(args) {
 		[{ column: "concentrationStr", spec: concAxisSpec }]
 	)
 
-	// Each replicate's own value, keyed by (clonotype, replicate). The names are the combined
+	// Each replicate's own value, keyed by (variant, replicate). The names are the combined
 	// columns' — the extra axis is what distinguishes them — and they are hidden by default so a
-	// downstream picker offers the combined answer first.
+	// downstream picker offers the combined answer first. In synonymous mode the variant is the
+	// amino-acid one, as are the main table's rows: the copies combine inside each replicate first.
 	replicateImported := undefined
 	if hasReplicate {
+		replicateVariantAxis := { column: "clonotypeKey", spec: clonotypeAxisSpec }
+		if syn.synonymous {
+			replicateVariantAxis = { column: "aaKey", spec: syn.aaAxis }
+		}
 		replicateImported = xsv.importFile(fit.getFile("per_replicate.tsv"), "tsv", {
 			axes: [
-				{ column: "clonotypeKey", spec: clonotypeAxisSpec },
+				replicateVariantAxis,
 				{ column: "replicate", spec: replicateAxisSpec }
 			],
 			columns: replicateColumnsLib.perReplicateColumns(blockId, "rep_", kdAnnotations, affinityClassValues, true),
