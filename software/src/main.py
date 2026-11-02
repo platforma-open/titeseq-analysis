@@ -13,7 +13,7 @@ from constants import DEFAULT_PARAMS, FitParams
 from io_layer import read_reads_table
 from log import log
 from pipeline import run
-from synonymous import COL_AA, COL_MUTATIONS, COL_NT, COL_PARENT, SynonymousInputs
+from synonymous import COL_AA, COL_MUTATIONS, COL_NT, COL_PARENT, WEIGHTINGS, SynonymousInputs
 
 
 def _write_frame(frame: pl.DataFrame, path: str) -> None:
@@ -33,8 +33,10 @@ def _read_keys(path: str | None, columns: dict[str, pl.DataType]) -> pl.DataFram
 
 def _synonymous_inputs(args: argparse.Namespace, parser: argparse.ArgumentParser) -> SynonymousInputs | None:
     if args.nt_to_aa is None:
-        if args.out_per_variant or args.aa_mutations or args.aa_parent_links:
-            parser.error("--out-per-variant, --aa-mutations and --aa-parent-links need --nt-to-aa")
+        if args.out_per_variant or args.aa_mutations or args.aa_parent_links or args.synonymous_weighting != "none":
+            parser.error(
+                "--out-per-variant, --aa-mutations, --aa-parent-links and --synonymous-weighting need --nt-to-aa"
+            )
         return None
     if not args.out_per_variant or not args.out_synonymous_summary:
         parser.error("--nt-to-aa needs --out-per-variant and --out-synonymous-summary")
@@ -44,6 +46,7 @@ def _synonymous_inputs(args: argparse.Namespace, parser: argparse.ArgumentParser
         nt_to_aa=_read_keys(args.nt_to_aa, {COL_NT: pl.Utf8, COL_AA: pl.Utf8}),
         aa_mutations=_read_keys(args.aa_mutations, {COL_AA: pl.Utf8, COL_MUTATIONS: pl.Utf8}),
         aa_parent_links=_read_keys(args.aa_parent_links, {COL_AA: pl.Utf8, COL_PARENT: pl.Utf8}),
+        weighting=args.synonymous_weighting,
     )
 
 
@@ -67,6 +70,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--aa-parent-links", default=None, help="TSV [aaKey, parentId]: the aa parent linker")
     parser.add_argument("--out-per-variant", default=None, help="one row per amino-acid variant")
     parser.add_argument("--out-synonymous-summary", default=None, help="JSON run summary of the combination")
+    parser.add_argument(
+        "--synonymous-weighting",
+        choices=WEIGHTINGS,
+        default="none",
+        help="none: plain mean of the synonymous nt variants; reads: each weighted by its total reads",
+    )
     args = parser.parse_args(argv)
     synonymous = _synonymous_inputs(args, parser)
 

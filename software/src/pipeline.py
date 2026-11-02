@@ -55,6 +55,7 @@ from constants import (
     COL_CLONOTYPE,
     COL_CONC_STR,
     COL_CONC_VAL,
+    COL_READS,
     DEFAULT_PARAMS,
     GATE_WIDTH_DECADES,
     HILL_EXPONENT_FIXED,
@@ -674,14 +675,22 @@ def run(
         f"fitted_mean_bin={outputs['fitted_mean_bin'].height}"
     )
     if synonymous is not None:
-        outputs.update(_combine_synonymous(outputs["per_clonotype"], synonymous, conc_bounds))
+        reads_per_copy = _reads_per_copy(reads) if synonymous.weighting == "reads" else None
+        outputs.update(_combine_synonymous(outputs["per_clonotype"], synonymous, conc_bounds, reads_per_copy))
     return outputs
+
+
+def _reads_per_copy(reads: pl.DataFrame) -> dict[str, float]:
+    """Each nt variant's total reads over the samples of the titration, after the antigen filter."""
+    totals = reads.group_by(pl.col(COL_CLONOTYPE).cast(pl.Utf8)).agg(pl.col(COL_READS).fill_null(0).sum())
+    return dict(zip(totals[COL_CLONOTYPE].to_list(), totals[COL_READS].cast(pl.Float64).to_list()))
 
 
 def _combine_synonymous(
     per_clonotype: pl.DataFrame,
     synonymous: SynonymousInputs,
     conc_bounds: tuple[float | None, float | None],
+    reads_per_copy: dict[str, float] | None,
 ) -> dict:
     """The amino-acid outputs: each nt variant's own fit, combined per amino-acid variant."""
     lo, hi = conc_bounds
@@ -690,7 +699,10 @@ def _combine_synonymous(
         synonymous,
         log10_lo=math.log10(lo) if lo is not None else None,
         log10_hi=math.log10(hi) if hi is not None else None,
+        reads=reads_per_copy,
     )
+    weighting = "each nt variant weighted by its total reads" if reads_per_copy is not None else "unweighted"
+    log(f"Synonymous combination: mean of log10 Kd,app, {weighting}")
     log(
         f"Synonymous variants: {summary['ntVariants']} nucleotide variants -> {summary['aaVariants']} "
         f"amino-acid variants; left out: {summary['unmappedNtVariants']} with no amino-acid variant, "

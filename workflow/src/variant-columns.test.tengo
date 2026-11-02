@@ -1,5 +1,6 @@
 test := import("@platforma-sdk/workflow-tengo:test")
 variantColumns := import(":variant-columns")
+text := import("text")
 
 KD := { "pl7.app/label": "Kd,app", "pl7.app/unit": "nM" }
 
@@ -12,7 +13,7 @@ byHeader := func(cols) {
 }
 
 Test_headers_match_the_software_and_ids_stay_apart_from_the_nt_grain := func() {
-	cols := byHeader(variantColumns.variantColumns("blk", KD, true))
+	cols := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: true, weighting: "none" }))
 	headers := ["kd", "kdLog10Se", "affinityClass", "kdOutOfRange", "ntVariants", "ntMeasured",
 		"ntCensoredBelow", "ntCensoredAbove", "ntFailed", "kdLog10ParentDelta", "kdLog10ParentDeltaSe"]
 	test.isEqual(len(headers), len(cols), "one column per per_variant.tsv value header")
@@ -23,7 +24,7 @@ Test_headers_match_the_software_and_ids_stay_apart_from_the_nt_grain := func() {
 }
 
 Test_values_reuse_the_nt_grain_names := func() {
-	cols := byHeader(variantColumns.variantColumns("blk", KD, false))
+	cols := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: false, weighting: "none" }))
 	test.isEqual("pl7.app/vdj/kd", cols.kd.spec.name, "Kd,app")
 	test.isEqual("pl7.app/vdj/kdLog10Se", cols.kdLog10Se.spec.name, "its error")
 	test.isEqual("pl7.app/vdj/affinityClass", cols.affinityClass.spec.name, "class")
@@ -33,7 +34,7 @@ Test_values_reuse_the_nt_grain_names := func() {
 }
 
 Test_counts_share_one_name_and_differ_by_state := func() {
-	cols := byHeader(variantColumns.variantColumns("blk", KD, false))
+	cols := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: false, weighting: "none" }))
 	states := { ntVariants: "all", ntMeasured: "measured", ntCensoredBelow: "censoredBelow",
 		ntCensoredAbove: "censoredAbove", ntFailed: "failed" }
 	for h, state in states {
@@ -45,8 +46,18 @@ Test_counts_share_one_name_and_differ_by_state := func() {
 }
 
 Test_the_parent_delta_only_in_parent_mode := func() {
-	test.isEqual(9, len(variantColumns.variantColumns("blk", KD, false)), "no delta columns")
-	cols := byHeader(variantColumns.variantColumns("blk", KD, true))
+	test.isEqual(9, len(variantColumns.variantColumns("blk", KD, { parentMode: false, weighting: "none" })), "no delta columns")
+	cols := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: true, weighting: "none" }))
 	test.isEqual("pl7.app/vdj/kdLog10ParentDelta", cols.kdLog10ParentDelta.spec.name, "delta")
 	test.isEqual("pl7.app/vdj/kdLog10ParentDeltaSe", cols.kdLog10ParentDeltaSe.spec.name, "its error")
+}
+
+Test_descriptions_name_the_weighting := func() {
+	plain := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: false, weighting: "none" }))
+	weighted := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: false, weighting: "reads" }))
+	test.isTrue(text.contains(plain.kd.spec.annotations["pl7.app/description"], "unweighted"), "plain Kd,app")
+	test.isTrue(text.contains(weighted.kd.spec.annotations["pl7.app/description"], "weighted by its total reads"), "weighted Kd,app")
+	test.isTrue(text.contains(weighted.kdLog10Se.spec.annotations["pl7.app/description"], "read-weighted"), "weighted SE")
+	test.isFalse(text.contains(plain.kdLog10Se.spec.annotations["pl7.app/description"], "read-weighted"), "plain SE")
+	test.isEqual(weighted.kd.spec.name, plain.kd.spec.name, "the name does not move with the weighting")
 }

@@ -8,7 +8,10 @@ import type {
   PlRef,
   RenderCtx,
 } from "@platforma-sdk/model";
-import type { BlockParams } from "@platforma-open/platforma-open.titeseq-analysis.kind";
+import type {
+  BlockParams,
+  SynonymousWeighting,
+} from "@platforma-open/platforma-open.titeseq-analysis.kind";
 import { kind } from "@platforma-open/platforma-open.titeseq-analysis.kind";
 import type { FitSettings, PresetId } from "./presets";
 import { DEFAULT_EQUATION, DEFAULT_PLATEAU_FLOOR, HILL_GATE_INDEX_DEFAULTS } from "./presets";
@@ -21,8 +24,15 @@ import {
   synonymousMessages,
 } from "./synonymous";
 
-export type { BlockParams, Equation } from "@platforma-open/platforma-open.titeseq-analysis.kind";
-export { EQUATIONS } from "@platforma-open/platforma-open.titeseq-analysis.kind";
+export type {
+  BlockParams,
+  Equation,
+  SynonymousWeighting,
+} from "@platforma-open/platforma-open.titeseq-analysis.kind";
+export {
+  EQUATIONS,
+  SYNONYMOUS_WEIGHTINGS,
+} from "@platforma-open/platforma-open.titeseq-analysis.kind";
 export * from "./presets";
 export { deriveTemplateParams };
 export type { InputKind, SynonymousSummary } from "./synonymous";
@@ -70,7 +80,8 @@ type BlockLabels = {
 
 /** What every equation's args carry: the inputs except gate fluorescence, labels and subset. */
 type ArgsInputs = Omit<FitInputs, "binFluorescenceColumnRef">;
-type ArgsLabels = BlockLabels & { inputFilter?: string };
+/** Appended last to every equation's args. `synonymousWeighting` is present only as "reads". */
+type ArgsLabels = BlockLabels & { inputFilter?: string; synonymousWeighting?: "reads" };
 type CommonArgs = ArgsInputs & ArgsLabels;
 
 /**
@@ -94,6 +105,8 @@ export type BlockData = FitInputs &
   FitSettings & {
     /** Subset column picked with the abundance in PlDatasetSelector (e.g. a Repertoire Labeling label). */
     filterRef?: PlRef;
+    /** How synonymous nucleotide variants are combined per amino-acid variant. Absent reads as "none". */
+    synonymousWeighting?: SynonymousWeighting;
     /** The preset last applied, kept so the drawer can name a preset the scientist then edited.
      *  Not authoritative: the settings themselves are. Never reaches the workflow. */
     appliedPreset?: PresetId;
@@ -212,6 +225,7 @@ export const initBlockData = (params?: BlockParams): BlockData => ({
   hookEffectThresholdNoBin:
     params?.hookEffectThresholdNoBin ?? HILL_GATE_INDEX_DEFAULTS.hookEffectThresholdNoBin,
   hookEffectMinReads: params?.hookEffectMinReads ?? HILL_GATE_INDEX_DEFAULTS.hookEffectMinReads,
+  synonymousWeighting: params?.synonymousWeighting,
   defaultBlockLabel: "Tite-Seq Analysis",
   customBlockLabel: params?.customBlockLabel ?? "",
   tableState: createPlDataTableStateV2(),
@@ -353,6 +367,8 @@ export const deriveArgs = (data: BlockData): BlockArgs => {
     ...(data.filterRef !== undefined && {
       inputFilter: createGlobalPObjectId(data.filterRef.blockId, data.filterRef.name),
     }),
+    // Absent unless "reads", so a block that never set it projects the args it always did.
+    ...(data.synonymousWeighting === "reads" && { synonymousWeighting: "reads" as const }),
   };
 
   switch (data.equation) {
@@ -456,14 +472,20 @@ function plRefsEqualOrBothAbsent(a: PlRef | undefined, b: PlRef | undefined): bo
   return plRefsEqual(a, b);
 }
 
-/** Read from the result pool, so the warning shows before the first run. */
-function halfMatchedParent(ctx: Ctx) {
+/** The picked abundance's amino-acid axis when synonymous mode will turn on, read from the pool. */
+function poolSynonymousAaAxis(ctx: Ctx) {
   if (ctx.data.abundanceRef === undefined) return undefined;
   const ntAxis = ctx.resultPool.getPColumnSpecByRef(ctx.data.abundanceRef)?.axesSpec[1];
   if (ntAxis === undefined) return undefined;
   const specs = ctx.resultPool.getSpecs().entries.map((e) => e.obj);
   const aaAxis = synonymousAaAxis(specs, ntAxis);
-  return aaAxis === undefined ? undefined : halfMatchedParentInput(specs, aaAxis);
+  return aaAxis === undefined ? undefined : { specs, aaAxis };
+}
+
+/** Read from the result pool, so the warning shows before the first run. */
+function halfMatchedParent(ctx: Ctx) {
+  const found = poolSynonymousAaAxis(ctx);
+  return found === undefined ? undefined : halfMatchedParentInput(found.specs, found.aaAxis);
 }
 
 export const platforma = BlockModelV3.create({ dataModel, kind })
@@ -666,6 +688,10 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     const axis = ctx.resultPool.getPColumnSpecByRef(ctx.data.abundanceRef)?.axesSpec[1];
     return axis === undefined ? undefined : inputKindOf(axis);
   })
+
+  // Whether the picked dataset turns synonymous mode on, before any run: the drawer shows the
+  // synonymous settings only then.
+  .output("synonymousCapable", (ctx) => poolSynonymousAaAxis(ctx) !== undefined)
 
   // In synonymous mode the table shows one row per amino-acid variant. Each nucleotide variant's own
   // fit stays in summaryPf, which the graphs read.

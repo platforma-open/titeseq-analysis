@@ -1,6 +1,6 @@
 import type { PlRef } from "@platforma-sdk/model";
 import { describe, expect, it } from "vitest";
-import { EQUATIONS, kind } from "./index";
+import { EQUATIONS, SYNONYMOUS_WEIGHTINGS, kind } from "./index";
 
 const parse = (v: unknown) => kind.parseInitializationParams(v);
 
@@ -84,6 +84,16 @@ describe("the equation", () => {
       expect(() => parse({ equation: v })).toThrow("'equation' must be");
     },
   );
+});
+
+describe("the synonymous weighting", () => {
+  it.each(SYNONYMOUS_WEIGHTINGS)("accepts %s", (synonymousWeighting) => {
+    expect(parse({ synonymousWeighting })).toEqual({ synonymousWeighting });
+  });
+
+  it.each(["", "Reads", "depth", 1, null])("refuses %o", (v) => {
+    expect(() => parse({ synonymousWeighting: v })).toThrow("'synonymousWeighting' must be");
+  });
 });
 
 describe("the plateau floor", () => {

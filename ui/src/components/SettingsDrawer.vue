@@ -15,7 +15,7 @@ import { useApp } from "../app";
 import { useFieldValidation } from "../composables/useFieldValidation";
 import { useFitSettings } from "../composables/useFitSettings";
 import { useNoun } from "../composables/useNoun";
-import { EQUATION_OPTIONS } from "../fitSettings";
+import { EQUATION_OPTIONS, SYNONYMOUS_WEIGHTING_OPTIONS } from "../fitSettings";
 
 const open = defineModel<boolean>({ required: true });
 
@@ -249,6 +249,24 @@ function setBinColumn(ref: PlRef | undefined): void {
           {{ noun }}s bind, use a lower value, for example 0.4.
         </template>
       </PlNumberField>
+    </PlAccordionSection>
+
+    <PlAccordionSection v-if="app.model.outputs.synonymousCapable" label="Synonymous variants">
+      <PlDropdown
+        :model-value="app.model.data.synonymousWeighting ?? 'none'"
+        :options="SYNONYMOUS_WEIGHTING_OPTIONS"
+        label="Combine nucleotide variants"
+        @update:model-value="(w) => w && (app.model.data.synonymousWeighting = w)"
+      >
+        <template #tooltip>
+          How the fits of the synonymous nucleotide variants of one amino-acid variant are combined.
+          <br /><br />
+          Plain mean: the mean of their log10 Kd,app, each variant counted once, as in Starr et al.
+          The default. <br /><br />
+          Weighted by reads: each variant is weighted by its total reads over the titration, as the
+          enrichment and sort-seq blocks weight theirs.
+        </template>
+      </PlDropdown>
     </PlAccordionSection>
 
     <PlAccordionSection v-if="!isLogFluorescence" label="Read coverage">

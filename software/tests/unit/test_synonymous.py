@@ -133,6 +133,50 @@ class TestCombine:
         assert combine([_measured(-8.0, cls="Partial")]).classification.affinity_class == "Partial"
 
 
+def _weighted(value, weight, se=None, state="measured"):
+    return Copy(state, value, se, "Good", weight)
+
+
+class TestCombineReadWeighted:
+    def test_the_value_is_the_read_weighted_mean(self):
+        c = combine([_weighted(-8.0, 3.0), _weighted(-9.0, 1.0)], weighted=True)
+        assert c.log10_kd == pytest.approx(-8.25)
+
+    def test_the_spread_is_the_siblings_read_weighted_scatter(self):
+        copies = [_weighted(-8.0, 3.0), _weighted(-9.0, 1.0), _weighted(-8.5, 2.0)]
+        c = combine(copies, weighted=True)
+        mean = (3 * -8.0 + 1 * -9.0 + 2 * -8.5) / 6
+        scatter = 9 * (-8.0 - mean) ** 2 + 1 * (-9.0 - mean) ** 2 + 4 * (-8.5 - mean) ** 2
+        assert c.log10_kd == pytest.approx(mean)
+        assert c.log10_kd_se == pytest.approx(math.sqrt(3 / 2 * scatter) / 6)
+
+    def test_the_weighted_fit_error_term_floors_the_se(self):
+        c = combine([_weighted(-8.0, 3.0, se=0.4), _weighted(-8.0, 1.0, se=0.8)], weighted=True)
+        # zero scatter; fit-error term sqrt(3^2 * 0.4^2 + 1^2 * 0.8^2) / 4
+        assert c.log10_kd_se == pytest.approx(math.sqrt(9 * 0.16 + 0.64) / 4)
+
+    def test_the_spread_stands_when_it_exceeds_the_weighted_fit_error_term(self):
+        c = combine([_weighted(-7.0, 1.0, se=0.01), _weighted(-9.0, 1.0, se=0.01)], weighted=True)
+        assert c.log10_kd_se == pytest.approx(1.0)
+
+    def test_equal_weights_give_the_unweighted_result(self):
+        values = [(-8.0, 0.3), (-8.4, 0.2), (-7.9, None)]
+        plain = combine([_measured(v, se) for v, se in values])
+        weighted = combine([_weighted(v, 5.0, se) for v, se in values], weighted=True)
+        assert weighted.log10_kd == pytest.approx(plain.log10_kd)
+        assert weighted.log10_kd_se == pytest.approx(plain.log10_kd_se)
+
+    def test_a_copy_with_no_reads_stays_out_of_the_mean(self):
+        c = combine([_weighted(-8.0, 2.0, se=0.3), _weighted(-9.0, 0.0, se=0.3)], weighted=True)
+        assert c.log10_kd == pytest.approx(-8.0)
+        assert c.log10_kd_se == 0.3
+        assert c.counts["measured"] == 2
+
+    def test_weights_are_ignored_unless_asked_for(self):
+        c = combine([_weighted(-8.0, 3.0), _weighted(-9.0, 1.0)])
+        assert c.log10_kd == pytest.approx(-8.5)
+
+
 class TestResolveNtToAa:
     def test_a_variant_with_one_aa_maps_and_the_rest_are_counted(self):
         links = pl.DataFrame({"ntKey": ["n1", "n2", "n3", "n3"], "aaKey": ["a1", "a1", "a1", "a2"]})
@@ -241,6 +285,7 @@ class TestCombineSynonymous:
             "unmappedNtVariants": 1,
             "ambiguousNtVariants": 1,
             "parentMode": False,
+            "weighting": "none",
         }
 
     def test_two_identical_copies_have_the_fit_error_term_as_their_se(self):
@@ -266,6 +311,25 @@ class TestCombineSynonymous:
         assert summary["parents"] == 1
         assert summary["unidentifiableParents"] == []
         assert summary["multiParentVariants"] == 0
+
+    def test_read_weighting_weights_each_copy_by_its_reads(self):
+        inputs = SynonymousInputs(self.LINKS, weighting="reads")
+        reads = {"wt1": 100.0, "wt2": 100.0, "m1": 30.0, "m2": 10.0}
+        frame, summary = combine_synonymous(self.PER_CLONOTYPE, inputs, log10_lo=LO, log10_hi=HI, reads=reads)
+        assert summary["weighting"] == "reads"
+        wt = frame.filter(pl.col("aaKey") == "WT").row(0, named=True)
+        # zero scatter; fit-error term sqrt(2 * 100^2 * 0.1^2) / 200
+        assert wt["kdLog10Se"] == pytest.approx(math.sqrt(2 * 100**2 * 0.01) / 200)
+
+    def test_read_weighting_without_reads_is_refused(self):
+        with pytest.raises(ValueError, match="reads"):
+            combine_synonymous(
+                self.PER_CLONOTYPE, SynonymousInputs(self.LINKS, weighting="reads"), log10_lo=LO, log10_hi=HI
+            )
+
+    def test_an_unknown_weighting_is_refused(self):
+        with pytest.raises(ValueError, match="weighting"):
+            SynonymousInputs(self.LINKS, weighting="depth")
 
     def test_half_the_parent_columns_is_refused(self):
         with pytest.raises(ValueError, match="together"):

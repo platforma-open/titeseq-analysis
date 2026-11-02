@@ -28,13 +28,24 @@ countColumn := func(header, blockId, state, label, description, visibility, prio
 	})
 }
 
+KD_DESCRIPTION := {
+	none: "Kd,app of the amino-acid variant: 10 to the mean log10 Kd,app of its synonymous nucleotide variants, each fitted on its own. The mean is unweighted. A variant censored at the edge of the titration enters at that edge.",
+	reads: "Kd,app of the amino-acid variant: 10 to the mean log10 Kd,app of its synonymous nucleotide variants, each fitted on its own. Each variant is weighted by its total reads over the titration. A variant censored at the edge of the titration enters at that edge."
+}
+
+SE_DESCRIPTION := {
+	none: "Standard error of the mean log10 Kd,app. With two or more synonymous nucleotide variants, the larger of two terms: their spread, the SD over the square root of their number; and their own fit SEs, the root of the sum of squares over their number, where the equation reports a fit SE. With one variant, its own fit SE where the equation reports one. Empty for a bound and for a failed variant. At or below 0.5, Kd,app is rated Good.",
+	reads: "Standard error of the read-weighted mean log10 Kd,app. With two or more synonymous nucleotide variants, the larger of two terms: their read-weighted spread; and their own fit SEs, each weighted by its reads, added in quadrature and divided by the total reads, where the equation reports a fit SE. With one variant, its own fit SE where the equation reports one. Empty for a bound and for a failed variant. At or below 0.5, Kd,app is rated Good."
+}
+
 /**
  * @param blockId: the block id stamped into every domain, as on the nucleotide grain
  * @param kdAnnotations: the nucleotide grain's Kd,app annotations, unit included
- * @param parentMode: whether the parent delta and its error are emitted
+ * @param opts: {parentMode, weighting}; parentMode emits the parent delta and its error, weighting
+ *   is "none" or "reads"
  * @return xsv column descriptors
  */
-variantColumns := func(blockId, kdAnnotations, parentMode) {
+variantColumns := func(blockId, kdAnnotations, opts) {
 	domain := { "pl7.app/block": blockId }
 	cols := [
 		column("kd", {
@@ -42,7 +53,7 @@ variantColumns := func(blockId, kdAnnotations, parentMode) {
 			valueType: "Double",
 			domain: domain,
 			annotations: maps.merge(kdAnnotations, {
-				"pl7.app/description": "Kd,app of the amino-acid variant: 10 to the mean log10 Kd,app of its synonymous nucleotide variants, each fitted on its own. A variant censored at the edge of the titration enters at that edge."
+				"pl7.app/description": KD_DESCRIPTION[opts.weighting]
 			})
 		}),
 		// Error of the value above, on the same axes. The absence-declaration annotation is pending its key.
@@ -52,7 +63,7 @@ variantColumns := func(blockId, kdAnnotations, parentMode) {
 			domain: domain,
 			annotations: {
 				"pl7.app/label": "Kd,app SE (log10)",
-				"pl7.app/description": "Standard error of the mean log10 Kd,app. With two or more synonymous nucleotide variants, the larger of two terms: their spread, the SD over the square root of their number; and their own fit SEs, the root of the sum of squares over their number, where the equation reports a fit SE. With one variant, its own fit SE where the equation reports one. Empty for a bound and for a failed variant. At or below 0.5, Kd,app is rated Good.",
+				"pl7.app/description": SE_DESCRIPTION[opts.weighting],
 				"pl7.app/isScore": "true",
 				"pl7.app/score/rankingOrder": "increasing",
 				"pl7.app/table/visibility": "default",
@@ -103,7 +114,7 @@ variantColumns := func(blockId, kdAnnotations, parentMode) {
 		countColumn("ntFailed", blockId, "failed", "NT variants failed",
 			"Nucleotide variants rated Failed. They are left out of the mean.", "optional", "191")
 	]
-	if parentMode {
+	if opts.parentMode {
 		cols = append(cols, column("kdLog10ParentDelta", {
 			name: "pl7.app/vdj/kdLog10ParentDelta",
 			valueType: "Double",

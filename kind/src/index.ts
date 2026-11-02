@@ -17,6 +17,15 @@ export const EQUATIONS = ["log_fluorescence", "hill_gate_index"] as const;
 export type Equation = (typeof EQUATIONS)[number];
 
 /**
+ * How the synonymous nucleotide variants of one amino-acid variant are combined. `none` is the plain
+ * mean of their log10 Kd,app; `reads` weights each by its total reads over the titration. Read only on
+ * a nucleotide dataset whose nt -> aa linker resolves.
+ */
+export const SYNONYMOUS_WEIGHTINGS = ["none", "reads"] as const;
+
+export type SynonymousWeighting = (typeof SYNONYMOUS_WEIGHTINGS)[number];
+
+/**
  * This block's init-params contract — what a creator or a project template supplies to seed a
  * new instance: the columns a titration is read from (and an optional subset of the dataset), the
  * fit's tuning, and the user's own label.
@@ -57,6 +66,8 @@ export type BlockParams = {
   hookEffectThresholdBin?: number;
   hookEffectThresholdNoBin?: number;
   hookEffectMinReads?: number;
+  /** Absent reads as `none`. */
+  synonymousWeighting?: SynonymousWeighting;
   customBlockLabel?: string;
 };
 
@@ -124,6 +135,9 @@ const isPositiveFraction: Guard<number> = (v): v is number => isFiniteNumber(v) 
 const isEquation: Guard<Equation> = (v): v is Equation =>
   isString(v) && (EQUATIONS as readonly string[]).includes(v);
 
+const isSynonymousWeighting: Guard<SynonymousWeighting> = (v): v is SynonymousWeighting =>
+  isString(v) && (SYNONYMOUS_WEIGHTINGS as readonly string[]).includes(v);
+
 /**
  * The runtime half of the contract. The `satisfies` clause is what stops it drifting: every
  * field `BlockParams` declares must appear here, and each guard must narrow to that field's own
@@ -154,5 +168,9 @@ const CONTRACT = {
   hookEffectThresholdBin: check(isFiniteNumber, "a number"),
   hookEffectThresholdNoBin: check(isFiniteNumber, "a number"),
   hookEffectMinReads: check(isFiniteNumber, "a number"),
+  synonymousWeighting: check(
+    isSynonymousWeighting,
+    `one of ${SYNONYMOUS_WEIGHTINGS.map((w) => `"${w}"`).join(" or ")}`,
+  ),
   customBlockLabel: check(isString, "a string"),
 } satisfies { [K in keyof Required<BlockParams>]: Check<NonNullable<BlockParams[K]>> };
