@@ -18,8 +18,13 @@ def compute_mean_bin(
     *,
     sort_fraction_col: str | None = None,
     gate_position_col: str | None = None,
+    replicate_keys: list[str] | None = None,
 ) -> pl.DataFrame:
     """R7: mean_bin_c = Σ_b (b · freq_cb) / Σ_b freq_cb, where freq_cb = reads_cb / depth_b.
+
+    `replicate_keys` names the replicate column when the run has one. The gate depth and the
+    grouping then run within (replicate, concentration, gate): each replicate sorts its own cells,
+    so a pooled depth would divide one replicate's reads by every replicate's.
 
     `gate_position_col` replaces the gate label `b` with a measured gate position, so the result
     is a mean log10 fluorescence rather than a mean gate index. A gate position varies per
@@ -42,8 +47,9 @@ def compute_mean_bin(
 
     Returns long frame: clonotypeKey, concentrationStr, concentration, mean_bin, clonotype_reads_at_conc.
     """
+    reps = replicate_keys or []
     with_freq = reads.with_columns(
-        pl.col(COL_READS).sum().over([COL_CONC_STR, COL_BIN]).alias("depth"),
+        pl.col(COL_READS).sum().over([*reps, COL_CONC_STR, COL_BIN]).alias("depth"),
     ).with_columns(pl.when(pl.col("depth") > 0).then(pl.col(COL_READS) / pl.col("depth")).otherwise(0.0).alias(FREQ))
 
     weight = pl.col(FREQ) * pl.col(sort_fraction_col) if sort_fraction_col is not None else pl.col(FREQ)
@@ -53,7 +59,7 @@ def compute_mean_bin(
 
     return (
         with_freq.with_columns(weight.alias("w"))
-        .group_by([COL_CLONOTYPE, COL_CONC_STR, COL_CONC_VAL], maintain_order=True)
+        .group_by([COL_CLONOTYPE, *reps, COL_CONC_STR, COL_CONC_VAL], maintain_order=True)
         .agg(
             (position.cast(pl.Float64) * pl.col("w")).sum().alias("num"),
             pl.col("w").sum().alias("den"),
@@ -64,17 +70,21 @@ def compute_mean_bin(
     )
 
 
-def compute_frequency_signal(reads: pl.DataFrame) -> pl.DataFrame:
+def compute_frequency_signal(reads: pl.DataFrame, replicate_keys: list[str] | None = None) -> pl.DataFrame:
     """R7b: no-bin mode signal = reads_clonotype_at_conc / total_reads_at_conc.
+
+    `replicate_keys` names the replicate column when the run has one; the library depth is then
+    taken within (replicate, concentration).
 
     Returns long frame: clonotypeKey, concentrationStr, concentration, signal, clonotype_reads_at_conc.
     """
-    per_clonotype = reads.group_by([COL_CLONOTYPE, COL_CONC_STR, COL_CONC_VAL], maintain_order=True).agg(
+    reps = replicate_keys or []
+    per_clonotype = reads.group_by([COL_CLONOTYPE, *reps, COL_CONC_STR, COL_CONC_VAL], maintain_order=True).agg(
         pl.col(COL_READS).sum().alias(CLONOTYPE_READS_AT_CONC)
     )
     return (
         per_clonotype.with_columns(
-            pl.col(CLONOTYPE_READS_AT_CONC).sum().over(COL_CONC_STR).alias(TOTAL_READS_AT_CONC),
+            pl.col(CLONOTYPE_READS_AT_CONC).sum().over([*reps, COL_CONC_STR]).alias(TOTAL_READS_AT_CONC),
         )
         .with_columns(
             pl.when(pl.col(TOTAL_READS_AT_CONC) > 0)
@@ -92,19 +102,23 @@ def normalize(
     *,
     sort_fraction_col: str | None = None,
     gate_position_col: str | None = None,
+    replicate_keys: list[str] | None = None,
 ) -> pl.DataFrame:
     """Unified entry point; always emits column named SIGNAL for downstream modules.
 
     `sort_fraction_col` is only consulted in bin mode — frequency-mode signal is
     sort-yield-independent so the correction does not apply. `gate_position_col` is also bin-mode
     only, and makes SIGNAL a mean log10 fluorescence instead of a mean gate index.
+    `replicate_keys` is empty or absent without a replicate column, and the grouping is then the
+    one every run used before the column existed.
     """
     if bin_mode:
         sig = compute_mean_bin(
             reads,
             sort_fraction_col=sort_fraction_col,
             gate_position_col=gate_position_col,
+            replicate_keys=replicate_keys,
         ).rename({MEAN_BIN: SIGNAL})
     else:
-        sig = compute_frequency_signal(reads)
+        sig = compute_frequency_signal(reads, replicate_keys)
     return sig

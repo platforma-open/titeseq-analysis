@@ -59,8 +59,11 @@ def add_diagnostic_plot_columns(frame: pl.DataFrame, max_concentration: float) -
     )
 
 
-def build_mean_bin_frame(signal_frame: pl.DataFrame) -> pl.DataFrame:
+def build_mean_bin_frame(signal_frame: pl.DataFrame, replicate_keys: list[str] | None = None) -> pl.DataFrame:
     """R14: per-(clonotype, concentration) observed signal (mean_bin or frequency).
+
+    `replicate_keys` names the replicate column when the run has one; the signal then carries it
+    as a third key, so the curve of each replicate stays its own.
 
     Excludes c=0 rows — they fix the baseline, not output values, and log(0) =
     −∞ would break log-scale rendering. Output columns: clonotypeKey,
@@ -74,16 +77,18 @@ def build_mean_bin_frame(signal_frame: pl.DataFrame) -> pl.DataFrame:
     propagated through xsv.importFile to a different Parquet content hash and
     triggered CIDConflictError on re-derivation.
     """
+    reps = replicate_keys or []
     return (
         signal_frame.filter(pl.col(COL_CONC_VAL) != 0)
         .select(
             [
                 COL_CLONOTYPE,
+                *reps,
                 COL_CONC_STR,
                 pl.col("signal").alias("meanBin"),
             ]
         )
-        .sort([COL_CLONOTYPE, COL_CONC_STR])
+        .sort([COL_CLONOTYPE, *reps, COL_CONC_STR])
     )
 
 

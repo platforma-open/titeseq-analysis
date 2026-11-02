@@ -106,19 +106,43 @@ def validate_concentration_column(df: pl.DataFrame, has_bin: bool) -> list[str]:
     return warnings
 
 
-def validate_sort_fraction(reads: pl.DataFrame, col: str) -> None:
+def validate_replicate_column(reads: pl.DataFrame, col: str) -> list[str]:
+    """Replicate label, one value per sample. Optional input.
+
+    Returns warnings rather than raising: unbound or unusable, the run proceeds as a single
+    titration, which is what every project did before the column existed.
+    """
+    if col not in reads.columns:
+        return [f"Replicate column '{col}' missing from reads; treating the run as one replicate"]
+    labels = reads.get_column(col).cast(pl.Utf8, strict=False)
+    if labels.is_null().any() or (labels.str.len_chars() == 0).any():
+        return [f"Replicate column '{col}' has empty values; treating the run as one replicate"]
+    per_sample = reads.select([COL_SAMPLE, col]).unique()
+    dup = per_sample.group_by(COL_SAMPLE).len().filter(pl.col("len") > 1)
+    if dup.height > 0:
+        return [
+            f"Replicate must be one value per sample; samples with several: {dup[COL_SAMPLE].to_list()[:5]}. "
+            "Treating the run as one replicate"
+        ]
+    return []
+
+
+def validate_sort_fraction(reads: pl.DataFrame, col: str, group_keys: list[str] | None = None) -> None:
     """FACS sort-fraction column validator (Adams, Mora, Walczak, Kinney 2016 eq. A3).
 
     Invariants:
       * Column exists in `reads`.
       * No nulls (every sample with reads must carry a fraction).
       * Values in [0, 1].
-      * Per concentration, |Σ_b sort_fraction − 1| < 1e-3 — deduplicated by sample
-        so that repeating a per-sample value across clonotypes does not inflate
-        the per-concentration sum.
+      * Per group, |Σ_b sort_fraction − 1| < 1e-3 — deduplicated by sample so that repeating a
+        per-sample value across clonotypes does not inflate the per-group sum.
+
+    `group_keys` names the columns the sum is taken within, concentration last. Each replicate
+    sorts its own cells, so with replicates the group is (replicate, concentration): pooled, the
+    fractions would sum to the replicate count.
 
     No silent renormalization. Violations raise with a concrete message naming
-    the offending concentration so the user knows which row to fix.
+    the offending group so the user knows which row to fix.
     """
     if col not in reads.columns:
         raise InputValidationError(f"Sort-fraction column '{col}' missing from reads")
@@ -129,16 +153,18 @@ def validate_sort_fraction(reads: pl.DataFrame, col: str) -> None:
     if (vals < 0).any() or (vals > 1).any():
         raise InputValidationError(f"Sort-fraction values must be in [0, 1]; column '{col}'")
 
+    keys = [COL_CONC_STR] if group_keys is None else group_keys
     # `sort_fraction` is a per-sample metadata column joined across every clonotype
     # in that sample, so summing over the raw reads frame would count each sample
-    # once per clonotype. Deduplicate by (sampleId, concentrationStr, col) first.
-    per_sample = reads.select([COL_SAMPLE, COL_CONC_STR, col]).unique()
-    sums = per_sample.group_by(COL_CONC_STR, maintain_order=True).agg(pl.col(col).sum().alias("s"))
+    # once per clonotype. Deduplicate by (sampleId, group keys, col) first.
+    per_sample = reads.select([COL_SAMPLE, *keys, col]).unique()
+    sums = per_sample.group_by(keys, maintain_order=True).agg(pl.col(col).sum().alias("s"))
     bad = sums.filter((pl.col("s") - 1.0).abs() > 1e-3)
     if bad.height > 0:
-        violations = bad.select([COL_CONC_STR, "s"]).to_dicts()
+        violations = bad.select([*keys, "s"]).to_dicts()
+        scope = "concentration" if keys == [COL_CONC_STR] else " and ".join(keys)
         raise InputValidationError(
-            f"sort_fraction values must sum to 1.0 per concentration (tolerance 1e-3). Violations: {violations}"
+            f"sort_fraction values must sum to 1.0 per {scope} (tolerance 1e-3). Violations: {violations}"
         )
 
 
