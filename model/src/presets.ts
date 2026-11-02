@@ -4,8 +4,9 @@ import type { Equation } from "@platforma-open/platforma-open.titeseq-analysis.k
  * Every setting that shapes the fit — the two knobs the equations are chosen and tuned with, and
  * the nine `hill_gate_index` grades its fits by. Inputs, labels and view state are not here.
  *
- * `BlockData` and the `hill_gate_index` branch of `BlockArgs` are built on this type, so a
- * setting added here reaches the drawer, the args and the presets below together.
+ * The `hill_gate_index` branch of `BlockArgs` is built on this type, and `BlockData` on
+ * `FitSettingsDraft` below, so a setting added here reaches the drawer, the args and the presets
+ * together. Every value is present.
  */
 export type FitSettings = {
   equation: Equation;
@@ -22,6 +23,15 @@ export type FitSettings = {
   hookEffectThresholdNoBin: number;
   hookEffectMinReads: number;
 };
+
+/**
+ * The settings as the block stores them, which is what the drawer edits: a number field the
+ * scientist cleared reads `undefined`. `BlockData` is built on this type, and `args()` is the
+ * single boundary that refuses an incomplete set and so disables Run.
+ *
+ * `equation` stays required: the drawer's equation dropdown has no clear button.
+ */
+export type FitSettingsDraft = Partial<Omit<FitSettings, "equation">> & { equation: Equation };
 
 /** The settings only `hill_gate_index` reads, at the values the block shipped through 2.4.0. */
 export const HILL_GATE_INDEX_DEFAULTS = {
@@ -84,7 +94,7 @@ export function presetById(id: PresetId): Preset {
 }
 
 /** Whether `settings` still holds every value `preset` writes. */
-export function matchesPreset(preset: Preset, settings: FitSettings): boolean {
+export function matchesPreset(preset: Preset, settings: FitSettingsDraft): boolean {
   return Object.entries(preset.settings).every(
     ([field, value]) => settings[field as keyof FitSettings] === value,
   );

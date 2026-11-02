@@ -122,10 +122,12 @@ def test_no_bin_mode_frame_is_unchanged(no_bin_outputs, frame):
 
 
 def test_a_flat_signal_is_failed_with_no_kd():
-    """The intended departure from v2.4.0, which rated this Partial with a K_D of 28.39 M.
+    """Equal reads in every gate give a flat mean bin, which has no K_D to find.
 
-    Equal reads in every gate give a flat mean bin. The fit converges on the amplitude bound, R² is
-    undefined (no variance), and the curve is an artefact: no K_D, exponent or R² is reported.
+    The fit is ill-posed, so the failure reason depends on the platform's floating point: on Linux
+    curve_fit rejects it (convergence_failure); on macOS it stops on the amplitude bound with an
+    undefined R² (low_r2), which v2.4.0 rated Partial with a K_D of 28.39 M. Either way the row is
+    Failed and reports no K_D, exponent, R² or curve.
     """
     concs = [1e-10, 1e-9, 1e-8, 1e-7, 1e-6]
     reads = pl.DataFrame(
@@ -144,7 +146,8 @@ def test_a_flat_signal_is_failed_with_no_kd():
     )
     out = run(reads, params=HILL)
     row = out["per_clonotype"].row(0, named=True)
-    assert (row["affinityClass"], row["fitFailureReason"]) == ("Failed", "low_r2")
+    assert row["affinityClass"] == "Failed"
+    assert row["fitFailureReason"] in ("low_r2", "convergence_failure")
     assert row["kd"] is None
     assert row["hillCoefficient"] is None
     assert row["r2"] is None

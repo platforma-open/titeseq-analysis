@@ -4,15 +4,13 @@ import { computed } from "vue";
 import { useApp } from "../app";
 import PageHeader from "./PageHeader.vue";
 
-defineProps<{ title: string; mode: "graph" | "table" }>();
+// Only the main page offers Settings.
+defineProps<{ title: string; mode: "graph" | "table"; showSettings?: boolean }>();
 
 const app = useApp();
 
-// Checks with no field of their own. Issues scoped to "settings" show in the drawer only.
-// Numeric-field errors show on each PlNumberField (see useFieldValidation).
-const warnings = computed(() =>
-  (app.model.outputs.validationWarnings ?? []).filter((w) => w.scope === "everywhere"),
-);
+// Checks with no field of their own. Numeric-field errors show on each PlNumberField.
+const warnings = computed(() => app.model.outputs.validationWarnings ?? []);
 </script>
 
 <template>
@@ -23,7 +21,7 @@ const warnings = computed(() =>
     :no-body-gutters="mode === 'graph'"
   >
     <template #append>
-      <PageHeader />
+      <PageHeader :show-settings="showSettings" />
     </template>
     <PlAlert
       v-for="(w, i) in warnings"

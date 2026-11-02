@@ -12,7 +12,7 @@ import {
 } from "@platforma-sdk/ui-vue";
 import { computed, watch } from "vue";
 import { useApp } from "../app";
-import { useFieldValidation } from "../composables/useFieldValidation";
+import { aboveZero, boundedBy, emptyError, wholeNumber } from "../fieldValidation";
 import { useFitSettings } from "../composables/useFitSettings";
 import { EQUATION_OPTIONS } from "../fitSettings";
 
@@ -34,18 +34,19 @@ const abundanceSelection = computed<DatasetSelection | undefined>({
   },
 });
 
-const {
-  plateauFloorError,
-  minReadsError,
-  minConcPointsError,
-  r2GoodError,
-  r2FailedError,
-  nMinError,
-  nMaxError,
-  hookThresholdBinError,
-  hookThresholdNoBinError,
-  hookMinReadsError,
-} = useFieldValidation();
+// The two pairs each field is bounded by the other half of.
+const r2GoodAtLeastFailed = boundedBy(
+  "≥",
+  () => app.model.data.r2ThresholdFailed,
+  "R² threshold (Failed)",
+);
+const r2FailedAtMostGood = boundedBy(
+  "≤",
+  () => app.model.data.r2ThresholdGood,
+  "R² threshold (Good)",
+);
+const nMinBelowMax = boundedBy("<", () => app.model.data.nMax, "Hill coefficient — max");
+const nMaxAboveMin = boundedBy(">", () => app.model.data.nMin, "Hill coefficient — min");
 
 const { presetOptions, selectedPreset, setEquation } = useFitSettings();
 
@@ -56,9 +57,9 @@ watch(
   },
 );
 
-// Page-level alerts cover spec-based checks only — concentration column
-// label format, sort fraction without bin column. Numeric-field bounds show
-// inline on each PlNumberField.
+// Page-level alerts cover spec-based checks only — a sort fraction without a bin column, a
+// target antigen without an antigen column. Numeric-field errors show inline on each
+// PlNumberField.
 const warnings = computed(() => app.model.outputs.validationWarnings ?? []);
 
 const binMode = computed(() => app.model.outputs.binMode === true);
@@ -237,8 +238,9 @@ function setBinColumn(ref: PlRef | undefined): void {
         :min-value="0"
         :max-value="1"
         :step="0.05"
-        :error-message="plateauFloorError"
-        required
+        :validate="aboveZero"
+        clearable
+        :error-message="emptyError(app.model.data.plateauFloor)"
       >
         <template #tooltip>
           The plateau that each clonotype must be able to reach at saturation, as a fraction of the
@@ -254,8 +256,9 @@ function setBinColumn(ref: PlRef | undefined): void {
         label="Min reads per concentration"
         :min-value="1"
         :step="1"
-        :error-message="minReadsError"
-        required
+        :validate="wholeNumber"
+        clearable
+        :error-message="emptyError(app.model.data.minReadsPerConcentration)"
       >
         <template #tooltip>
           Floor applied per clonotype per concentration. Points below the floor are excluded;
@@ -267,8 +270,9 @@ function setBinColumn(ref: PlRef | undefined): void {
         label="Min concentration points"
         :min-value="3"
         :step="1"
-        :error-message="minConcPointsError"
-        required
+        :validate="wholeNumber"
+        clearable
+        :error-message="emptyError(app.model.data.minConcentrationPoints)"
       >
         <template #tooltip>
           Minimum number of concentration points (after floor filtering) to attempt a fit. Default 5
@@ -284,8 +288,9 @@ function setBinColumn(ref: PlRef | undefined): void {
         :min-value="0"
         :max-value="1"
         :step="0.05"
-        :error-message="r2GoodError"
-        required
+        :validate="r2GoodAtLeastFailed"
+        clearable
+        :error-message="emptyError(app.model.data.r2ThresholdGood)"
       >
         <template #tooltip>
           Clonotypes with weighted R² at or above this threshold and Hill coefficient in range
@@ -298,8 +303,9 @@ function setBinColumn(ref: PlRef | undefined): void {
         :min-value="0"
         :max-value="1"
         :step="0.05"
-        :error-message="r2FailedError"
-        required
+        :validate="r2FailedAtMostGood"
+        clearable
+        :error-message="emptyError(app.model.data.r2ThresholdFailed)"
       >
         <template #tooltip>
           Clonotypes with weighted R² below this threshold classify as Failed regardless of n.
@@ -311,8 +317,9 @@ function setBinColumn(ref: PlRef | undefined): void {
         label="Hill coefficient — min"
         :min-value="0"
         :step="0.1"
-        :error-message="nMinError"
-        required
+        :validate="nMinBelowMax"
+        clearable
+        :error-message="emptyError(app.model.data.nMin)"
       >
         <template #tooltip>
           Lower bound on n for Good classification. Values below this downgrade the class by one.
@@ -324,8 +331,9 @@ function setBinColumn(ref: PlRef | undefined): void {
         label="Hill coefficient — max"
         :min-value="0"
         :step="0.1"
-        :error-message="nMaxError"
-        required
+        :validate="nMaxAboveMin"
+        clearable
+        :error-message="emptyError(app.model.data.nMax)"
       >
         <template #tooltip>
           For multimeric antigens (trimeric Spike, dimeric receptors), genuine cooperativity can
@@ -341,8 +349,8 @@ function setBinColumn(ref: PlRef | undefined): void {
         label="Signal drop threshold (bin mode)"
         :min-value="0"
         :step="0.05"
-        :error-message="hookThresholdBinError"
-        required
+        clearable
+        :error-message="emptyError(app.model.data.hookEffectThresholdBin)"
       >
         <template #tooltip>
           Flags non-monotonic signals (potentially genuine tight binders showing a hook effect) when
@@ -355,8 +363,8 @@ function setBinColumn(ref: PlRef | undefined): void {
         label="Signal drop threshold (frequency mode)"
         :min-value="0"
         :step="0.005"
-        :error-message="hookThresholdNoBinError"
-        required
+        clearable
+        :error-message="emptyError(app.model.data.hookEffectThresholdNoBin)"
       >
         <template #tooltip>
           Flags non-monotonic signals (potentially genuine tight binders showing a hook effect) when
@@ -368,8 +376,9 @@ function setBinColumn(ref: PlRef | undefined): void {
         label="Min reads for hook check"
         :min-value="0"
         :step="1"
-        :error-message="hookMinReadsError"
-        required
+        :validate="wholeNumber"
+        clearable
+        :error-message="emptyError(app.model.data.hookEffectMinReads)"
       >
         <template #tooltip>
           Skip the hook-effect check when the top two concentration points have fewer reads than

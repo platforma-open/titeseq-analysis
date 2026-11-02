@@ -9,7 +9,7 @@ import type {
 } from "@platforma-sdk/model";
 import type { BlockParams } from "@platforma-open/platforma-open.titeseq-analysis.kind";
 import { kind } from "@platforma-open/platforma-open.titeseq-analysis.kind";
-import type { FitSettings, PresetId } from "./presets";
+import type { FitSettings, FitSettingsDraft, PresetId } from "./presets";
 import { DEFAULT_EQUATION, DEFAULT_PLATEAU_FLOOR, HILL_GATE_INDEX_DEFAULTS } from "./presets";
 import { deriveTemplateParams } from "./templateParams";
 
@@ -34,8 +34,6 @@ import {
 export type ValidationIssue = {
   severity: "warning" | "error";
   message: string;
-  /** "settings": shown in the settings drawer only, never on the results pages. */
-  scope: "everywhere" | "settings";
 };
 
 /** The columns a titration is read from, and the antigen it is read for. */
@@ -81,7 +79,7 @@ export type BlockArgs =
 
 export type BlockData = FitInputs &
   BlockLabels &
-  FitSettings & {
+  FitSettingsDraft & {
     /** Subset column picked with the abundance in PlDatasetSelector (e.g. a Repertoire Labeling label). */
     filterRef?: PlRef;
     /** The preset last applied, kept so the drawer can name a preset the scientist then edited.
@@ -356,6 +354,9 @@ export const deriveArgs = (data: BlockData): BlockArgs => {
 };
 
 function logFluorescenceArgs(data: BlockData, inputs: ArgsInputs, labels: ArgsLabels): BlockArgs {
+  // Reject undefined before the range comparison. `undefined <= 0` and `undefined > 1` are both
+  // false, so a cleared floor would pass the range check and reach the Python fit.
+  if (data.plateauFloor === undefined) throw new Error("Plateau floor is required");
   if (data.plateauFloor <= 0 || data.plateauFloor > 1)
     throw new Error("Plateau floor must be above 0 and at most 1");
   // The log-fluorescence fit's signal is gate fluorescence, so frequency-only data cannot
@@ -547,7 +548,6 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
       const isCidConflict = typeName === "CIDConflictError";
       issues.push({
         severity: "error",
-        scope: "everywhere",
         message: isCidConflict
           ? `Transient result-hash conflict on "${key}": ${detail}. ` +
             `The platform retries automatically; usually self-recovers. ` +
@@ -556,25 +556,9 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
       });
     }
 
-    if (data.concentrationColumnRef !== undefined) {
-      const spec = ctx.resultPool.getPColumnSpecByRef(data.concentrationColumnRef);
-      const unitLabel = spec?.annotations?.["pl7.app/label"];
-      if (unitLabel && /\s/.test(unitLabel)) {
-        issues.push({
-          severity: "warning",
-          scope: "settings",
-          message:
-            `Concentration column label "${unitLabel}" contains spaces. ` +
-            `The full label becomes the Kd,app unit, so values render as "Kd,app (${unitLabel})". ` +
-            'Use a bare unit like "nM" or "µM".',
-        });
-      }
-    }
-
     if (data.antigenColumnRef === undefined && data.targetAntigen) {
       issues.push({
         severity: "warning",
-        scope: "everywhere",
         message:
           "targetAntigen is set but no antigen column is selected — " +
           "the value is ignored. Select an antigen column or clear the targetAntigen field.",
@@ -588,16 +572,14 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     if (data.sortFractionColumnRef !== undefined && data.binColumnRef === undefined) {
       issues.push({
         severity: "error",
-        scope: "everywhere",
         message:
           "FACS sort fraction requires a FACS bin column — " +
           "the correction only applies in bin mode. Select a FACS bin or clear the sort fraction.",
       });
     }
 
-    // Numeric-field bound violations surface inline on each PlNumberField via
-    // its `:error-message` prop (see ui/src/composables/useFieldValidation.ts).
-    // The args() throw above gates Run.
+    // Numeric-field errors surface on each PlNumberField, from its own `required`,
+    // `min-value`, `max-value` and `validate` props. The args() throw above gates Run.
 
     return issues;
   })
