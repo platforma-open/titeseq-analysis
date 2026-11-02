@@ -5,7 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-AffinityClass = Literal["Good", "Partial", "Failed"]
+# "Non-binder" is "log_fluorescence" only: a flat, dim curve, its K_D pinned at the weak wall.
+AffinityClass = Literal["Good", "Partial", "Non-binder", "Failed"]
+
+# Where the reported K_D sits against the titrated range. Null when the fit set no K_D.
+KdRangeSide = Literal["Below range", "In range", "Above range"]
 
 FailureReason = Literal[
     "insufficient_reads",
@@ -46,6 +50,9 @@ GATE_WIDTH_DECADES: float = 0.65
 GATE_RANGE_DECADES: float = 1.950
 # The exponent "log_fluorescence" fixes.
 HILL_EXPONENT_FIXED: float = 1.0
+# Highest log10 gate fluorescence accepted. Phillips 2021's gate positions run 2.1 to 4.4; linear
+# fluorescence routinely exceeds 7. A larger value is linear fluorescence where log10 is required.
+MAX_LOG10_FLUORESCENCE: float = 7.0
 
 
 @dataclass(frozen=True)
@@ -60,6 +67,9 @@ class FitParams:
     equation: Equation = "hill_gate_index"
     # Read by "log_fluorescence" only. A params file for "hill_gate_index" may omit it.
     plateau_floor: float = 2.0 / 3.0
+    # Read by "log_fluorescence" only. An in-range fit with R² below this rates Failed, low_r2.
+    # None turns the gate off.
+    r2_gate_min: float | None = None
     # Everything below is read by "hill_gate_index" only.
     min_reads_per_concentration: int = 3
     min_concentration_points: int = 5
@@ -76,6 +86,8 @@ class FitParams:
         # silently. Every other field is range-checked by the stage that reads it.
         if self.equation not in EQUATIONS:
             raise ValueError(f"unknown equation {self.equation!r}; expected one of {', '.join(EQUATIONS)}")
+        if self.r2_gate_min is not None and not 0.0 <= self.r2_gate_min <= 1.0:
+            raise ValueError(f"r2_gate_min must be between 0 and 1, got {self.r2_gate_min!r}")
 
 
 DEFAULT_PARAMS = FitParams()

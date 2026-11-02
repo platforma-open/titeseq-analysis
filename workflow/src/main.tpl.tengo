@@ -12,6 +12,7 @@ pSpec := import("@platforma-sdk/workflow-tengo:pframes.spec")
 canonical := import("@platforma-sdk/workflow-tengo:canonical")
 maps := import("@platforma-sdk/workflow-tengo:maps")
 json := import("json")
+text := import("text")
 
 fitCurvesSw := assets.importSoftware("@platforma-open/platforma-open.titeseq-analysis.software:fit-curves")
 
@@ -59,9 +60,21 @@ wf.body(func(args) {
 	// "log_fluorescence", which requires gates. Python detects it by the column's presence.
 	hasBinFluorescence := !is_undefined(args.binFluorescenceColumnRef)
 
+	// The concentration column's label, and the unit read from it: the text in its trailing
+	// parentheses when it has them ("Antigen concentration (M)" -> "M"), else the whole label.
 	unitLabel := ""
 	if !is_undefined(concSpec.annotations) && !is_undefined(concSpec.annotations["pl7.app/label"]) {
-		unitLabel = concSpec.annotations["pl7.app/label"]
+		unitLabel = text.trim_space(concSpec.annotations["pl7.app/label"])
+	}
+	concUnit := unitLabel
+	if text.has_suffix(unitLabel, ")") {
+		openIdx := text.last_index(unitLabel, "(")
+		if openIdx >= 0 {
+			inner := text.trim_space(unitLabel[openIdx + 1:len(unitLabel) - 1])
+			if inner != "" {
+				concUnit = inner
+			}
+		}
 	}
 
 	// Optional subset: only its clonotypes enter the fit. The trace roots in the filter
@@ -123,6 +136,10 @@ wf.body(func(args) {
 		paramsPayload = {
 			equation: args.equation,
 			plateau_floor: args.plateauFloor
+		}
+		// Absent means the R² gate is off.
+		if !is_undefined(args.r2GateMin) {
+			paramsPayload.r2_gate_min = args.r2GateMin
 		}
 	} else {
 		paramsPayload = {
@@ -219,25 +236,39 @@ wf.body(func(args) {
 		facsCorrected = "true"
 	}
 
-	// Kd,app unit annotation propagated from the concentration column label (R2).
+	// Kd,app unit annotation read from the concentration column label (R2).
 	kdAnnotations := {
 		"pl7.app/label": "Kd,app",
+		"pl7.app/description": "Apparent dissociation constant: the antigen concentration at which half of a variant's displayed binding sites are bound, read from this assay. Avidity on the display surface and the staining and washing steps shift it, so it ranks variants within one experiment and is not comparable to a solution measurement such as SPR or BLI.",
 		"pl7.app/isScore": "true",
 		"pl7.app/score/rankingOrder": "increasing",
 		"pl7.app/table/visibility": "default",
 		"pl7.app/table/orderPriority": "201"
 	}
-	if unitLabel != "" {
-		kdAnnotations["pl7.app/unit"] = unitLabel
+	if concUnit != "" {
+		kdAnnotations["pl7.app/unit"] = concUnit
 	}
 
 	// Import per_clonotype.tsv → summary PColumns.
 	// Python writes column `r2`; the output spec name `pl7.app/vdj/curveFitR2` is
 	// what discovery & the UI see, so the rename is invisible downstream.
-	// "log_fluorescence" fixes the Hill exponent at 1, so its column is a constant; hide it there.
+	// Each equation's presentation of the shared columns. "log_fluorescence" fixes the Hill exponent
+	// at 1, so that column is a constant there; its range side carries kdOutOfRange's fact; and its
+	// R² rates nothing unless the R² gate is on. "Non-binder" is its class only, and the
+	// defaultCutoff below leaves it out.
 	hillVisibility := "default"
+	outOfRangeVisibility := "default"
+	r2Visibility := "default"
+	affinityClassValues := "[\"Good\",\"Partial\",\"Failed\"]"
+	affinityClassDescription := "Good: R² at or above the Good threshold and the Hill coefficient within its limits. Partial: R² between the two thresholds, or a Good R² with the Hill coefficient outside its limits. Failed: no fit, or R² below the Failed threshold; see the fit failure reason."
 	if args.equation == "log_fluorescence" {
 		hillVisibility = "hidden"
+		outOfRangeVisibility = "optional"
+		if is_undefined(args.r2GateMin) {
+			r2Visibility = "hidden"
+		}
+		affinityClassValues = "[\"Good\",\"Partial\",\"Non-binder\",\"Failed\"]"
+		affinityClassDescription = "Good: Kd,app inside the titrated range, with a standard error of log10 Kd,app at or below 0.5. Partial: Kd,app is a bound at the edge of the titration, or its standard error is larger. Non-binder: the signal stayed flat and dim at every concentration. Failed: no fit, or the R² gate is on and an in-range fit fell below it; see the fit failure reason."
 	}
 	summaryColumns := [
 		{
@@ -273,7 +304,7 @@ wf.body(func(args) {
 				annotations: {
 					"pl7.app/label": "Curve fit R²",
 					"pl7.app/isScore": "false",
-					"pl7.app/table/visibility": "default",
+					"pl7.app/table/visibility": r2Visibility,
 					"pl7.app/table/orderPriority": "199"
 				}
 			}
@@ -288,7 +319,8 @@ wf.body(func(args) {
 					"pl7.app/label": "Affinity class",
 					"pl7.app/isScore": "true",
 					"pl7.app/isDiscreteFilter": "true",
-					"pl7.app/discreteValues": "[\"Good\",\"Partial\",\"Failed\"]",
+					"pl7.app/description": affinityClassDescription,
+					"pl7.app/discreteValues": affinityClassValues,
 					"pl7.app/score/rankingOrder": "decreasing",
 					"pl7.app/score/defaultCutoff": "[\"Good\",\"Partial\"]",
 					"pl7.app/table/visibility": "default",
@@ -329,8 +361,8 @@ wf.body(func(args) {
 					"pl7.app/isScore": "false",
 					"pl7.app/isDiscreteFilter": "true",
 					"pl7.app/discreteValues": "[\"true\",\"false\"]",
-					"pl7.app/table/visibility": "default",
-					"pl7.app/table/orderPriority": "196"
+					"pl7.app/table/visibility": outOfRangeVisibility,
+					"pl7.app/table/orderPriority": "195"
 				}
 			}
 		},
@@ -365,7 +397,8 @@ wf.body(func(args) {
 			}
 		}
 	]
-	// Only "log_fluorescence" writes the SE of log10 K_D. "hill_gate_index" keeps the v2.4.0 columns.
+	// Only "log_fluorescence" writes the SE of log10 K_D and the range side. "hill_gate_index" keeps
+	// the v2.4.0 columns.
 	if args.equation == "log_fluorescence" {
 		summaryColumns = append(summaryColumns, {
 			column: "kdLog10Se",
@@ -380,6 +413,23 @@ wf.body(func(args) {
 					"pl7.app/score/rankingOrder": "increasing",
 					"pl7.app/table/visibility": "default",
 					"pl7.app/table/orderPriority": "200"
+				}
+			}
+		})
+		summaryColumns = append(summaryColumns, {
+			column: "kdRangeSide",
+			spec: {
+				name: "pl7.app/vdj/kdRangeSide",
+				valueType: "String",
+				domain: { "pl7.app/block": blockId },
+				annotations: {
+					"pl7.app/label": "Kd,app vs titration",
+					"pl7.app/description": "Where Kd,app sits against the titrated concentrations. Below range: the variant binds tighter than the lowest concentration resolves, so Kd,app is at most the value shown. Above range: Kd,app is at least the value shown. Empty when no Kd,app was fitted.",
+					"pl7.app/isScore": "false",
+					"pl7.app/isDiscreteFilter": "true",
+					"pl7.app/discreteValues": "[\"Below range\",\"In range\",\"Above range\"]",
+					"pl7.app/table/visibility": "default",
+					"pl7.app/table/orderPriority": "196"
 				}
 			}
 		})
@@ -435,8 +485,8 @@ wf.body(func(args) {
 		"pl7.app/isScore": "false",
 		"pl7.app/table/visibility": "hidden"
 	}
-	if unitLabel != "" {
-		concValueAnnotations["pl7.app/unit"] = unitLabel
+	if concUnit != "" {
+		concValueAnnotations["pl7.app/unit"] = concUnit
 	}
 	concValueColSpec := {
 		name: "pl7.app/vdj/concentrationValue",

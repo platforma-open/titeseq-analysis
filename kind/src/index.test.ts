@@ -97,6 +97,24 @@ describe("the plateau floor", () => {
   });
 });
 
+describe("the R² gate", () => {
+  it.each([true, false])("accepts r2GateEnabled %o", (v) => {
+    expect(parse({ r2GateEnabled: v })).toEqual({ r2GateEnabled: v });
+  });
+
+  it.each([1, "true", null])("refuses r2GateEnabled %o", (v) => {
+    expect(() => parse({ r2GateEnabled: v })).toThrow("'r2GateEnabled' must be true or false");
+  });
+
+  it.each([0, 0.8, 1])("accepts r2GateMin %o", (v) => {
+    expect(parse({ r2GateMin: v })).toEqual({ r2GateMin: v });
+  });
+
+  it.each([-0.1, 1.01, Number.NaN, "0.8"])("refuses r2GateMin %o", (v) => {
+    expect(() => parse({ r2GateMin: v })).toThrow("'r2GateMin' must be");
+  });
+});
+
 describe("the unbounded settings", () => {
   const FREE = [
     "nMin",

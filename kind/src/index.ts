@@ -1,7 +1,7 @@
 import { assertParamsObject, defineBlockKind } from "@platforma-sdk/block-kind";
 import type { PlRef } from "@platforma-sdk/model";
 import { isPlRef } from "@platforma-sdk/model";
-import { isString } from "es-toolkit";
+import { isBoolean, isString } from "es-toolkit";
 import { isNumber } from "es-toolkit/compat";
 import { name, version } from "../package.json" with { type: "json" };
 
@@ -48,6 +48,11 @@ export type BlockParams = {
   /** The fraction of the gate range a curve must reach to count as saturated. Read by
    *  `log_fluorescence` only. */
   plateauFloor?: number;
+  /** Whether an in-range fit with R² below `r2GateMin` rates Failed. Read by `log_fluorescence`
+   *  only. */
+  r2GateEnabled?: boolean;
+  /** The R² gate's threshold. Read by `log_fluorescence` only, while the gate is on. */
+  r2GateMin?: number;
   minReadsPerConcentration?: number;
   minConcentrationPoints?: number;
   r2ThresholdGood?: number;
@@ -145,6 +150,8 @@ const CONTRACT = {
   targetAntigen: check(isString, "a string"),
   equation: check(isEquation, `one of ${EQUATIONS.map((e) => `"${e}"`).join(" or ")}`),
   plateauFloor: check(isPositiveFraction, "a number above 0 and at most 1"),
+  r2GateEnabled: check(isBoolean, "true or false"),
+  r2GateMin: check(isFraction, "a number between 0 and 1"),
   minReadsPerConcentration: check(isNumberFrom(1), "a number of 1 or more"),
   minConcentrationPoints: check(isNumberFrom(3), "a number of 3 or more"),
   r2ThresholdGood: check(isFraction, "a number between 0 and 1"),

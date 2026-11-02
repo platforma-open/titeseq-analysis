@@ -25,6 +25,9 @@ PER_CLONOTYPE_SCHEMA: dict[str, pl.DataType] = {
     "kdOutOfRange": pl.Boolean,
     # SE of log10 K_D. Written by "log_fluorescence" only; null under "hill_gate_index".
     "kdLog10Se": pl.Float64,
+    # Written by "log_fluorescence" only: "Below range", "In range" or "Above range", null where
+    # there is no K_D. Null under "hill_gate_index".
+    "kdRangeSide": pl.Utf8,
 }
 
 

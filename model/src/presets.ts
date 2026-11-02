@@ -13,6 +13,11 @@ export type FitSettings = {
   /** The fraction of the gate range a curve must reach to count as saturated. Read by
    *  `log_fluorescence` only. */
   plateauFloor: number;
+  /** Whether an in-range fit with R² below `r2GateMin` rates Failed. Read by `log_fluorescence`
+   *  only. */
+  r2GateEnabled: boolean;
+  /** The R² gate's threshold. Read by `log_fluorescence` only, while the gate is on. */
+  r2GateMin: number;
   minReadsPerConcentration: number;
   minConcentrationPoints: number;
   r2ThresholdGood: number;
@@ -24,14 +29,18 @@ export type FitSettings = {
   hookEffectMinReads: number;
 };
 
+/** The settings only `log_fluorescence` reads. */
+export type LogFluorescenceSetting = "plateauFloor" | "r2GateEnabled" | "r2GateMin";
+
 /**
  * The settings as the block stores them, which is what the drawer edits: a number field the
  * scientist cleared reads `undefined`. `BlockData` is built on this type, and `args()` is the
  * single boundary that refuses an incomplete set and so disables Run.
  *
- * `equation` stays required: the drawer's equation dropdown has no clear button.
+ * `equation` and `r2GateEnabled` stay required: a dropdown and a checkbox have no clear button.
  */
-export type FitSettingsDraft = Partial<Omit<FitSettings, "equation">> & { equation: Equation };
+export type FitSettingsDraft = Partial<Omit<FitSettings, "equation" | "r2GateEnabled">> &
+  Pick<FitSettings, "equation" | "r2GateEnabled">;
 
 /** The settings only `hill_gate_index` reads, at the values the block shipped through 2.4.0. */
 export const HILL_GATE_INDEX_DEFAULTS = {
@@ -44,12 +53,16 @@ export const HILL_GATE_INDEX_DEFAULTS = {
   hookEffectThresholdBin: 0.2,
   hookEffectThresholdNoBin: 0.02,
   hookEffectMinReads: 20,
-} as const satisfies Omit<FitSettings, "equation" | "plateauFloor">;
+} as const satisfies Omit<FitSettings, "equation" | LogFluorescenceSetting>;
 
 export const DEFAULT_EQUATION: Equation = "log_fluorescence";
 
 /** Adams 2016's floor: two thirds of the gate range. */
 export const DEFAULT_PLATEAU_FLOOR = 2 / 3;
+
+/** Off: no rule unverified against a paper's own code sits in the default path. The threshold is
+ *  Phillips 2021's, which its preset turns on. */
+export const DEFAULT_R2_GATE = { r2GateEnabled: false, r2GateMin: 0.8 } as const;
 
 export const PRESET_IDS = ["adams2016", "phillips2021", "starr"] as const;
 
@@ -73,12 +86,22 @@ export const PRESETS: readonly Preset[] = [
   {
     id: "adams2016",
     label: "Adams 2016",
-    settings: { equation: "log_fluorescence", plateauFloor: DEFAULT_PLATEAU_FLOOR },
+    settings: {
+      equation: "log_fluorescence",
+      plateauFloor: DEFAULT_PLATEAU_FLOOR,
+      r2GateEnabled: false,
+    },
   },
   {
     id: "phillips2021",
     label: "Phillips 2021 (CR6261)",
-    settings: { equation: "log_fluorescence", plateauFloor: 0.4 },
+    // The authors drop an in-range fit with R² below 0.8 (klawrence26/bnab-landscapes).
+    settings: {
+      equation: "log_fluorescence",
+      plateauFloor: 0.4,
+      r2GateEnabled: true,
+      r2GateMin: 0.8,
+    },
   },
   {
     id: "starr",

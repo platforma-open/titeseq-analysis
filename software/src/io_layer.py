@@ -15,6 +15,7 @@ from constants import (
     COL_CONC_VAL,
     COL_READS,
     COL_SAMPLE,
+    MAX_LOG10_FLUORESCENCE,
 )
 
 
@@ -154,19 +155,32 @@ def validate_bin_column(df: pl.DataFrame) -> None:
 
 
 def validate_bin_fluorescence(df: pl.DataFrame) -> None:
-    """Every row in a gate (bin >= 1) must carry a finite measured gate position.
+    """Every row in a gate (bin >= 1) must carry a finite log10 gate position.
 
     A missing position would drop that gate's reads from the mean log10 fluorescence and move the
     signal without any warning, so it is refused. Rows with a null bin (allowed at concentration 0)
     are not checked.
+
+    A position above MAX_LOG10_FLUORESCENCE is linear fluorescence, not log10. Fitted as log10 it
+    moves K_D by decades, and above about 308 it overflows a float in the fit.
     """
     position = pl.col(COL_BIN_FLUORESCENCE).cast(pl.Float64, strict=False)
-    bad = df.filter((pl.col(COL_BIN) >= 1) & (position.is_null() | ~position.is_finite()))
+    gated = df.filter(pl.col(COL_BIN) >= 1)
+    bad = gated.filter(position.is_null() | ~position.is_finite())
     if bad.height > 0:
         examples = bad.select([COL_SAMPLE, COL_CONC_STR, COL_BIN]).unique().sort(COL_SAMPLE).head(5).to_dicts()
         raise InputValidationError(
-            f"column '{COL_BIN_FLUORESCENCE}' must hold a finite log10 fluorescence for every gate; "
-            f"{bad.height} rows are null or not finite, e.g. {examples}"
+            f"Gate fluorescence column ('{COL_BIN_FLUORESCENCE}') must hold a finite log10 fluorescence "
+            f"for every gate; {bad.height} rows are null or not finite, e.g. {examples}"
+        )
+    high = gated.filter(position > MAX_LOG10_FLUORESCENCE)
+    if high.height > 0:
+        top = high.select(position.max()).item()
+        examples = high.select([COL_SAMPLE, COL_CONC_STR, COL_BIN]).unique().sort(COL_SAMPLE).head(5).to_dicts()
+        raise InputValidationError(
+            f"Gate fluorescence column ('{COL_BIN_FLUORESCENCE}') must hold log10 fluorescence, but it "
+            f"reaches {top:g}, above the {MAX_LOG10_FLUORESCENCE:g} accepted. It looks like linear "
+            f"fluorescence: supply log10 of each gate's mean. {high.height} rows, e.g. {examples}"
         )
 
 
@@ -229,12 +243,14 @@ def validate_sample_metadata_uniqueness(df: pl.DataFrame, has_bin: bool, has_ant
 
 
 def validate_bin_concentration_grid(df: pl.DataFrame) -> list[str]:
-    """R5 sub-clause: warn when (bin, concentration) combos are non-uniformly populated.
+    """R5 sub-clause: report how many clonotypes miss part of the (bin, concentration) grid.
 
-    Absent combinations silently reduce the number of bins contributing to mean_bin
-    at that concentration, biasing the result without any flag. The reference grid
-    is every (bin, concentrationStr) pair observed for ANY clonotype; any clonotype
-    with fewer combinations present is flagged.
+    Absent combinations reduce the number of bins contributing to mean_bin at that
+    concentration. The reference grid is every (bin, concentrationStr) pair observed for ANY
+    clonotype. Run it on the frame the block fits, after the antigen filter.
+
+    The line carries a count and a share, no clonotype keys: keys are internal hashes, and a
+    mutational-scanning library flags nearly every clonotype (1,150,360 on Adams 2016).
     """
     warnings: list[str] = []
     if COL_BIN not in df.columns:
@@ -251,12 +267,12 @@ def validate_bin_concentration_grid(df: pl.DataFrame) -> list[str]:
         .group_by(COL_CLONOTYPE, maintain_order=True)
         .agg(pl.len().alias("n_combos"))
     )
-    missing = per_clone.filter(pl.col("n_combos") < n_grid)
-    if missing.height > 0:
-        offenders = missing[COL_CLONOTYPE].to_list()[:5]
+    missing = per_clone.filter(pl.col("n_combos") < n_grid).height
+    if missing > 0:
+        share = 100.0 * missing / per_clone.height
         warnings.append(
-            f"{missing.height} clonotype(s) have missing (bin, concentration) combinations; "
-            f"expected {n_grid}, examples: {offenders} (R5)"
+            f"{missing} of {per_clone.height} clonotypes ({share:.1f}%) are absent from at least one of "
+            f"the {n_grid} (bin, concentration) samples (R5)"
         )
     return warnings
 

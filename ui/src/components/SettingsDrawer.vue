@@ -4,6 +4,7 @@ import { createDatasetSelection, createPrimaryRef, plRefsEqual } from "@platform
 import {
   PlAccordionSection,
   PlAlert,
+  PlCheckbox,
   PlDatasetSelector,
   PlDropdown,
   PlDropdownRef,
@@ -246,6 +247,25 @@ function setBinColumn(ref: PlRef | undefined): void {
           The plateau that each clonotype must be able to reach at saturation, as a fraction of the
           gate range. The default is 2/3, for a screening library. For a library in which most
           clonotypes bind, use a lower value, for example 0.4.
+        </template>
+      </PlNumberField>
+      <PlCheckbox v-if="isLogFluorescence" v-model="app.model.data.r2GateEnabled">
+        Fail in-range fits with a low R²
+      </PlCheckbox>
+      <PlNumberField
+        v-if="isLogFluorescence && app.model.data.r2GateEnabled"
+        v-model="app.model.data.r2GateMin"
+        label="Minimum R²"
+        :min-value="0"
+        :max-value="1"
+        :step="0.05"
+        clearable
+        :error-message="emptyError(app.model.data.r2GateMin)"
+      >
+        <template #tooltip>
+          A fit with its Kd,app inside the titrated range and an R² below this value is rated
+          Failed, with the reason low_r2. A Kd,app at the edge of the range is not checked. Off by
+          default; the Phillips 2021 preset turns it on at 0.8, the value its authors used.
         </template>
       </PlNumberField>
     </PlAccordionSection>

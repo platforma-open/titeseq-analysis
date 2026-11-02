@@ -22,6 +22,8 @@ export function deriveTemplateParams(data: BlockData): BlockParams {
     targetAntigen: data.targetAntigen,
     equation: data.equation,
     plateauFloor: data.plateauFloor,
+    r2GateEnabled: data.r2GateEnabled,
+    r2GateMin: data.r2GateMin,
     minReadsPerConcentration: data.minReadsPerConcentration,
     minConcentrationPoints: data.minConcentrationPoints,
     r2ThresholdGood: data.r2ThresholdGood,

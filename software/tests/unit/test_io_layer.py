@@ -493,7 +493,9 @@ class TestBinConcentrationGrid:
             },
         ]
         warnings = _validate_grid(_mk(rows))
-        assert len(warnings) > 0
+        assert warnings == [
+            "1 of 2 clonotypes (50.0%) are absent from at least one of the 2 (bin, concentration) samples (R5)"
+        ]
 
 
 def _mk_reads_with_sort_fraction(

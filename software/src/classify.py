@@ -71,18 +71,33 @@ def classify(
     return Classification("Failed", "n_out_of_range")
 
 
-def classify_log_fluorescence(*, censored: bool, log10_kd_se: float | None) -> Classification:
-    """The "log_fluorescence" derivation for a fit that converged.
+def classify_log_fluorescence(
+    *,
+    non_binder: bool,
+    censored: bool,
+    log10_kd_se: float | None,
+    r2: float | None,
+    r2_gate_min: float | None,
+) -> Classification:
+    """The "log_fluorescence" derivation for a fit that converged. In order:
 
-      Partial  the reported K_D is a bound (censored, or pinned at a titration boundary), or
-               SE(log10 K_D) is above KD_SD_GOOD or not finite
-      Good     K_D inside the titrated range, and SE(log10 K_D) at or below KD_SD_GOOD
+      Non-binder  the curve is flat and dim, so its K_D is pinned at the weak wall
+      Partial     the reported K_D is a bound: a flat bright curve, or a fit pinned at either wall
+      Failed      low_r2: the R² gate is on and an in-range fit's R² is below it or undefined
+      Partial     SE(log10 K_D) above KD_SD_GOOD or not finite
+      Good        K_D inside the titrated range, SE(log10 K_D) at or below KD_SD_GOOD
 
-    The pipeline rates a gated clonotype or a fit that did not converge Failed before this runs.
-    R² and the Hill exponent gate nothing here, so `low_r2` and `n_out_of_range` never fire.
+    The R² gate reads in-range fits only, as Phillips 2021 filters them. A bound has no curve
+    through its midpoint for R² to measure. The Hill exponent gates nothing, so `n_out_of_range`
+    never fires. The pipeline rates a gated clonotype or a fit that did not converge Failed
+    before this runs.
     """
+    if non_binder:
+        return Classification("Non-binder", None)
     if censored:
         return Classification("Partial", None)
+    if r2_gate_min is not None and (r2 is None or not math.isfinite(r2) or r2 < r2_gate_min):
+        return Classification("Failed", "low_r2")
     if log10_kd_se is None or not math.isfinite(log10_kd_se) or log10_kd_se > KD_SD_GOOD:
         return Classification("Partial", None)
     return Classification("Good", None)

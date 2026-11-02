@@ -10,7 +10,13 @@ import type {
 import type { BlockParams } from "@platforma-open/platforma-open.titeseq-analysis.kind";
 import { kind } from "@platforma-open/platforma-open.titeseq-analysis.kind";
 import type { FitSettings, FitSettingsDraft, PresetId } from "./presets";
-import { DEFAULT_EQUATION, DEFAULT_PLATEAU_FLOOR, HILL_GATE_INDEX_DEFAULTS } from "./presets";
+import type { LogFluorescenceSetting } from "./presets";
+import {
+  DEFAULT_EQUATION,
+  DEFAULT_PLATEAU_FLOOR,
+  DEFAULT_R2_GATE,
+  HILL_GATE_INDEX_DEFAULTS,
+} from "./presets";
 import { deriveTemplateParams } from "./templateParams";
 
 export type { BlockParams, Equation } from "@platforma-open/platforma-open.titeseq-analysis.kind";
@@ -70,10 +76,12 @@ type CommonArgs = ArgsInputs & ArgsLabels;
  * always projected, and the upgrade does not stale it.
  */
 export type BlockArgs =
-  | (CommonArgs & Omit<FitSettings, "equation" | "plateauFloor"> & { equation?: undefined })
+  | (CommonArgs & Omit<FitSettings, "equation" | LogFluorescenceSetting> & { equation?: undefined })
   | (CommonArgs & {
       equation: "log_fluorescence";
       plateauFloor: number;
+      /** Present only while the R² gate is on, so an ungated block's args name no gate. */
+      r2GateMin?: number;
       binFluorescenceColumnRef?: PlRef;
     });
 
@@ -96,7 +104,10 @@ export type BlockData = FitInputs &
  * v1: the block as published through 2.4.0 — one fit, the free-exponent Hill on the read-weighted
  * mean gate index, with no equation to choose. This is the shape every released project stores.
  */
-export type BlockDataV1 = Omit<BlockData, "equation" | "plateauFloor" | "appliedPreset">;
+export type BlockDataV1 = Omit<BlockDataV2, "equation" | "plateauFloor" | "appliedPreset">;
+
+/** v2: the equation choice, before the log-fluorescence R² gate. Never released. */
+export type BlockDataV2 = Omit<BlockData, "r2GateEnabled" | "r2GateMin">;
 
 // Bind by resolvePath, not block-id domain, so defaults survive a fresh block
 // or project. The format — double-encoded JSON — is what GraphMaker stores.
@@ -187,6 +198,8 @@ export const initBlockData = (params?: BlockParams): BlockData => ({
     params?.equation ??
     (params?.minReadsPerConcentration !== undefined ? "hill_gate_index" : DEFAULT_EQUATION),
   plateauFloor: params?.plateauFloor ?? DEFAULT_PLATEAU_FLOOR,
+  r2GateEnabled: params?.r2GateEnabled ?? DEFAULT_R2_GATE.r2GateEnabled,
+  r2GateMin: params?.r2GateMin ?? DEFAULT_R2_GATE.r2GateMin,
   minReadsPerConcentration:
     params?.minReadsPerConcentration ?? HILL_GATE_INDEX_DEFAULTS.minReadsPerConcentration,
   minConcentrationPoints:
@@ -243,15 +256,22 @@ export const initBlockData = (params?: BlockParams): BlockData => ({
  * not read one. Nothing else moves: every setting, reference, label and piece of view state
  * crosses untouched, so a re-run reproduces the numbers the project already holds.
  */
-export const migrateV1ToV2 = (v1: BlockDataV1): BlockData => ({
+export const migrateV1ToV2 = (v1: BlockDataV1): BlockDataV2 => ({
   ...v1,
   equation: "hill_gate_index",
   plateauFloor: DEFAULT_PLATEAU_FLOOR,
 });
 
+/**
+ * v2 -> v3. The R² gate arrives off, so a log-fluorescence project rates its fits as it did. v2
+ * shipped only in development builds; the step repairs their stored projects.
+ */
+export const migrateV2ToV3 = (v2: BlockDataV2): BlockData => ({ ...v2, ...DEFAULT_R2_GATE });
+
 export const dataModel = new DataModelBuilder({ kind })
   .from<BlockDataV1>("v1")
-  .migrate<BlockData>("v2", migrateV1ToV2)
+  .migrate<BlockDataV2>("v2", migrateV1ToV2)
+  .migrate<BlockData>("v3", migrateV2ToV3)
   .init(({ params }) => initBlockData(params));
 
 function isIntegerValueType(vt: string | undefined): boolean {
@@ -363,12 +383,20 @@ function logFluorescenceArgs(data: BlockData, inputs: ArgsInputs, labels: ArgsLa
   // feed it. The Python raises on this; refusing here disables Run and names the reason
   // instead of failing the job after it has been submitted.
   if (data.binColumnRef === undefined)
-    throw new Error("The log fluorescence fit requires a FACS bin column");
+    throw new Error(
+      "The log fluorescence fit requires a FACS bin column. For frequency-only data, choose the Mean bin fit under Fit method.",
+    );
+  if (data.r2GateEnabled) {
+    if (data.r2GateMin === undefined) throw new Error("R² gate threshold is required");
+    if (data.r2GateMin < 0 || data.r2GateMin > 1)
+      throw new Error("R² gate threshold must be between 0 and 1");
+  }
   return {
     ...inputs,
     binFluorescenceColumnRef: data.binFluorescenceColumnRef,
     equation: "log_fluorescence",
     plateauFloor: data.plateauFloor,
+    ...(data.r2GateEnabled && { r2GateMin: data.r2GateMin }),
     ...labels,
   };
 }

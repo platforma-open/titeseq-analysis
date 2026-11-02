@@ -127,6 +127,7 @@ class TestBounds:
         assert row["affinityClass"] == "Partial"
         assert row["fitFailureReason"] is None
         assert row["kdOutOfRange"] is True
+        assert row["kdRangeSide"] == "Below range"
         assert math.log10(row["kd"]) == pytest.approx(LOG_LO, abs=1e-9)
 
     def test_a_pinned_kd_reports_no_standard_error(self):
@@ -135,10 +136,11 @@ class TestBounds:
         assert row["kdOutOfRange"] is True
         assert row["kdLog10Se"] is None
 
-    def test_a_flat_dim_curve_is_pinned_high_and_rated_partial(self):
+    def test_a_flat_dim_curve_is_pinned_high_and_rated_a_non_binder(self):
         row = _row(run(_frame(_lf_reads("DIM", 1e3)), params=LF), "DIM")
-        assert row["affinityClass"] == "Partial"
+        assert (row["affinityClass"], row["fitFailureReason"]) == ("Non-binder", None)
         assert row["kdOutOfRange"] is True
+        assert row["kdRangeSide"] == "Above range"
         assert math.log10(row["kd"]) == pytest.approx(LOG_HI, abs=1e-9)
 
     def test_the_plateau_floor_decides_which_wall_a_flat_mid_bright_curve_is_pinned_to(self):
@@ -149,7 +151,8 @@ class TestBounds:
         strict = _row(run(reads, params=FitParams(equation="log_fluorescence", plateau_floor=2 / 3)), "MID")
         assert math.log10(lenient["kd"]) == pytest.approx(LOG_LO, abs=1e-9)
         assert math.log10(strict["kd"]) == pytest.approx(LOG_HI, abs=1e-9)
-        assert lenient["affinityClass"] == strict["affinityClass"] == "Partial"
+        assert (lenient["affinityClass"], strict["affinityClass"]) == ("Partial", "Non-binder")
+        assert (lenient["kdRangeSide"], strict["kdRangeSide"]) == ("Below range", "Above range")
         assert lenient["kdOutOfRange"] is True and strict["kdOutOfRange"] is True
 
 
@@ -376,3 +379,68 @@ class TestCliParams:
     def test_an_unknown_equation_is_refused_by_name(self, tmp_path):
         with pytest.raises(ValueError, match="unknown equation"):
             self._run(tmp_path, {"equation": "poisson"})
+
+
+class TestLinearGateFluorescence:
+    """A linear MFI where log10 is required moves K_D by decades, or overflows the fit."""
+
+    @pytest.mark.parametrize("offset", [0.0, 2.0])
+    def test_linear_fluorescence_is_refused_and_named(self, offset):
+        # 10^((bin - 1) * 0.65 + offset): 1 to 89 a.u., and 100 to 8,900 a.u.
+        reads = _with_positions(_frame(_lf_reads("G1", 1e-8)), offset=offset)
+        reads = reads.with_columns((10.0 ** pl.col("bin_fluorescence")).alias("bin_fluorescence"))
+        with pytest.raises(ValueError, match="Gate fluorescence column .* linear fluorescence"):
+            run(reads, params=LF)
+
+    def test_log10_fluorescence_up_to_the_limit_is_accepted(self):
+        # Gates at 5.05 to 7.0 log10, the top one on the limit.
+        reads = _with_positions(_frame(_lf_reads("G1", 1e-8)), offset=7.0 - 3 * GATE_WIDTH)
+        assert _row(run(reads, params=LF), "G1")["affinityClass"] in {"Good", "Partial"}
+
+
+class TestR2Gate:
+    def test_off_by_default(self):
+        assert _row(run(_frame(_lf_reads("G1", 1e-8)), params=LF), "G1")["affinityClass"] == "Good"
+
+    def test_an_in_range_fit_below_the_gate_fails_low_r2(self):
+        # A sampled curve never fits perfectly, so a gate at 1.0 fails every in-range fit.
+        gated = FitParams(equation="log_fluorescence", r2_gate_min=1.0)
+        row = _row(run(_frame(_lf_reads("G1", 1e-8)), params=gated), "G1")
+        assert (row["affinityClass"], row["fitFailureReason"]) == ("Failed", "low_r2")
+        assert row["kdRangeSide"] == "In range"
+        assert row["r2"] is not None and row["r2"] < 1.0
+
+    def test_a_bound_is_not_gated(self):
+        gated = FitParams(equation="log_fluorescence", r2_gate_min=1.0)
+        row = _row(run(_frame(_lf_reads("SAT", 1e-14)), params=gated), "SAT")
+        assert row["affinityClass"] == "Partial"
+
+    def test_the_mean_bin_fit_ignores_the_gate(self):
+        gated = FitParams(equation="hill_gate_index", r2_gate_min=1.0)
+        assert _row(run(_frame(_lf_reads("G1", 1e-8)), params=gated), "G1")["affinityClass"] == "Good"
+
+
+class TestRangeSide:
+    def test_an_in_range_fit_reports_in_range(self):
+        assert _row(run(_frame(_lf_reads("G1", 1e-8)), params=LF), "G1")["kdRangeSide"] == "In range"
+
+    def test_the_mean_bin_fit_writes_no_side(self):
+        # "hill_gate_index" keeps the v2.4.0 columns; kdOutOfRange carries its range fact.
+        assert _row(run(_frame(_lf_reads("G1", 1e-8)), params=HILL), "G1")["kdRangeSide"] is None
+
+    def test_a_row_without_a_kd_has_no_side(self):
+        row = _row(run(_frame(_lf_reads("SHORT", 1e-8, concs=CONCS[:4])), params=LF), "SHORT")
+        assert row["kd"] is None and row["kdRangeSide"] is None
+
+
+class TestGridWarningReadsTheFilteredFrame:
+    def test_another_antigens_samples_do_not_count(self, capsys):
+        # G1 sits in every sample of antigen X. Antigen Y's samples hold only OTHER, so before the
+        # filter G1 would miss Y's whole grid.
+        x = [dict(r, antigen="X") for r in _lf_reads("G1", 1e-8)]
+        y = [
+            dict(r, antigen="Y", sampleId="y_" + r["sampleId"], concentrationStr="5e-9", concentration=5e-9)
+            for r in _lf_reads("OTHER", 1e-8)[:4]
+        ]
+        run(_frame(x, y), params=LF, target_antigen="X", antigen_column_ref="antigen")
+        assert "(bin, concentration) samples" not in capsys.readouterr().out

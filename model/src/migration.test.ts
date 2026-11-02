@@ -7,6 +7,7 @@ import {
   deriveArgs,
   initBlockData,
   migrateV1ToV2,
+  migrateV2ToV3,
 } from "./index";
 
 const ref = (name: string): PlRef => ({ __isRef: true, blockId: "b1", name });
@@ -45,7 +46,7 @@ const v240Project: BlockDataV1 = {
 /** The project as the block will hold it after the upgrade, through the real version chain. */
 const upgraded = (): BlockData => {
   const migrated = dataModel.migrate({ version: "v1", data: v240Project });
-  expect(migrated.version).toBe("v2");
+  expect(migrated.version).toBe("v3");
   return migrated.data;
 };
 
@@ -83,6 +84,29 @@ describe("a project created on v2.4.0 or earlier", () => {
 
   it("carries a plateau floor its equation never reads", () => {
     expect(upgraded().plateauFloor).toBe(2 / 3);
+  });
+
+  it("carries an R² gate its equation never reads, and its args name none", () => {
+    expect(upgraded()).toMatchObject({ r2GateEnabled: false, r2GateMin: 0.8 });
+    expect(Object.hasOwn(argsOf(upgraded()), "r2GateMin")).toBe(false);
+  });
+});
+
+describe("a project created on a v2 development build", () => {
+  const v2Project = migrateV1ToV2(v240Project);
+
+  it("arrives at v3 with the R² gate off, so it rates its fits as it did", () => {
+    const migrated = dataModel.migrate({
+      version: "v2",
+      data: { ...v2Project, equation: "log_fluorescence" },
+    });
+    expect(migrated.version).toBe("v3");
+    expect(migrated.data).toMatchObject({ r2GateEnabled: false, r2GateMin: 0.8 });
+  });
+
+  it("moves nothing else", () => {
+    const { r2GateEnabled: _e, r2GateMin: _m, ...rest } = migrateV2ToV3(v2Project);
+    expect(rest).toEqual(v2Project);
   });
 });
 
@@ -154,10 +178,51 @@ describe("the args carry only the settings the selected equation reads", () => {
     expect(argsOf({ ...configured, r2ThresholdGood: 0.95 })).toEqual(argsOf(configured));
   });
 
-  it("hill_gate_index omits the plateau floor and gate fluorescence", () => {
-    const args = argsOf({ ...configured, equation: "hill_gate_index" });
-    expect(Object.hasOwn(args, "plateauFloor")).toBe(false);
-    expect(Object.hasOwn(args, "binFluorescenceColumnRef")).toBe(false);
+  it("hill_gate_index omits the plateau floor, the R² gate and gate fluorescence", () => {
+    const args = argsOf({ ...configured, equation: "hill_gate_index", r2GateEnabled: true });
+    for (const field of [
+      "plateauFloor",
+      "r2GateEnabled",
+      "r2GateMin",
+      "binFluorescenceColumnRef",
+    ]) {
+      expect(Object.hasOwn(args, field), field).toBe(false);
+    }
+  });
+});
+
+describe("the R² gate", () => {
+  const configured: BlockData = {
+    ...initBlockData(),
+    abundanceRef: ref("abundance"),
+    concentrationColumnRef: ref("concentration"),
+    binColumnRef: ref("bin"),
+  };
+
+  it("is off for a new block, and its args name no gate", () => {
+    expect(configured.r2GateEnabled).toBe(false);
+    expect(Object.hasOwn(argsOf(configured), "r2GateMin")).toBe(false);
+  });
+
+  it("an off gate's threshold does not change the args", () => {
+    expect(argsOf({ ...configured, r2GateMin: 0.5 })).toEqual(argsOf(configured));
+  });
+
+  it("sends its threshold while on", () => {
+    expect(argsOf({ ...configured, r2GateEnabled: true })).toMatchObject({ r2GateMin: 0.8 });
+  });
+
+  it("disables Run while on with its threshold cleared or out of range", () => {
+    expect(() => argsOf({ ...configured, r2GateEnabled: true, r2GateMin: undefined })).toThrow(
+      "R² gate threshold is required",
+    );
+    expect(() => argsOf({ ...configured, r2GateEnabled: true, r2GateMin: 1.2 })).toThrow(
+      "between 0 and 1",
+    );
+  });
+
+  it("an off gate with its threshold cleared still runs", () => {
+    expect(() => argsOf({ ...configured, r2GateMin: undefined })).not.toThrow();
   });
 });
 

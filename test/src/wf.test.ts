@@ -187,6 +187,7 @@ blockTest(
       // behaviour it has always asserted rather than following the new default.
       equation: "hill_gate_index",
       plateauFloor: 2 / 3,
+      r2GateEnabled: false,
     } satisfies BlockData;
     await project.mutateBlockStorage(titeseqBlockId, {
       operation: "update-block-data",
@@ -345,6 +346,11 @@ blockTest(
       "log_fluorescence summary has the Kd,app standard error",
     ).toBe(true);
     expect(specByName.has("pl7.app/vdj/kdLog10Se"), "mean bin fit has no Kd,app SE").toBe(false);
+    expect(
+      lfSpec.some((c) => c.type === "column" && c.spec.name === "pl7.app/vdj/kdRangeSide"),
+      "log_fluorescence summary has the Kd,app range side",
+    ).toBe(true);
+    expect(specByName.has("pl7.app/vdj/kdRangeSide"), "mean bin fit has no range side").toBe(false);
 
     const lfHillIdx = lfSpec.findIndex(
       (c) => c.type === "column" && c.spec.name === "pl7.app/vdj/hillCoefficient",
@@ -492,6 +498,7 @@ blockTest(
         // behaviour it has always asserted rather than following the new default.
         equation: "hill_gate_index",
         plateauFloor: 2 / 3,
+        r2GateEnabled: false,
       } satisfies BlockData,
     });
 

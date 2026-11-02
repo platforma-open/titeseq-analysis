@@ -61,6 +61,7 @@ from constants import (
     LF_MIN_CONCENTRATION_POINTS,
     LF_MIN_READS_PER_CONCENTRATION,
     FitParams,
+    KdRangeSide,
 )
 from hill_fit import fit_one_clonotype
 from io_layer import (
@@ -121,7 +122,6 @@ def _validate_inputs(
     warnings += validate_concentration_column(reads, has_bin=has_bin)
     if has_bin:
         validate_bin_column(reads)
-        warnings += validate_bin_concentration_grid(reads)
     warnings += validate_antigen_filter(reads, antigen_column_ref, target_antigen)
     validate_sample_metadata_uniqueness(reads, has_bin=has_bin, has_antigen=has_antigen)
     # Warnings go through the same log channel as progress messages. The Tengo workflow
@@ -228,7 +228,12 @@ _PER_CLONOTYPE_FIELDS = (
     "fitFailureReason",
     "kdOutOfRange",
     "kdLog10Se",
+    "kdRangeSide",
 )
+
+# A pin's censor, as the range side it reports. "below": the true K_D is at most the lowest
+# concentration, so the value sits below the range.
+_RANGE_SIDE: dict[str | None, KdRangeSide] = {"below": "Below range", None: "In range", "above": "Above range"}
 
 
 class _FitBatch:
@@ -396,6 +401,7 @@ def _fit_all_log_fluorescence(
     log10_conc_hi: float,
     baseline: float | None,
     gates_measured: bool,
+    r2_gate_min: float | None,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """ "log_fluorescence": fit every clonotype, then pin, rate and integrate.
 
@@ -420,12 +426,23 @@ def _fit_all_log_fluorescence(
 
         columns["kd"][i] = 10.0**log10_kd
         columns["hillCoefficient"][i] = HILL_EXPONENT_FIXED
-        columns["r2"][i] = fit.r2
+        # A signal with no variance has no R²; NaN would ship as a number, so it stays null.
+        columns["r2"][i] = fit.r2 if fit.r2 is not None and math.isfinite(fit.r2) else None
         columns["kdOutOfRange"][i] = censor is not None
+        columns["kdRangeSide"][i] = _RANGE_SIDE[censor]
         # A pinned K_D is a bound. The fit's SE describes the unpinned estimate, so a bound gets none.
         se = fit.log10_kd_se
         columns["kdLog10Se"][i] = se if censor is None and se is not None and math.isfinite(se) else None
-        batch.rate(i, classify_log_fluorescence(censored=censor is not None, log10_kd_se=se))
+        batch.rate(
+            i,
+            classify_log_fluorescence(
+                non_binder=curve_class == "Censored Low",
+                censored=censor is not None,
+                log10_kd_se=se,
+                r2=fit.r2,
+                r2_gate_min=r2_gate_min,
+            ),
+        )
         batch.add_curve(clonotype, conc_strs, fit.y_hat if gates_measured else decades_to_gate_index(fit.y_hat))
     return batch.frames()
 
@@ -537,6 +554,7 @@ def _run_log_fluorescence(
         stats_map=stats_map,
         scale=scale,
         plateau_floor=params.plateau_floor,
+        r2_gate_min=params.r2_gate_min,
         log10_conc_lo=math.log10(conc_lo),
         log10_conc_hi=math.log10(conc_hi),
         baseline=baseline,
@@ -607,6 +625,10 @@ def run(
     if target_antigen is not None:
         log(f"Applying antigen filter: {target_antigen}")
     reads = apply_antigen_filter(reads, target_antigen)
+    # The grid describes the samples the block fits, so it reads the filtered frame.
+    if has_bin:
+        for w in validate_bin_concentration_grid(reads):
+            log(f"WARN: {w}")
 
     # Sort fractions sum to 1 within one antigen's sorts, so the check reads the filtered frame.
     if sort_fraction_col is not None and has_bin:
