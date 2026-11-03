@@ -151,6 +151,24 @@ function setBinColumn(ref: PlRef | undefined): void {
         "Antigen concentration (M)" gives "M". A label without parentheses is used whole.
       </template>
     </PlDropdownRef>
+    <!-- Above FACS bin: the equation decides whether a bin is required and which bin fields show. -->
+    <PlDropdown
+      :model-value="app.model.data.equation"
+      :options="EQUATION_OPTIONS"
+      label="Fit method equation"
+      @update:model-value="(eq) => eq && setEquation(eq)"
+    >
+      <template #tooltip>
+        Log fluorescence fit: fits a Hill curve to the mean log10 fluorescence of each clonotype.
+        The Hill exponent is fixed at 1. New blocks use this fit.
+        <br /><br />
+        Mean bin fit: fits a Hill curve to the read-weighted mean bin of each clonotype. The Hill
+        exponent is free. Blocks created before the equation choice existed keep this fit.
+        <br /><br />
+        Each equation rates fit quality in its own way. "Good" means that the equation found a
+        Kd,app inside the titrated range. It does not give an error bound.
+      </template>
+    </PlDropdown>
     <PlDropdownRef
       :model-value="app.model.data.binColumnRef"
       :options="app.model.outputs.binOptions"
@@ -237,24 +255,6 @@ function setBinColumn(ref: PlRef | undefined): void {
       {{ w.message }}
     </PlAlert>
 
-    <!-- Outside the Fit method section: the equation decides which inputs above are required. -->
-    <PlDropdown
-      :model-value="app.model.data.equation"
-      :options="EQUATION_OPTIONS"
-      label="Fit method equation"
-      @update:model-value="(eq) => eq && setEquation(eq)"
-    >
-      <template #tooltip>
-        Log fluorescence fit: fits a Hill curve to the mean log10 fluorescence of each clonotype.
-        The Hill exponent is fixed at 1. New blocks use this fit.
-        <br /><br />
-        Mean bin fit: fits a Hill curve to the read-weighted mean bin of each clonotype. The Hill
-        exponent is free. Blocks created before the equation choice existed keep this fit.
-        <br /><br />
-        Each equation rates fit quality in its own way. "Good" means that the equation found a
-        Kd,app inside the titrated range. It does not give an error bound.
-      </template>
-    </PlDropdown>
     <!-- Every field here belongs to the log fluorescence fit; the mean bin fit has its own section. -->
     <PlAccordionSection v-if="isLogFluorescence" label="Fit method">
       <PlNumberField

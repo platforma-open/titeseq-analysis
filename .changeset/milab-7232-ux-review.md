@@ -39,4 +39,5 @@ UX review fixes:
   SE. With replicates, "Curve fit R²" is the mean over the in-range replicates, the ones Minimum R²
   checks. With the R² check on, no Good or Partial variant shows an R² below its minimum, and no
   bound shows an R² far below 0.
-- "Equation" is now "Fit method equation", above the Fit method section.
+- "Equation" is now "Fit method equation", right above "FACS bin", since the equation decides
+  whether a bin is required.
