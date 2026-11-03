@@ -57,13 +57,13 @@ watchEffect(() => {
 </script>
 
 <template>
-  <PlBtnGhost @click.stop="logOpen = true">
-    Logs
-    <template #append>
-      <PlMaskIcon24 name="file-logs" />
-    </template>
-  </PlBtnGhost>
   <template v-if="props.showSettings">
+    <PlBtnGhost @click.stop="logOpen = true">
+      Logs
+      <template #append>
+        <PlMaskIcon24 name="file-logs" />
+      </template>
+    </PlBtnGhost>
     <PlBtnGhost @click.stop="app.model.data.settingsOpen = true">
       Settings
       <template #append>
@@ -71,11 +71,11 @@ watchEffect(() => {
       </template>
     </PlBtnGhost>
     <SettingsDrawer v-model="app.model.data.settingsOpen" />
+    <PlSlideModal v-model="logOpen" width="80%">
+      <template #title>Fit log</template>
+      <PlLogView :log-handle="app.model.outputs.logHandle" />
+    </PlSlideModal>
   </template>
-  <PlSlideModal v-model="logOpen" width="80%">
-    <template #title>Fit log</template>
-    <PlLogView :log-handle="app.model.outputs.logHandle" />
-  </PlSlideModal>
 </template>
 
 <style scoped>

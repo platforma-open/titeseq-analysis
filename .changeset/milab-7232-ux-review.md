@@ -47,3 +47,4 @@ UX review fixes:
   panel, as the published analyses report it.
 - "Equation" is now "Fit method equation", right above "FACS bin", since the equation decides
   whether a bin is required.
+- "Logs" shows on the Clonotype Fit Results page only, beside "Settings".

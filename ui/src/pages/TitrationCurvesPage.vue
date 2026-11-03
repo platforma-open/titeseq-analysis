@@ -83,7 +83,8 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
       comparable to bin-derived results — do not mix in the same Lead Selection ranking.
     </PlAlert>
     <PlAlert v-if="isEmpty" type="warn">
-      All clonotypes failed to fit. Loosen thresholds in Inputs or check the Fit log.
+      All clonotypes failed to fit. On the Clonotype Fit Results page, loosen the limits in Settings
+      or read the fit log in Logs.
     </PlAlert>
 
     <GraphMaker
