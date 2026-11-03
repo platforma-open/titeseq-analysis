@@ -12,12 +12,10 @@ export type FitSettings = {
   /** The fraction of the gate range a curve must reach to count as saturated. Read by
    *  `log_fluorescence` only. */
   plateauFloor: number;
-  /** Whether an in-range fit with R² below `r2GateMin` rates Failed. Read by `log_fluorescence`
-   *  only. */
-  r2GateEnabled: boolean;
-  /** The R² gate's threshold. Read by `log_fluorescence` only, while the gate is on. */
-  r2GateMin: number;
-  /** The gate's SE(log10 Kd,app) maximum, while the gate is on. Absent sets no limit. Read by
+  /** An in-range fit with a lower R² rates Failed. Absent sets no limit. Read by
+   *  `log_fluorescence` only. */
+  r2GateMin?: number;
+  /** An in-range fit with a larger SE(log10 Kd,app) rates Failed. Absent sets no limit. Read by
    *  `log_fluorescence` only. */
   kdSeGateMax?: number;
   /** Whether a clonotype with no reads at one of the titration's concentrations, 0 M included,
@@ -35,7 +33,7 @@ export type FitSettings = {
 };
 
 /** The settings only `log_fluorescence` reads. */
-export type LogFluorescenceSetting = "plateauFloor" | "r2GateEnabled" | "r2GateMin" | "kdSeGateMax";
+export type LogFluorescenceSetting = "plateauFloor" | "r2GateMin" | "kdSeGateMax";
 
 /** The read-coverage settings both equations read. */
 export type ReadCoverageSetting =
@@ -48,10 +46,10 @@ export type ReadCoverageSetting =
  * scientist cleared reads `undefined`. `BlockData` is built on this type, and `args()` is the
  * single boundary that refuses an incomplete set and so disables Run.
  *
- * `equation` and `r2GateEnabled` stay required: a dropdown and a checkbox have no clear button.
+ * `equation` stays required: a dropdown has no clear button.
  */
-export type FitSettingsDraft = Partial<Omit<FitSettings, "equation" | "r2GateEnabled">> &
-  Pick<FitSettings, "equation" | "r2GateEnabled">;
+export type FitSettingsDraft = Partial<Omit<FitSettings, "equation">> &
+  Pick<FitSettings, "equation">;
 
 /** The read coverage both equations require, at the values each fit used on its own. */
 export const READ_COVERAGE_DEFAULTS = {
@@ -74,7 +72,3 @@ export const DEFAULT_EQUATION: Equation = "log_fluorescence";
 
 /** Adams 2016's floor, two thirds of the gate range, to three decimals. */
 export const DEFAULT_PLATEAU_FLOOR = 0.667;
-
-/** Off: no rule unverified against a paper's own code sits in the default path. The threshold is
- *  Phillips 2021's. */
-export const DEFAULT_R2_GATE = { r2GateEnabled: false, r2GateMin: 0.8 } as const;

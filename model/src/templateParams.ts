@@ -21,7 +21,6 @@ export function deriveTemplateParams(data: BlockData): BlockParams {
     targetAntigen: data.targetAntigen,
     equation: data.equation,
     plateauFloor: data.plateauFloor,
-    r2GateEnabled: data.r2GateEnabled,
     r2GateMin: data.r2GateMin,
     kdSeGateMax: data.kdSeGateMax,
     requireAllConcentrations: data.requireAllConcentrations,

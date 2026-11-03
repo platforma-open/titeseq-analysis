@@ -37,7 +37,6 @@ const configured: BlockData = {
   targetAntigen: "CD19",
   equation: "hill_gate_index",
   plateauFloor: 0.4,
-  r2GateEnabled: true,
   r2GateMin: 0.85,
   kdSeGateMax: 1.5,
   requireAllConcentrations: true,

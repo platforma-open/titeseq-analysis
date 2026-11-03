@@ -1,6 +1,6 @@
 import type { PlRef } from "@platforma-sdk/model";
 import { describe, expect, it } from "vitest";
-import type { BlockArgs, BlockData, BlockDataV1, BlockDataV3 } from "./index";
+import type { BlockArgs, BlockData, BlockDataV1, BlockDataV3, BlockDataV5 } from "./index";
 import {
   HILL_GATE_INDEX_DEFAULTS,
   dataModel,
@@ -10,6 +10,7 @@ import {
   migrateV2ToV3,
   migrateV3ToV4,
   migrateV4ToV5,
+  migrateV5ToV6,
   sectionsFor,
 } from "./index";
 
@@ -49,7 +50,7 @@ const v240Project: BlockDataV1 = {
 /** The project as the block will hold it after the upgrade, through the real version chain. */
 const upgraded = (): BlockData => {
   const migrated = dataModel.migrate({ version: "v1", data: v240Project });
-  expect(migrated.version).toBe("v5");
+  expect(migrated.version).toBe("v6");
   return migrated.data;
 };
 
@@ -89,8 +90,9 @@ describe("a project created on v2.4.0 or earlier", () => {
     expect(upgraded().plateauFloor).toBe(0.667);
   });
 
-  it("carries an R² gate its equation never reads, and its args name none", () => {
-    expect(upgraded()).toMatchObject({ r2GateEnabled: false, r2GateMin: 0.8 });
+  it("arrives with no R² limit, and its args name none", () => {
+    expect(upgraded().r2GateMin).toBeUndefined();
+    expect(Object.hasOwn(upgraded(), "r2GateEnabled")).toBe(false);
     expect(Object.hasOwn(argsOf(upgraded()), "r2GateMin")).toBe(false);
   });
 });
@@ -98,13 +100,13 @@ describe("a project created on v2.4.0 or earlier", () => {
 describe("a project created on a v2 development build", () => {
   const v2Project = migrateV1ToV2(v240Project);
 
-  it("arrives at v4 with the R² gate off, so it rates its fits as it did", () => {
+  it("arrives with no R² limit, so it rates its fits as it did", () => {
     const migrated = dataModel.migrate({
       version: "v2",
       data: { ...v2Project, equation: "log_fluorescence" },
     });
-    expect(migrated.version).toBe("v5");
-    expect(migrated.data).toMatchObject({ r2GateEnabled: false, r2GateMin: 0.8 });
+    expect(migrated.version).toBe("v6");
+    expect(migrated.data.r2GateMin).toBeUndefined();
   });
 
   it("moves nothing else", () => {
@@ -182,19 +184,14 @@ describe("the args carry only the settings the selected equation reads", () => {
   });
 
   it("hill_gate_index omits the plateau floor, the R² gate and gate fluorescence", () => {
-    const args = argsOf({ ...configured, equation: "hill_gate_index", r2GateEnabled: true });
-    for (const field of [
-      "plateauFloor",
-      "r2GateEnabled",
-      "r2GateMin",
-      "binFluorescenceColumnRef",
-    ]) {
+    const args = argsOf({ ...configured, equation: "hill_gate_index", r2GateMin: 0.8 });
+    for (const field of ["plateauFloor", "r2GateMin", "binFluorescenceColumnRef"]) {
       expect(Object.hasOwn(args, field), field).toBe(false);
     }
   });
 });
 
-describe("the R² gate", () => {
+describe("the R² and SE limits", () => {
   const configured: BlockData = {
     ...initBlockData(),
     abundanceRef: ref("abundance"),
@@ -202,60 +199,33 @@ describe("the R² gate", () => {
     binColumnRef: ref("bin"),
   };
 
-  it("is off for a new block, and its args name no gate", () => {
-    expect(configured.r2GateEnabled).toBe(false);
+  it("are empty for a new block, and its args name neither", () => {
+    expect(configured.r2GateMin).toBeUndefined();
+    expect(configured.kdSeGateMax).toBeUndefined();
     expect(Object.hasOwn(argsOf(configured), "r2GateMin")).toBe(false);
+    expect(Object.hasOwn(argsOf(configured), "kdSeGateMax")).toBe(false);
   });
 
-  it("an off gate's threshold does not change the args", () => {
-    expect(argsOf({ ...configured, r2GateMin: 0.5 })).toEqual(argsOf(configured));
+  it("send each limit that is set, on its own", () => {
+    expect(argsOf({ ...configured, r2GateMin: 0.8 })).toMatchObject({ r2GateMin: 0.8 });
+    expect(Object.hasOwn(argsOf({ ...configured, r2GateMin: 0.8 }), "kdSeGateMax")).toBe(false);
+    expect(argsOf({ ...configured, kdSeGateMax: 1 })).toMatchObject({ kdSeGateMax: 1 });
+    expect(Object.hasOwn(argsOf({ ...configured, kdSeGateMax: 1 }), "r2GateMin")).toBe(false);
   });
 
-  it("sends its threshold while on", () => {
-    expect(argsOf({ ...configured, r2GateEnabled: true })).toMatchObject({ r2GateMin: 0.8 });
-  });
-
-  it("disables Run while on with its threshold cleared or out of range", () => {
-    expect(() => argsOf({ ...configured, r2GateEnabled: true, r2GateMin: undefined })).toThrow(
-      "R² gate threshold is required",
-    );
-    expect(() => argsOf({ ...configured, r2GateEnabled: true, r2GateMin: 1.2 })).toThrow(
-      "between 0 and 1",
-    );
-  });
-
-  it("sends an SE limit only while the gate is on and the limit is set", () => {
-    expect(Object.hasOwn(argsOf({ ...configured, r2GateEnabled: true }), "kdSeGateMax")).toBe(
-      false,
-    );
-    expect(argsOf({ ...configured, r2GateEnabled: true, kdSeGateMax: 1 })).toMatchObject({
-      r2GateMin: 0.8,
-      kdSeGateMax: 1,
-    });
-    expect(Object.hasOwn(argsOf({ ...configured, kdSeGateMax: 1 }), "kdSeGateMax")).toBe(false);
-  });
-
-  it("disables Run on an SE limit of zero while the gate is on", () => {
-    expect(() => argsOf({ ...configured, r2GateEnabled: true, kdSeGateMax: 0 })).toThrow(
+  it("disable Run on a limit out of range", () => {
+    expect(() => argsOf({ ...configured, r2GateMin: 1.2 })).toThrow("between 0 and 1");
+    expect(() => argsOf({ ...configured, r2GateMin: -0.1 })).toThrow("between 0 and 1");
+    expect(() => argsOf({ ...configured, kdSeGateMax: 0 })).toThrow(
       "Maximum Kd,app SE must be above 0",
     );
   });
 
-  it("sends the complete-titration rule only when it is on", () => {
-    expect(Object.hasOwn(argsOf(configured), "requireAllConcentrations")).toBe(false);
-    expect(
-      Object.hasOwn(
-        argsOf({ ...configured, requireAllConcentrations: false }),
-        "requireAllConcentrations",
-      ),
-    ).toBe(false);
-    expect(argsOf({ ...configured, requireAllConcentrations: true })).toMatchObject({
-      requireAllConcentrations: true,
-    });
-  });
-
-  it("an off gate with its threshold cleared still runs", () => {
-    expect(() => argsOf({ ...configured, r2GateMin: undefined })).not.toThrow();
+  it("never sends the complete-titration rule, which is withheld", () => {
+    for (const requireAllConcentrations of [undefined, false, true]) {
+      const args = argsOf({ ...configured, requireAllConcentrations });
+      expect(Object.hasOwn(args, "requireAllConcentrations")).toBe(false);
+    }
   });
 });
 
@@ -275,7 +245,7 @@ describe("a project stored on the v3 data model", () => {
   const migrated = () => dataModel.migrate({ version: "v3", data: stored });
 
   it("gains unset replicates and the per-replicate view state", () => {
-    expect(migrated().version).toBe("v5");
+    expect(migrated().version).toBe("v6");
     expect(migrated().data).toMatchObject({
       replicateErrorModel: "sd_over_sqrt_n",
       replicateCensoredMajority: 0.5,
@@ -303,14 +273,14 @@ describe("a project stored on the v3 data model", () => {
 });
 
 describe("a project stored on the v4 data model", () => {
-  const stored = (minConcentrationPoints: number | undefined): BlockData => ({
+  const stored = (minConcentrationPoints: number | undefined): BlockDataV5 => ({
     ...migrateV3ToV4(migrateV2ToV3(migrateV1ToV2(v240Project))),
     minConcentrationPoints,
   });
   const migrated = (n: number | undefined) => dataModel.migrate({ version: "v4", data: stored(n) });
 
   it.each([3, 4])("raises a point count of %i to 5", (n) => {
-    expect(migrated(n).version).toBe("v5");
+    expect(migrated(n).version).toBe("v6");
     expect(migrated(n).data.minConcentrationPoints).toBe(5);
   });
 
@@ -413,5 +383,40 @@ describe("the sample replicates", () => {
     expect(initBlockData().replicateColumnRef).toBeUndefined();
     expect(upgraded().replicateColumnRef).toBeUndefined();
     expect(replicateKeys(upgraded())).toEqual([]);
+  });
+});
+
+describe("a project stored on the v5 data model", () => {
+  const base = (): BlockDataV5 => ({
+    ...migrateV4ToV5(migrateV3ToV4(migrateV2ToV3(migrateV1ToV2(v240Project)))),
+    equation: "log_fluorescence",
+    r2GateMin: 0.85,
+    kdSeGateMax: 1.5,
+  });
+  const migrated = (r2GateEnabled: boolean) =>
+    dataModel.migrate({ version: "v5", data: { ...base(), r2GateEnabled } });
+  it("with the checkbox off, clears both limits", () => {
+    expect(migrated(false).version).toBe("v6");
+    expect(migrated(false).data.r2GateMin).toBeUndefined();
+    expect(migrated(false).data.kdSeGateMax).toBeUndefined();
+  });
+
+  it("with the checkbox on, keeps both limits", () => {
+    expect(migrated(true).data).toMatchObject({ r2GateMin: 0.85, kdSeGateMax: 1.5 });
+  });
+
+  it("projects the args it projected, so it does not re-run", () => {
+    // v5 sent both limits with the checkbox on, and neither with it off.
+    const off = argsOf(migrated(false).data);
+    expect(Object.hasOwn(off, "r2GateMin")).toBe(false);
+    expect(Object.hasOwn(off, "kdSeGateMax")).toBe(false);
+    expect(argsOf(migrated(true).data)).toEqual({ ...off, r2GateMin: 0.85, kdSeGateMax: 1.5 });
+  });
+
+  it("drops the checkbox and moves nothing else", () => {
+    const { r2GateEnabled: _e, ...rest } = base();
+    const data = migrateV5ToV6({ ...base(), r2GateEnabled: true });
+    expect(Object.hasOwn(data, "r2GateEnabled")).toBe(false);
+    expect(data).toEqual(rest);
   });
 });

@@ -469,6 +469,14 @@ wf.body(func(args) {
 		}
 	})
 	if hasReplicate {
+		// With replicates, R² shows per replicate in the drill-down only.
+		withoutR2 := []
+		for c in summaryColumns {
+			if c.column != "r2" {
+				withoutR2 = append(withoutR2, c)
+			}
+		}
+		summaryColumns = withoutR2
 		summaryColumns = append(summaryColumns, replicateColumnsLib.seColumn(blockId, "", replicateErrorModel))
 		summaryColumns = append(summaryColumns, replicateColumnsLib.sdColumn(blockId, ""))
 		summaryColumns = summaryColumns + replicateColumnsLib.countColumns(blockId, "")

@@ -104,12 +104,8 @@ describe("the plateau floor", () => {
 });
 
 describe("the R² gate", () => {
-  it.each([true, false])("accepts r2GateEnabled %o", (v) => {
-    expect(parse({ r2GateEnabled: v })).toEqual({ r2GateEnabled: v });
-  });
-
-  it.each([1, "true", null])("refuses r2GateEnabled %o", (v) => {
-    expect(() => parse({ r2GateEnabled: v })).toThrow("'r2GateEnabled' must be true or false");
+  it("drops the retired r2GateEnabled checkbox", () => {
+    expect(parse({ r2GateEnabled: true, r2GateMin: 0.8 })).toEqual({ r2GateMin: 0.8 });
   });
 
   it.each([0, 0.8, 1])("accepts r2GateMin %o", (v) => {

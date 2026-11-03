@@ -4,7 +4,6 @@ import { createDatasetSelection, createPrimaryRef, plRefsEqual } from "@platform
 import {
   PlAccordionSection,
   PlAlert,
-  PlCheckbox,
   PlDatasetSelector,
   PlDropdown,
   PlDropdownRef,
@@ -274,35 +273,24 @@ function setBinColumn(ref: PlRef | undefined): void {
           clonotypes bind, use a lower value, for example 0.4.
         </template>
       </PlNumberField>
-      <PlCheckbox v-if="isLogFluorescence" v-model="app.model.data.r2GateEnabled">
-        Fail in-range fits of poor quality
-        <PlTooltip class="info" position="top">
-          <template #tooltip>
-            When this is on, the block checks each fit that has a Kd,app inside the titrated range.
-            A fit gets the rating Failed if its R² is below Minimum R². A fit also gets the rating
-            Failed if its standard error is above Maximum Kd,app SE. When this is off, the block
-            does not do these checks.
-          </template>
-        </PlTooltip>
-      </PlCheckbox>
       <PlNumberField
-        v-if="isLogFluorescence && app.model.data.r2GateEnabled"
+        v-if="isLogFluorescence"
         v-model="app.model.data.r2GateMin"
-        label="Minimum R²"
+        label="Minimum R² (optional)"
         :min-value="0"
         :max-value="1"
         :step="0.05"
         clearable
-        :error-message="emptyError(app.model.data.r2GateMin)"
       >
         <template #tooltip>
           The lowest R² that a fit can have. A fit with a lower R², or with no R², gets the rating
           Failed, with the reason low_r2. The block checks only a fit whose Kd,app is inside the
-          titrated range. With sample replicates, the block checks the fit of each replicate.
+          titrated range. With sample replicates, the block checks the fit of each replicate. Leave
+          this field empty to set no R² limit.
         </template>
       </PlNumberField>
       <PlNumberField
-        v-if="isLogFluorescence && app.model.data.r2GateEnabled"
+        v-if="isLogFluorescence"
         v-model="app.model.data.kdSeGateMax"
         label="Maximum Kd,app SE (log10, optional)"
         :min-value="0"
@@ -439,21 +427,8 @@ function setBinColumn(ref: PlRef | undefined): void {
           setting.
         </template>
       </PlNumberField>
-      <!-- Absent reads as off: the field has no migration default. -->
-      <PlCheckbox
-        :model-value="app.model.data.requireAllConcentrations === true"
-        @update:model-value="(on: boolean) => (app.model.data.requireAllConcentrations = on)"
-      >
-        Require reads at every concentration
-        <PlTooltip class="info" position="top">
-          <template #tooltip>
-            When this is on, a variant with no reads at one or more concentrations gets the rating
-            Failed, with the reason incomplete_titration. The 0 M sample counts as a concentration.
-            The block does this check before the fit. Both equations use this setting. It is off by
-            default. Phillips 2021 fitted only complete titrations.
-          </template>
-        </PlTooltip>
-      </PlCheckbox>
+      <!-- "Require reads at every concentration" is withheld: the run always fits a titration
+        with a gap. -->
     </PlAccordionSection>
 
     <PlAccordionSection v-if="!isLogFluorescence" label="Fit quality">

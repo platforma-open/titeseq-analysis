@@ -4,13 +4,18 @@
 "@platforma-open/platforma-open.titeseq-analysis.workflow": patch
 "@platforma-open/platforma-open.titeseq-analysis.ui": patch
 "@platforma-open/platforma-open.titeseq-analysis.software": patch
+"@platforma-open/platforma-open.titeseq-analysis.kind": patch
 ---
 
 UX review fixes:
 
 - The block overview describes both fit equations, the five affinity classes, replicate
   combination and the -log10 Kd,app column.
-- "Fail in-range fits of poor quality" and "Require reads at every concentration" have tooltips.
+- The "Fail in-range fits of poor quality" checkbox is gone. "Minimum R² (optional)" and "Maximum
+  Kd,app SE (log10, optional)" always show under the log fluorescence fit, and each applies only
+  when set. A project with the checkbox off keeps no limits; one with it on keeps both values.
+- "Require reads at every concentration" is no longer offered. Every run fits a titration with a
+  gap.
 - "Min concentration points" accepts 5 or more. A stored project with 3 or 4 moves to 5, so it
   re-runs.
 - Kd,app in molar is shown again, right after the affinity class, in the main table and in the
@@ -36,8 +41,8 @@ UX review fixes:
 - With the log fluorescence fit, "FACS bin" is marked required and says why Run is disabled while it
   is empty. "FACS sort fraction" and "Gate fluorescence" show before a bin is picked.
 - Log fluorescence fit: a Kd,app pinned at the edge of the range reports no R², as it reports no
-  SE. With replicates, "Curve fit R²" is the mean over the in-range replicates, the ones Minimum R²
-  checks. With the R² check on, no Good or Partial variant shows an R² below its minimum, and no
-  bound shows an R² far below 0.
+  SE, and no bound shows an R² far below 0.
+- With replicates, the main table has no "Curve fit R²". Each replicate's R² shows in the replicate
+  panel, as the published analyses report it.
 - "Equation" is now "Fit method equation", right above "FACS bin", since the equation decides
   whether a bin is required.

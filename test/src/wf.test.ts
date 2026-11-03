@@ -187,7 +187,6 @@ blockTest(
       // behaviour it has always asserted rather than following the new default.
       equation: "hill_gate_index",
       plateauFloor: 2 / 3,
-      r2GateEnabled: false,
       replicateErrorModel: "sd_over_sqrt_n",
       replicateCensoredMajority: 0.5,
       replicateTableState: createPlDataTableStateV2(),
@@ -508,7 +507,6 @@ blockTest(
         // behaviour it has always asserted rather than following the new default.
         equation: "hill_gate_index",
         plateauFloor: 2 / 3,
-        r2GateEnabled: false,
         replicateErrorModel: "sd_over_sqrt_n",
         replicateCensoredMajority: 0.5,
         replicateTableState: createPlDataTableStateV2(),

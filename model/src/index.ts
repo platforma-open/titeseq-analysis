@@ -24,7 +24,6 @@ import type { FitSettings, FitSettingsDraft, LogFluorescenceSetting } from "./fi
 import {
   DEFAULT_EQUATION,
   DEFAULT_PLATEAU_FLOOR,
-  DEFAULT_R2_GATE,
   HILL_GATE_INDEX_DEFAULTS,
   READ_COVERAGE_DEFAULTS,
 } from "./fitSettings";
@@ -127,12 +126,10 @@ export type BlockArgs =
       plateauFloor: number;
       minReadsPerConcentration: number;
       minConcentrationPoints: number;
-      /** Present only while the gate is on, so an ungated block's args name no gate. */
+      /** Present only when set, so a block with no R² limit names none. */
       r2GateMin?: number;
-      /** Present only while the gate is on and an SE limit is set. */
+      /** Present only when set. */
       kdSeGateMax?: number;
-      /** Present only as true. */
-      requireAllConcentrations?: true;
       binFluorescenceColumnRef?: PlRef;
     });
 
@@ -173,9 +170,12 @@ export type BlockDataV1 = Omit<BlockDataV2, "equation" | "plateauFloor">;
 /** v2: the equation choice, before the log-fluorescence R² gate. Never released. */
 export type BlockDataV2 = Omit<BlockDataV3, "r2GateEnabled" | "r2GateMin">;
 
+/** v4 and v5: a checkbox turned the R² and SE limits on and off. */
+export type BlockDataV5 = BlockData & { r2GateEnabled: boolean };
+
 /** v3: the R² gate, before sample replicates. Never released. */
 export type BlockDataV3 = Omit<
-  BlockData,
+  BlockDataV5,
   | "replicateColumnRef"
   | "replicateErrorModel"
   | "replicateFitErrorCutoff"
@@ -289,8 +289,7 @@ export const initBlockData = (params?: BlockParams): BlockData => ({
     params?.equation ??
     (params?.minReadsPerConcentration !== undefined ? "hill_gate_index" : DEFAULT_EQUATION),
   plateauFloor: params?.plateauFloor ?? DEFAULT_PLATEAU_FLOOR,
-  r2GateEnabled: params?.r2GateEnabled ?? DEFAULT_R2_GATE.r2GateEnabled,
-  r2GateMin: params?.r2GateMin ?? DEFAULT_R2_GATE.r2GateMin,
+  r2GateMin: params?.r2GateMin,
   kdSeGateMax: params?.kdSeGateMax,
   requireAllConcentrations: params?.requireAllConcentrations,
   replicateColumnRef: params?.replicateColumnRef,
@@ -368,14 +367,18 @@ export const migrateV1ToV2 = (v1: BlockDataV1): BlockDataV2 => ({
  * v2 -> v3. The R² gate arrives off, so a log-fluorescence project rates its fits as it did. v2
  * shipped only in development builds; the step repairs their stored projects.
  */
-export const migrateV2ToV3 = (v2: BlockDataV2): BlockDataV3 => ({ ...v2, ...DEFAULT_R2_GATE });
+export const migrateV2ToV3 = (v2: BlockDataV2): BlockDataV3 => ({
+  ...v2,
+  r2GateEnabled: false,
+  r2GateMin: 0.8,
+});
 
 /**
  * v3 -> v4. Sample replicates arrive unset: no replicate column, both filters off, the default
  * error model and censoring majority, and empty per-replicate view state. The args a v3 project
  * sends do not move, so it does not re-run.
  */
-export const migrateV3ToV4 = (v3: BlockDataV3): BlockData => ({
+export const migrateV3ToV4 = (v3: BlockDataV3): BlockDataV5 => ({
   ...v3,
   replicateErrorModel: DEFAULT_REPLICATE_ERROR_MODEL,
   replicateCensoredMajority: DEFAULT_CENSORED_MAJORITY,
@@ -390,7 +393,7 @@ export const MIN_CONCENTRATION_POINTS = 5;
  * v4 -> v5. A stored point count below the minimum is raised to it. A cleared field stays cleared.
  * Raising it changes that project's args, so the block goes stale.
  */
-export const migrateV4ToV5 = (v4: BlockData): BlockData => ({
+export const migrateV4ToV5 = (v4: BlockDataV5): BlockDataV5 => ({
   ...v4,
   minConcentrationPoints:
     v4.minConcentrationPoints === undefined
@@ -398,12 +401,24 @@ export const migrateV4ToV5 = (v4: BlockData): BlockData => ({
       : Math.max(v4.minConcentrationPoints, MIN_CONCENTRATION_POINTS),
 });
 
+/**
+ * v5 -> v6. The checkbox is gone: a limit applies when it is set. A project with the checkbox off
+ * clears both limits, and one with it on keeps them, so the args do not move and it does not
+ * re-run.
+ */
+export const migrateV5ToV6 = ({ r2GateEnabled, ...v5 }: BlockDataV5): BlockData => ({
+  ...v5,
+  r2GateMin: r2GateEnabled ? v5.r2GateMin : undefined,
+  kdSeGateMax: r2GateEnabled ? v5.kdSeGateMax : undefined,
+});
+
 export const dataModel = new DataModelBuilder({ kind })
   .from<BlockDataV1>("v1")
   .migrate<BlockDataV2>("v2", migrateV1ToV2)
   .migrate<BlockDataV3>("v3", migrateV2ToV3)
-  .migrate<BlockData>("v4", migrateV3ToV4)
-  .migrate<BlockData>("v5", migrateV4ToV5)
+  .migrate<BlockDataV5>("v4", migrateV3ToV4)
+  .migrate<BlockDataV5>("v5", migrateV4ToV5)
+  .migrate<BlockData>("v6", migrateV5ToV6)
   .init(({ params }) => initBlockData(params));
 
 type Ctx = RenderCtx<BlockArgs, BlockData>;
@@ -580,7 +595,6 @@ export const deriveArgs = (data: BlockData): BlockArgs => {
 function readCoverage(data: BlockData): {
   minReadsPerConcentration: number;
   minConcentrationPoints: number;
-  requireAllConcentrations?: true;
 } {
   if (data.minReadsPerConcentration === undefined)
     throw new Error("Min reads per concentration is required");
@@ -592,8 +606,7 @@ function readCoverage(data: BlockData): {
   return {
     minReadsPerConcentration: data.minReadsPerConcentration,
     minConcentrationPoints: data.minConcentrationPoints,
-    // Only as true: absent means a titration with a gap is still fitted.
-    ...(data.requireAllConcentrations === true && { requireAllConcentrations: true as const }),
+    // `requireAllConcentrations` is withheld: absent fits a titration with a gap.
   };
 }
 
@@ -610,21 +623,18 @@ function logFluorescenceArgs(data: BlockData, inputs: ArgsInputs, labels: ArgsLa
     throw new Error(
       "The log fluorescence fit requires a FACS bin column. For frequency-only data, choose the Mean bin fit in Fit method equation.",
     );
-  if (data.r2GateEnabled) {
-    if (data.r2GateMin === undefined) throw new Error("R² gate threshold is required");
-    if (data.r2GateMin < 0 || data.r2GateMin > 1)
-      throw new Error("R² gate threshold must be between 0 and 1");
-    if (data.kdSeGateMax !== undefined && !(data.kdSeGateMax > 0))
-      throw new Error("Maximum Kd,app SE must be above 0, or empty for no limit");
-  }
+  if (data.r2GateMin !== undefined && !(data.r2GateMin >= 0 && data.r2GateMin <= 1))
+    throw new Error("Minimum R² must be between 0 and 1, or empty for no limit");
+  if (data.kdSeGateMax !== undefined && !(data.kdSeGateMax > 0))
+    throw new Error("Maximum Kd,app SE must be above 0, or empty for no limit");
   return {
     ...inputs,
     binFluorescenceColumnRef: data.binFluorescenceColumnRef,
     equation: "log_fluorescence",
     plateauFloor: data.plateauFloor,
     ...readCoverage(data),
-    ...(data.r2GateEnabled && { r2GateMin: data.r2GateMin }),
-    ...(data.r2GateEnabled && data.kdSeGateMax !== undefined && { kdSeGateMax: data.kdSeGateMax }),
+    ...(data.r2GateMin !== undefined && { r2GateMin: data.r2GateMin }),
+    ...(data.kdSeGateMax !== undefined && { kdSeGateMax: data.kdSeGateMax }),
     ...labels,
   };
 }
