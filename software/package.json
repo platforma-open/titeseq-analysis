@@ -1,6 +1,6 @@
 {
   "name": "@platforma-open/platforma-open.titeseq-analysis.software",
-  "version": "2.1.4",
+  "version": "2.2.0",
   "description": "Block Software",
   "files": [
     "./dist/**/*"

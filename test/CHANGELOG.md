@@ -1,5 +1,18 @@
 # @platforma-open/platforma-open.titeseq-analysis.test
 
+## 2.0.7
+
+### Patch Changes
+
+- Updated dependencies [43eecfb]
+- Updated dependencies [c6cb4c5]
+- Updated dependencies [db4e101]
+- Updated dependencies [db4e101]
+- Updated dependencies [3ea39c8]
+- Updated dependencies [7d02f2b]
+- Updated dependencies [e776c4a]
+  - @platforma-open/platforma-open.titeseq-analysis.model@2.5.0
+
 ## 2.0.6
 
 ### Patch Changes
