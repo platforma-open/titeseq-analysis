@@ -124,9 +124,6 @@ const cellRendererSelector = computed(() => {
 
 <template>
   <TiteseqPage title="Clonotype Fit Results" mode="table" main>
-    <p v-if="keyAxisName !== undefined" class="drilldown-hint">
-      Double-click a variant, or click Open, to see its replicates.
-    </p>
     <PlAgDataTableV2
       v-model="app.model.data.tableState"
       :settings="tableSettings"
@@ -154,11 +151,3 @@ const cellRendererSelector = computed(() => {
     </PlSlideModal>
   </TiteseqPage>
 </template>
-
-<style scoped>
-.drilldown-hint {
-  margin: 0 0 8px;
-  color: var(--txt-03);
-  font-size: 13px;
-}
-</style>

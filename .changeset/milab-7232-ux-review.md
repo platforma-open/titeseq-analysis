@@ -31,7 +31,7 @@ UX review fixes:
   replicate counts, the SD, R², the failure reason, the out-of-range flag and the per-concentration
   signal stay in this block's own table and graphs.
 - With replicates, double-clicking a variant row, or its Open button, opens that variant's
-  replicates, and a hint above the table says so. The Open button no longer goes missing when the
+  replicates. The Open button no longer goes missing when the
   replicate outputs arrive after the table.
 - With the log fluorescence fit, "FACS bin" is marked required and says why Run is disabled while it
   is empty. "FACS sort fraction" and "Gate fluorescence" show before a bin is picked.
