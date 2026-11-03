@@ -6,10 +6,11 @@ import {
   isLabelColumn,
   pTableValue,
 } from "@platforma-sdk/model";
-import type { PTableHandle } from "@platforma-sdk/model";
+import type { PTableColumnSpec, PTableHandle } from "@platforma-sdk/model";
 import {
   PL_PLACEHOLDER_TEXTS,
   PlAgDataTableV2,
+  PlAgTextAndButtonCell,
   PlPlaceholder,
   PlSlideModal,
   usePlDataTableSettingsV2,
@@ -92,27 +93,48 @@ watch(
   { immediate: true },
 );
 
-const cellButtonAxis = computed(() =>
-  app.model.outputs.replicates === true ? app.model.outputs.summaryKeyAxisId : undefined,
+// The Open button on the variant column. A custom renderer rather than `show-cell-button-for-axis-id`:
+// PlAgDataTableV2 reads that prop only when its table data changes, so an axis id that resolves after
+// the table never gets a button. `cell-renderer-selector` is re-applied whenever it changes.
+// `invokeRowsOnDoubleClick` makes the button fire the row's double-click, so the button and a
+// double-click anywhere on the row take the same path into the drill-down.
+const keyAxisName = computed(() =>
+  app.model.outputs.replicates === true ? app.model.outputs.summaryKeyAxisId?.name : undefined,
 );
-// PlAgDataTableV2 reads `show-cell-button-for-axis-id` only when its table data changes. The two
-// outputs behind the axis can resolve after the table, so the key remounts the grid when the axis
-// arrives. Without it the Open button can be missing.
-const cellButtonKey = computed(() => JSON.stringify(cellButtonAxis.value ?? null));
+
+function isVariantColumn(spec: PTableColumnSpec | undefined, axisName: string): boolean {
+  if (spec === undefined) return false;
+  if (spec.type === "axis") return spec.spec.name === axisName;
+  return (
+    isLabelColumn(spec.spec) &&
+    spec.spec.axesSpec.length === 1 &&
+    spec.spec.axesSpec[0].name === axisName
+  );
+}
+
+const cellRendererSelector = computed(() => {
+  const axisName = keyAxisName.value;
+  if (axisName === undefined) return undefined;
+  return (params: { colDef?: { context?: PTableColumnSpec } }) =>
+    isVariantColumn(params.colDef?.context, axisName)
+      ? { component: PlAgTextAndButtonCell, params: { invokeRowsOnDoubleClick: true } }
+      : undefined;
+});
 </script>
 
 <template>
   <TiteseqPage title="Clonotype Fit Results" mode="table" main>
+    <p v-if="keyAxisName !== undefined" class="drilldown-hint">
+      Double-click a variant, or click Open, to see its replicates.
+    </p>
     <PlAgDataTableV2
-      :key="cellButtonKey"
       v-model="app.model.data.tableState"
       :settings="tableSettings"
       show-export-button
-      :show-cell-button-for-axis-id="cellButtonAxis"
+      :cell-renderer-selector="cellRendererSelector"
       not-ready-text="Open Inputs (top right) to configure the block and run it."
       no-rows-text="No clonotypes available."
       @row-double-clicked="openDrilldown"
-      @cell-button-clicked="openDrilldown"
     />
     <PlSlideModal v-model="drilldownOpen" width="80%">
       <template #title>{{ drilldownVariantLabel ?? "Replicates" }}</template>
@@ -132,3 +154,11 @@ const cellButtonKey = computed(() => JSON.stringify(cellButtonAxis.value ?? null
     </PlSlideModal>
   </TiteseqPage>
 </template>
+
+<style scoped>
+.drilldown-hint {
+  margin: 0 0 8px;
+  color: var(--txt-03);
+  font-size: 13px;
+}
+</style>

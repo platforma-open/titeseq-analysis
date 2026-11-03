@@ -30,8 +30,9 @@ UX review fixes:
 - Downstream blocks see four columns: affinity class, Kd,app, -log10 Kd,app and Kd,app SE. The
   replicate counts, the SD, R², the failure reason, the out-of-range flag and the per-concentration
   signal stay in this block's own table and graphs.
-- The Open button on the variant column shows every time. It was missing when the replicate
-  outputs resolved after the table.
+- With replicates, double-clicking a variant row, or its Open button, opens that variant's
+  replicates, and a hint above the table says so. The Open button no longer goes missing when the
+  replicate outputs arrive after the table.
 - With the log fluorescence fit, "FACS bin" is marked required and says why Run is disabled while it
   is empty. "FACS sort fraction" and "Gate fluorescence" show before a bin is picked.
 - Log fluorescence fit: a Kd,app pinned at the edge of the range reports no R², as it reports no
