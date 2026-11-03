@@ -60,8 +60,8 @@ SE_DESCRIPTIONS := {
  */
 countColumns := func(blockId, idPrefix) {
 	return [
-		countColumn("replicateCount", blockId, idPrefix, "Replicates used",
-			"The number of replicates that the block used for the mean. A value of 0 means that all replicates failed. The fit failure reason and the replicate table give the cause. A value of 1 means that the SE comes from the fit of that one replicate.",
+		countColumn("replicateCount", blockId, idPrefix, "Replicates measured",
+			"The number of replicates in the mean. A failed replicate is not in the mean. A replicate above or below the titrated range is in the mean. Its value is set to the highest or the lowest concentration. A value of 0 means that all replicates failed. The replicate panel gives the cause. A value of 1 means that the SE comes from the fit of that one replicate.",
 			"default", "190"),
 		countColumn("replicateMeasuredCount", blockId, idPrefix, "Replicates in range",
 			"The number of replicates with a Kd,app inside the titrated range.", "optional", "189"),

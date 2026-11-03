@@ -18,9 +18,10 @@ UX review fixes:
 - The mean bin fit also reports -log10 Kd,app, in the table, the replicate panel and the export.
 - Kd,app SE rounds to two decimals, like the SD. The per-replicate -log10 Kd,app rounds to two
   decimals, like the main table.
-- The SD column is "Kd,app SD (log10)". The replicate counts are "Replicates used", "in range",
-  "above range", "below range" and "failed": "measured" read as zero for a replicate at the top of
-  the titration, which was measured.
+- The SD column is "Kd,app SD (log10)". "Replicates measured" counts every replicate in the mean,
+  including one above or below the titrated range. The other counts are "Replicates in range",
+  "above range", "below range" and "failed". The old "Replicates measured" read 0 for a replicate at
+  the top of the titration, which was measured.
 - The replicate panel title names the variant, and its Variant Id column is gone.
 - "Fit failure reason" is hidden by default in the main table. Columns shows it again.
 - The replicate panel no longer has "Entered the mean". It repeated the per-replicate affinity
