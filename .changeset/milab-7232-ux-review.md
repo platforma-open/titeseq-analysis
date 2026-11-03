@@ -31,3 +31,5 @@ UX review fixes:
   signal stay in this block's own table and graphs.
 - The Open button on the variant column shows every time. It was missing when the replicate
   outputs resolved after the table.
+- With the log fluorescence fit, "FACS bin" is marked required and says why Run is disabled while it
+  is empty. "FACS sort fraction" and "Gate fluorescence" show before a bin is picked.

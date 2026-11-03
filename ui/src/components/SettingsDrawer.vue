@@ -74,6 +74,17 @@ const hasReplicates = computed(() => app.model.data.replicateColumnRef !== undef
 // Each equation reads only its own settings. A hidden setting keeps its stored value.
 const isLogFluorescence = computed(() => app.model.data.equation === "log_fluorescence");
 
+// The log fluorescence fit cannot run without bins. Run stays disabled until one is picked, so the
+// field says why.
+const binMissing = computed(
+  () => isLogFluorescence.value && app.model.data.binColumnRef === undefined,
+);
+
+// The bin-dependent fields: shown when a bin is picked, or when the fit needs one.
+const readsBins = computed(
+  () => isLogFluorescence.value || app.model.data.binColumnRef !== undefined,
+);
+
 const targetAntigenOptions = computed(() =>
   (app.model.outputs.targetAntigenValues ?? []).map((v) => ({ value: v, label: v })),
 );
@@ -144,16 +155,21 @@ function setBinColumn(ref: PlRef | undefined): void {
       :model-value="app.model.data.binColumnRef"
       :options="app.model.outputs.binOptions"
       @update:model-value="setBinColumn"
-      label="FACS bin"
+      :label="isLogFluorescence ? 'FACS bin' : 'FACS bin (optional)'"
+      :required="isLogFluorescence"
+      :error="binMissing ? 'The Log fluorescence fit needs a FACS bin column.' : undefined"
       clearable
     >
       <template #tooltip>
-        Per-sample positive integer identifying the FACS bin. Leave empty to run in no-bin mode;
-        resulting Kd,app values are not comparable to bin-derived values.
+        A per-sample positive integer that identifies the FACS bin. The Log fluorescence fit needs
+        it. The Mean bin fit can run without it, in no-bin mode. Kd,app from no-bin mode is not
+        comparable to Kd,app from bins.
       </template>
     </PlDropdownRef>
+    <!-- Shown whenever the fit reads bins, so the fields a required bin brings are visible before
+         the bin is picked. -->
     <PlDropdownRef
-      v-if="app.model.data.binColumnRef !== undefined"
+      v-if="readsBins"
       v-model="app.model.data.sortFractionColumnRef"
       :options="app.model.outputs.sortFractionOptions"
       label="FACS sort fraction (optional)"
@@ -166,7 +182,7 @@ function setBinColumn(ref: PlRef | undefined): void {
       </template>
     </PlDropdownRef>
     <PlDropdownRef
-      v-if="isLogFluorescence && app.model.data.binColumnRef !== undefined"
+      v-if="isLogFluorescence"
       v-model="app.model.data.binFluorescenceColumnRef"
       :options="app.model.outputs.binFluorescenceOptions"
       label="Gate fluorescence (optional)"

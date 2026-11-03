@@ -385,7 +385,7 @@ wf.body(func(args) {
 				domain: { "pl7.app/block": blockId },
 				annotations: {
 					"pl7.app/label": "Fit failure reason",
-					"pl7.app/description": "Why the variant gets the rating Failed. It is empty for all other ratings. insufficient_reads: no concentration point remains after the read floor. insufficient_points: fewer points remain than Min concentration points. incomplete_titration: one or more concentrations have no reads. low_r2: R² is below its minimum. high_kd_se: the standard error of log10 Kd,app is above its maximum. n_out_of_range: the Hill coefficient is outside its limits. non_monotonic_signal: the signal falls at the highest concentrations. convergence_failure: the fit did not converge. all_replicates_failed: no replicate gave a Kd,app. all_replicates_filtered: a filter removed all replicates. conflicting_censoring: replicates are out of range at both ends, and neither end has the majority.",
+					"pl7.app/description": "Why the variant gets the rating Failed: too few reads or points, missing concentrations, a poor fit, no convergence, or replicates that failed or disagree. Empty for other ratings.",
 					"pl7.app/isScore": "false",
 					"pl7.app/table/visibility": "optional",
 					"pl7.app/table/orderPriority": "197"
