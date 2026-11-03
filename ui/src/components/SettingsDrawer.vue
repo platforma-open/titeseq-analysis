@@ -237,24 +237,25 @@ function setBinColumn(ref: PlRef | undefined): void {
       {{ w.message }}
     </PlAlert>
 
+    <!-- Outside the Fit method section: the equation decides which inputs above are required. -->
+    <PlDropdown
+      :model-value="app.model.data.equation"
+      :options="EQUATION_OPTIONS"
+      label="Fit method equation"
+      @update:model-value="(eq) => eq && setEquation(eq)"
+    >
+      <template #tooltip>
+        Log fluorescence fit: fits a Hill curve to the mean log10 fluorescence of each clonotype.
+        The Hill exponent is fixed at 1. New blocks use this fit.
+        <br /><br />
+        Mean bin fit: fits a Hill curve to the read-weighted mean bin of each clonotype. The Hill
+        exponent is free. Blocks created before the equation choice existed keep this fit.
+        <br /><br />
+        Each equation rates fit quality in its own way. "Good" means that the equation found a
+        Kd,app inside the titrated range. It does not give an error bound.
+      </template>
+    </PlDropdown>
     <PlAccordionSection label="Fit method">
-      <PlDropdown
-        :model-value="app.model.data.equation"
-        :options="EQUATION_OPTIONS"
-        label="Equation"
-        @update:model-value="(eq) => eq && setEquation(eq)"
-      >
-        <template #tooltip>
-          Log fluorescence fit: fits a Hill curve to the mean log10 fluorescence of each clonotype.
-          The Hill exponent is fixed at 1. New blocks use this fit.
-          <br /><br />
-          Mean bin fit: fits a Hill curve to the read-weighted mean bin of each clonotype. The Hill
-          exponent is free. Blocks created before the equation choice existed keep this fit.
-          <br /><br />
-          Each equation rates fit quality in its own way. "Good" means that the equation found a
-          Kd,app inside the titrated range. It does not give an error bound.
-        </template>
-      </PlDropdown>
       <PlNumberField
         v-if="isLogFluorescence"
         v-model="app.model.data.plateauFloor"
@@ -380,7 +381,7 @@ function setBinColumn(ref: PlRef | undefined): void {
       >
         <template #tooltip>
           Optional. Leaves out a replicate whose fit R² is below this, before the mean, and counts
-          it as filtered. Off unless you set it. This differs from Minimum R² under Fit method: that
+          it as filtered. Off unless you set it. This differs from Minimum R² in the Fit method section: that
           gate runs first and rates the replicate's own fit Failed, so a replicate it rejects never
           reaches this floor. Set both to the same value and this one does nothing.
         </template>

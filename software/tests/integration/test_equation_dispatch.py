@@ -136,6 +136,13 @@ class TestBounds:
         assert row["kdOutOfRange"] is True
         assert row["kdLog10Se"] is None
 
+    @pytest.mark.parametrize(("name", "kd"), [("SAT", 1e-14), ("DIM", 1e3)])
+    def test_a_pinned_kd_reports_no_r2(self, name, kd):
+        # A curve pinned at the wall measures nothing; its R² can run to -100 on a flat signal.
+        row = _row(run(_frame(_lf_reads(name, kd)), params=LF), name)
+        assert row["kdOutOfRange"] is True
+        assert row["r2"] is None
+
     def test_a_flat_dim_curve_is_pinned_high_and_rated_above_range(self):
         row = _row(run(_frame(_lf_reads("DIM", 1e3)), params=LF), "DIM")
         assert (row["affinityClass"], row["fitFailureReason"]) == ("Above range", None)

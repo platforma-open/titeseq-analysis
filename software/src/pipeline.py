@@ -436,8 +436,11 @@ def _fit_all_log_fluorescence(
 
         columns["kd"][i] = 10.0**log10_kd
         columns["hillCoefficient"][i] = HILL_EXPONENT_FIXED
-        # A signal with no variance has no R²; NaN would ship as a number, so it stays null.
-        columns["r2"][i] = fit.r2 if fit.r2 is not None and math.isfinite(fit.r2) else None
+        # A signal with no variance has no R²; NaN would ship as a number, so it stays null. A pinned
+        # K_D is a bound, and the R² of a curve pinned at the wall measures nothing, so a bound gets
+        # none either. The replicate mean then reads only in-range fits, the ones the R² gate checks.
+        in_range_r2 = censor is None and fit.r2 is not None and math.isfinite(fit.r2)
+        columns["r2"][i] = fit.r2 if in_range_r2 else None
         columns["kdOutOfRange"][i] = censor is not None
         range_side = _RANGE_SIDE[censor]
         columns["kdRangeSide"][i] = range_side

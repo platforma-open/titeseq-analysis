@@ -3,6 +3,7 @@
 "@platforma-open/platforma-open.titeseq-analysis.model": patch
 "@platforma-open/platforma-open.titeseq-analysis.workflow": patch
 "@platforma-open/platforma-open.titeseq-analysis.ui": patch
+"@platforma-open/platforma-open.titeseq-analysis.software": patch
 ---
 
 UX review fixes:
@@ -33,3 +34,8 @@ UX review fixes:
   outputs resolved after the table.
 - With the log fluorescence fit, "FACS bin" is marked required and says why Run is disabled while it
   is empty. "FACS sort fraction" and "Gate fluorescence" show before a bin is picked.
+- Log fluorescence fit: a Kd,app pinned at the edge of the range reports no R², as it reports no
+  SE. With replicates, "Curve fit R²" is the mean over the in-range replicates, the ones Minimum R²
+  checks. With the R² check on, no Good or Partial variant shows an R² below its minimum, and no
+  bound shows an R² far below 0.
+- "Equation" is now "Fit method equation", above the Fit method section.

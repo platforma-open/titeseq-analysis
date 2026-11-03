@@ -608,7 +608,7 @@ function logFluorescenceArgs(data: BlockData, inputs: ArgsInputs, labels: ArgsLa
   // instead of failing the job after it has been submitted.
   if (data.binColumnRef === undefined)
     throw new Error(
-      "The log fluorescence fit requires a FACS bin column. For frequency-only data, choose the Mean bin fit under Fit method.",
+      "The log fluorescence fit requires a FACS bin column. For frequency-only data, choose the Mean bin fit in Fit method equation.",
     );
   if (data.r2GateEnabled) {
     if (data.r2GateMin === undefined) throw new Error("R² gate threshold is required");

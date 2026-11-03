@@ -344,6 +344,17 @@ class TestReviewClassesAcrossReplicates:
         assert (row["affinityClass"], row["kdRangeSide"]) == ("Above range", "Above range")
         assert _kd(per_clonotype, "v1", "kdRangeSide") == "In range"
 
+    def test_the_combined_r2_reads_only_in_range_replicates(self):
+        # One replicate in range, one pinned above: the combined R² is the in-range replicate's own,
+        # and a variant pinned in every replicate has none.
+        design = {"A": {"mix": 1e-8, "dim": 1e3}, "B": {"mix": 1e3, "dim": 1e3}}
+        outputs = run(_frame(design), params=LF, replicates=REPS)
+        per_replicate = outputs["per_replicate"].filter(pl.col("clonotypeKey") == "mix").sort("replicate")
+        in_range_r2 = per_replicate["r2"].to_list()[0]
+        assert per_replicate["r2"].to_list()[1] is None
+        assert _kd(outputs["per_clonotype"], "mix", "r2") == pytest.approx(in_range_r2)
+        assert _kd(outputs["per_clonotype"], "dim", "r2") is None
+
     def test_the_r2_gate_fails_each_replicate_inside_its_own_fit(self):
         gated = FitParams(equation="log_fluorescence", r2_gate_min=1.0)
         outputs = run(_frame(self.DESIGN), params=gated, replicates=REPS)
