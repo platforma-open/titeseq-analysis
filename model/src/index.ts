@@ -917,15 +917,6 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
       primaryColumns: summaryCols.map((c) => DataColumn.fromColumn(c)),
       columns: resultPoolCols,
       tableState: ctx.data.tableState,
-      displayOptions: {
-        // Show why each clonotype failed. Results from runs that hid the column still show it.
-        visibility: [
-          {
-            match: { name: [exactly("pl7.app/vdj/fitFailureReason")] },
-            visibility: "default",
-          },
-        ],
-      },
     });
   })
 
