@@ -303,7 +303,7 @@ function setBinColumn(ref: PlRef | undefined): void {
           or with no error, gets the rating Failed, with the reason high_kd_se. The block checks
           only a fit whose Kd,app is inside the titrated range. With sample replicates, the block
           checks the fit of each replicate. An error above 0.5 always changes the rating from Good
-          to Partial. Leave this field empty to set no Failed limit.
+          to Partial. The default is 1. Leave this field empty to set no Failed limit.
         </template>
       </PlNumberField>
     </PlAccordionSection>

@@ -25,6 +25,7 @@ import {
   DEFAULT_EQUATION,
   DEFAULT_PLATEAU_FLOOR,
   DEFAULT_R2_GATE_MIN,
+  DEFAULT_KD_SE_GATE_MAX,
   HILL_GATE_INDEX_DEFAULTS,
   READ_COVERAGE_DEFAULTS,
 } from "./fitSettings";
@@ -291,7 +292,7 @@ export const initBlockData = (params?: BlockParams): BlockData => ({
     (params?.minReadsPerConcentration !== undefined ? "hill_gate_index" : DEFAULT_EQUATION),
   plateauFloor: params?.plateauFloor ?? DEFAULT_PLATEAU_FLOOR,
   r2GateMin: params?.r2GateMin ?? DEFAULT_R2_GATE_MIN,
-  kdSeGateMax: params?.kdSeGateMax,
+  kdSeGateMax: params?.kdSeGateMax ?? DEFAULT_KD_SE_GATE_MAX,
   requireAllConcentrations: params?.requireAllConcentrations,
   replicateColumnRef: params?.replicateColumnRef,
   replicateErrorModel: params?.replicateErrorModel ?? DEFAULT_REPLICATE_ERROR_MODEL,

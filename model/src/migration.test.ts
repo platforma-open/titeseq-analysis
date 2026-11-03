@@ -199,9 +199,8 @@ describe("the R² and SE limits", () => {
     binColumnRef: ref("bin"),
   };
 
-  it("start a new block at Minimum R² 0.8 and no SE limit", () => {
-    expect(argsOf(configured)).toMatchObject({ r2GateMin: 0.8 });
-    expect(Object.hasOwn(argsOf(configured), "kdSeGateMax")).toBe(false);
+  it("start a new block at Minimum R² 0.8 and Maximum Kd,app SE 1", () => {
+    expect(argsOf(configured)).toMatchObject({ r2GateMin: 0.8, kdSeGateMax: 1 });
   });
 
   it("send no R² limit when it is cleared", () => {

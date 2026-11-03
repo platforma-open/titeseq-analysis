@@ -75,3 +75,6 @@ export const DEFAULT_PLATEAU_FLOOR = 0.667;
 
 /** A new block's Minimum R². */
 export const DEFAULT_R2_GATE_MIN = 0.8;
+
+/** A new block's Maximum Kd,app SE (log10). */
+export const DEFAULT_KD_SE_GATE_MAX = 1;
