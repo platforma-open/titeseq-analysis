@@ -248,8 +248,7 @@ wf.body(func(args) {
 	// the concentrationValue sidecar PColumn (below), joined on this axis.
 	// orderPriority below the value MiXCR PColumns set on their clonotypeKey
 	// axis (110000) so the table renders clonotypeKey first, concentration
-	// second. The annotation propagates through exportPf to Lead Selection,
-	// keeping the same ordering downstream.
+	// second.
 	concAxisSpec := {
 		name: "pl7.app/vdj/concentration",
 		type: "String",
@@ -284,11 +283,13 @@ wf.body(func(args) {
 	// Kd,app unit annotation read from the concentration column label (R2).
 	kdAnnotations := {
 		"pl7.app/label": "Kd,app",
-		"pl7.app/description": "Apparent dissociation constant: the antigen concentration at which half of a variant's displayed binding sites are bound, read from this assay. Avidity on the display surface and the staining and washing steps shift it, so it ranks variants within one experiment and is not comparable to a solution measurement such as SPR or BLI. The table shows -log10 Kd,app instead, which carries the same value in the form published analyses report.",
+		"pl7.app/description": "The apparent dissociation constant. It is the antigen concentration at which half of the binding sites on a variant are bound. Avidity on the display surface changes this value. The staining and wash steps also change it. Use it to rank variants in one experiment. Do not compare it with a solution measurement such as SPR or BLI.",
 		"pl7.app/isScore": "true",
 		"pl7.app/score/rankingOrder": "increasing",
+		"pl7.app/format": ".2e",
 		"pl7.app/table/visibility": "default",
-		"pl7.app/table/orderPriority": "198"
+		// Right after the affinity class (202), before -log10 Kd,app (201).
+		"pl7.app/table/orderPriority": "201.5"
 	}
 	if concUnit != "" {
 		kdAnnotations["pl7.app/unit"] = concUnit
@@ -309,9 +310,6 @@ wf.body(func(args) {
 	affinityClassCutoff := "[\"Good\",\"Partial\"]"
 	affinityClassDescription := "Good: R² at or above the Good threshold and the Hill coefficient within its limits. Partial: R² between the two thresholds, or a Good R² with the Hill coefficient outside its limits. Failed: no fit, or R² below the Failed threshold; see the fit failure reason."
 	if args.equation == "log_fluorescence" {
-		// -log10 Kd,app carries the same value in the published form, so the molar column is there
-		// to be switched on rather than shown.
-		kdAnnotations["pl7.app/table/visibility"] = "optional"
 		hillVisibility = "hidden"
 		outOfRangeVisibility = "optional"
 		if is_undefined(args.r2GateMin) {
@@ -388,7 +386,7 @@ wf.body(func(args) {
 				annotations: {
 					"pl7.app/label": "Fit failure reason",
 					"pl7.app/isScore": "false",
-					"pl7.app/table/visibility": "default",
+					"pl7.app/table/visibility": "optional",
 					"pl7.app/table/orderPriority": "197"
 				}
 			}
@@ -448,30 +446,27 @@ wf.body(func(args) {
 			}
 		}
 	]
-	// Only "log_fluorescence" writes the SE of log10 K_D from a single fit, and the range side.
-	// With replicates the SE is the spread across them, which every equation reports, beside the SD
-	// and the replicate counts. "hill_gate_index" without replicates keeps the v2.4.0 columns.
-	// log10 K_D is the unit the fit solves in and the unit every error column carries, with or
-	// without replicates.
-	if args.equation == "log_fluorescence" {
-		summaryColumns = append(summaryColumns, {
-			column: "kdNegLog10",
-			spec: {
-				name: "pl7.app/vdj/kdNegLog10",
-				valueType: "Double",
-				domain: { "pl7.app/block": blockId },
-				annotations: {
-					"pl7.app/label": "-log10 Kd,app",
-					"pl7.app/description": "Kd,app as -log10, the form every published analysis of this assay reports: a larger number is tighter binding. Its magnitude is the unit the fit solves in, so it shares a scale with the standard error beside it. Empty where there is no Kd,app.",
-					"pl7.app/isScore": "true",
-					"pl7.app/score/rankingOrder": "decreasing",
-					"pl7.app/format": ".2f",
-					"pl7.app/table/visibility": "default",
-					"pl7.app/table/orderPriority": "201"
-				}
+	// -log10 Kd,app for every equation. Only "log_fluorescence" writes the SE of log10 K_D from a
+	// single fit, and the range side. With replicates the SE is the spread across them, which every
+	// equation reports, beside the SD and the replicate counts. log10 K_D is the unit the fit solves
+	// in and the unit every error column carries, with or without replicates.
+	summaryColumns = append(summaryColumns, {
+		column: "kdNegLog10",
+		spec: {
+			name: "pl7.app/vdj/kdNegLog10",
+			valueType: "Double",
+			domain: { "pl7.app/block": blockId },
+			annotations: {
+				"pl7.app/label": "-log10 Kd,app",
+				"pl7.app/description": "Kd,app as -log10, the form every published analysis of this assay reports: a larger number is tighter binding. Its magnitude is the unit the fit solves in, so it shares a scale with the standard error beside it. Empty where there is no Kd,app.",
+				"pl7.app/isScore": "true",
+				"pl7.app/score/rankingOrder": "decreasing",
+				"pl7.app/format": ".2f",
+				"pl7.app/table/visibility": "default",
+				"pl7.app/table/orderPriority": "201"
 			}
-		})
-	}
+		}
+	})
 	if hasReplicate {
 		summaryColumns = append(summaryColumns, replicateColumnsLib.seColumn(blockId, "", replicateErrorModel))
 		summaryColumns = append(summaryColumns, replicateColumnsLib.sdColumn(blockId, ""))
@@ -488,6 +483,7 @@ wf.body(func(args) {
 					"pl7.app/description": "Standard error of log10 Kd,app from the fit. At or below 0.5, an in-range Kd,app is rated Good. Empty when Kd,app is a bound at the edge of the titration or the fit failed.",
 					"pl7.app/isScore": "true",
 					"pl7.app/score/rankingOrder": "increasing",
+					"pl7.app/format": ".2f",
 					"pl7.app/table/visibility": "default",
 					"pl7.app/table/orderPriority": "200"
 				}
@@ -586,7 +582,7 @@ wf.body(func(args) {
 				{ column: "clonotypeKey", spec: clonotypeAxisSpec },
 				{ column: "replicate", spec: replicateAxisSpec }
 			],
-			columns: replicateColumnsLib.perReplicateColumns(blockId, "rep_", kdAnnotations, affinityClassValues, args.equation == "log_fluorescence"),
+			columns: replicateColumnsLib.perReplicateColumns(blockId, "rep_", kdAnnotations, affinityClassValues, true),
 			storageFormat: "Parquet",
 			partitionKeyLength: 0
 		}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
@@ -636,22 +632,22 @@ wf.body(func(args) {
 	// signalPf feeds this block's Titration Curves graph: meanBin (Y),
 	// fittedMeanBin (curve overlay), concentrationValue (numeric X).
 	signalPf := buildTracedPf([meanBinImported, fittedMeanBinImported, concValueImported], [])
-	// exportPf is the single bundle Lead Selection sees (R20, R21). Reuses the
-	// same pcolumn resources — no re-import. Drops kdPlotPosition /
-	// hillPlotPosition: these are visual sentinels for the in-block Affinity
-	// vs Fit Quality scatter (nulls parked at max_conc*10 and -1.0) that would
-	// otherwise appear as spurious Kd,app / Hill coefficient siblings in
-	// downstream pickers.
-	// "log_fluorescence" fixes the Hill exponent at 1. Its hillCoefficient is not exported. The
-	// block's own table keeps it.
-	exportExcluded := ["kdPlotPosition", "hillPlotPosition"]
-	if args.equation == "log_fluorescence" {
-		exportExcluded = append(exportExcluded, "hillCoefficient")
+	// exportPf is what downstream blocks see. Reuses the same pcolumn resources — no re-import.
+	// An allowlist: the affinity answer only. Every other column stays in this block's own table
+	// and graphs. A column an equation does not write is simply absent.
+	exportAllowed := {
+		affinityClass: true,
+		kd: true,
+		kdNegLog10: true,
+		kdLog10Se: true
 	}
-	exportPf := buildTracedPf(
-		[summaryImported, meanBinImported, fittedMeanBinImported, concValueImported],
-		exportExcluded
-	)
+	exportExcluded := []
+	for k in maps.getKeys(summaryImported) {
+		if !exportAllowed[k] {
+			exportExcluded = append(exportExcluded, k)
+		}
+	}
+	exportPf := buildTracedPf([summaryImported], exportExcluded)
 
 	outputs := {
 		summaryPf: pframes.exportFrame(summaryPf),

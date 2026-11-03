@@ -6,8 +6,6 @@ ll := import("@platforma-sdk/workflow-tengo:ll")
 maps := import("@platforma-sdk/workflow-tengo:maps")
 
 COUNT_NAME := "pl7.app/vdj/replicateCount"
-STATE_NAME := "pl7.app/vdj/kdReplicateState"
-STATE_VALUES := "[\"In the mean\",\"In the mean, at the lowest concentration\",\"In the mean, at the highest concentration\",\"Left out, no fit\",\"Left out by a filter\"]"
 
 /**
  * The replicate axis. String rather than Int for the same reason the concentration axis is: the
@@ -46,7 +44,7 @@ countColumn := func(header, blockId, idPrefix, label, description, visibility, p
 	}
 }
 
-SD_DESCRIPTION := "SD of log10 Kd,app across the replicates in the mean. Empty with one replicate, for a bound and for a failed variant."
+SD_DESCRIPTION := "The standard deviation of log10 Kd,app across the replicates that the block used. It is empty if the block used one replicate. It is also empty if Kd,app is out of range or the variant failed."
 
 SE_DESCRIPTIONS := {
 	sd_over_sqrt_n: "Standard error of the mean log10 Kd,app across the replicates: their sample SD over the square root of their number. With one replicate, that fit's own standard error where the equation reports one. Empty for a bound and for a failed variant. At or below 0.5, Kd,app is rated Good.",
@@ -62,19 +60,19 @@ SE_DESCRIPTIONS := {
  */
 countColumns := func(blockId, idPrefix) {
 	return [
-		countColumn("replicateCount", blockId, idPrefix, "Replicates in mean",
-			"Replicates that produced a Kd,app and entered the mean. A variant with 0 failed in every replicate; the fit failure reason and the per-replicate table say why. 1 means the reported error is that fit's own standard error rather than a spread across replicates.",
+		countColumn("replicateCount", blockId, idPrefix, "Replicates used",
+			"The number of replicates that the block used for the mean. A value of 0 means that all replicates failed. The fit failure reason and the replicate table give the cause. A value of 1 means that the SE comes from the fit of that one replicate.",
 			"default", "190"),
-		countColumn("replicateMeasuredCount", blockId, idPrefix, "Replicates measured",
-			"Replicates whose Kd,app lies inside the titrated range.", "optional", "189"),
-		countColumn("replicateCensoredBelowCount", blockId, idPrefix, "Replicates censored low",
-			"Replicates whose Kd,app is at or below the lowest concentration. Each enters the mean at that concentration.",
+		countColumn("replicateMeasuredCount", blockId, idPrefix, "Replicates in range",
+			"The number of replicates with a Kd,app inside the titrated range.", "optional", "189"),
+		countColumn("replicateCensoredBelowCount", blockId, idPrefix, "Replicates below range",
+			"The number of replicates with a Kd,app at or below the lowest concentration. The block uses the lowest concentration as their value in the mean.",
 			"optional", "188"),
-		countColumn("replicateCensoredAboveCount", blockId, idPrefix, "Replicates censored high",
-			"Replicates whose Kd,app is at or above the highest concentration. Each enters the mean at that concentration.",
+		countColumn("replicateCensoredAboveCount", blockId, idPrefix, "Replicates above range",
+			"The number of replicates with a Kd,app at or above the highest concentration. The block uses the highest concentration as their value in the mean.",
 			"optional", "187"),
 		countColumn("replicateFailedCount", blockId, idPrefix, "Replicates failed",
-			"Replicates that produced no Kd,app. They are left out of the mean.", "optional", "186"),
+			"The number of replicates with no Kd,app. The block does not use them in the mean.", "optional", "186"),
 		countColumn("replicateFilteredCount", blockId, idPrefix, "Replicates filtered out",
 			"Replicates whose Kd,app a pre-combine filter rejected. Both filters are off unless the block sets them.",
 			"optional", "185")
@@ -96,7 +94,7 @@ sdColumn := func(blockId, idPrefix) {
 			valueType: "Double",
 			domain: { "pl7.app/block": blockId },
 			annotations: {
-				"pl7.app/label": "Kd,app SD across replicates (log10)",
+				"pl7.app/label": "Kd,app SD (log10)",
 				"pl7.app/description": SD_DESCRIPTION,
 				"pl7.app/isScore": "false",
 				"pl7.app/format": ".2f",
@@ -128,6 +126,7 @@ seColumn := func(blockId, idPrefix, errorModel) {
 				"pl7.app/description": SE_DESCRIPTIONS[errorModel],
 				"pl7.app/isScore": "true",
 				"pl7.app/score/rankingOrder": "increasing",
+				"pl7.app/format": ".2f",
 				"pl7.app/table/visibility": "default",
 				"pl7.app/table/orderPriority": "200"
 			}
@@ -176,7 +175,7 @@ perReplicateColumns := func(blockId, idPrefix, kdAnnotations, classValues, withN
 					"pl7.app/description": "Kd,app this replicate contributed to the mean. A replicate censored at an edge of the titration reports that edge; a filtered one reports the value the filter rejected.",
 					"pl7.app/isScore": "false",
 					"pl7.app/table/visibility": "hidden",
-					"pl7.app/table/orderPriority": "198"
+					"pl7.app/table/orderPriority": "201.5"
 				})
 			}
 		},
@@ -215,28 +214,17 @@ perReplicateColumns := func(blockId, idPrefix, kdAnnotations, classValues, withN
 			id: idPrefix + "replicateReads",
 			spec: hidden("pl7.app/vdj/replicateReads", "Long", "Reads in this replicate",
 				"Reads behind this replicate's own fit, summed over the concentrations it was fitted on. A wide or missing value usually reads back to a low count here.", { "pl7.app/table/orderPriority": "195" })
-		},
-		{
-			column: "kdState",
-			id: idPrefix + "kdState",
-			spec: hidden(STATE_NAME, "String", "Entered the mean",
-				"What this replicate contributed. In the mean: its Kd,app was measured inside the titrated range. At the lowest or highest concentration: its Kd,app was a bound and entered the mean at that concentration. Left out: it produced no fit, or a pre-combine filter rejected it.",
-				{
-					"pl7.app/isDiscreteFilter": "true",
-					"pl7.app/discreteValues": STATE_VALUES,
-					"pl7.app/table/orderPriority": "194"
-				})
 		}
 	]
-	// The panel reports Kd,app the way the main table does. Emitted only where the equation
-	// reports the combined -log10 column, so the other equation's spec is untouched.
+	// The panel reports Kd,app the way the main table does. The caller passes true wherever the
+	// main table carries the combined -log10 column.
 	if withNegLog10 {
 		columns = append(columns, {
 			column: "kdNegLog10",
 			id: idPrefix + "kdNegLog10",
 			spec: hidden("pl7.app/vdj/kdNegLog10", "Double", "-log10 Kd,app (per replicate)",
 				"-log10 of the Kd,app this replicate contributed to the mean. Larger is tighter binding. A replicate at an edge of the titration reports that edge.",
-				{ "pl7.app/format": ".3f", "pl7.app/table/orderPriority": "201" })
+				{ "pl7.app/format": ".2f", "pl7.app/table/orderPriority": "201" })
 		})
 	}
 	return columns
@@ -244,7 +232,6 @@ perReplicateColumns := func(blockId, idPrefix, kdAnnotations, classValues, withN
 
 export ll.toStrict({
 	COUNT_NAME: COUNT_NAME,
-	STATE_NAME: STATE_NAME,
 	axisSpec: axisSpec,
 	countColumns: countColumns,
 	sdColumn: sdColumn,

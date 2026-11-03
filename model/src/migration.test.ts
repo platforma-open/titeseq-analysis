@@ -9,6 +9,7 @@ import {
   migrateV1ToV2,
   migrateV2ToV3,
   migrateV3ToV4,
+  migrateV4ToV5,
   sectionsFor,
 } from "./index";
 
@@ -48,7 +49,7 @@ const v240Project: BlockDataV1 = {
 /** The project as the block will hold it after the upgrade, through the real version chain. */
 const upgraded = (): BlockData => {
   const migrated = dataModel.migrate({ version: "v1", data: v240Project });
-  expect(migrated.version).toBe("v4");
+  expect(migrated.version).toBe("v5");
   return migrated.data;
 };
 
@@ -102,7 +103,7 @@ describe("a project created on a v2 development build", () => {
       version: "v2",
       data: { ...v2Project, equation: "log_fluorescence" },
     });
-    expect(migrated.version).toBe("v4");
+    expect(migrated.version).toBe("v5");
     expect(migrated.data).toMatchObject({ r2GateEnabled: false, r2GateMin: 0.8 });
   });
 
@@ -274,7 +275,7 @@ describe("a project stored on the v3 data model", () => {
   const migrated = () => dataModel.migrate({ version: "v3", data: stored });
 
   it("gains unset replicates and the per-replicate view state", () => {
-    expect(migrated().version).toBe("v4");
+    expect(migrated().version).toBe("v5");
     expect(migrated().data).toMatchObject({
       replicateErrorModel: "sd_over_sqrt_n",
       replicateCensoredMajority: 0.5,
@@ -298,6 +299,33 @@ describe("a project stored on the v3 data model", () => {
   it("projects not one byte of replicate argument", () => {
     const args = argsOf(migrated().data);
     expect(Object.keys(args).filter((k) => k.startsWith("replicate"))).toEqual([]);
+  });
+});
+
+describe("a project stored on the v4 data model", () => {
+  const stored = (minConcentrationPoints: number | undefined): BlockData => ({
+    ...migrateV3ToV4(migrateV2ToV3(migrateV1ToV2(v240Project))),
+    minConcentrationPoints,
+  });
+  const migrated = (n: number | undefined) => dataModel.migrate({ version: "v4", data: stored(n) });
+
+  it.each([3, 4])("raises a point count of %i to 5", (n) => {
+    expect(migrated(n).version).toBe("v5");
+    expect(migrated(n).data.minConcentrationPoints).toBe(5);
+  });
+
+  it.each([5, 8])("keeps a point count of %i", (n) => {
+    expect(migrated(n).data.minConcentrationPoints).toBe(n);
+  });
+
+  it("keeps a cleared point count cleared", () => {
+    expect(migrated(undefined).data.minConcentrationPoints).toBeUndefined();
+  });
+
+  it("moves nothing else", () => {
+    const { minConcentrationPoints: _n, ...rest } = migrateV4ToV5(stored(3));
+    const { minConcentrationPoints: _o, ...before } = stored(3);
+    expect(rest).toEqual(before);
   });
 });
 

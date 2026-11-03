@@ -383,11 +383,27 @@ export const migrateV3ToV4 = (v3: BlockDataV3): BlockData => ({
   graphStateReplicates: REPLICATES_DEFAULT_STATE,
 });
 
+/** The fewest concentration points a fit may require. */
+export const MIN_CONCENTRATION_POINTS = 5;
+
+/**
+ * v4 -> v5. A stored point count below the minimum is raised to it. A cleared field stays cleared.
+ * Raising it changes that project's args, so the block goes stale.
+ */
+export const migrateV4ToV5 = (v4: BlockData): BlockData => ({
+  ...v4,
+  minConcentrationPoints:
+    v4.minConcentrationPoints === undefined
+      ? undefined
+      : Math.max(v4.minConcentrationPoints, MIN_CONCENTRATION_POINTS),
+});
+
 export const dataModel = new DataModelBuilder({ kind })
   .from<BlockDataV1>("v1")
   .migrate<BlockDataV2>("v2", migrateV1ToV2)
   .migrate<BlockDataV3>("v3", migrateV2ToV3)
   .migrate<BlockData>("v4", migrateV3ToV4)
+  .migrate<BlockData>("v5", migrateV4ToV5)
   .init(({ params }) => initBlockData(params));
 
 type Ctx = RenderCtx<BlockArgs, BlockData>;
@@ -571,7 +587,8 @@ function readCoverage(data: BlockData): {
   if (data.minConcentrationPoints === undefined)
     throw new Error("Min concentration points is required");
   if (data.minReadsPerConcentration < 1) throw new Error("Min reads per concentration must be ≥ 1");
-  if (data.minConcentrationPoints < 3) throw new Error("Min concentration points must be ≥ 3");
+  if (data.minConcentrationPoints < MIN_CONCENTRATION_POINTS)
+    throw new Error(`Min concentration points must be ≥ ${MIN_CONCENTRATION_POINTS}`);
   return {
     minReadsPerConcentration: data.minReadsPerConcentration,
     minConcentrationPoints: data.minConcentrationPoints,
@@ -971,10 +988,8 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
   })
 
   // The main grid's key axis. Feeds `showCellButtonForAxisId`, which renders the button on every
-  // displayed column that sits on this axis alone. It is read off the affinity class rather than
-  // off Kd,app: under the log fluorescence fit molar Kd,app is hidden by default, and a button on
-  // a hidden column is a button nobody sees. Both columns carry the same axis, so the id is the
-  // same either way.
+  // displayed column that sits on this axis alone. Both columns carry the same axis, so the id is
+  // the same either way.
   .output("summaryKeyAxisId", (ctx) => {
     const cols = ctx.outputs?.resolve("summaryPf")?.getPColumns();
     const axis = (
@@ -984,10 +999,10 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     return axis === undefined ? undefined : getAxisId(axis);
   })
 
-  // No `replicateDrilldownLabel`: the panel cannot name the variant. The clonotype axis value is
+  // No `replicateDrilldownLabel`: the model cannot name the variant. The clonotype axis value is
   // an opaque key, its label column is Parquet-partitioned so `resultPool.findLabels` throws on
-  // it, and neither table click event carries the row's cells. The panel's own table carries the
-  // upstream label column instead.
+  // it, and neither table click event carries the row's cells. The UI reads the label from this
+  // table's hidden label column instead.
 
   // One variant's replicates, opened from the main table. No table while nothing is selected:
   // unfiltered it would be every variant's replicates.
@@ -999,17 +1014,16 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
       ctx.data.replicateDrilldownKey,
     );
     if (filters === undefined) return undefined;
-    // Shown by default, except molar Kd,app wherever the -log10 column exists: the panel reports
-    // Kd,app in the same form as the main table.
-    const hasNegLog10 = cols.some((c) => c.spec.name === "pl7.app/vdj/kdNegLog10");
-    const shown = cols.filter((c) => !(hasNegLog10 && c.spec.name === "pl7.app/vdj/kd"));
+    // Every per-replicate column is shown. The variant's label column is hidden: the panel title
+    // names the variant, and the table holds one variant only.
     return createPlDataTableV3(ctx, {
       primaryColumns: cols.map((c) => DataColumn.fromColumn(c)),
       columns: undefined,
       tableState: ctx.data.replicateDrilldownTableState,
       displayOptions: {
         visibility: [
-          { match: { name: shown.map((c) => exactly(c.spec.name)) }, visibility: "default" },
+          { match: { name: [exactly("pl7.app/label")] }, visibility: "hidden" },
+          { match: { name: cols.map((c) => exactly(c.spec.name)) }, visibility: "default" },
         ],
       },
       filters,

@@ -10,7 +10,9 @@ import {
   PlDropdownRef,
   PlNumberField,
   PlSlideModal,
+  PlTooltip,
 } from "@platforma-sdk/ui-vue";
+import { MIN_CONCENTRATION_POINTS } from "@platforma-open/platforma-open.titeseq-analysis.model";
 import { computed, watch } from "vue";
 import { useApp } from "../app";
 import { aboveZero, boundedBy, emptyError, wholeNumber } from "../fieldValidation";
@@ -256,6 +258,14 @@ function setBinColumn(ref: PlRef | undefined): void {
       </PlNumberField>
       <PlCheckbox v-if="isLogFluorescence" v-model="app.model.data.r2GateEnabled">
         Fail in-range fits of poor quality
+        <PlTooltip class="info" position="top">
+          <template #tooltip>
+            When this is on, the block checks each fit that has a Kd,app inside the titrated range.
+            A fit gets the rating Failed if its R² is below Minimum R². A fit also gets the rating
+            Failed if its standard error is above Maximum Kd,app SE. When this is off, the block
+            does not do these checks.
+          </template>
+        </PlTooltip>
       </PlCheckbox>
       <PlNumberField
         v-if="isLogFluorescence && app.model.data.r2GateEnabled"
@@ -397,16 +407,18 @@ function setBinColumn(ref: PlRef | undefined): void {
       <PlNumberField
         v-model="app.model.data.minConcentrationPoints"
         label="Min concentration points"
-        :min-value="3"
+        :min-value="MIN_CONCENTRATION_POINTS"
         :step="1"
         :validate="wholeNumber"
         clearable
         :error-message="emptyError(app.model.data.minConcentrationPoints)"
       >
         <template #tooltip>
-          The fewest concentration points a clonotype needs, after the read floor has dropped
-          points, for the block to fit it. Below this it rates Failed, insufficient_points. Both
-          equations read it. The default is 5, the practical minimum for this curve shape.
+          The minimum number of concentration points that a variant must have for the block to fit
+          it. The block counts only the points that remain after the read floor. It does not count
+          the 0 M point. A variant with fewer points gets the rating Failed, with the reason
+          insufficient_points. The default and the minimum value are both 5. Both equations use this
+          setting.
         </template>
       </PlNumberField>
       <!-- Absent reads as off: the field has no migration default. -->
@@ -415,6 +427,14 @@ function setBinColumn(ref: PlRef | undefined): void {
         @update:model-value="(on: boolean) => (app.model.data.requireAllConcentrations = on)"
       >
         Require reads at every concentration
+        <PlTooltip class="info" position="top">
+          <template #tooltip>
+            When this is on, a variant with no reads at one or more concentrations gets the rating
+            Failed, with the reason incomplete_titration. The 0 M sample counts as a concentration.
+            The block does this check before the fit. Both equations use this setting. It is off by
+            default. Phillips 2021 fitted only complete titrations.
+          </template>
+        </PlTooltip>
       </PlCheckbox>
     </PlAccordionSection>
 

@@ -91,10 +91,10 @@ describe("opening the drill-down never stales the block", () => {
     expect(initBlockData().replicateDrilldownKey).toBeUndefined();
   });
 
-  it("a stored v4 project without the fields reads as closed, with no migration step", () => {
+  it("a stored v4 project without the fields reads as closed", () => {
     expect("replicateDrilldownKey" in configured).toBe(false);
     const migrated = dataModel.migrate({ version: "v4", data: configured });
-    expect(migrated.version).toBe("v4");
+    expect(migrated.version).toBe("v5");
     expect(migrated.data.replicateDrilldownKey).toBeUndefined();
   });
 });
