@@ -833,9 +833,11 @@ def _fit_replicates(
     for label in labels:
         log(f"Replicate '{label}'")
         part = signal_frame.filter(pl.col(COL_REPLICATE) == label)
+        # Each replicate was gated on its own, so its gate scale reads its own reads only.
+        part_reads = reads.filter(pl.col(COL_REPLICATE) == label)
         per_clonotype, fitted = _fit(
             part,
-            reads,
+            part_reads,
             params=params,
             has_bin=has_bin,
             max_bin=max_bin,

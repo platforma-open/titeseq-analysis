@@ -48,3 +48,5 @@ UX review fixes:
 - "Equation" is now "Fit method equation", right above "FACS bin", since the equation decides
   whether a bin is required.
 - "Logs" shows on the Clonotype Fit Results page only, beside "Settings".
+- With replicates and a gate fluorescence column, each replicate is fitted against its own gate
+  range. It was fitted against the range of all replicates together.

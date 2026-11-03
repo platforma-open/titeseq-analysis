@@ -218,6 +218,27 @@ class TestPerReplicateFitting:
             "fittedMeanBin",
         ]
 
+    def test_each_replicate_reads_its_own_gate_range(self):
+        # Replicate B was gated higher and narrower. Pooled with A, B's fit would be told its gates
+        # span A's floor too, which moves its plateau threshold and its fit bounds.
+        kds = {f"k{i}": kd for i, kd in enumerate([1e-7, 2e-7, 3e-7, 5e-7, 1e-6, 5e-6])}
+        stretch = {"A": 1.0, "B": 0.75}
+        offset = {"A": 0.0, "B": 0.5}
+        reads = _frame({"A": kds, "B": kds}).with_columns(
+            (
+                (pl.col("bin") - 1) * GATE_WIDTH * pl.col("replicate").replace_strict(stretch, return_dtype=pl.Float64)
+                + 1.0
+                + pl.col("replicate").replace_strict(offset, return_dtype=pl.Float64)
+            ).alias("bin_fluorescence")
+        )
+        combined = run(reads, params=LF, replicates=REPS)["per_replicate"]
+        for replicate in ("A", "B"):
+            alone = run(reads.filter(pl.col("replicate") == replicate).drop("replicate"), params=LF)["per_clonotype"]
+            fitted = combined.filter(pl.col("replicate") == replicate)
+            for key in kds:
+                assert _kd(fitted, key) == pytest.approx(_kd(alone, key), rel=1e-9), (replicate, key)
+                assert _kd(fitted, key, "affinityClass") == _kd(alone, key, "affinityClass"), (replicate, key)
+
     def test_the_legacy_equation_also_fits_each_replicate(self):
         outputs = run(_frame(THREE), params=HILL, replicates=REPS)
         assert outputs["per_replicate"].height == 6
