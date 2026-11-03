@@ -255,7 +255,8 @@ function setBinColumn(ref: PlRef | undefined): void {
         Kd,app inside the titrated range. It does not give an error bound.
       </template>
     </PlDropdown>
-    <PlAccordionSection label="Fit method">
+    <!-- Every field here belongs to the log fluorescence fit; the mean bin fit has its own section. -->
+    <PlAccordionSection v-if="isLogFluorescence" label="Fit method">
       <PlNumberField
         v-if="isLogFluorescence"
         v-model="app.model.data.plateauFloor"
