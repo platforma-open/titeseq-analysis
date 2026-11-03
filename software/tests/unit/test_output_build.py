@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import math
+
 import polars as pl
 import pytest
 
 from output_build import (
     PER_CLONOTYPE_SCHEMA,
     add_diagnostic_plot_columns,
+    add_neg_log10_kd,
     build_concentration_value_frame,
     build_mean_bin_frame,
     flag_kd_out_of_range,
@@ -119,9 +122,7 @@ class TestMeanBinFrame:
     # Spec-realigned schema — clonotypeKey + concentrationStr (canonical String axis
     # key) + meanBin. No more concentrationAM, no Float concentration column.
     def test_output_columns_match_spec(self):
-        signal = pl.DataFrame(
-            [{"clonotypeKey": "A", "concentrationStr": "1e-7", "concentration": 1e-7, "signal": 2.0}]
-        )
+        signal = pl.DataFrame([{"clonotypeKey": "A", "concentrationStr": "1e-7", "concentration": 1e-7, "signal": 2.0}])
         out = build_mean_bin_frame(signal)
         assert out.columns == ["clonotypeKey", "concentrationStr", "meanBin"]
 
@@ -187,3 +188,22 @@ class TestConcentrationValueFrame:
         )
         out = build_concentration_value_frame(signal)
         assert "0" not in out["concentrationStr"].to_list()
+
+
+class TestNegLog10Kd:
+    def test_it_is_minus_log10_of_the_reported_kd(self):
+        frame = pl.DataFrame({"kd": [1e-9, 2.5e-8]})
+        got = add_neg_log10_kd(frame)["kdNegLog10"].to_list()
+        assert got == pytest.approx([9.0, -math.log10(2.5e-8)])
+
+    def test_a_tighter_binder_reads_larger(self):
+        got = add_neg_log10_kd(pl.DataFrame({"kd": [1e-6, 1e-10]}))["kdNegLog10"].to_list()
+        assert got[1] > got[0]
+
+    def test_a_clonotype_with_no_kd_has_none(self):
+        frame = pl.DataFrame({"kd": [None]}, schema={"kd": pl.Float64})
+        assert add_neg_log10_kd(frame)["kdNegLog10"].to_list() == [None]
+
+    def test_a_non_positive_kd_has_none_rather_than_minus_infinity(self):
+        frame = pl.DataFrame({"kd": [0.0]})
+        assert add_neg_log10_kd(frame)["kdNegLog10"].to_list() == [None]

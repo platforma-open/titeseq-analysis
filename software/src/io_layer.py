@@ -9,11 +9,13 @@ import polars as pl
 from constants import (
     COL_ANTIGEN,
     COL_BIN,
+    COL_BIN_FLUORESCENCE,
     COL_CLONOTYPE,
     COL_CONC_STR,
     COL_CONC_VAL,
     COL_READS,
     COL_SAMPLE,
+    MAX_LOG10_FLUORESCENCE,
 )
 
 
@@ -80,9 +82,7 @@ def validate_concentration_column(df: pl.DataFrame, has_bin: bool) -> list[str]:
     nonzero = df.filter(pl.col(COL_CONC_VAL) > 0).select(pl.col(COL_CONC_VAL).unique())
     n_nonzero = nonzero.height
     if n_nonzero == 1:
-        warnings.append(
-            "only one non-zero concentration present; narrow dose range may not bracket Kd,app (R5)"
-        )
+        warnings.append("only one non-zero concentration present; narrow dose range may not bracket Kd,app (R5)")
     elif n_nonzero >= 2:
         max_c = float(nonzero.select(pl.col(COL_CONC_VAL).max()).item())
         min_c = float(nonzero.select(pl.col(COL_CONC_VAL).min()).item())
@@ -94,19 +94,43 @@ def validate_concentration_column(df: pl.DataFrame, has_bin: bool) -> list[str]:
     return warnings
 
 
-def validate_sort_fraction(reads: pl.DataFrame, col: str) -> None:
+def validate_replicate_column(reads: pl.DataFrame, col: str) -> list[str]:
+    """Replicate label, one value per sample. Optional input.
+
+    Returns warnings rather than raising: unbound or unusable, the run proceeds as a single
+    titration, which is what every project did before the column existed.
+    """
+    if col not in reads.columns:
+        return [f"Replicate column '{col}' missing from reads; treating the run as one replicate"]
+    labels = reads.get_column(col).cast(pl.Utf8, strict=False)
+    if labels.is_null().any() or (labels.str.len_chars() == 0).any():
+        return [f"Replicate column '{col}' has empty values; treating the run as one replicate"]
+    per_sample = reads.select([COL_SAMPLE, col]).unique()
+    dup = per_sample.group_by(COL_SAMPLE).len().filter(pl.col("len") > 1)
+    if dup.height > 0:
+        return [
+            f"Replicate must be one value per sample; samples with several: {dup[COL_SAMPLE].to_list()[:5]}. "
+            "Treating the run as one replicate"
+        ]
+    return []
+
+
+def validate_sort_fraction(reads: pl.DataFrame, col: str, group_keys: list[str] | None = None) -> None:
     """FACS sort-fraction column validator (Adams, Mora, Walczak, Kinney 2016 eq. A3).
 
     Invariants:
       * Column exists in `reads`.
       * No nulls (every sample with reads must carry a fraction).
       * Values in [0, 1].
-      * Per concentration, |Σ_b sort_fraction − 1| < 1e-3 — deduplicated by sample
-        so that repeating a per-sample value across clonotypes does not inflate
-        the per-concentration sum.
+      * Per group, |Σ_b sort_fraction − 1| < 1e-3 — deduplicated by sample so that repeating a
+        per-sample value across clonotypes does not inflate the per-group sum.
+
+    `group_keys` names the columns the sum is taken within, concentration last. Each replicate
+    sorts its own cells, so with replicates the group is (replicate, concentration): pooled, the
+    fractions would sum to the replicate count.
 
     No silent renormalization. Violations raise with a concrete message naming
-    the offending concentration so the user knows which row to fix.
+    the offending group so the user knows which row to fix.
     """
     if col not in reads.columns:
         raise InputValidationError(f"Sort-fraction column '{col}' missing from reads")
@@ -117,17 +141,18 @@ def validate_sort_fraction(reads: pl.DataFrame, col: str) -> None:
     if (vals < 0).any() or (vals > 1).any():
         raise InputValidationError(f"Sort-fraction values must be in [0, 1]; column '{col}'")
 
+    keys = [COL_CONC_STR] if group_keys is None else group_keys
     # `sort_fraction` is a per-sample metadata column joined across every clonotype
     # in that sample, so summing over the raw reads frame would count each sample
-    # once per clonotype. Deduplicate by (sampleId, concentrationStr, col) first.
-    per_sample = reads.select([COL_SAMPLE, COL_CONC_STR, col]).unique()
-    sums = per_sample.group_by(COL_CONC_STR, maintain_order=True).agg(pl.col(col).sum().alias("s"))
+    # once per clonotype. Deduplicate by (sampleId, group keys, col) first.
+    per_sample = reads.select([COL_SAMPLE, *keys, col]).unique()
+    sums = per_sample.group_by(keys, maintain_order=True).agg(pl.col(col).sum().alias("s"))
     bad = sums.filter((pl.col("s") - 1.0).abs() > 1e-3)
     if bad.height > 0:
-        violations = bad.select([COL_CONC_STR, "s"]).to_dicts()
+        violations = bad.select([*keys, "s"]).to_dicts()
+        scope = "concentration" if keys == [COL_CONC_STR] else " and ".join(keys)
         raise InputValidationError(
-            f"sort_fraction values must sum to 1.0 per concentration "
-            f"(tolerance 1e-3). Violations: {violations}"
+            f"sort_fraction values must sum to 1.0 per {scope} (tolerance 1e-3). Violations: {violations}"
         )
 
 
@@ -141,9 +166,7 @@ def validate_bin_column(df: pl.DataFrame) -> None:
     # string column of empty strings (the TSV builder's null encoding). Surface a
     # user-actionable message instead of the generic "got String" dtype complaint.
     if df.schema[COL_BIN] == pl.Utf8:
-        non_empty = df.filter(
-            pl.col(COL_BIN).is_not_null() & (pl.col(COL_BIN).str.len_chars() > 0)
-        ).height
+        non_empty = df.filter(pl.col(COL_BIN).is_not_null() & (pl.col(COL_BIN).str.len_chars() > 0)).height
         if non_empty == 0:
             raise InputValidationError(
                 "bin column has no integer values — the selected metadata "
@@ -155,6 +178,36 @@ def validate_bin_column(df: pl.DataFrame) -> None:
         raise InputValidationError(f"bin column must be integer type, got {df[COL_BIN].dtype}")
     if df.select((pl.col(COL_BIN) <= 0).sum()).item() > 0:
         raise InputValidationError("bin column must contain positive integers (>= 1)")
+
+
+def validate_bin_fluorescence(df: pl.DataFrame) -> None:
+    """Every row in a gate (bin >= 1) must carry a finite log10 gate position.
+
+    A missing position would drop that gate's reads from the mean log10 fluorescence and move the
+    signal without any warning, so it is refused. Rows with a null bin (allowed at concentration 0)
+    are not checked.
+
+    A position above MAX_LOG10_FLUORESCENCE is linear fluorescence, not log10. Fitted as log10 it
+    moves K_D by decades, and above about 308 it overflows a float in the fit.
+    """
+    position = pl.col(COL_BIN_FLUORESCENCE).cast(pl.Float64, strict=False)
+    gated = df.filter(pl.col(COL_BIN) >= 1)
+    bad = gated.filter(position.is_null() | ~position.is_finite())
+    if bad.height > 0:
+        examples = bad.select([COL_SAMPLE, COL_CONC_STR, COL_BIN]).unique().sort(COL_SAMPLE).head(5).to_dicts()
+        raise InputValidationError(
+            f"Gate fluorescence column ('{COL_BIN_FLUORESCENCE}') must hold a finite log10 fluorescence "
+            f"for every gate; {bad.height} rows are null or not finite, e.g. {examples}"
+        )
+    high = gated.filter(position > MAX_LOG10_FLUORESCENCE)
+    if high.height > 0:
+        top = high.select(position.max()).item()
+        examples = high.select([COL_SAMPLE, COL_CONC_STR, COL_BIN]).unique().sort(COL_SAMPLE).head(5).to_dicts()
+        raise InputValidationError(
+            f"Gate fluorescence column ('{COL_BIN_FLUORESCENCE}') must hold log10 fluorescence, but it "
+            f"reaches {top:g}, above the {MAX_LOG10_FLUORESCENCE:g} accepted. It looks like linear "
+            f"fluorescence: supply log10 of each gate's mean. {high.height} rows, e.g. {examples}"
+        )
 
 
 def max_bin_label(df: pl.DataFrame) -> int:
@@ -216,12 +269,14 @@ def validate_sample_metadata_uniqueness(df: pl.DataFrame, has_bin: bool, has_ant
 
 
 def validate_bin_concentration_grid(df: pl.DataFrame) -> list[str]:
-    """R5 sub-clause: warn when (bin, concentration) combos are non-uniformly populated.
+    """R5 sub-clause: report how many clonotypes miss part of the (bin, concentration) grid.
 
-    Absent combinations silently reduce the number of bins contributing to mean_bin
-    at that concentration, biasing the result without any flag. The reference grid
-    is every (bin, concentrationStr) pair observed for ANY clonotype; any clonotype
-    with fewer combinations present is flagged.
+    Absent combinations reduce the number of bins contributing to mean_bin at that
+    concentration. The reference grid is every (bin, concentrationStr) pair observed for ANY
+    clonotype. Run it on the frame the block fits, after the antigen filter.
+
+    The line carries a count and a share, no clonotype keys: keys are internal hashes, and a
+    mutational-scanning library flags nearly every clonotype (1,150,360 on Adams 2016).
     """
     warnings: list[str] = []
     if COL_BIN not in df.columns:
@@ -238,12 +293,12 @@ def validate_bin_concentration_grid(df: pl.DataFrame) -> list[str]:
         .group_by(COL_CLONOTYPE, maintain_order=True)
         .agg(pl.len().alias("n_combos"))
     )
-    missing = per_clone.filter(pl.col("n_combos") < n_grid)
-    if missing.height > 0:
-        offenders = missing[COL_CLONOTYPE].to_list()[:5]
+    missing = per_clone.filter(pl.col("n_combos") < n_grid).height
+    if missing > 0:
+        share = 100.0 * missing / per_clone.height
         warnings.append(
-            f"{missing.height} clonotype(s) have missing (bin, concentration) combinations; "
-            f"expected {n_grid}, examples: {offenders} (R5)"
+            f"{missing} of {per_clone.height} clonotypes ({share:.1f}%) are absent from at least one of "
+            f"the {n_grid} (bin, concentration) samples (R5)"
         )
     return warnings
 

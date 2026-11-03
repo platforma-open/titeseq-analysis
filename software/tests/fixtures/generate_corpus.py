@@ -141,9 +141,7 @@ def _build_bin_mode_table() -> tuple[pl.DataFrame, dict]:
     # skew the R6 global baseline (arithmetic mean across clonotypes) for every other fit.
     rng = _rng("P_NOISY")
     targets = _sigmoid_targets(1e-8, 1.0)
-    all_rows += _bin_mode_rows(
-        "P_NOISY", targets, [60] * n_conc, 0.85, rng, c0_sigma=DEFAULT_SIGMA
-    )
+    all_rows += _bin_mode_rows("P_NOISY", targets, [60] * n_conc, 0.85, rng, c0_sigma=DEFAULT_SIGMA)
     entries["P_NOISY"] = {
         "expected_class": "Partial",
         "expected_reason": None,
@@ -161,9 +159,7 @@ def _build_bin_mode_table() -> tuple[pl.DataFrame, dict]:
     # below r2_threshold_failed=0.5.
     rng = _rng("F_LOW_R2")
     targets = _sigmoid_targets(1e-8, 1.0)
-    all_rows += _bin_mode_rows(
-        "F_LOW_R2", targets, [200] * n_conc, 1.0, rng, c0_sigma=DEFAULT_SIGMA
-    )
+    all_rows += _bin_mode_rows("F_LOW_R2", targets, [200] * n_conc, 1.0, rng, c0_sigma=DEFAULT_SIGMA)
     entries["F_LOW_R2"] = {
         "expected_class": "Failed",
         "expected_reason_in": ["low_r2", "convergence_failure"],
@@ -502,15 +498,11 @@ def main() -> None:
         "max_non_zero_concentration": max(c for c in CONCENTRATIONS if c > 0),
         "bin_mode": {
             "clonotypes": bin_entries,
-            "fitted_mean_bin_clonotypes": sorted(
-                name for name, entry in bin_entries.items() if _expects_fit(entry)
-            ),
+            "fitted_mean_bin_clonotypes": sorted(name for name, entry in bin_entries.items() if _expects_fit(entry)),
         },
         "no_bin_mode": {
             "clonotypes": no_bin_entries,
-            "fitted_mean_bin_clonotypes": sorted(
-                name for name, entry in no_bin_entries.items() if _expects_fit(entry)
-            ),
+            "fitted_mean_bin_clonotypes": sorted(name for name, entry in no_bin_entries.items() if _expects_fit(entry)),
         },
         "antigen": {
             "target_antigen": "target",

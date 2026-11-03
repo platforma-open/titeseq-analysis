@@ -23,6 +23,11 @@ PER_CLONOTYPE_SCHEMA: dict[str, pl.DataType] = {
     "affinityClass": pl.Utf8,
     "fitFailureReason": pl.Utf8,
     "kdOutOfRange": pl.Boolean,
+    # SE of log10 K_D. Written by "log_fluorescence" only; null under "hill_gate_index".
+    "kdLog10Se": pl.Float64,
+    # Written by "log_fluorescence" only: "Below range", "In range" or "Above range", null where
+    # there is no K_D. Null under "hill_gate_index".
+    "kdRangeSide": pl.Utf8,
 }
 
 
@@ -40,6 +45,22 @@ def flag_kd_out_of_range(frame: pl.DataFrame, min_concentration: float, max_conc
     )
 
 
+def add_neg_log10_kd(frame: pl.DataFrame) -> pl.DataFrame:
+    """Append -log10 of K_D, the form every paper on this assay publishes: larger is tighter.
+
+    The magnitude is the unit the fit solves in and the unit kdLog10Se and kdLog10Sd carry, so the
+    value and its error share a scale. Derived, so it is appended after the frame is built rather
+    than carried in PER_CLONOTYPE_SCHEMA. Null where there is no K_D, and for a pinned K_D it is
+    the pinned value's.
+    """
+    return frame.with_columns(
+        pl.when(pl.col("kd").is_null() | (pl.col("kd") <= 0.0))
+        .then(None)
+        .otherwise(-pl.col("kd").log10())
+        .alias("kdNegLog10")
+    )
+
+
 def add_diagnostic_plot_columns(frame: pl.DataFrame, max_concentration: float) -> pl.DataFrame:
     """R17: append plot-only positions so Failed rows with null Kd render on the scatter.
 
@@ -49,10 +70,7 @@ def add_diagnostic_plot_columns(frame: pl.DataFrame, max_concentration: float) -
     clonotypes. Both columns are diagnostic — not for reporting — and never null.
     """
     return frame.with_columns(
-        pl.when(pl.col("kd").is_null())
-        .then(max_concentration * 10.0)
-        .otherwise(pl.col("kd"))
-        .alias("kdPlotPosition"),
+        pl.when(pl.col("kd").is_null()).then(max_concentration * 10.0).otherwise(pl.col("kd")).alias("kdPlotPosition"),
         pl.when(pl.col("hillCoefficient").is_null())
         .then(-1.0)
         .otherwise(pl.col("hillCoefficient"))
@@ -60,8 +78,11 @@ def add_diagnostic_plot_columns(frame: pl.DataFrame, max_concentration: float) -
     )
 
 
-def build_mean_bin_frame(signal_frame: pl.DataFrame) -> pl.DataFrame:
+def build_mean_bin_frame(signal_frame: pl.DataFrame, replicate_keys: list[str] | None = None) -> pl.DataFrame:
     """R14: per-(clonotype, concentration) observed signal (mean_bin or frequency).
+
+    `replicate_keys` names the replicate column when the run has one; the signal then carries it
+    as a third key, so the curve of each replicate stays its own.
 
     Excludes c=0 rows — they fix the baseline, not output values, and log(0) =
     −∞ would break log-scale rendering. Output columns: clonotypeKey,
@@ -75,16 +96,18 @@ def build_mean_bin_frame(signal_frame: pl.DataFrame) -> pl.DataFrame:
     propagated through xsv.importFile to a different Parquet content hash and
     triggered CIDConflictError on re-derivation.
     """
+    reps = replicate_keys or []
     return (
         signal_frame.filter(pl.col(COL_CONC_VAL) != 0)
         .select(
             [
                 COL_CLONOTYPE,
+                *reps,
                 COL_CONC_STR,
                 pl.col("signal").alias("meanBin"),
             ]
         )
-        .sort([COL_CLONOTYPE, COL_CONC_STR])
+        .sort([COL_CLONOTYPE, *reps, COL_CONC_STR])
     )
 
 

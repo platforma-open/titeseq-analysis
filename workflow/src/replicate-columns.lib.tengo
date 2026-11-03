@@ -1,0 +1,240 @@
+// Column specs for sample replicates: the replicate axis, the counts a combined value carries,
+// and the per-replicate frame. Headers match the software's per_clonotype.tsv and
+// per_replicate.tsv.
+
+ll := import("@platforma-sdk/workflow-tengo:ll")
+maps := import("@platforma-sdk/workflow-tengo:maps")
+
+COUNT_NAME := "pl7.app/vdj/replicateCount"
+
+/**
+ * The replicate axis. String rather than Int for the same reason the concentration axis is: the
+ * values come from a user column and the SDK limits axis types to Int|Long|String.
+ *
+ * @param blockId: the block id stamped into the domain
+ */
+axisSpec := func(blockId) {
+	return {
+		name: "pl7.app/vdj/replicate",
+		type: "String",
+		domain: { "pl7.app/block": blockId },
+		annotations: {
+			"pl7.app/label": "Replicate",
+			"pl7.app/table/orderPriority": "49000"
+		}
+	}
+}
+
+countColumn := func(header, blockId, idPrefix, label, description, visibility, priority) {
+	return {
+		column: header,
+		id: idPrefix + header,
+		spec: {
+			name: "pl7.app/vdj/" + header,
+			valueType: "Int",
+			domain: { "pl7.app/block": blockId },
+			annotations: {
+				"pl7.app/label": label,
+				"pl7.app/description": description,
+				"pl7.app/isScore": "false",
+				"pl7.app/table/visibility": visibility,
+				"pl7.app/table/orderPriority": priority
+			}
+		}
+	}
+}
+
+SD_DESCRIPTION := "The standard deviation of log10 Kd,app across the replicates that the block used. It is empty if the block used one replicate. It is also empty if Kd,app is out of range or the variant failed."
+
+SE_DESCRIPTIONS := {
+	sd_over_sqrt_n: "Standard error of the mean log10 Kd,app across the replicates: their sample SD over the square root of their number. With one replicate, that fit's own standard error where the equation reports one. Empty for a bound and for a failed variant. At or below 0.5, Kd,app is rated Good.",
+	phillips: "Standard error of the mean log10 Kd,app across the replicates: their population SD over the square root of their number plus one, the form Phillips 2021 published. With one replicate it is that replicate's own fit error, not that form's 0. Empty for a bound and for a failed variant."
+}
+
+/**
+ * The replicate count and the five state counts a value combined over replicates carries.
+ *
+ * @param blockId: the block id stamped into every domain
+ * @param idPrefix: prepended to each column's xsv id
+ * @return xsv column descriptors
+ */
+countColumns := func(blockId, idPrefix) {
+	return [
+		countColumn("replicateCount", blockId, idPrefix, "Replicates measured",
+			"Replicates in the mean. Failed replicates are left out. A replicate above or below the range counts at the highest or lowest concentration.",
+			"default", "190"),
+		countColumn("replicateMeasuredCount", blockId, idPrefix, "Replicates in range",
+			"The number of replicates with a Kd,app inside the titrated range.", "optional", "189"),
+		countColumn("replicateCensoredBelowCount", blockId, idPrefix, "Replicates below range",
+			"The number of replicates with a Kd,app at or below the lowest concentration. The block uses the lowest concentration as their value in the mean.",
+			"optional", "188"),
+		countColumn("replicateCensoredAboveCount", blockId, idPrefix, "Replicates above range",
+			"The number of replicates with a Kd,app at or above the highest concentration. The block uses the highest concentration as their value in the mean.",
+			"optional", "187"),
+		countColumn("replicateFailedCount", blockId, idPrefix, "Replicates failed",
+			"The number of replicates with no Kd,app. The block does not use them in the mean.", "optional", "186"),
+		countColumn("replicateFilteredCount", blockId, idPrefix, "Replicates filtered out",
+			"Replicates whose Kd,app a pre-combine filter rejected. Both filters are off unless the block sets them.",
+			"optional", "185")
+	]
+}
+
+/**
+ * The SD of log10 Kd,app across the replicates.
+ *
+ * @param blockId: the block id stamped into the domain
+ * @param idPrefix: prepended to the column's xsv id
+ */
+sdColumn := func(blockId, idPrefix) {
+	return {
+		column: "kdLog10Sd",
+		id: idPrefix + "kdLog10Sd",
+		spec: {
+			name: "pl7.app/vdj/kdLog10Sd",
+			valueType: "Double",
+			domain: { "pl7.app/block": blockId },
+			annotations: {
+				"pl7.app/label": "Kd,app SD (log10)",
+				"pl7.app/description": SD_DESCRIPTION,
+				"pl7.app/isScore": "false",
+				"pl7.app/format": ".2f",
+				"pl7.app/table/visibility": "default",
+				"pl7.app/table/orderPriority": "199"
+			}
+		}
+	}
+}
+
+/**
+ * The standard error of a value combined over replicates. Replaces the single fit's SE wherever
+ * replicates are on, including under the equation that reports no fit SE of its own.
+ *
+ * @param blockId: the block id stamped into the domain
+ * @param idPrefix: prepended to the column's xsv id
+ * @param errorModel: "sd_over_sqrt_n" or "phillips"
+ */
+seColumn := func(blockId, idPrefix, errorModel) {
+	return {
+		column: "kdLog10Se",
+		id: idPrefix + "kdLog10Se",
+		spec: {
+			name: "pl7.app/vdj/kdLog10Se",
+			valueType: "Double",
+			domain: { "pl7.app/block": blockId },
+			annotations: {
+				"pl7.app/label": "Kd,app SE (log10)",
+				"pl7.app/description": SE_DESCRIPTIONS[errorModel],
+				"pl7.app/isScore": "true",
+				"pl7.app/score/rankingOrder": "increasing",
+				"pl7.app/format": ".2f",
+				"pl7.app/table/visibility": "default",
+				"pl7.app/table/orderPriority": "200"
+			}
+		}
+	}
+}
+
+/**
+ * One row per (clonotype, replicate): the value that replicate contributed, before the mean.
+ * Hidden by default so a downstream picker offers the combined answer first. The names are the
+ * combined columns'; the replicate axis is what tells them apart.
+ *
+ * @param blockId: the block id stamped into every domain
+ * @param idPrefix: prepended to each column's xsv id
+ * @param kdAnnotations: the combined Kd,app annotations, unit included
+ * @param classValues: the affinity classes the equation can rate, as a JSON list
+ * @param withNegLog10: true where the equation reports -log10 Kd,app, so the panel shows the
+ *        same form as the main table
+ * @return xsv column descriptors
+ */
+perReplicateColumns := func(blockId, idPrefix, kdAnnotations, classValues, withNegLog10) {
+	domain := { "pl7.app/block": blockId }
+	hidden := func(name, valueType, label, description, extra) {
+		return {
+			name: name,
+			valueType: valueType,
+			domain: domain,
+			annotations: maps.merge({
+				"pl7.app/label": label,
+				"pl7.app/description": description,
+				"pl7.app/isScore": "false",
+				"pl7.app/table/visibility": "hidden"
+			}, extra)
+		}
+	}
+	columns := [
+		{
+			column: "kd",
+			id: idPrefix + "kd",
+			spec: {
+				name: "pl7.app/vdj/kd",
+				valueType: "Double",
+				domain: domain,
+				annotations: maps.merge(kdAnnotations, {
+					"pl7.app/label": "Kd,app (per replicate)",
+					"pl7.app/description": "Kd,app this replicate contributed to the mean. A replicate censored at an edge of the titration reports that edge; a filtered one reports the value the filter rejected.",
+					"pl7.app/isScore": "false",
+					"pl7.app/table/visibility": "hidden",
+					"pl7.app/table/orderPriority": "201.5"
+				})
+			}
+		},
+		{
+			column: "kdLog10Se",
+			id: idPrefix + "kdLog10Se",
+			spec: hidden("pl7.app/vdj/kdLog10Se", "Double", "Kd,app SE (log10, per replicate)",
+				"Standard error of log10 Kd,app from this replicate's own fit, where the equation reports one.",
+				{ "pl7.app/format": ".2f", "pl7.app/table/orderPriority": "200" })
+		},
+		{
+			column: "r2",
+			id: idPrefix + "r2",
+			spec: hidden("pl7.app/vdj/curveFitR2", "Double", "Curve fit R² (per replicate)",
+				"R² of this replicate's own fit.", { "pl7.app/table/orderPriority": "196" })
+		},
+		{
+			column: "affinityClass",
+			id: idPrefix + "affinityClass",
+			spec: hidden("pl7.app/vdj/affinityClass", "String", "Affinity class (per replicate)",
+				"How this replicate's own fit rates. The combined value is rated once, on its own, so the two can differ.",
+				{
+					"pl7.app/isDiscreteFilter": "true",
+					"pl7.app/discreteValues": classValues,
+					"pl7.app/table/orderPriority": "202"
+				})
+		},
+		{
+			column: "fitFailureReason",
+			id: idPrefix + "fitFailureReason",
+			spec: hidden("pl7.app/vdj/fitFailureReason", "String", "Fit failure reason (per replicate)",
+				"Why this replicate's own fit rated Failed. Empty when it did not.", { "pl7.app/table/orderPriority": "197" })
+		},
+		{
+			column: "replicateReads",
+			id: idPrefix + "replicateReads",
+			spec: hidden("pl7.app/vdj/replicateReads", "Long", "Reads in this replicate",
+				"Reads behind this replicate's own fit, summed over the concentrations it was fitted on. A wide or missing value usually reads back to a low count here.", { "pl7.app/table/orderPriority": "195" })
+		}
+	]
+	// The panel reports Kd,app the way the main table does. The caller passes true wherever the
+	// main table carries the combined -log10 column.
+	if withNegLog10 {
+		columns = append(columns, {
+			column: "kdNegLog10",
+			id: idPrefix + "kdNegLog10",
+			spec: hidden("pl7.app/vdj/kdNegLog10", "Double", "-log10 Kd,app (per replicate)",
+				"-log10 of the Kd,app this replicate contributed to the mean. Larger is tighter binding. A replicate at an edge of the titration reports that edge.",
+				{ "pl7.app/format": ".2f", "pl7.app/table/orderPriority": "201" })
+		})
+	}
+	return columns
+}
+
+export ll.toStrict({
+	COUNT_NAME: COUNT_NAME,
+	axisSpec: axisSpec,
+	countColumns: countColumns,
+	sdColumn: sdColumn,
+	seColumn: seColumn,
+	perReplicateColumns: perReplicateColumns
+})

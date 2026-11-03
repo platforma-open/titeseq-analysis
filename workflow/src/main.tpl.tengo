@@ -12,6 +12,8 @@ pSpec := import("@platforma-sdk/workflow-tengo:pframes.spec")
 canonical := import("@platforma-sdk/workflow-tengo:canonical")
 maps := import("@platforma-sdk/workflow-tengo:maps")
 json := import("json")
+text := import("text")
+replicateColumnsLib := import(":replicate-columns")
 
 fitCurvesSw := assets.importSoftware("@platforma-open/platforma-open.titeseq-analysis.software:fit-curves")
 
@@ -30,6 +32,12 @@ wf.prepare(func(args) {
 	}
 	if !is_undefined(args.sortFractionColumnRef) {
 		bb.addAnchor("sortFraction", args.sortFractionColumnRef)
+	}
+	if !is_undefined(args.binFluorescenceColumnRef) {
+		bb.addAnchor("binFluorescence", args.binFluorescenceColumnRef)
+	}
+	if !is_undefined(args.replicateColumnRef) {
+		bb.addAnchor("replicate", args.replicateColumnRef)
 	}
 	// Optional subset column picked alongside the abundance (PlDatasetSelector)
 	if !is_undefined(args.inputFilter) {
@@ -52,10 +60,29 @@ wf.body(func(args) {
 	// The model gates this on hasBin, but we re-check here so the workflow is
 	// safe if called with a sort-fraction ref and no bin ref.
 	hasSortFraction := !is_undefined(args.sortFractionColumnRef) && hasBin
+	// The gate's measured mean log10 fluorescence. The model sends it only under
+	// "log_fluorescence", which requires gates. Python detects it by the column's presence.
+	hasBinFluorescence := !is_undefined(args.binFluorescenceColumnRef)
+	// Which replicate each sample belongs to. Unbound, the block fits one titration and no
+	// replicate reaches the command line, the grouping or any output.
+	hasReplicate := !is_undefined(args.replicateColumnRef)
+	replicateErrorModel := args.replicateErrorModel == "phillips" ? "phillips" : "sd_over_sqrt_n"
 
+	// The concentration column's label, and the unit read from it: the text in its trailing
+	// parentheses when it has them ("Antigen concentration (M)" -> "M"), else the whole label.
 	unitLabel := ""
 	if !is_undefined(concSpec.annotations) && !is_undefined(concSpec.annotations["pl7.app/label"]) {
-		unitLabel = concSpec.annotations["pl7.app/label"]
+		unitLabel = text.trim_space(concSpec.annotations["pl7.app/label"])
+	}
+	concUnit := unitLabel
+	if text.has_suffix(unitLabel, ")") {
+		openIdx := text.last_index(unitLabel, "(")
+		if openIdx >= 0 {
+			inner := text.trim_space(unitLabel[openIdx + 1:len(unitLabel) - 1])
+			if inner != "" {
+				concUnit = inner
+			}
+		}
 	}
 
 	// Optional subset: only its clonotypes enter the fit. The trace roots in the filter
@@ -97,8 +124,14 @@ wf.body(func(args) {
 	if hasAntigen {
 		addReadsColumn(columns.getColumn("antigen"), { header: "antigen" })
 	}
+	if hasReplicate {
+		addReadsColumn(columns.getColumn("replicate"), { header: "replicate" })
+	}
 	if hasSortFraction {
 		addReadsColumn(columns.getColumn("sortFraction"), { header: "sort_fraction" })
+	}
+	if hasBinFluorescence {
+		addReadsColumn(columns.getColumn("binFluorescence"), { header: "bin_fluorescence" })
 	}
 	readsBuilder.mem("16GiB")
 	readsBuilder.cpu(1)
@@ -106,16 +139,45 @@ wf.body(func(args) {
 
 	// params.json payload. Python auto-detects bin-mode (COL_BIN presence)
 	// and baseline-from-zero (c=0 rows), so only tuning params go here.
-	paramsPayload := {
-		min_reads_per_concentration: args.minReadsPerConcentration,
-		min_concentration_points: args.minConcentrationPoints,
-		r2_threshold_good: args.r2ThresholdGood,
-		r2_threshold_failed: args.r2ThresholdFailed,
-		n_min: args.nMin,
-		n_max: args.nMax,
-		hook_effect_threshold_bin: args.hookEffectThresholdBin,
-		hook_effect_threshold_no_bin: args.hookEffectThresholdNoBin,
-		hook_effect_min_reads: args.hookEffectMinReads
+	// The model sends each equation only the settings it reads. "hill_gate_index" arrives without
+	// `equation`, and Python's FitParams reads an absent `equation` as "hill_gate_index", so a
+	// project created on v2.4.0 or earlier keeps the params.json, and so the result, it had.
+	paramsPayload := undefined
+	if args.equation == "log_fluorescence" {
+		paramsPayload = {
+			equation: args.equation,
+			plateau_floor: args.plateauFloor,
+			min_reads_per_concentration: args.minReadsPerConcentration,
+			min_concentration_points: args.minConcentrationPoints
+		}
+		// Absent means the R² gate is off.
+		if !is_undefined(args.r2GateMin) {
+			paramsPayload.r2_gate_min = args.r2GateMin
+		}
+		// Absent means the gate sets no limit on the Kd,app error.
+		if !is_undefined(args.kdSeGateMax) {
+			paramsPayload.kd_se_gate_max = args.kdSeGateMax
+		}
+		// Absent means a titration with a gap is still fitted.
+		if !is_undefined(args.requireAllConcentrations) {
+			paramsPayload.require_all_concentrations = args.requireAllConcentrations
+		}
+	} else {
+		paramsPayload = {
+			min_reads_per_concentration: args.minReadsPerConcentration,
+			min_concentration_points: args.minConcentrationPoints,
+			r2_threshold_good: args.r2ThresholdGood,
+			r2_threshold_failed: args.r2ThresholdFailed,
+			n_min: args.nMin,
+			n_max: args.nMax,
+			hook_effect_threshold_bin: args.hookEffectThresholdBin,
+			hook_effect_threshold_no_bin: args.hookEffectThresholdNoBin,
+			hook_effect_min_reads: args.hookEffectMinReads
+		}
+		// Absent means a titration with a gap is still fitted, which is what v2.4.0 did.
+		if !is_undefined(args.requireAllConcentrations) {
+			paramsPayload.require_all_concentrations = args.requireAllConcentrations
+		}
 	}
 	// FACS-correction status flows via the --sort-fraction-column CLI arg; the
 	// Python pipeline logs "Mean-bin correction: ..." unconditionally so stdout
@@ -125,6 +187,7 @@ wf.body(func(args) {
 	// Exec Python fit-curves.
 	execBuilder := exec.builder().
 		software(fitCurvesSw).
+		name("titeseq-fit-curves").
 		mem("16GiB").
 		cpu(4).
 		writeFile("params.json", canonical.encode(paramsPayload)).
@@ -152,10 +215,30 @@ wf.body(func(args) {
 		execBuilder.arg("--sort-fraction-column").arg("sort_fraction")
 	}
 
+	// Every replicate argument is absent unless the column is bound, so a run without replicates
+	// keeps the command line it always had.
+	if hasReplicate {
+		execBuilder.
+			arg("--replicate-column").arg("replicate").
+			arg("--replicate-error-model").arg(replicateErrorModel).
+			arg("--out-per-replicate").arg("per_replicate.tsv").
+			saveFile("per_replicate.tsv")
+		if !is_undefined(args.replicateFitErrorCutoff) {
+			execBuilder.arg("--replicate-fit-error-cutoff").arg(string(args.replicateFitErrorCutoff))
+		}
+		if !is_undefined(args.replicateR2Floor) {
+			execBuilder.arg("--replicate-r2-floor").arg(string(args.replicateR2Floor))
+		}
+		if !is_undefined(args.replicateCensoredMajority) {
+			execBuilder.arg("--replicate-censored-majority").arg(string(args.replicateCensoredMajority))
+		}
+	}
+
 	fit := execBuilder.run()
 
 	// Shared axis specs for the output PColumns.
 	clonotypeAxisSpec := abundanceSpec.axesSpec[1]
+	replicateAxisSpec := replicateColumnsLib.axisSpec(blockId)
 
 	// Canonical String concentration axis — the join key, byte-identical from
 	// upstream metadata through Python (R14). Spec calls for Float
@@ -165,8 +248,7 @@ wf.body(func(args) {
 	// the concentrationValue sidecar PColumn (below), joined on this axis.
 	// orderPriority below the value MiXCR PColumns set on their clonotypeKey
 	// axis (110000) so the table renders clonotypeKey first, concentration
-	// second. The annotation propagates through exportPf to Lead Selection,
-	// keeping the same ordering downstream.
+	// second.
 	concAxisSpec := {
 		name: "pl7.app/vdj/concentration",
 		type: "String",
@@ -183,6 +265,10 @@ wf.body(func(args) {
 	if !hasBin {
 		meanBinLabel = "Clonotype frequency"
 		fittedMeanBinLabel = "Fitted clonotype frequency"
+	} else if hasBinFluorescence {
+		// Measured gate positions put the signal and the fitted curve in log10 fluorescence.
+		meanBinLabel = "Mean log10 fluorescence"
+		fittedMeanBinLabel = "Fitted log10 fluorescence"
 	}
 
 	// Provenance annotation for the FACS sort-fraction correction. Always emitted
@@ -194,152 +280,231 @@ wf.body(func(args) {
 		facsCorrected = "true"
 	}
 
-	// Kd,app unit annotation propagated from the concentration column label (R2).
+	// Kd,app unit annotation read from the concentration column label (R2).
 	kdAnnotations := {
 		"pl7.app/label": "Kd,app",
+		"pl7.app/description": "The apparent dissociation constant. It is the antigen concentration at which half of the binding sites on a variant are bound. Avidity on the display surface changes this value. The staining and wash steps also change it. Use it to rank variants in one experiment. Do not compare it with a solution measurement such as SPR or BLI.",
 		"pl7.app/isScore": "true",
 		"pl7.app/score/rankingOrder": "increasing",
+		"pl7.app/format": ".2e",
 		"pl7.app/table/visibility": "default",
-		"pl7.app/table/orderPriority": "201"
+		// Right after the affinity class (202), before -log10 Kd,app (201).
+		"pl7.app/table/orderPriority": "201.5"
 	}
-	if unitLabel != "" {
-		kdAnnotations["pl7.app/unit"] = unitLabel
+	if concUnit != "" {
+		kdAnnotations["pl7.app/unit"] = concUnit
 	}
 
 	// Import per_clonotype.tsv → summary PColumns.
 	// Python writes column `r2`; the output spec name `pl7.app/vdj/curveFitR2` is
 	// what discovery & the UI see, so the rename is invisible downstream.
+	// Each equation's presentation of the shared columns. "log_fluorescence" fixes the Hill exponent
+	// at 1, so that column is a constant there, and its R² rates nothing unless the R² gate is on.
+	// It rates a bound by the wall it sits at, so "Below range" and "Above range" are its classes
+	// only. The defaultCutoff keeps "Below range", the library's tightest binders, and drops
+	// "Above range", its weakest.
+	hillVisibility := "default"
+	outOfRangeVisibility := "default"
+	r2Visibility := "default"
+	affinityClassValues := "[\"Good\",\"Partial\",\"Failed\"]"
+	affinityClassCutoff := "[\"Good\",\"Partial\"]"
+	affinityClassDescription := "Good: R² at or above the Good threshold and the Hill coefficient within its limits. Partial: R² between the two thresholds, or a Good R² with the Hill coefficient outside its limits. Failed: no fit, or R² below the Failed threshold; see the fit failure reason."
+	if args.equation == "log_fluorescence" {
+		hillVisibility = "hidden"
+		outOfRangeVisibility = "optional"
+		if is_undefined(args.r2GateMin) {
+			r2Visibility = "hidden"
+		}
+		affinityClassValues = "[\"Good\",\"Partial\",\"Below range\",\"Above range\",\"Failed\"]"
+		affinityClassDescription = "Good: Kd,app inside the titrated range, with a standard error of log10 Kd,app at or below 0.5. Partial: Kd,app is inside the range and its standard error is larger. Below range: Kd,app is at most the lowest concentration titrated, so the variant binds tighter than this titration resolves. Above range: Kd,app is at least the highest concentration titrated, which covers a signal that stayed flat and dim and one that rose without reaching half-maximum. Failed: no fit, a gap in the titration while complete titrations are required, or the fit-quality gate is on and an in-range fit's R² is below its minimum or its standard error above its maximum; see the fit failure reason."
+		affinityClassCutoff = "[\"Good\",\"Partial\",\"Below range\"]"
+	}
+	summaryColumns := [
+		{
+			column: "kd",
+			spec: {
+				name: "pl7.app/vdj/kd",
+				valueType: "Double",
+				domain: { "pl7.app/block": blockId },
+				annotations: kdAnnotations
+			}
+		},
+		{
+			column: "hillCoefficient",
+			spec: {
+				name: "pl7.app/vdj/hillCoefficient",
+				valueType: "Double",
+				domain: { "pl7.app/block": blockId },
+				annotations: {
+					"pl7.app/label": "Hill coefficient",
+					"pl7.app/isScore": "false",
+					"pl7.app/description": "Hill coefficient n from the Hill fit. n = 1 is the expected Langmuir isotherm value for simple 1:1 monovalent binding; n in roughly [0.7, 1.3] behaves as expected. n > 2 typically reflects heterogeneous yeast display populations rather than genuine cooperativity. n < 1 often indicates a non-functional display fraction (misfolding, non-binding orientation) diluting the signal. Diagnostic only — not a primary ranking criterion.",
+					"pl7.app/table/visibility": hillVisibility,
+					"pl7.app/table/orderPriority": "195"
+				}
+			}
+		},
+		{
+			column: "r2",
+			spec: {
+				name: "pl7.app/vdj/curveFitR2",
+				valueType: "Double",
+				domain: { "pl7.app/block": blockId },
+				annotations: {
+					"pl7.app/label": "Curve fit R²",
+					"pl7.app/isScore": "false",
+					"pl7.app/table/visibility": r2Visibility,
+					"pl7.app/table/orderPriority": "196"
+				}
+			}
+		},
+		{
+			column: "affinityClass",
+			spec: {
+				name: "pl7.app/vdj/affinityClass",
+				valueType: "String",
+				domain: { "pl7.app/block": blockId },
+				annotations: {
+					"pl7.app/label": "Affinity class",
+					"pl7.app/isScore": "true",
+					"pl7.app/isDiscreteFilter": "true",
+					"pl7.app/description": affinityClassDescription,
+					"pl7.app/discreteValues": affinityClassValues,
+					"pl7.app/score/rankingOrder": "decreasing",
+					"pl7.app/score/defaultCutoff": affinityClassCutoff,
+					"pl7.app/table/visibility": "default",
+					"pl7.app/table/orderPriority": "202"
+				}
+			}
+		},
+		{
+			column: "fitFailureReason",
+			spec: {
+				name: "pl7.app/vdj/fitFailureReason",
+				valueType: "String",
+				domain: { "pl7.app/block": blockId },
+				annotations: {
+					"pl7.app/label": "Fit failure reason",
+					"pl7.app/description": "Why the variant gets the rating Failed: too few reads or points, missing concentrations, a poor fit, no convergence, or replicates that failed or disagree. Empty for other ratings.",
+					"pl7.app/isScore": "false",
+					"pl7.app/table/visibility": "optional",
+					"pl7.app/table/orderPriority": "197"
+				}
+			}
+		},
+		{
+			// pcolumn-spec specifies Boolean, but xsv.importFile rejects Boolean
+			// valueType — its validator regex permits only Int|Long|Float|Double|String
+			// (see `core/platforma/sdk/workflow-tengo/src/pframes/xsv-import-file.lib.tengo`).
+			// Python emits pl.Boolean which polars serializes to TSV as "true"/"false";
+			// we import those literals as String and expose them through
+			// pl7.app/isDiscreteFilter so the UI still filters it as a two-value enum.
+			// If/when xsv.importFile gains Boolean support, switch valueType back to
+			// Boolean and drop the discrete-filter annotations.
+			column: "kdOutOfRange",
+			spec: {
+				name: "pl7.app/vdj/kdOutOfRange",
+				valueType: "String",
+				domain: { "pl7.app/block": blockId },
+				annotations: {
+					"pl7.app/label": "Kd,app out of range",
+					"pl7.app/isScore": "false",
+					"pl7.app/isDiscreteFilter": "true",
+					"pl7.app/discreteValues": "[\"true\",\"false\"]",
+					"pl7.app/table/visibility": outOfRangeVisibility,
+					"pl7.app/table/orderPriority": "194"
+				}
+			}
+		},
+		{
+			column: "kdPlotPosition",
+			spec: {
+				name: "pl7.app/vdj/kdPlotPosition",
+				valueType: "Double",
+				domain: { "pl7.app/block": blockId },
+				annotations: {
+					// Distinct label from "Kd,app" so downstream pickers show this plot-
+					// rendering sibling (nulls parked at max_conc*10) separately from the real Kd.
+					"pl7.app/label": "Kd,app (plot position)",
+					"pl7.app/isScore": "false",
+					"pl7.app/table/visibility": "hidden"
+				}
+			}
+		},
+		{
+			column: "hillPlotPosition",
+			spec: {
+				name: "pl7.app/vdj/hillPlotPosition",
+				valueType: "Double",
+				domain: { "pl7.app/block": blockId },
+				annotations: {
+					// Distinct label from "Hill coefficient" so pickers show this plot-
+					// rendering sibling (nulls parked at -1.0) separately from the real coefficient.
+					"pl7.app/label": "Hill coefficient (plot position)",
+					"pl7.app/isScore": "false",
+					"pl7.app/table/visibility": "hidden"
+				}
+			}
+		}
+	]
+	// -log10 Kd,app for every equation. Only "log_fluorescence" writes the SE of log10 K_D from a
+	// single fit, and the range side. With replicates the SE is the spread across them, which every
+	// equation reports, beside the SD and the replicate counts. log10 K_D is the unit the fit solves
+	// in and the unit every error column carries, with or without replicates.
+	summaryColumns = append(summaryColumns, {
+		column: "kdNegLog10",
+		spec: {
+			name: "pl7.app/vdj/kdNegLog10",
+			valueType: "Double",
+			domain: { "pl7.app/block": blockId },
+			annotations: {
+				"pl7.app/label": "-log10 Kd,app",
+				"pl7.app/description": "Kd,app as -log10, the form every published analysis of this assay reports: a larger number is tighter binding. Its magnitude is the unit the fit solves in, so it shares a scale with the standard error beside it. Empty where there is no Kd,app.",
+				"pl7.app/isScore": "true",
+				"pl7.app/score/rankingOrder": "decreasing",
+				"pl7.app/format": ".2f",
+				"pl7.app/table/visibility": "default",
+				"pl7.app/table/orderPriority": "201"
+			}
+		}
+	})
+	if hasReplicate {
+		// With replicates, R² shows per replicate in the drill-down only.
+		withoutR2 := []
+		for c in summaryColumns {
+			if c.column != "r2" {
+				withoutR2 = append(withoutR2, c)
+			}
+		}
+		summaryColumns = withoutR2
+		summaryColumns = append(summaryColumns, replicateColumnsLib.seColumn(blockId, "", replicateErrorModel))
+		summaryColumns = append(summaryColumns, replicateColumnsLib.sdColumn(blockId, ""))
+		summaryColumns = summaryColumns + replicateColumnsLib.countColumns(blockId, "")
+	} else if args.equation == "log_fluorescence" {
+		summaryColumns = append(summaryColumns, {
+			column: "kdLog10Se",
+			spec: {
+				name: "pl7.app/vdj/kdLog10Se",
+				valueType: "Double",
+				domain: { "pl7.app/block": blockId },
+				annotations: {
+					"pl7.app/label": "Kd,app SE (log10)",
+					"pl7.app/description": "Standard error of log10 Kd,app from the fit. At or below 0.5, an in-range Kd,app is rated Good. Empty when Kd,app is a bound at the edge of the titration or the fit failed.",
+					"pl7.app/isScore": "true",
+					"pl7.app/score/rankingOrder": "increasing",
+					"pl7.app/format": ".2f",
+					"pl7.app/table/visibility": "default",
+					"pl7.app/table/orderPriority": "200"
+				}
+			}
+		})
+	}
 	summaryImported := xsv.importFile(fit.getFile("per_clonotype.tsv"), "tsv", {
 		axes: [{
 			column: "clonotypeKey",
 			spec: clonotypeAxisSpec
 		}],
-		columns: [
-			{
-				column: "kd",
-				spec: {
-					name: "pl7.app/vdj/kd",
-					valueType: "Double",
-					domain: { "pl7.app/block": blockId },
-					annotations: kdAnnotations
-				}
-			},
-			{
-				column: "hillCoefficient",
-				spec: {
-					name: "pl7.app/vdj/hillCoefficient",
-					valueType: "Double",
-					domain: { "pl7.app/block": blockId },
-					annotations: {
-						"pl7.app/label": "Hill coefficient",
-						"pl7.app/isScore": "false",
-						"pl7.app/description": "Hill coefficient n from the Hill fit. n = 1 is the expected Langmuir isotherm value for simple 1:1 monovalent binding; n in roughly [0.7, 1.3] behaves as expected. n > 2 typically reflects heterogeneous yeast display populations rather than genuine cooperativity. n < 1 often indicates a non-functional display fraction (misfolding, non-binding orientation) diluting the signal. Diagnostic only — not a primary ranking criterion.",
-						"pl7.app/table/visibility": "default",
-						"pl7.app/table/orderPriority": "198"
-					}
-				}
-			},
-			{
-				column: "r2",
-				spec: {
-					name: "pl7.app/vdj/curveFitR2",
-					valueType: "Double",
-					domain: { "pl7.app/block": blockId },
-					annotations: {
-						"pl7.app/label": "Curve fit R²",
-						"pl7.app/isScore": "false",
-						"pl7.app/table/visibility": "default",
-						"pl7.app/table/orderPriority": "199"
-					}
-				}
-			},
-			{
-				column: "affinityClass",
-				spec: {
-					name: "pl7.app/vdj/affinityClass",
-					valueType: "String",
-					domain: { "pl7.app/block": blockId },
-					annotations: {
-						"pl7.app/label": "Affinity class",
-						"pl7.app/isScore": "true",
-						"pl7.app/isDiscreteFilter": "true",
-						"pl7.app/discreteValues": "[\"Good\",\"Partial\",\"Failed\"]",
-						"pl7.app/score/rankingOrder": "decreasing",
-						"pl7.app/score/defaultCutoff": "[\"Good\",\"Partial\"]",
-						"pl7.app/table/visibility": "default",
-						"pl7.app/table/orderPriority": "202"
-					}
-				}
-			},
-			{
-				column: "fitFailureReason",
-				spec: {
-					name: "pl7.app/vdj/fitFailureReason",
-					valueType: "String",
-					domain: { "pl7.app/block": blockId },
-					annotations: {
-						"pl7.app/label": "Fit failure reason",
-						"pl7.app/isScore": "false",
-						"pl7.app/table/visibility": "hidden",
-						"pl7.app/table/orderPriority": "197"
-					}
-				}
-			},
-			{
-				// pcolumn-spec specifies Boolean, but xsv.importFile rejects Boolean
-				// valueType — its validator regex permits only Int|Long|Float|Double|String
-				// (see `core/platforma/sdk/workflow-tengo/src/pframes/xsv-import-file.lib.tengo`).
-				// Python emits pl.Boolean which polars serializes to TSV as "true"/"false";
-				// we import those literals as String and expose them through
-				// pl7.app/isDiscreteFilter so the UI still filters it as a two-value enum.
-				// If/when xsv.importFile gains Boolean support, switch valueType back to
-				// Boolean and drop the discrete-filter annotations.
-				column: "kdOutOfRange",
-				spec: {
-					name: "pl7.app/vdj/kdOutOfRange",
-					valueType: "String",
-					domain: { "pl7.app/block": blockId },
-					annotations: {
-						"pl7.app/label": "Kd,app out of range",
-						"pl7.app/isScore": "false",
-						"pl7.app/isDiscreteFilter": "true",
-						"pl7.app/discreteValues": "[\"true\",\"false\"]",
-						"pl7.app/table/visibility": "default",
-						"pl7.app/table/orderPriority": "196"
-					}
-				}
-			},
-			{
-				column: "kdPlotPosition",
-				spec: {
-					name: "pl7.app/vdj/kdPlotPosition",
-					valueType: "Double",
-					domain: { "pl7.app/block": blockId },
-					annotations: {
-						// Distinct label from "Kd,app" so downstream pickers show this plot-
-						// rendering sibling (nulls parked at max_conc*10) separately from the real Kd.
-						"pl7.app/label": "Kd,app (plot position)",
-						"pl7.app/isScore": "false",
-						"pl7.app/table/visibility": "hidden"
-					}
-				}
-			},
-			{
-				column: "hillPlotPosition",
-				spec: {
-					name: "pl7.app/vdj/hillPlotPosition",
-					valueType: "Double",
-					domain: { "pl7.app/block": blockId },
-					annotations: {
-						// Distinct label from "Hill coefficient" so pickers show this plot-
-						// rendering sibling (nulls parked at -1.0) separately from the real coefficient.
-						"pl7.app/label": "Hill coefficient (plot position)",
-						"pl7.app/isScore": "false",
-						"pl7.app/table/visibility": "hidden"
-					}
-				}
-			}
-		],
+		columns: summaryColumns,
 		storageFormat: "Parquet",
 		partitionKeyLength: 0
 	}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
@@ -347,10 +512,13 @@ wf.body(func(args) {
 	// One import per TSV. Each pcolumn resource is reused in both signalPf and
 	// exportPf — one logical column, one resource. Replaces the prior
 	// *Internal/*Export dual-import pattern.
-	concAxes := [
-		{ column: "clonotypeKey", spec: clonotypeAxisSpec },
-		{ column: "concentrationStr", spec: concAxisSpec }
-	]
+	// With replicates the signal keeps each replicate's own curve: the fits are per replicate, so
+	// one pooled curve would belong to no fit.
+	concAxes := [{ column: "clonotypeKey", spec: clonotypeAxisSpec }]
+	if hasReplicate {
+		concAxes = append(concAxes, { column: "replicate", spec: replicateAxisSpec })
+	}
+	concAxes = append(concAxes, { column: "concentrationStr", spec: concAxisSpec })
 
 	meanBinColSpec := {
 		name: "pl7.app/vdj/meanBin",
@@ -385,8 +553,8 @@ wf.body(func(args) {
 		"pl7.app/isScore": "false",
 		"pl7.app/table/visibility": "hidden"
 	}
-	if unitLabel != "" {
-		concValueAnnotations["pl7.app/unit"] = unitLabel
+	if concUnit != "" {
+		concValueAnnotations["pl7.app/unit"] = concUnit
 	}
 	concValueColSpec := {
 		name: "pl7.app/vdj/concentrationValue",
@@ -412,6 +580,22 @@ wf.body(func(args) {
 		concValueColSpec,
 		[{ column: "concentrationStr", spec: concAxisSpec }]
 	)
+
+	// Each replicate's own value, keyed by (clonotype, replicate). The names are the combined
+	// columns' — the extra axis is what distinguishes them — and they are hidden by default so a
+	// downstream picker offers the combined answer first.
+	replicateImported := undefined
+	if hasReplicate {
+		replicateImported = xsv.importFile(fit.getFile("per_replicate.tsv"), "tsv", {
+			axes: [
+				{ column: "clonotypeKey", spec: clonotypeAxisSpec },
+				{ column: "replicate", spec: replicateAxisSpec }
+			],
+			columns: replicateColumnsLib.perReplicateColumns(blockId, "rep_", kdAnnotations, affinityClassValues, true),
+			storageFormat: "Parquet",
+			partitionKeyLength: 0
+		}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
+	}
 
 	// Trace injection. `makeTrace` bundles the upstream abundance provenance
 	// with a self-descriptor; `trace.inject` rewrites only the small spec resources
@@ -457,23 +641,36 @@ wf.body(func(args) {
 	// signalPf feeds this block's Titration Curves graph: meanBin (Y),
 	// fittedMeanBin (curve overlay), concentrationValue (numeric X).
 	signalPf := buildTracedPf([meanBinImported, fittedMeanBinImported, concValueImported], [])
-	// exportPf is the single bundle Lead Selection sees (R20, R21). Reuses the
-	// same pcolumn resources — no re-import. Drops kdPlotPosition /
-	// hillPlotPosition: these are visual sentinels for the in-block Affinity
-	// vs Fit Quality scatter (nulls parked at max_conc*10 and -1.0) that would
-	// otherwise appear as spurious Kd,app / Hill coefficient siblings in
-	// downstream pickers.
-	exportPf := buildTracedPf(
-		[summaryImported, meanBinImported, fittedMeanBinImported, concValueImported],
-		["kdPlotPosition", "hillPlotPosition"]
-	)
+	// exportPf is what downstream blocks see. Reuses the same pcolumn resources — no re-import.
+	// An allowlist: the affinity answer only. Every other column stays in this block's own table
+	// and graphs. A column an equation does not write is simply absent.
+	exportAllowed := {
+		affinityClass: true,
+		kd: true,
+		kdNegLog10: true,
+		kdLog10Se: true
+	}
+	exportExcluded := []
+	for k in maps.getKeys(summaryImported) {
+		if !exportAllowed[k] {
+			exportExcluded = append(exportExcluded, k)
+		}
+	}
+	exportPf := buildTracedPf([summaryImported], exportExcluded)
+
+	outputs := {
+		summaryPf: pframes.exportFrame(summaryPf),
+		signalPf: pframes.exportFrame(signalPf),
+		logHandle: fit.getStdoutStream()
+	}
+	// The per-replicate values stay out of exportPf and out of the main table: their extra axis
+	// would fan every row out by the replicate count.
+	if hasReplicate {
+		outputs.replicatePf = pframes.exportFrame(buildTracedPf([replicateImported], []))
+	}
 
 	return {
-		outputs: {
-			summaryPf: pframes.exportFrame(summaryPf),
-			signalPf: pframes.exportFrame(signalPf),
-			logHandle: fit.getStdoutStream()
-		},
+		outputs: outputs,
 		exports: {
 			pf: exportPf
 		}

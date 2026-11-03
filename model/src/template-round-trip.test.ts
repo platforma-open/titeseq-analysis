@@ -1,4 +1,4 @@
-import { kind } from "@platforma-open/platforma-open.titeseq-analysis.kind";
+import { CONTRACT_KEYS, kind } from "@platforma-open/platforma-open.titeseq-analysis.kind";
 import type { PlRef } from "@platforma-sdk/model";
 import { describe, expect, it } from "vitest";
 import type { BlockData } from "./index";
@@ -18,16 +18,33 @@ const roundTrip = (data: BlockData): BlockData =>
 
 const ref = (name: string): PlRef => ({ __isRef: true, blockId: "b1", name });
 
-/** A fully configured block: every field the contract carries, none of them at its default. */
+/**
+ * A fully configured block: every field the contract carries, none of them at its default.
+ *
+ * "Every field" is enforced below, not trusted. A field left out here is `undefined` on both
+ * sides of the round trip, so the comparison passes while the template drops it — which is how
+ * three settings went missing unnoticed.
+ */
 const configured: BlockData = {
   ...initBlockData(),
   abundanceRef: ref("abundance"),
   filterRef: ref("filter"),
   concentrationColumnRef: ref("concentration"),
   binColumnRef: ref("bin"),
+  binFluorescenceColumnRef: ref("binFluorescence"),
   antigenColumnRef: ref("antigen"),
   sortFractionColumnRef: ref("sortFraction"),
   targetAntigen: "CD19",
+  equation: "hill_gate_index",
+  plateauFloor: 0.4,
+  r2GateMin: 0.85,
+  kdSeGateMax: 1.5,
+  requireAllConcentrations: true,
+  replicateColumnRef: ref("replicate"),
+  replicateErrorModel: "phillips",
+  replicateFitErrorCutoff: 1,
+  replicateR2Floor: 0.8,
+  replicateCensoredMajority: 0.75,
   minReadsPerConcentration: 7,
   minConcentrationPoints: 8,
   r2ThresholdGood: 0.9,
@@ -41,11 +58,22 @@ const configured: BlockData = {
 };
 
 describe("the template round trip", () => {
+  it("sets every contract field in the fixture, so the comparisons below can bite", () => {
+    const missing = CONTRACT_KEYS.filter((k) => configured[k] === undefined);
+    expect(missing).toEqual([]);
+  });
+
   it("carries every field the contract names", () => {
     const restored = roundTrip(configured);
-    for (const field of Object.keys(deriveTemplateParams(configured)) as (keyof BlockData)[]) {
-      expect(restored[field]).toEqual(configured[field]);
+    for (const field of CONTRACT_KEYS) {
+      expect(restored[field], `template dropped '${field}'`).toEqual(configured[field]);
     }
+  });
+
+  it("derives a template param for every contract field", () => {
+    const derived = deriveTemplateParams(configured);
+    const missing = CONTRACT_KEYS.filter((k) => derived[k] === undefined);
+    expect(missing).toEqual([]);
   });
 
   it("is idempotent — a second pass changes nothing", () => {
@@ -73,6 +101,29 @@ describe("the template round trip", () => {
 
   it("gives an untouched block back unchanged", () => {
     expect(roundTrip(initBlockData())).toEqual(initBlockData());
+  });
+
+  it("keeps a template exported before the equation existed on the fit it ran", () => {
+    // A v2.4.0 template has no `equation` or `plateauFloor`. The JSON hop drops both keys.
+    const v240Params: unknown = JSON.parse(
+      JSON.stringify({
+        ...deriveTemplateParams(configured),
+        equation: undefined,
+        plateauFloor: undefined,
+      }),
+    );
+    const created = initBlockData(kind.parseInitializationParams(v240Params));
+    expect(created.equation).toBe("hill_gate_index");
+  });
+
+  it("gives a partial seed with no fit settings a new block's equation", () => {
+    const created = initBlockData(kind.parseInitializationParams({ abundanceRef: ref("a") }));
+    expect(created.equation).toBe("log_fluorescence");
+  });
+
+  it("carries a template's equation rather than a new block's default", () => {
+    expect(roundTrip(configured).equation).toBe("hill_gate_index");
+    expect(initBlockData().equation).toBe("log_fluorescence");
   });
 
   it("does not carry the derived label, the drawer flag or view state", () => {

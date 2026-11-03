@@ -1,9 +1,41 @@
 import { assertParamsObject, defineBlockKind } from "@platforma-sdk/block-kind";
 import type { PlRef } from "@platforma-sdk/model";
 import { isPlRef } from "@platforma-sdk/model";
-import { isString } from "es-toolkit";
+import { isBoolean, isString } from "es-toolkit";
 import { isNumber } from "es-toolkit/compat";
 import { name, version } from "../package.json" with { type: "json" };
+
+/**
+ * The equations the block fits.
+ *
+ * `log_fluorescence` is a Hill fit on the log gate fluorescence with the exponent fixed at 1,
+ * weighted least squares. `hill_gate_index` is the fit the block shipped through 2.4.0: a Hill
+ * fit on the read-weighted mean gate index with a free exponent, graded on R² and the exponent.
+ */
+export const EQUATIONS = ["log_fluorescence", "hill_gate_index"] as const;
+
+export type Equation = (typeof EQUATIONS)[number];
+
+/**
+ * How the error of a value combined over sample replicates is computed.
+ *
+ * `sd_over_sqrt_n` is the sample SD over the square root of the replicate count, falling back to
+ * the single fit's own standard error for one replicate. `phillips` is the population SD over the
+ * square root of the count plus one, which is 0 for one replicate; it reproduces the SEM published
+ * with Phillips 2021.
+ */
+export const REPLICATE_ERROR_MODELS = ["sd_over_sqrt_n", "phillips"] as const;
+
+export type ReplicateErrorModel = (typeof REPLICATE_ERROR_MODELS)[number];
+
+export const DEFAULT_REPLICATE_ERROR_MODEL: ReplicateErrorModel = "sd_over_sqrt_n";
+
+/**
+ * Share of the entered replicates one censoring side must hold, and exceed the other side by, for
+ * the combined value to be reported as that side's bound. The block's own rule: no published
+ * method defines one, and opposite bounds cannot be averaged into anything meaningful.
+ */
+export const DEFAULT_CENSORED_MAJORITY = 0.5;
 
 /**
  * This block's init-params contract — what a creator or a project template supplies to seed a
@@ -30,7 +62,22 @@ export type BlockParams = {
   binColumnRef?: PlRef;
   antigenColumnRef?: PlRef;
   sortFractionColumnRef?: PlRef;
+  /** The gate's measured mean log10 fluorescence. Read by the log-fluorescence fit only. */
+  binFluorescenceColumnRef?: PlRef;
   targetAntigen?: string;
+  equation?: Equation;
+  /** The fraction of the gate range a curve must reach to count as saturated. Read by
+   *  `log_fluorescence` only. */
+  plateauFloor?: number;
+  /** An in-range fit with a lower R² rates Failed. Absent sets no limit. Read by
+   *  `log_fluorescence` only. */
+  r2GateMin?: number;
+  /** An in-range fit with a larger SE(log10 Kd,app) rates Failed. Absent sets no limit. Read by
+   *  `log_fluorescence` only. */
+  kdSeGateMax?: number;
+  /** Whether a clonotype with no reads at one of the titration's concentrations rates Failed
+   *  before any fit. Read by both equations. */
+  requireAllConcentrations?: boolean;
   minReadsPerConcentration?: number;
   minConcentrationPoints?: number;
   r2ThresholdGood?: number;
@@ -40,6 +87,16 @@ export type BlockParams = {
   hookEffectThresholdBin?: number;
   hookEffectThresholdNoBin?: number;
   hookEffectMinReads?: number;
+  /** Which replicate each sample belongs to. Absent fits one titration. */
+  replicateColumnRef?: PlRef;
+  /** Read only beside a replicate column. Absent reads as `sd_over_sqrt_n`. */
+  replicateErrorModel?: ReplicateErrorModel;
+  /** Decades. Absent leaves the fit-error filter off. */
+  replicateFitErrorCutoff?: number;
+  /** Absent leaves the R² filter off. */
+  replicateR2Floor?: number;
+  /** Absent reads as 0.5. */
+  replicateCensoredMajority?: number;
   customBlockLabel?: string;
 };
 
@@ -101,6 +158,21 @@ function isNumberFrom(min: number): Guard<number> {
 
 const isFraction: Guard<number> = (v): v is number => isFiniteNumber(v) && v >= 0 && v <= 1;
 
+/** A fraction with zero excluded: a plateau floor of 0 asks for no rise at all. */
+const isPositiveFraction: Guard<number> = (v): v is number => isFiniteNumber(v) && v > 0 && v <= 1;
+
+const isEquation: Guard<Equation> = (v): v is Equation =>
+  isString(v) && (EQUATIONS as readonly string[]).includes(v);
+
+const isReplicateErrorModel: Guard<ReplicateErrorModel> = (v): v is ReplicateErrorModel =>
+  isString(v) && (REPLICATE_ERROR_MODELS as readonly string[]).includes(v);
+
+/** A positive number: a cutoff of 0 decades rejects every fit. */
+const isPositiveNumber: Guard<number> = (v): v is number => isFiniteNumber(v) && v > 0;
+
+/** A share from one half to the whole: below one half no side can be the majority. */
+const isMajority: Guard<number> = (v): v is number => isFiniteNumber(v) && v >= 0.5 && v <= 1;
+
 /**
  * The runtime half of the contract. The `satisfies` clause is what stops it drifting: every
  * field `BlockParams` declares must appear here, and each guard must narrow to that field's own
@@ -118,7 +190,13 @@ const CONTRACT = {
   binColumnRef: check(isPlRef, "a reference to a FACS bin column"),
   antigenColumnRef: check(isPlRef, "a reference to an antigen column"),
   sortFractionColumnRef: check(isPlRef, "a reference to a FACS sort fraction column"),
+  binFluorescenceColumnRef: check(isPlRef, "a reference to a gate fluorescence column"),
   targetAntigen: check(isString, "a string"),
+  equation: check(isEquation, `one of ${EQUATIONS.map((e) => `"${e}"`).join(" or ")}`),
+  plateauFloor: check(isPositiveFraction, "a number above 0 and at most 1"),
+  r2GateMin: check(isFraction, "a number between 0 and 1"),
+  requireAllConcentrations: check(isBoolean, "true or false"),
+  kdSeGateMax: check((v): v is number => isFiniteNumber(v) && v > 0, "a number above 0"),
   minReadsPerConcentration: check(isNumberFrom(1), "a number of 1 or more"),
   minConcentrationPoints: check(isNumberFrom(3), "a number of 3 or more"),
   r2ThresholdGood: check(isFraction, "a number between 0 and 1"),
@@ -128,5 +206,20 @@ const CONTRACT = {
   hookEffectThresholdBin: check(isFiniteNumber, "a number"),
   hookEffectThresholdNoBin: check(isFiniteNumber, "a number"),
   hookEffectMinReads: check(isFiniteNumber, "a number"),
+  replicateColumnRef: check(isPlRef, "a reference to a replicate column"),
+  replicateErrorModel: check(
+    isReplicateErrorModel,
+    `one of ${REPLICATE_ERROR_MODELS.map((m) => `"${m}"`).join(" or ")}`,
+  ),
+  replicateFitErrorCutoff: check(isPositiveNumber, "a number above 0"),
+  replicateR2Floor: check(isFraction, "a number between 0 and 1"),
+  replicateCensoredMajority: check(isMajority, "a number between 0.5 and 1"),
   customBlockLabel: check(isString, "a string"),
 } satisfies { [K in keyof Required<BlockParams>]: Check<NonNullable<BlockParams[K]>> };
+
+/**
+ * Every field a template carries, as a list. The model reads it so `initBlockData`,
+ * `deriveTemplateParams` and this contract cannot drift apart unnoticed: a field added here but
+ * forgotten in either of those is silently dropped from every template exported afterwards.
+ */
+export const CONTRACT_KEYS = Object.keys(CONTRACT) as (keyof BlockParams)[];

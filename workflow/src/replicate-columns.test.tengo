@@ -1,0 +1,88 @@
+test := import("@platforma-sdk/workflow-tengo:test")
+replicateColumns := import(":replicate-columns")
+text := import("text")
+
+KD := { "pl7.app/label": "Kd,app", "pl7.app/unit": "nM" }
+CLASSES := "[\"Good\",\"Partial\",\"Non-binder\",\"Failed\"]"
+
+byHeader := func(cols) {
+	res := {}
+	for c in cols {
+		res[c.column] = c
+	}
+	return res
+}
+
+Test_the_replicate_axis_is_a_string_in_the_block_domain := func() {
+	axis := replicateColumns.axisSpec("blk")
+	test.isEqual("pl7.app/vdj/replicate", axis.name, "name")
+	test.isEqual("String", axis.type, "a user column's values, which axes carry as strings")
+	test.isEqual({ "pl7.app/block": "blk" }, axis.domain, "the block domain")
+	test.isEqual("Replicate", axis.annotations["pl7.app/label"], "label")
+}
+
+Test_the_counts_name_every_state_a_replicate_can_reach := func() {
+	cols := byHeader(replicateColumns.countColumns("blk", ""))
+	headers := ["replicateCount", "replicateMeasuredCount", "replicateCensoredBelowCount",
+		"replicateCensoredAboveCount", "replicateFailedCount", "replicateFilteredCount"]
+	test.isEqual(len(headers), len(cols), "one column per count")
+	for h in headers {
+		test.isEqual("pl7.app/vdj/" + h, cols[h].spec.name, "name of " + h)
+		test.isEqual("Int", cols[h].spec.valueType, "a count")
+		test.isEqual({ "pl7.app/block": "blk" }, cols[h].spec.domain, "the block domain for " + h)
+		test.isEqual(h, cols[h].id, "the id of " + h)
+	}
+	test.isEqual(replicateColumns.COUNT_NAME, cols.replicateCount.spec.name, "the family's own name")
+	test.isEqual("default", cols.replicateCount.spec.annotations["pl7.app/table/visibility"], "the count is shown")
+}
+
+Test_the_error_description_names_the_model := func() {
+	plain := replicateColumns.seColumn("blk", "", "sd_over_sqrt_n")
+	phillips := replicateColumns.seColumn("blk", "", "phillips")
+	test.isEqual(plain.spec.name, phillips.spec.name, "the name does not move with the model")
+	test.isTrue(text.contains(plain.spec.annotations["pl7.app/description"], "sample SD"), "sample SD")
+	test.isTrue(text.contains(phillips.spec.annotations["pl7.app/description"], "population SD"), "population SD")
+	test.isTrue(text.contains(phillips.spec.annotations["pl7.app/description"], "Phillips 2021"), "the study it reproduces")
+	test.isEqual("true", plain.spec.annotations["pl7.app/isScore"], "a ranking score")
+	test.isEqual("default", plain.spec.annotations["pl7.app/table/visibility"], "the error is shown")
+}
+
+Test_the_spread_column_is_shown_and_not_a_score := func() {
+	sd := replicateColumns.sdColumn("blk", "")
+	test.isEqual("pl7.app/vdj/kdLog10Sd", sd.spec.name, "name")
+	test.isEqual("false", sd.spec.annotations["pl7.app/isScore"], "a spread is not a ranking score")
+	test.isEqual("default", sd.spec.annotations["pl7.app/table/visibility"], "the spread is shown")
+	test.isTrue(text.contains(sd.spec.annotations["pl7.app/description"], "across the replicates"), "wording")
+}
+
+Test_the_per_replicate_columns_are_hidden := func() {
+	cols := byHeader(replicateColumns.perReplicateColumns("blk", "rep_", KD, CLASSES, false))
+	headers := ["kd", "kdLog10Se", "r2", "affinityClass", "fitFailureReason", "replicateReads"]
+	test.isEqual(len(headers), len(cols), "one column per per_replicate.tsv value header")
+	for h in headers {
+		test.isEqual("rep_" + h, cols[h].id, "id of " + h)
+		test.isEqual("hidden", cols[h].spec.annotations["pl7.app/table/visibility"], h + " stays out of pickers")
+		test.isEqual("false", cols[h].spec.annotations["pl7.app/isScore"], h + " is not a ranking score")
+		test.isEqual({ "pl7.app/block": "blk" }, cols[h].spec.domain, "the block domain for " + h)
+	}
+	test.isEqual("nM", cols.kd.spec.annotations["pl7.app/unit"], "the unit carries over")
+	test.isTrue(is_undefined(cols.kdState), "no column repeats the per-replicate class")
+	test.isEqual("Long", cols.replicateReads.spec.valueType, "the read count is a whole number")
+	test.isEqual(CLASSES, cols.affinityClass.spec.annotations["pl7.app/discreteValues"], "the equation's classes")
+}
+
+Test_the_per_replicate_columns_carry_neg_log10_only_where_the_equation_reports_it := func() {
+	without := byHeader(replicateColumns.perReplicateColumns("blk", "rep_", KD, CLASSES, false))
+	test.isTrue(is_undefined(without.kdNegLog10), "the mean bin fit writes no -log10 column")
+
+	with := byHeader(replicateColumns.perReplicateColumns("blk", "rep_", KD, CLASSES, true))
+	test.isEqual("rep_kdNegLog10", with.kdNegLog10.id, "the -log10 column's id")
+	test.isEqual("pl7.app/vdj/kdNegLog10", with.kdNegLog10.spec.name, "the -log10 column's name")
+	test.isEqual("Double", with.kdNegLog10.spec.valueType, "the -log10 column is a Double")
+	test.isEqual("hidden", with.kdNegLog10.spec.annotations["pl7.app/table/visibility"],
+		"it stays out of pickers like every other per-replicate column")
+	test.isEqual("201", with.kdNegLog10.spec.annotations["pl7.app/table/orderPriority"],
+		"-log10 sits directly after the affinity class, as it does in the main table")
+	test.isEqual("202", with.affinityClass.spec.annotations["pl7.app/table/orderPriority"],
+		"the affinity class leads the panel")
+}

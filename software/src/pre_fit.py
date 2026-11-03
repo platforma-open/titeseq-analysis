@@ -83,6 +83,25 @@ def compute_global_baseline(c0_points: pl.DataFrame) -> float | None:
     return float(mean_val)
 
 
+def compute_read_weighted_baseline(c0_points: pl.DataFrame) -> float | None:
+    """Mean signal at c=0, each clonotype weighted by its reads at c=0.
+
+    The "log_fluorescence" baseline. A clonotype with few reads has a noisy 0 M signal and counts
+    for little. A null signal (a 0 M point whose gates carry no weight) is left out of both sums.
+    Returns None if no 0 M point carries a signal and reads.
+    """
+    with_signal = c0_points.filter(pl.col(SIGNAL).is_not_null())
+    if with_signal.height == 0:
+        return None
+    num, den = with_signal.select(
+        (pl.col(SIGNAL) * pl.col(WEIGHT)).sum().alias("num"),
+        pl.col(WEIGHT).sum().alias("den"),
+    ).row(0)
+    if den is None or den <= 0 or num is None:
+        return None
+    return float(num / den)
+
+
 def detect_hook_effect(fit_points: pl.DataFrame, bin_mode: bool, params: FitParams) -> pl.DataFrame:
     """R9b: flag a hook only when BOTH spec conditions hold:
 

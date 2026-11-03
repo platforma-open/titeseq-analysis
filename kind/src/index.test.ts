@@ -1,6 +1,12 @@
 import type { PlRef } from "@platforma-sdk/model";
 import { describe, expect, it } from "vitest";
-import { kind } from "./index";
+import {
+  DEFAULT_CENSORED_MAJORITY,
+  DEFAULT_REPLICATE_ERROR_MODEL,
+  EQUATIONS,
+  REPLICATE_ERROR_MODELS,
+  kind,
+} from "./index";
 
 const parse = (v: unknown) => kind.parseInitializationParams(v);
 
@@ -70,6 +76,62 @@ describe("the bounded settings", () => {
 
   it.each(["r2ThresholdGood", "r2ThresholdFailed"])("refuses a value outside 0..1 for %s", (f) => {
     for (const v of [-0.01, 1.01, 2]) expect(() => parse({ [f]: v })).toThrow(`'${f}' must be`);
+  });
+});
+
+describe("the equation", () => {
+  it.each(EQUATIONS)("accepts %s", (equation) => {
+    expect(parse({ equation })).toEqual({ equation });
+  });
+
+  it.each(["", "log_fluorescence_wls", "poisson", "integer_mean_bin", "LOG_FLUORESCENCE", 1, null])(
+    "refuses %o",
+    (v) => {
+      expect(() => parse({ equation: v })).toThrow("'equation' must be");
+    },
+  );
+});
+
+describe("the plateau floor", () => {
+  it.each([0.0001, 0.4, 2 / 3, 1])("accepts %o", (v) => {
+    expect(parse({ plateauFloor: v })).toEqual({ plateauFloor: v });
+  });
+
+  // A floor of 0 asks for no rise at all, and anything above 1 asks for more than the gate range.
+  it.each([0, -0.1, 1.01, Number.NaN, Number.POSITIVE_INFINITY, "0.5"])("refuses %o", (v) => {
+    expect(() => parse({ plateauFloor: v })).toThrow("'plateauFloor' must be");
+  });
+});
+
+describe("the R² gate", () => {
+  it("drops the retired r2GateEnabled checkbox", () => {
+    expect(parse({ r2GateEnabled: true, r2GateMin: 0.8 })).toEqual({ r2GateMin: 0.8 });
+  });
+
+  it.each([0, 0.8, 1])("accepts r2GateMin %o", (v) => {
+    expect(parse({ r2GateMin: v })).toEqual({ r2GateMin: v });
+  });
+
+  it.each([-0.1, 1.01, Number.NaN, "0.8"])("refuses r2GateMin %o", (v) => {
+    expect(() => parse({ r2GateMin: v })).toThrow("'r2GateMin' must be");
+  });
+
+  it.each([true, false])("accepts requireAllConcentrations %o", (v) => {
+    expect(parse({ requireAllConcentrations: v })).toEqual({ requireAllConcentrations: v });
+  });
+
+  it("refuses a requireAllConcentrations that is not a boolean", () => {
+    expect(() => parse({ requireAllConcentrations: "yes" })).toThrow(
+      "'requireAllConcentrations' must be true or false",
+    );
+  });
+
+  it.each([0.1, 1, 3])("accepts kdSeGateMax %o", (v) => {
+    expect(parse({ kdSeGateMax: v })).toEqual({ kdSeGateMax: v });
+  });
+
+  it.each([0, -1, Number.POSITIVE_INFINITY, "1"])("refuses kdSeGateMax %o", (v) => {
+    expect(() => parse({ kdSeGateMax: v })).toThrow("'kdSeGateMax' must be a number above 0");
   });
 });
 
@@ -146,5 +208,54 @@ describe("identity", () => {
   it("names this package and its published version", () => {
     expect(kind.name).toBe("@platforma-open/platforma-open.titeseq-analysis.kind");
     expect(kind.version).toMatch(/^\d+\.\d+\.\d+/);
+  });
+});
+
+describe("the replicate settings", () => {
+  it("accepts a replicate column reference", () => {
+    expect(parse({ replicateColumnRef: ref("replicate") })).toEqual({
+      replicateColumnRef: ref("replicate"),
+    });
+  });
+
+  it.each(REPLICATE_ERROR_MODELS)("accepts the %s error model", (model) => {
+    expect(parse({ replicateErrorModel: model })).toEqual({ replicateErrorModel: model });
+  });
+
+  it.each(["sd", "SD_OVER_SQRT_N", 1, null])("refuses %o as an error model", (v) => {
+    expect(() => parse({ replicateErrorModel: v })).toThrow("'replicateErrorModel' must be");
+  });
+
+  it.each([0.1, 1, 5])("accepts %o decades as a fit-error cutoff", (v) => {
+    expect(parse({ replicateFitErrorCutoff: v })).toEqual({ replicateFitErrorCutoff: v });
+  });
+
+  it.each([0, -1, Number.NaN])("refuses %o decades as a fit-error cutoff", (v) => {
+    expect(() => parse({ replicateFitErrorCutoff: v })).toThrow(
+      "'replicateFitErrorCutoff' must be",
+    );
+  });
+
+  it.each([0, 0.8, 1])("accepts %o as an R² floor", (v) => {
+    expect(parse({ replicateR2Floor: v })).toEqual({ replicateR2Floor: v });
+  });
+
+  it.each([-0.1, 1.5])("refuses %o as an R² floor", (v) => {
+    expect(() => parse({ replicateR2Floor: v })).toThrow("'replicateR2Floor' must be");
+  });
+
+  it.each([0.5, 0.67, 1])("accepts %o as a censoring majority", (v) => {
+    expect(parse({ replicateCensoredMajority: v })).toEqual({ replicateCensoredMajority: v });
+  });
+
+  it.each([0, 0.49, 1.1])("refuses %o as a censoring majority", (v) => {
+    expect(() => parse({ replicateCensoredMajority: v })).toThrow(
+      "'replicateCensoredMajority' must be",
+    );
+  });
+
+  it("names the default error model and the default censoring majority", () => {
+    expect(REPLICATE_ERROR_MODELS).toContain(DEFAULT_REPLICATE_ERROR_MODEL);
+    expect(DEFAULT_CENSORED_MAJORITY).toBe(0.5);
   });
 });

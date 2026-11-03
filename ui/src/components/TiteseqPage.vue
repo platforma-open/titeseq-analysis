@@ -4,26 +4,32 @@ import { computed } from "vue";
 import { useApp } from "../app";
 import PageHeader from "./PageHeader.vue";
 
-defineProps<{ title: string; mode: "graph" | "table" }>();
+// Only the main page offers Settings and the editable block label.
+const props = defineProps<{ title: string; mode: "graph" | "table"; main?: boolean }>();
 
 const app = useApp();
 
-// Page-level alerts cover spec-based checks with no field-level home —
-// concentration column label format, sort-fraction without a bin column.
-// Numeric-field violations show inline on each PlNumberField (see
-// useFieldValidation).
+// PlBlockPage renders the subtitle only while its model is defined, so the other pages pass none.
+const subtitle = computed({
+  get: () => (props.main ? app.model.data.customBlockLabel : undefined),
+  set: (label: string | undefined) => {
+    if (label !== undefined) app.model.data.customBlockLabel = label;
+  },
+});
+
+// Checks with no field of their own. Numeric-field errors show on each PlNumberField.
 const warnings = computed(() => app.model.outputs.validationWarnings ?? []);
 </script>
 
 <template>
   <PlBlockPage
-    v-model:subtitle="app.model.data.customBlockLabel"
+    v-model:subtitle="subtitle"
     :subtitle-placeholder="app.model.data.defaultBlockLabel"
     :title="title"
     :no-body-gutters="mode === 'graph'"
   >
     <template #append>
-      <PageHeader />
+      <PageHeader :show-settings="props.main" />
     </template>
     <PlAlert
       v-for="(w, i) in warnings"

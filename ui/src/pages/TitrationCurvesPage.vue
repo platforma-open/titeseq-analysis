@@ -9,6 +9,8 @@ import TiteseqPage from "../components/TiteseqPage.vue";
 
 const app = useApp();
 
+const REPLICATE_AXIS = "pl7.app/vdj/replicate";
+
 const binMode = computed(() => app.model.outputs.binMode === true);
 const isEmpty = computed(() => app.model.outputs.isEmpty === true);
 const hasResults = computed(() => app.model.outputs.isEmpty === false);
@@ -20,13 +22,18 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
   const meanBin = pCols.find((p: PColumnIdAndSpec) => p.spec.name === "pl7.app/vdj/meanBin");
   if (!meanBin) return undefined;
 
-  // The per-item key axis of the signal columns: whichever axis isn't the
-  // concentration axis. Matching by exclusion keeps this working across input
-  // modalities — MiXCR clonotypeKey/scClonotypeKey and
-  // synthetic-repertoire-profiler variantKey all resolve here without
-  // enumerating each axis name.
-  const clonotypeAxis = meanBin.spec.axesSpec.find((a) => a.name !== "pl7.app/vdj/concentration");
+  // The per-item key axis of the signal columns: whichever axis is neither the concentration nor
+  // the replicate. Matching by exclusion keeps this working across input modalities — MiXCR
+  // clonotypeKey/scClonotypeKey and synthetic-repertoire-profiler variantKey all resolve here
+  // without enumerating each axis name.
+  const clonotypeAxis = meanBin.spec.axesSpec.find(
+    (a) => a.name !== "pl7.app/vdj/concentration" && a.name !== REPLICATE_AXIS,
+  );
   if (!clonotypeAxis) return undefined;
+  // With sample replicates each replicate is fitted on its own and has its own curve. GraphMaker
+  // draws a scatterplot only once every axis of the plotted columns is taken by a facet, tab or
+  // filter; grouping does not count. So the replicate is faceted beside the variant.
+  const replicateAxis = meanBin.spec.axesSpec.find((a) => a.name === REPLICATE_AXIS);
 
   // X binds to the concentrationValue sidecar (Double) for true log-scale
   // rendering, joined to meanBin / fittedMeanBin on the shared
@@ -49,6 +56,7 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
     { inputName: "x", selectedSource: concValue.spec },
     { inputName: "y", selectedSource: meanBin.spec },
     { inputName: "facetBy", selectedSource: clonotypeAxis },
+    ...(replicateAxis ? [{ inputName: "facetBy" as const, selectedSource: replicateAxis }] : []),
     { inputName: "grouping", selectedSource: clonotypeAxis },
   ];
 
@@ -75,12 +83,14 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
       comparable to bin-derived results — do not mix in the same Lead Selection ranking.
     </PlAlert>
     <PlAlert v-if="isEmpty" type="warn">
-      All clonotypes failed to fit. Loosen thresholds in Inputs or check the Fit log.
+      All clonotypes failed to fit. On the Clonotype Fit Results page, loosen the limits in Settings
+      or read the fit log in Logs.
     </PlAlert>
 
     <GraphMaker
       v-model="app.model.data.graphStateTitrationCurves"
       chart-type="scatterplot"
+      :data-state-key="app.model.outputs.titrationCurvesPf"
       :p-frame="app.model.outputs.titrationCurvesPf"
       :default-options="defaultOptions"
       default-palette="bright"
