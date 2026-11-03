@@ -199,18 +199,20 @@ describe("the R² and SE limits", () => {
     binColumnRef: ref("bin"),
   };
 
-  it("are empty for a new block, and its args name neither", () => {
-    expect(configured.r2GateMin).toBeUndefined();
-    expect(configured.kdSeGateMax).toBeUndefined();
-    expect(Object.hasOwn(argsOf(configured), "r2GateMin")).toBe(false);
+  it("start a new block at Minimum R² 0.8 and no SE limit", () => {
+    expect(argsOf(configured)).toMatchObject({ r2GateMin: 0.8 });
     expect(Object.hasOwn(argsOf(configured), "kdSeGateMax")).toBe(false);
   });
 
+  it("send no R² limit when it is cleared", () => {
+    expect(Object.hasOwn(argsOf({ ...configured, r2GateMin: undefined }), "r2GateMin")).toBe(false);
+  });
+
   it("send each limit that is set, on its own", () => {
-    expect(argsOf({ ...configured, r2GateMin: 0.8 })).toMatchObject({ r2GateMin: 0.8 });
-    expect(Object.hasOwn(argsOf({ ...configured, r2GateMin: 0.8 }), "kdSeGateMax")).toBe(false);
-    expect(argsOf({ ...configured, kdSeGateMax: 1 })).toMatchObject({ kdSeGateMax: 1 });
-    expect(Object.hasOwn(argsOf({ ...configured, kdSeGateMax: 1 }), "r2GateMin")).toBe(false);
+    expect(argsOf({ ...configured, r2GateMin: 0.6 })).toMatchObject({ r2GateMin: 0.6 });
+    const seOnly = argsOf({ ...configured, r2GateMin: undefined, kdSeGateMax: 1 });
+    expect(seOnly).toMatchObject({ kdSeGateMax: 1 });
+    expect(Object.hasOwn(seOnly, "r2GateMin")).toBe(false);
   });
 
   it("disable Run on a limit out of range", () => {

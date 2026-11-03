@@ -13,7 +13,8 @@ UX review fixes:
   combination and the -log10 Kd,app column.
 - The "Fail in-range fits of poor quality" checkbox is gone. "Minimum R² (optional)" and "Maximum
   Kd,app SE (log10, optional)" always show under the log fluorescence fit, and each applies only
-  when set. A project with the checkbox off keeps no limits; one with it on keeps both values.
+  when set. A new block starts at Minimum R² 0.8 and no SE limit. A project with the checkbox off
+  keeps no limits; one with it on keeps both values.
 - "Require reads at every concentration" is no longer offered. Every run fits a titration with a
   gap.
 - "Min concentration points" accepts 5 or more. A stored project with 3 or 4 moves to 5, so it

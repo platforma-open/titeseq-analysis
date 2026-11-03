@@ -24,6 +24,7 @@ import type { FitSettings, FitSettingsDraft, LogFluorescenceSetting } from "./fi
 import {
   DEFAULT_EQUATION,
   DEFAULT_PLATEAU_FLOOR,
+  DEFAULT_R2_GATE_MIN,
   HILL_GATE_INDEX_DEFAULTS,
   READ_COVERAGE_DEFAULTS,
 } from "./fitSettings";
@@ -289,7 +290,7 @@ export const initBlockData = (params?: BlockParams): BlockData => ({
     params?.equation ??
     (params?.minReadsPerConcentration !== undefined ? "hill_gate_index" : DEFAULT_EQUATION),
   plateauFloor: params?.plateauFloor ?? DEFAULT_PLATEAU_FLOOR,
-  r2GateMin: params?.r2GateMin,
+  r2GateMin: params?.r2GateMin ?? DEFAULT_R2_GATE_MIN,
   kdSeGateMax: params?.kdSeGateMax,
   requireAllConcentrations: params?.requireAllConcentrations,
   replicateColumnRef: params?.replicateColumnRef,

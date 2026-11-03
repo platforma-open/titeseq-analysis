@@ -72,3 +72,6 @@ export const DEFAULT_EQUATION: Equation = "log_fluorescence";
 
 /** Adams 2016's floor, two thirds of the gate range, to three decimals. */
 export const DEFAULT_PLATEAU_FLOOR = 0.667;
+
+/** A new block's Minimum R². */
+export const DEFAULT_R2_GATE_MIN = 0.8;
