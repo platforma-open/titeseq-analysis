@@ -1,13 +1,6 @@
 import type { PlRef } from "@platforma-sdk/model";
 import { describe, expect, it } from "vitest";
-import type {
-  BlockArgs,
-  BlockData,
-  BlockDataV1,
-  BlockDataV3,
-  BlockDataV5,
-  BlockDataV6,
-} from "./index";
+import type { BlockArgs, BlockData, BlockDataV1, BlockDataV3, BlockDataV5 } from "./index";
 import {
   HILL_GATE_INDEX_DEFAULTS,
   dataModel,

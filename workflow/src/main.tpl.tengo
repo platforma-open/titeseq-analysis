@@ -841,29 +841,38 @@ wf.body(func(args) {
 	// fittedMeanBin (curve overlay), concentrationValue (numeric X).
 	signalPf := buildTracedPf([meanBinImported, fittedMeanBinImported, concValueImported], [])
 	// exportPf is what downstream blocks see. Reuses the same pcolumn resources — no re-import.
-	// An allowlist: the affinity answer only. Every other column stays in this block's own table
-	// and graphs. A column an equation does not write is simply absent.
+	// An allowlist: the affinity answer, the fit quality behind it, and in synonymous mode each
+	// variant's change against its parent. The per-concentration signal, the replicate counts and
+	// the plot positions stay in this block's own table and graphs. A column an equation or a run
+	// does not write is simply absent.
 	exportAllowed := {
 		affinityClass: true,
 		kd: true,
 		kdNegLog10: true,
-		kdLog10Se: true
+		kdLog10Se: true,
+		kdOutOfRange: true,
+		r2: true,
+		hillCoefficient: true,
+		fitFailureReason: true,
+		kdLog10ParentDelta: true,
+		kdLog10ParentDeltaSe: true
 	}
-	// In synonymous mode the amino-acid grain exports the same answer under its "aa_" ids.
+	// The log fluorescence fit fixes the exponent at 1, so its column carries no information.
+	if args.equation == "log_fluorescence" {
+		exportAllowed.hillCoefficient = false
+	}
+	// In synonymous mode the amino-acid grain exports under its "aa_" ids, and the nucleotide
+	// grain's own columns (class, parent delta) under their "nt_" ids.
+	exportSources := [summaryImported] + variantSources + ntVariantSources
 	exportExcluded := []
-	for k in maps.getKeys(summaryImported) {
-		if !exportAllowed[k] {
-			exportExcluded = append(exportExcluded, k)
-		}
-	}
-	for src in variantSources {
+	for src in exportSources {
 		for k in maps.getKeys(src) {
-			if !exportAllowed[text.trim_prefix(k, "aa_")] {
+			if !exportAllowed[text.trim_prefix(text.trim_prefix(k, "aa_"), "nt_")] {
 				exportExcluded = append(exportExcluded, k)
 			}
 		}
 	}
-	exportPf := buildTracedPf([summaryImported] + variantSources, exportExcluded)
+	exportPf := buildTracedPf(exportSources, exportExcluded)
 
 	outputs := {
 		summaryPf: pframes.exportFrame(summaryPf),

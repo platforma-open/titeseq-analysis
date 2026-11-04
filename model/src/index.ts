@@ -755,6 +755,23 @@ function halfMatchedParent(ctx: Ctx) {
  * The block's pages. The nucleotide variant table exists in synonymous mode only, beside the
  * amino-acid table. Each entry stays an `as const` literal: the routes are typed from the hrefs.
  */
+/**
+ * The log-fluorescence fit places each gate at its measured log10 fluorescence. With no gate
+ * fluorescence column it places the gates 0.65 decades apart, and the run gives no other sign of it.
+ */
+export const GATE_FLUORESCENCE_MISSING =
+  "Gate fluorescence is not set. The fit assumes that the gates are 0.65 decades apart. " +
+  "If they are not, Kd,app can be offset. To use the measured gate positions, select a " +
+  "Gate fluorescence column in the settings.";
+
+/** Advice that the settings alone cause, before any run. The settings drawer shows it. */
+export const settingsWarnings = (data: BlockData): string[] =>
+  data.equation === "log_fluorescence" &&
+  data.binColumnRef !== undefined &&
+  data.binFluorescenceColumnRef === undefined
+    ? [GATE_FLUORESCENCE_MISSING]
+    : [];
+
 export const sectionsFor = (synonymous: boolean) => [
   { type: "link" as const, href: "/" as const, label: "Table" },
   ...(synonymous
@@ -1021,6 +1038,9 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
 
     return issues;
   })
+
+  // Advice about the settings alone, shown in the settings drawer only, not on the results pages.
+  .output("settingsWarnings", (ctx): string[] => settingsWarnings(ctx.data))
 
   .output("logHandle", (ctx) => ctx.outputs?.resolve("logHandle")?.getLogHandle())
 

@@ -3,6 +3,7 @@ import type {
   BlockOutputs,
   platforma,
 } from "@platforma-open/platforma-open.titeseq-analysis.model";
+import { GATE_FLUORESCENCE_MISSING } from "@platforma-open/platforma-open.titeseq-analysis.model";
 import type { InferBlockState, PlRef } from "@platforma-sdk/model";
 import { createPlDataTableStateV2, uniquePlId, wrapOutputs } from "@platforma-sdk/model";
 import type {
@@ -333,6 +334,10 @@ blockTest(
     const lfOutputs = wrapOutputs<BlockOutputs>(lfState.outputs as unknown as BlockOutputs);
 
     expect(lfOutputs.validationWarnings, "log_fluorescence validation").toEqual([]);
+    // The fixture has no gate fluorescence column, so the settings drawer advises setting one.
+    expect(lfOutputs.settingsWarnings, "log_fluorescence settings advice").toEqual([
+      GATE_FLUORESCENCE_MISSING,
+    ]);
     expect(lfOutputs.isEmpty, "log_fluorescence produced rows").toBe(false);
 
     // Data extraction goes through the PTable handle — PFrame handles have no

@@ -28,8 +28,8 @@ variants as repeats.
 - Amino-acid columns sit on the linker's amino-acid axis and reuse the nucleotide names:
   `pl7.app/vdj/kd`, `pl7.app/vdj/kdNegLog10`, `pl7.app/vdj/kdLog10Se`, `pl7.app/vdj/affinityClass`,
   `pl7.app/vdj/kdOutOfRange`. The affinity class takes the equation's declared values and cutoff,
-  as on the nucleotide grain. The export carries the same four answer columns on both grains:
-  affinity class, Kd,app, -log10 Kd,app and its SE.
+  as on the nucleotide grain. The export carries the same answer columns on both grains, plus the
+  parent delta and its error where they resolve.
   `pl7.app/vdj/kdNtVariants` counts the nucleotide variants behind each value, split by
   `pl7.app/vdj/kdNtVariantState` (all, measured, censored low, censored high, failed).
 - `pl7.app/vdj/variantClass` (String, discrete filter) on both grains, in Starr's strings: `wildtype`,
@@ -87,6 +87,14 @@ Review fixes to the 2.5.0 fits and replicates:
 - Kd,app's description says that with replicates a censored replicate enters the mean at its edge.
 - The per-replicate output drops its unread `kdState` column.
 
-2.5.0 also narrowed the export to the affinity class, Kd,app, -log10 Kd,app and its SE. A downstream
-block that used another of this block's columns (R², Hill coefficient, fit failure reason, the
-replicate counts, the per-concentration signal) loses it on the next run of this block.
+- The export again carries R², the fit failure reason and `kdOutOfRange`, and under the mean bin
+  fit the Hill coefficient, beside the affinity class, Kd,app, -log10 Kd,app and its SE. 2.5.0
+  exported only those four.
+- A log fluorescence fit with a FACS bin column but no gate fluorescence column shows a warning in
+  the settings drawer, which the user can close: the fit then assumes that the gates are 0.65
+  decades apart, which can offset Kd,app. It is a new model output, `settingsWarnings`, and is not
+  part of `validationWarnings`, so the results pages do not show it.
+
+The export does not carry the per-concentration signal (mean bin, fitted mean bin, concentration),
+which 2.4.0 exported. A downstream block that used one of those loses it on the next run of this
+block.

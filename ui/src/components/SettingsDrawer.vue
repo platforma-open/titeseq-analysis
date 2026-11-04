@@ -14,6 +14,7 @@ import {
 import { MIN_CONCENTRATION_POINTS } from "@platforma-open/platforma-open.titeseq-analysis.model";
 import { computed, watch } from "vue";
 import { useApp } from "../app";
+import { closedSettingsWarnings } from "../closedSettingsWarnings";
 import { aboveZero, boundedBy, emptyError, wholeNumber } from "../fieldValidation";
 import { useFitSettings } from "../composables/useFitSettings";
 import { useNoun } from "../composables/useNoun";
@@ -69,6 +70,14 @@ watch(
 // target antigen without an antigen column. Numeric-field errors show inline on each
 // PlNumberField.
 const warnings = computed(() => app.model.outputs.validationWarnings ?? []);
+
+// Advice about the settings. The user can close each one.
+const settingsWarnings = computed(() =>
+  (app.model.outputs.settingsWarnings ?? []).filter((m) => !closedSettingsWarnings.value.has(m)),
+);
+const closeSettingsWarning = (message: string) => {
+  closedSettingsWarnings.value = new Set([...closedSettingsWarnings.value, message]);
+};
 
 const binMode = computed(() => app.model.outputs.binMode === true);
 
@@ -258,6 +267,15 @@ function setBinColumn(ref: PlRef | undefined): void {
 
     <PlAlert v-for="(w, i) in warnings" :key="i" :type="w.severity === 'error' ? 'error' : 'warn'">
       {{ w.message }}
+    </PlAlert>
+    <PlAlert
+      v-for="m in settingsWarnings"
+      :key="m"
+      type="warn"
+      closeable
+      @update:model-value="(open: boolean) => open || closeSettingsWarning(m)"
+    >
+      {{ m }}
     </PlAlert>
 
     <!-- Every field here belongs to the log fluorescence fit; the mean bin fit has its own section. -->
