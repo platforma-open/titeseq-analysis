@@ -9,11 +9,12 @@ from pathlib import Path
 
 import polars as pl
 
-from constants import DEFAULT_CENSORED_MAJORITY, DEFAULT_PARAMS, REPLICATE_ERROR_MODELS, FitParams
-from io_layer import read_reads_table
+from constants import COL_BIN, DEFAULT_CENSORED_MAJORITY, DEFAULT_PARAMS, REPLICATE_ERROR_MODELS, FitParams
+from io_layer import apply_bin_ranks, read_reads_table
 from log import log
 from pipeline import run
 from replicate_combine import Filters, ReplicateInputs
+from synonymous import COL_AA, COL_MUTATIONS, COL_NT, COL_PARENT, COL_PRODUCTIVE, WEIGHTINGS, SynonymousInputs
 
 
 def _write_frame(frame: pl.DataFrame, path: str) -> None:
@@ -54,6 +55,48 @@ def _replicate_inputs(args: argparse.Namespace, parser: argparse.ArgumentParser)
     )
 
 
+def _read_keys(path: str | None, columns: dict[str, pl.DataType]) -> pl.DataFrame | None:
+    """A workflow-built TSV, reduced to `columns`. Keys are read as strings, whatever they look like."""
+    if path is None:
+        return None
+    return pl.read_csv(path, separator="\t", columns=list(columns), schema_overrides=columns)
+
+
+_SYNONYMOUS_ONLY = (
+    "out_per_variant",
+    "out_per_nt_variant",
+    "aa_mutations",
+    "aa_parent_links",
+    "aa_productive",
+    "nt_mutations",
+    "nt_parent_links",
+)
+
+
+def _synonymous_inputs(args: argparse.Namespace, parser: argparse.ArgumentParser) -> SynonymousInputs | None:
+    if args.nt_to_aa is None:
+        if any(getattr(args, name) for name in _SYNONYMOUS_ONLY) or args.synonymous_weighting != "none":
+            parser.error("the synonymous-mode inputs, outputs and --synonymous-weighting need --nt-to-aa")
+        return None
+    if not args.out_per_variant or not args.out_synonymous_summary:
+        parser.error("--nt-to-aa needs --out-per-variant and --out-synonymous-summary")
+    if args.aa_parent_links is not None and args.aa_mutations is None:
+        parser.error("--aa-parent-links needs --aa-mutations")
+    if (args.nt_mutations is None) != (args.out_per_nt_variant is None):
+        parser.error("--nt-mutations and --out-per-nt-variant come together")
+    if args.nt_parent_links is not None and args.nt_mutations is None:
+        parser.error("--nt-parent-links needs --nt-mutations")
+    return SynonymousInputs(
+        nt_to_aa=_read_keys(args.nt_to_aa, {COL_NT: pl.Utf8, COL_AA: pl.Utf8}),
+        aa_mutations=_read_keys(args.aa_mutations, {COL_AA: pl.Utf8, COL_MUTATIONS: pl.Utf8}),
+        aa_parent_links=_read_keys(args.aa_parent_links, {COL_AA: pl.Utf8, COL_PARENT: pl.Utf8}),
+        weighting=args.synonymous_weighting,
+        aa_productive=_read_keys(args.aa_productive, {COL_AA: pl.Utf8, COL_PRODUCTIVE: pl.Utf8}),
+        nt_mutations=_read_keys(args.nt_mutations, {COL_NT: pl.Utf8, COL_MUTATIONS: pl.Utf8}),
+        nt_parent_links=_read_keys(args.nt_parent_links, {COL_NT: pl.Utf8, COL_PARENT: pl.Utf8}),
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="fit-curves")
     parser.add_argument("--reads", required=True, help="path to reads table (parquet or tsv)")
@@ -78,7 +121,7 @@ def main(argv: list[str] | None = None) -> int:
         "--replicate-error-model",
         choices=REPLICATE_ERROR_MODELS,
         default=REPLICATE_ERROR_MODELS[0],
-        help="sd_over_sqrt_n: sample SD / sqrt(n); phillips: population SD / sqrt(n + 1)",
+        help="sd_over_sqrt_n: sample SD / sqrt(n); pop_sd_over_sqrt_n_plus_1: population SD / sqrt(n + 1)",
     )
     parser.add_argument(
         "--replicate-fit-error-cutoff",
@@ -99,12 +142,44 @@ def main(argv: list[str] | None = None) -> int:
         help="Share of the entered replicates one censoring side must hold to set the bound.",
     )
     parser.add_argument("--out-per-replicate", default=None, help="one row per (variant, replicate)")
+    parser.add_argument(
+        "--out-run-warnings", default=None, help="JSON list of what the run must tell the user; [] when nothing"
+    )
+    parser.add_argument(
+        "--bin-ranks", default=None, help="JSON {bin value: rank}: the user's bin order, lowest fluorescence first"
+    )
+    parser.add_argument("--out-run-stats", default=None, help="JSON run statistics for the summary pages")
+    parser.add_argument("--out-fit-reads", default=None, help="TSV [clonotypeKey, fitReads]; needs --out-run-stats")
+    parser.add_argument("--nt-to-aa", default=None, help="TSV [ntKey, aaKey]: the nt -> aa linker")
+    parser.add_argument("--aa-mutations", default=None, help="TSV [aaKey, mutationCount]")
+    parser.add_argument("--aa-parent-links", default=None, help="TSV [aaKey, parentId]: the aa parent linker")
+    parser.add_argument("--out-per-variant", default=None, help="one row per amino-acid variant")
+    parser.add_argument("--out-synonymous-summary", default=None, help="JSON run summary of the combination")
+    parser.add_argument("--aa-productive", default=None, help='TSV [aaKey, productive]: "true" / "false"')
+    parser.add_argument("--nt-mutations", default=None, help="TSV [ntKey, mutationCount]")
+    parser.add_argument("--nt-parent-links", default=None, help="TSV [ntKey, parentId]: the nt parent linker")
+    parser.add_argument("--out-per-nt-variant", default=None, help="the nt-grain synonymous columns")
+    parser.add_argument(
+        "--synonymous-weighting",
+        choices=WEIGHTINGS,
+        default="none",
+        help="none: plain mean of the synonymous nt variants; reads: each weighted by its total reads",
+    )
     args = parser.parse_args(argv)
     replicates = _replicate_inputs(args, parser)
+    synonymous = _synonymous_inputs(args, parser)
 
     log(f"Reading input table: {args.reads}")
-    reads = read_reads_table(args.reads)
+    # With an order the bin values are labels, read as text so "01" stays "01".
+    reads = read_reads_table(args.reads, text_columns=[COL_BIN] if args.bin_ranks else [])
     log(f"Loaded {reads.height} rows, {len(reads.columns)} columns")
+    if args.bin_ranks:
+        with open(args.bin_ranks) as f:
+            ranks = json.load(f)
+        before = reads.height
+        reads = apply_bin_ranks(reads, ranks)
+        order = ", ".join(f"{rank} = {value}" for value, rank in sorted(ranks.items(), key=lambda kv: kv[1]))
+        log(f"Bin order: {order}; {before - reads.height} rows outside the order left out")
     params = DEFAULT_PARAMS
     if args.params:
         # FitParams rejects an unknown `equation`. An absent one means a pre-existing project on
@@ -120,6 +195,8 @@ def main(argv: list[str] | None = None) -> int:
         antigen_column_ref=args.antigen_column_ref,
         sort_fraction_col=args.sort_fraction_column,
         replicates=replicates,
+        synonymous=synonymous,
+        stats=args.out_run_stats is not None,
     )
     log("Writing output frames")
     _write_frame(outputs["per_clonotype"], args.out_per_clonotype)
@@ -128,6 +205,20 @@ def main(argv: list[str] | None = None) -> int:
     _write_frame(outputs["concentration_value"], args.out_concentration_value)
     if args.out_per_replicate is not None:
         _write_frame(outputs["per_replicate"], args.out_per_replicate)
+    if synonymous is not None:
+        _write_frame(outputs["per_variant"], args.out_per_variant)
+        if args.out_per_nt_variant is not None:
+            _write_frame(outputs["per_nt_variant"], args.out_per_nt_variant)
+        with open(args.out_synonymous_summary, "w") as f:
+            json.dump(outputs["synonymous_summary"], f, sort_keys=True)
+    if args.out_run_warnings is not None:
+        with open(args.out_run_warnings, "w") as f:
+            json.dump(outputs.get("run_warnings", []), f)
+    if args.out_run_stats is not None:
+        if args.out_fit_reads is not None:
+            _write_frame(outputs["fit_reads"], args.out_fit_reads)
+        with open(args.out_run_stats, "w") as f:
+            json.dump(outputs["run_stats"], f, sort_keys=True)
     log("CLI done")
     return 0
 

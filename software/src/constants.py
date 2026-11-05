@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-# "Non-binder" is "log_fluorescence" only: a flat, dim curve, its K_D pinned at the weak wall.
 # "Below range" and "Above range" are written by "log_fluorescence" only: they say which wall a
 # bound K_D sits at. "hill_gate_index" keeps the three classes it shipped with.
 AffinityClass = Literal["Good", "Partial", "Below range", "Above range", "Failed"]
@@ -30,11 +29,10 @@ FailureReason = Literal[
 # How the error of a value combined over sample replicates is computed.
 #   "sd_over_sqrt_n"  — sample SD (ddof 1) / sqrt(n); for n = 1 the fit's own SE, where the
 #                       equation reports one, else empty.
-#   "phillips"        — population SD (ddof 0) / sqrt(n + 1). Reproduces the SEM published with
-#                       Phillips 2021 for n >= 2; for n = 1 the fit's own SE, as above, not the
-#                       paper's 0.
-ReplicateErrorModel = Literal["sd_over_sqrt_n", "phillips"]
-REPLICATE_ERROR_MODELS: tuple[ReplicateErrorModel, ...] = ("sd_over_sqrt_n", "phillips")
+#   "pop_sd_over_sqrt_n_plus_1"
+#                     — population SD (ddof 0) / sqrt(n + 1); for n = 1 the fit's own SE, as above.
+ReplicateErrorModel = Literal["sd_over_sqrt_n", "pop_sd_over_sqrt_n_plus_1"]
+REPLICATE_ERROR_MODELS: tuple[ReplicateErrorModel, ...] = ("sd_over_sqrt_n", "pop_sd_over_sqrt_n_plus_1")
 
 # Share of the entered replicates one censoring side must hold, and exceed the other side by, for
 # the combined value to be reported as that side's bound. Below it the sides conflict and the

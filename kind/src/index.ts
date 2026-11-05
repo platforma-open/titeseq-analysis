@@ -19,16 +19,18 @@ export type Equation = (typeof EQUATIONS)[number];
 /**
  * How the error of a value combined over sample replicates is computed.
  *
- * `sd_over_sqrt_n` is the sample SD over the square root of the replicate count, falling back to
- * the single fit's own standard error for one replicate. `phillips` is the population SD over the
- * square root of the count plus one, which is 0 for one replicate; it reproduces the SEM published
- * with Phillips 2021.
+ * `sd_over_sqrt_n` is the sample SD over the square root of the replicate count.
+ * `pop_sd_over_sqrt_n_plus_1` is the population SD over the square root of the count plus one. With
+ * one replicate both fall back to that fit's own standard error.
+ *
+ * The default is `pop_sd_over_sqrt_n_plus_1`: on the block's own fits it lands closest to the
+ * published errors it was scored against (median ratio 1.22 and 2.86, against 1.75 and 4.29).
  */
-export const REPLICATE_ERROR_MODELS = ["sd_over_sqrt_n", "phillips"] as const;
+export const REPLICATE_ERROR_MODELS = ["sd_over_sqrt_n", "pop_sd_over_sqrt_n_plus_1"] as const;
 
 export type ReplicateErrorModel = (typeof REPLICATE_ERROR_MODELS)[number];
 
-export const DEFAULT_REPLICATE_ERROR_MODEL: ReplicateErrorModel = "sd_over_sqrt_n";
+export const DEFAULT_REPLICATE_ERROR_MODEL: ReplicateErrorModel = "pop_sd_over_sqrt_n_plus_1";
 
 /**
  * Share of the entered replicates one censoring side must hold, and exceed the other side by, for
@@ -36,6 +38,15 @@ export const DEFAULT_REPLICATE_ERROR_MODEL: ReplicateErrorModel = "sd_over_sqrt_
  * method defines one, and opposite bounds cannot be averaged into anything meaningful.
  */
 export const DEFAULT_CENSORED_MAJORITY = 0.5;
+
+/**
+ * How the synonymous nucleotide variants of one amino-acid variant are combined. `none` is the plain
+ * mean of their log10 Kd,app; `reads` weights each by its total reads over the titration. Read only on
+ * a nucleotide dataset whose nt -> aa linker resolves.
+ */
+export const SYNONYMOUS_WEIGHTINGS = ["none", "reads"] as const;
+
+export type SynonymousWeighting = (typeof SYNONYMOUS_WEIGHTINGS)[number];
 
 /**
  * This block's init-params contract — what a creator or a project template supplies to seed a
@@ -60,6 +71,8 @@ export type BlockParams = {
   filterRef?: PlRef;
   concentrationColumnRef?: PlRef;
   binColumnRef?: PlRef;
+  /** The FACS bin column's values, lowest fluorescence first. A value left out takes no part. */
+  binOrder?: string[];
   antigenColumnRef?: PlRef;
   sortFractionColumnRef?: PlRef;
   /** The gate's measured mean log10 fluorescence. Read by the log-fluorescence fit only. */
@@ -89,7 +102,7 @@ export type BlockParams = {
   hookEffectMinReads?: number;
   /** Which replicate each sample belongs to. Absent fits one titration. */
   replicateColumnRef?: PlRef;
-  /** Read only beside a replicate column. Absent reads as `sd_over_sqrt_n`. */
+  /** Read only beside a replicate column. Absent reads as `pop_sd_over_sqrt_n_plus_1`. */
   replicateErrorModel?: ReplicateErrorModel;
   /** Decades. Absent leaves the fit-error filter off. */
   replicateFitErrorCutoff?: number;
@@ -97,6 +110,8 @@ export type BlockParams = {
   replicateR2Floor?: number;
   /** Absent reads as 0.5. */
   replicateCensoredMajority?: number;
+  /** Absent reads as `none`. */
+  synonymousWeighting?: SynonymousWeighting;
   customBlockLabel?: string;
 };
 
@@ -151,6 +166,10 @@ function check<T>(is: Guard<T>, must: string): Check<T> {
 /** A real number. `isNumber` alone admits `NaN` and the infinities, which no setting means. */
 const isFiniteNumber: Guard<number> = (v): v is number => isNumber(v) && Number.isFinite(v);
 
+/** A list of distinct strings with at least one. */
+const isNonEmptyStringList: Guard<string[]> = (v): v is string[] =>
+  Array.isArray(v) && v.length > 0 && v.every(isString) && new Set(v).size === v.length;
+
 /** A number at or above `min`, the way the args lambda words the same bound. */
 function isNumberFrom(min: number): Guard<number> {
   return (v): v is number => isFiniteNumber(v) && v >= min;
@@ -172,6 +191,8 @@ const isPositiveNumber: Guard<number> = (v): v is number => isFiniteNumber(v) &&
 
 /** A share from one half to the whole: below one half no side can be the majority. */
 const isMajority: Guard<number> = (v): v is number => isFiniteNumber(v) && v >= 0.5 && v <= 1;
+const isSynonymousWeighting: Guard<SynonymousWeighting> = (v): v is SynonymousWeighting =>
+  isString(v) && (SYNONYMOUS_WEIGHTINGS as readonly string[]).includes(v);
 
 /**
  * The runtime half of the contract. The `satisfies` clause is what stops it drifting: every
@@ -188,6 +209,7 @@ const CONTRACT = {
   filterRef: check(isPlRef, "a reference to a subset column"),
   concentrationColumnRef: check(isPlRef, "a reference to a concentration column"),
   binColumnRef: check(isPlRef, "a reference to a FACS bin column"),
+  binOrder: check(isNonEmptyStringList, "a non-empty list of distinct strings"),
   antigenColumnRef: check(isPlRef, "a reference to an antigen column"),
   sortFractionColumnRef: check(isPlRef, "a reference to a FACS sort fraction column"),
   binFluorescenceColumnRef: check(isPlRef, "a reference to a gate fluorescence column"),
@@ -214,6 +236,10 @@ const CONTRACT = {
   replicateFitErrorCutoff: check(isPositiveNumber, "a number above 0"),
   replicateR2Floor: check(isFraction, "a number between 0 and 1"),
   replicateCensoredMajority: check(isMajority, "a number between 0.5 and 1"),
+  synonymousWeighting: check(
+    isSynonymousWeighting,
+    `one of ${SYNONYMOUS_WEIGHTINGS.map((w) => `"${w}"`).join(" or ")}`,
+  ),
   customBlockLabel: check(isString, "a string"),
 } satisfies { [K in keyof Required<BlockParams>]: Check<NonNullable<BlockParams[K]>> };
 

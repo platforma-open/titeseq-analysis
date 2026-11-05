@@ -1,7 +1,7 @@
 import type { PlRef } from "@platforma-sdk/model";
 import { describe, expect, it } from "vitest";
 import type { BlockData } from "./index";
-import { deriveArgs, initBlockData } from "./index";
+import { GATE_FLUORESCENCE_MISSING, deriveArgs, initBlockData, settingsWarnings } from "./index";
 
 const ref = (name: string): PlRef => ({ __isRef: true, blockId: "b1", name });
 
@@ -138,5 +138,25 @@ describe("the plateau floor's own range", () => {
 
   it.each([Number.MIN_VALUE, 0.4, 1])("accepts %s", (plateauFloor) => {
     expect(() => deriveArgs({ ...configured, plateauFloor })).not.toThrow();
+  });
+});
+
+describe("the gate fluorescence warning", () => {
+  const { binFluorescenceColumnRef: _, ...withoutGates } = configured;
+
+  it("shows for the log fluorescence fit with gates but no gate fluorescence", () => {
+    expect(settingsWarnings(withoutGates)).toEqual([GATE_FLUORESCENCE_MISSING]);
+  });
+
+  it("does not show when the gate fluorescence column is selected", () => {
+    expect(settingsWarnings(configured)).toEqual([]);
+  });
+
+  it("does not show for the mean bin fit, which does not read gate fluorescence", () => {
+    expect(settingsWarnings({ ...withoutGates, equation: "hill_gate_index" })).toEqual([]);
+  });
+
+  it("does not show before a FACS bin column is selected", () => {
+    expect(settingsWarnings({ ...withoutGates, binColumnRef: undefined })).toEqual([]);
   });
 });

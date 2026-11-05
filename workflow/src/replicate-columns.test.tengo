@@ -3,7 +3,7 @@ replicateColumns := import(":replicate-columns")
 text := import("text")
 
 KD := { "pl7.app/label": "Kd,app", "pl7.app/unit": "nM" }
-CLASSES := "[\"Good\",\"Partial\",\"Non-binder\",\"Failed\"]"
+CLASSES := "[\"Good\",\"Partial\",\"Below range\",\"Above range\",\"Failed\"]"
 
 byHeader := func(cols) {
 	res := {}
@@ -38,11 +38,11 @@ Test_the_counts_name_every_state_a_replicate_can_reach := func() {
 
 Test_the_error_description_names_the_model := func() {
 	plain := replicateColumns.seColumn("blk", "", "sd_over_sqrt_n")
-	phillips := replicateColumns.seColumn("blk", "", "phillips")
-	test.isEqual(plain.spec.name, phillips.spec.name, "the name does not move with the model")
+	population := replicateColumns.seColumn("blk", "", "pop_sd_over_sqrt_n_plus_1")
+	test.isEqual(plain.spec.name, population.spec.name, "the name does not move with the model")
 	test.isTrue(text.contains(plain.spec.annotations["pl7.app/description"], "sample SD"), "sample SD")
-	test.isTrue(text.contains(phillips.spec.annotations["pl7.app/description"], "population SD"), "population SD")
-	test.isTrue(text.contains(phillips.spec.annotations["pl7.app/description"], "Phillips 2021"), "the study it reproduces")
+	test.isTrue(text.contains(population.spec.annotations["pl7.app/description"], "population SD"), "population SD")
+	test.isFalse(text.contains(population.spec.annotations["pl7.app/description"], "Phillips"), "names the formula, not a paper")
 	test.isEqual("true", plain.spec.annotations["pl7.app/isScore"], "a ranking score")
 	test.isEqual("default", plain.spec.annotations["pl7.app/table/visibility"], "the error is shown")
 }
@@ -56,8 +56,8 @@ Test_the_spread_column_is_shown_and_not_a_score := func() {
 }
 
 Test_the_per_replicate_columns_are_hidden := func() {
-	cols := byHeader(replicateColumns.perReplicateColumns("blk", "rep_", KD, CLASSES, false))
-	headers := ["kd", "kdLog10Se", "r2", "affinityClass", "fitFailureReason", "replicateReads"]
+	cols := byHeader(replicateColumns.perReplicateColumns("blk", "rep_", KD, CLASSES))
+	headers := ["kd", "kdNegLog10", "kdLog10Se", "r2", "affinityClass", "fitFailureReason", "replicateReads"]
 	test.isEqual(len(headers), len(cols), "one column per per_replicate.tsv value header")
 	for h in headers {
 		test.isEqual("rep_" + h, cols[h].id, "id of " + h)
@@ -71,11 +71,8 @@ Test_the_per_replicate_columns_are_hidden := func() {
 	test.isEqual(CLASSES, cols.affinityClass.spec.annotations["pl7.app/discreteValues"], "the equation's classes")
 }
 
-Test_the_per_replicate_columns_carry_neg_log10_only_where_the_equation_reports_it := func() {
-	without := byHeader(replicateColumns.perReplicateColumns("blk", "rep_", KD, CLASSES, false))
-	test.isTrue(is_undefined(without.kdNegLog10), "the mean bin fit writes no -log10 column")
-
-	with := byHeader(replicateColumns.perReplicateColumns("blk", "rep_", KD, CLASSES, true))
+Test_the_per_replicate_columns_carry_neg_log10 := func() {
+	with := byHeader(replicateColumns.perReplicateColumns("blk", "rep_", KD, CLASSES))
 	test.isEqual("rep_kdNegLog10", with.kdNegLog10.id, "the -log10 column's id")
 	test.isEqual("pl7.app/vdj/kdNegLog10", with.kdNegLog10.spec.name, "the -log10 column's name")
 	test.isEqual("Double", with.kdNegLog10.spec.valueType, "the -log10 column is a Double")

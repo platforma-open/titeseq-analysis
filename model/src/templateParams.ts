@@ -15,6 +15,7 @@ export function deriveTemplateParams(data: BlockData): BlockParams {
     filterRef: data.filterRef,
     concentrationColumnRef: data.concentrationColumnRef,
     binColumnRef: data.binColumnRef,
+    binOrder: data.binOrder,
     antigenColumnRef: data.antigenColumnRef,
     sortFractionColumnRef: data.sortFractionColumnRef,
     binFluorescenceColumnRef: data.binFluorescenceColumnRef,
@@ -38,6 +39,7 @@ export function deriveTemplateParams(data: BlockData): BlockParams {
     hookEffectThresholdBin: data.hookEffectThresholdBin,
     hookEffectThresholdNoBin: data.hookEffectThresholdNoBin,
     hookEffectMinReads: data.hookEffectMinReads,
+    synonymousWeighting: data.synonymousWeighting,
     customBlockLabel: data.customBlockLabel,
   };
 }

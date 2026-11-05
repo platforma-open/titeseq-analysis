@@ -50,7 +50,7 @@ const v240Project: BlockDataV1 = {
 /** The project as the block will hold it after the upgrade, through the real version chain. */
 const upgraded = (): BlockData => {
   const migrated = dataModel.migrate({ version: "v1", data: v240Project });
-  expect(migrated.version).toBe("v6");
+  expect(migrated.version).toBe("v7");
   return migrated.data;
 };
 
@@ -105,7 +105,7 @@ describe("a project created on a v2 development build", () => {
       version: "v2",
       data: { ...v2Project, equation: "log_fluorescence" },
     });
-    expect(migrated.version).toBe("v6");
+    expect(migrated.version).toBe("v7");
     expect(migrated.data.r2GateMin).toBeUndefined();
   });
 
@@ -230,6 +230,123 @@ describe("the R² and SE limits", () => {
   });
 });
 
+describe("the synonymous weighting", () => {
+  const configured: BlockData = {
+    ...initBlockData(),
+    abundanceRef: ref("abundance"),
+    concentrationColumnRef: ref("concentration"),
+    binColumnRef: ref("bin"),
+  };
+  const equations = ["log_fluorescence", "hill_gate_index"] as const;
+
+  it.each(equations)("left unset or none, %s projects the args it always did", (equation) => {
+    const base = { ...configured, equation };
+    expect(Object.hasOwn(argsOf(base), "synonymousWeighting")).toBe(false);
+    expect(JSON.stringify(argsOf({ ...base, synonymousWeighting: "none" }))).toBe(
+      JSON.stringify(argsOf(base)),
+    );
+  });
+
+  it.each(equations)("set to reads, %s sends it last", (equation) => {
+    const args = argsOf({ ...configured, equation, synonymousWeighting: "reads" });
+    expect(args.synonymousWeighting).toBe("reads");
+    expect(Object.keys(args).at(-1)).toBe("synonymousWeighting");
+  });
+
+  it("is unset on a new block and on an upgraded project", () => {
+    expect(initBlockData().synonymousWeighting).toBeUndefined();
+    expect(upgraded().synonymousWeighting).toBeUndefined();
+  });
+});
+
+describe("a project stored on the v6 data model", () => {
+  const { ntTableState: _n, ...v6Project }: BlockData = {
+    ...initBlockData(),
+    abundanceRef: ref("abundance"),
+    concentrationColumnRef: ref("concentration"),
+    binColumnRef: ref("bin"),
+    customBlockLabel: "CD19 titration",
+    settingsOpen: true,
+  };
+  // A v6 project 2.5.0 wrote with a current error-model name.
+  const stored = v6Project;
+  const migrated = () => dataModel.migrate({ version: "v6", data: stored });
+
+  it("renames the error model 2.5.0 stored as phillips", () => {
+    const legacy = dataModel.migrate({
+      version: "v6",
+      data: { ...stored, replicateErrorModel: "phillips" },
+    });
+    expect(legacy.data.replicateErrorModel).toBe("pop_sd_over_sqrt_n_plus_1");
+    const other = dataModel.migrate({
+      version: "v6",
+      data: { ...stored, replicateErrorModel: "sd_over_sqrt_n" },
+    });
+    expect(other.data.replicateErrorModel).toBe("sd_over_sqrt_n");
+  });
+
+  it("gains an empty nucleotide variant table state", () => {
+    expect(migrated().version).toBe("v7");
+    expect(migrated().data.ntTableState).toEqual(initBlockData().ntTableState);
+  });
+
+  it("keeps everything it stored", () => {
+    const { ntTableState: _added, ...rest } = migrated().data;
+    expect(rest).toEqual(stored);
+  });
+
+  it("projects the args it projected", () => {
+    expect(JSON.stringify(argsOf(migrated().data))).toBe(
+      JSON.stringify(argsOf({ ...stored, ntTableState: initBlockData().ntTableState })),
+    );
+  });
+});
+
+describe("the pages", () => {
+  const hrefs = (synonymous: boolean) => sectionsFor({ synonymous }).map((s) => s.href);
+
+  it("show the nucleotide variant table in synonymous mode, after the main table", () => {
+    expect(hrefs(true)).toEqual([
+      "/",
+      "/nt-variants",
+      "/synonymous-noise",
+      "/titration-edges",
+      "/read-depth",
+      "/titration-curves",
+      "/kd-distribution",
+      "/affinity-vs-fit",
+    ]);
+  });
+
+  it("show the parent, synonymous and replicate pages only where they apply", () => {
+    expect(
+      sectionsFor({ synonymous: true, parentMode: true, replicates: true }).map((s) => s.href),
+    ).toEqual([
+      "/",
+      "/nt-variants",
+      "/vs-parent",
+      "/synonymous-noise",
+      "/replicate-noise",
+      "/titration-edges",
+      "/read-depth",
+      "/titration-curves",
+      "/kd-distribution",
+      "/affinity-vs-fit",
+    ]);
+  });
+
+  it("give every other input the summary pages beside the four it had", () => {
+    expect(sectionsFor({ synonymous: false })).toEqual([
+      { type: "link", href: "/", label: "Main" },
+      { type: "link", href: "/titration-edges", label: "Titration Edges" },
+      { type: "link", href: "/read-depth", label: "Read Depth" },
+      { type: "link", href: "/titration-curves", label: "Titration Curves" },
+      { type: "link", href: "/kd-distribution", label: "Kd Distribution" },
+      { type: "link", href: "/affinity-vs-fit", label: "Affinity vs Fit Quality" },
+    ]);
+  });
+});
+
 describe("the migration function on its own", () => {
   it("writes the equation into the data, not only into the args", () => {
     expect(migrateV1ToV2(v240Project).equation).toBe("hill_gate_index");
@@ -246,9 +363,9 @@ describe("a project stored on the v3 data model", () => {
   const migrated = () => dataModel.migrate({ version: "v3", data: stored });
 
   it("gains unset replicates and the per-replicate view state", () => {
-    expect(migrated().version).toBe("v6");
+    expect(migrated().version).toBe("v7");
     expect(migrated().data).toMatchObject({
-      replicateErrorModel: "sd_over_sqrt_n",
+      replicateErrorModel: "pop_sd_over_sqrt_n_plus_1",
       replicateCensoredMajority: 0.5,
     });
     expect(migrated().data.replicateColumnRef).toBeUndefined();
@@ -281,7 +398,7 @@ describe("a project stored on the v4 data model", () => {
   const migrated = (n: number | undefined) => dataModel.migrate({ version: "v4", data: stored(n) });
 
   it.each([3, 4])("raises a point count of %i to 5", (n) => {
-    expect(migrated(n).version).toBe("v6");
+    expect(migrated(n).version).toBe("v7");
     expect(migrated(n).data.minConcentrationPoints).toBe(5);
   });
 
@@ -301,10 +418,18 @@ describe("a project stored on the v4 data model", () => {
 });
 
 describe("the sections", () => {
-  it("are the same whether or not replicates were combined", () => {
-    // Per-replicate values are read by clicking a variant in the main table, not on a page.
-    expect(sectionsFor().map((s) => s.href)).toEqual([
+  it("show only Main before the first run", () => {
+    expect(sectionsFor(undefined)).toEqual([{ type: "link", href: "/", label: "Main" }]);
+  });
+
+  it("add only the noise page when replicates were combined", () => {
+    // Per-replicate values are read by clicking a variant in the main table; the noise page is
+    // the one replicate page.
+    expect(sectionsFor({ synonymous: false, replicates: true }).map((s) => s.href)).toEqual([
       "/",
+      "/replicate-noise",
+      "/titration-edges",
+      "/read-depth",
       "/titration-curves",
       "/kd-distribution",
       "/affinity-vs-fit",
@@ -330,7 +455,7 @@ describe("the sample replicates", () => {
   it("a stored setting alone changes nothing: the column is what turns the mode on", () => {
     const tuned = {
       ...configured,
-      replicateErrorModel: "phillips" as const,
+      replicateErrorModel: "sd_over_sqrt_n" as const,
       replicateFitErrorCutoff: 1,
       replicateR2Floor: 0.8,
       replicateCensoredMajority: 0.9,
@@ -342,7 +467,7 @@ describe("the sample replicates", () => {
     const args = argsOf({ ...configured, replicateColumnRef: ref("replicate") });
     expect(args).toMatchObject({
       replicateColumnRef: ref("replicate"),
-      replicateErrorModel: "sd_over_sqrt_n",
+      replicateErrorModel: "pop_sd_over_sqrt_n_plus_1",
       replicateCensoredMajority: 0.5,
     });
   });
@@ -353,31 +478,26 @@ describe("the sample replicates", () => {
     expect(Object.hasOwn(args, "replicateR2Floor")).toBe(false);
   });
 
-  it("sends each filter once it is set", () => {
-    const args = argsOf({
+  it("pins every hidden replicate setting to its default while the section is hidden", () => {
+    // A block that stored these before the section went away must not run them unseen.
+    const stored = {
       ...configured,
       replicateColumnRef: ref("replicate"),
+      replicateErrorModel: "sd_over_sqrt_n" as const,
       replicateFitErrorCutoff: 1,
       replicateR2Floor: 0.8,
-    });
-    expect(args).toMatchObject({ replicateFitErrorCutoff: 1, replicateR2Floor: 0.8 });
+      replicateCensoredMajority: 0.9,
+    };
+    expect(JSON.stringify(argsOf(stored))).toBe(
+      JSON.stringify(argsOf({ ...configured, replicateColumnRef: ref("replicate") })),
+    );
   });
 
-  it("refuses a filter or a majority the software would reject", () => {
+  it("does not block Run on a hidden setting the operator cannot see", () => {
     const withColumn = { ...configured, replicateColumnRef: ref("replicate") };
-    expect(() => argsOf({ ...withColumn, replicateFitErrorCutoff: 0 })).toThrow();
-    expect(() => argsOf({ ...withColumn, replicateR2Floor: 1.5 })).toThrow();
-    expect(() => argsOf({ ...withColumn, replicateCensoredMajority: 0.4 })).toThrow();
-  });
-
-  it("disables Run while the column is set and the majority is cleared", () => {
-    expect(() =>
-      argsOf({
-        ...configured,
-        replicateColumnRef: ref("replicate"),
-        replicateCensoredMajority: undefined,
-      }),
-    ).toThrow("Replicate censoring majority is required");
+    expect(() => argsOf({ ...withColumn, replicateFitErrorCutoff: 0 })).not.toThrow();
+    expect(() => argsOf({ ...withColumn, replicateR2Floor: 1.5 })).not.toThrow();
+    expect(() => argsOf({ ...withColumn, replicateCensoredMajority: undefined })).not.toThrow();
   });
 
   it("is unset on a new block and on an upgraded project", () => {
@@ -397,7 +517,7 @@ describe("a project stored on the v5 data model", () => {
   const migrated = (r2GateEnabled: boolean) =>
     dataModel.migrate({ version: "v5", data: { ...base(), r2GateEnabled } });
   it("with the checkbox off, clears both limits", () => {
-    expect(migrated(false).version).toBe("v6");
+    expect(migrated(false).version).toBe("v7");
     expect(migrated(false).data.r2GateMin).toBeUndefined();
     expect(migrated(false).data.kdSeGateMax).toBeUndefined();
   });

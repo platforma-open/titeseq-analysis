@@ -20,6 +20,7 @@ from io_layer import InputValidationError
 from main import main
 from pipeline import run
 from replicate_combine import Filters, ReplicateInputs
+from synonymous import SynonymousInputs
 
 CONCS = [1e-10, 3e-10, 1e-9, 3e-9, 1e-8, 3e-8, 1e-7, 3e-7, 1e-6]
 BINS = [1, 2, 3, 4]
@@ -132,7 +133,7 @@ class TestNoReplicateColumn:
                     "--reads", "r.parquet",
                     "--out-per-clonotype", "a", "--out-mean-bin", "b",
                     "--out-fitted-mean-bin", "c", "--out-concentration-value", "d",
-                    "--replicate-error-model", "phillips",
+                    "--replicate-error-model", "pop_sd_over_sqrt_n_plus_1",
                 ]
             )  # fmt: skip
 
@@ -286,7 +287,7 @@ class TestFiltersEndToEnd:
         inputs = ReplicateInputs(column="replicate", filters=Filters(r2_floor=1.5))
         outputs = run(_frame(self._design()), params=LF, replicates=inputs)
         assert outputs["per_clonotype"]["fitFailureReason"].to_list() == ["all_replicates_filtered"]
-        assert outputs["per_replicate"]["kdState"].unique().to_list() == ["Left out by a filter"]
+        assert outputs["per_clonotype"]["replicateFilteredCount"].to_list() == [2]
 
     def test_a_reachable_cutoff_keeps_the_replicates(self):
         inputs = ReplicateInputs(column="replicate", filters=Filters(fit_error_cutoff=5.0, r2_floor=0.0))
@@ -333,7 +334,7 @@ class TestReplicateCli:
                 "--out-fitted-mean-bin", str(out / "fitted_mean_bin.tsv"),
                 "--out-concentration-value", str(out / "concentration_value.tsv"),
                 "--replicate-column", "replicate",
-                "--replicate-error-model", "phillips",
+                "--replicate-error-model", "pop_sd_over_sqrt_n_plus_1",
                 "--out-per-replicate", str(out / "per_replicate.tsv"),
             ]
         )  # fmt: skip
@@ -380,7 +381,61 @@ class TestReviewClassesAcrossReplicates:
         gated = FitParams(equation="log_fluorescence", r2_gate_min=1.0)
         outputs = run(_frame(self.DESIGN), params=gated, replicates=REPS)
         per_replicate = outputs["per_replicate"].filter(pl.col("clonotypeKey") == "v1")
-        assert per_replicate["kdState"].to_list() == ["Left out, no fit", "Left out, no fit"]
+        assert per_replicate["affinityClass"].to_list() == ["Failed", "Failed"]
         assert per_replicate["fitFailureReason"].to_list() == ["low_r2", "low_r2"]
         assert _kd(outputs["per_clonotype"], "v1", "affinityClass") == "Failed"
         assert _kd(outputs["per_clonotype"], "v1", "fitFailureReason") == "all_replicates_failed"
+
+
+# One amino-acid variant with two synonymous copies in replicate A and one in replicate B. The
+# copies' K_D differ, so Starr's order (combine the copies, then the replicates) and a flat mean
+# over all three fits do not agree.
+UNBALANCED = pl.DataFrame(
+    [
+        row
+        for nt, kd, rep in (
+            ("c1", 1e-8, "A"),
+            ("c2", 1e-7, "A"),
+            ("c1", 1e-8, "B"),
+        )
+        for row in _reads(nt, kd, rep)
+    ]
+)
+UNBALANCED_LINKS = pl.DataFrame({"ntKey": ["c1", "c2"], "aaKey": ["X", "X"]})
+
+
+class TestStarrOrdering:
+    @pytest.fixture(scope="class")
+    def outputs(self):
+        return run(UNBALANCED, params=LF, synonymous=SynonymousInputs(nt_to_aa=UNBALANCED_LINKS), replicates=REPS)
+
+    def test_the_copies_combine_inside_each_replicate_before_the_replicates_combine(self, outputs):
+        # The nt fits do not depend on the linker, so a run without it gives each copy's own value.
+        nt = run(UNBALANCED, params=LF, replicates=REPS)["per_replicate"]
+        log10 = {(r["clonotypeKey"], r["replicate"]): math.log10(r["kd"]) for r in nt.iter_rows(named=True)}
+        starr = ((log10[("c1", "A")] + log10[("c2", "A")]) / 2 + log10[("c1", "B")]) / 2
+        flat = (log10[("c1", "A")] + log10[("c2", "A")] + log10[("c1", "B")]) / 3
+        got = math.log10(outputs["per_variant"].filter(pl.col("aaKey") == "X")["kd"].item())
+        assert got == pytest.approx(starr)
+        assert got != pytest.approx(flat)
+
+    def test_the_per_replicate_frame_is_on_the_amino_acid_grain(self, outputs):
+        frame = outputs["per_replicate"]
+        assert frame.columns[:2] == ["aaKey", "replicate"]
+        assert sorted(frame["replicate"].to_list()) == ["A", "B"]
+        # Replicate A's reads are both copies'.
+        reads = dict(zip(frame["replicate"].to_list(), frame["replicateReads"].to_list()))
+        assert reads["A"] > reads["B"]
+
+    def test_the_nucleotide_counts_add_up_over_the_replicates(self, outputs):
+        row = outputs["per_variant"].row(0, named=True)
+        assert row["ntVariants"] == 3
+        assert row["ntMeasured"] == 3
+        assert row["replicateCount"] == 2
+
+    def test_the_summary_names_the_replicates_and_the_error_model(self, outputs):
+        summary = outputs["synonymous_summary"]
+        assert summary["replicates"] == 2
+        assert summary["errorModel"] == "sd_over_sqrt_n"
+        assert summary["aaVariants"] == 1
+        assert summary["ntVariants"] == 2

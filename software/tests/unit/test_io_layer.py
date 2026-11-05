@@ -7,11 +7,13 @@ import pytest
 
 from io_layer import (
     InputValidationError,
+    apply_bin_ranks,
     canonicalize_concentration,
     max_bin_label,
     validate_antigen_filter,
     validate_bin_column,
     validate_concentration_column,
+    validate_reads_present,
     validate_reads_schema,
     validate_sample_metadata_uniqueness,
     validate_sort_fraction,
@@ -40,6 +42,28 @@ class TestSchema:
         )
         with pytest.raises(InputValidationError, match="sampleId"):
             validate_reads_schema(df, has_bin=True, has_antigen=False)
+
+
+class TestReadsPresent:
+    def test_every_read_count_empty_raises(self):
+        df = pl.DataFrame(
+            {"clonotypeKey": ["A", "A"], "sampleId": ["s1", "s2"], "reads": [None, None]},
+            schema={"clonotypeKey": pl.Utf8, "sampleId": pl.Utf8, "reads": pl.Utf8},
+        )
+        with pytest.raises(InputValidationError, match="no reads for any selected sample"):
+            validate_reads_present(df)
+
+    def test_no_rows_raises(self):
+        df = pl.DataFrame(schema={"clonotypeKey": pl.Utf8, "sampleId": pl.Utf8, "reads": pl.Utf8})
+        with pytest.raises(InputValidationError, match="no reads for any selected sample"):
+            validate_reads_present(df)
+
+    def test_one_read_count_passes(self):
+        df = pl.DataFrame({"clonotypeKey": ["A", "B"], "sampleId": ["s1", "s1"], "reads": [None, 0]})
+        validate_reads_present(df)
+
+    def test_missing_reads_column_is_left_to_schema_check(self):
+        validate_reads_present(pl.DataFrame({"clonotypeKey": ["A"], "sampleId": ["s1"]}))
 
 
 class TestConcentrationValidation:
@@ -463,6 +487,33 @@ class TestBinConcentrationGrid:
         warnings = _validate_grid(_mk(rows))
         assert warnings == []
 
+    def test_an_unsorted_sample_is_no_gate_of_the_grid(self):
+        # B alone sits in an unsorted sample at conc 1. Counted as a gate, it would flag A.
+        rows = [
+            {
+                "clonotypeKey": clone,
+                "sampleId": f"s-{conc}-{b}",
+                "concentrationStr": conc,
+                "concentration": float(conc),
+                "bin": b,
+                "reads": 5,
+            }
+            for clone in ["A", "B"]
+            for conc in ["1", "10"]
+            for b in [1, 2]
+        ]
+        rows.append(
+            {
+                "clonotypeKey": "B",
+                "sampleId": "s-1-unsorted",
+                "concentrationStr": "1",
+                "concentration": 1.0,
+                "bin": None,
+                "reads": 5,
+            }
+        )
+        assert _validate_grid(_mk(rows)) == []
+
     def test_missing_combo_emits_warning(self):
         # A has (bin=1, conc=10); B is missing that combo → warn on B.
         rows = [
@@ -631,3 +682,26 @@ class TestValidateSortFraction:
         )
         with pytest.raises(InputValidationError, match="null"):
             validate_sort_fraction(df, "sort_fraction")
+
+
+class TestApplyBinRanks:
+    def _frame(self, bins):
+        return pl.DataFrame({"sampleId": [f"s{i}" for i in range(len(bins))], "bin": bins})
+
+    def test_labels_become_their_rank(self):
+        out = apply_bin_ranks(self._frame(["LOW", "HIGH", "MID"]), {"LOW": 1, "MID": 2, "HIGH": 3})
+        assert out["bin"].to_list() == [1, 3, 2]
+        assert out["bin"].dtype == pl.Int64
+
+    def test_an_integer_column_matches_as_text(self):
+        out = apply_bin_ranks(self._frame([4, 1, 2]), {"4": 1, "2": 2, "1": 3})
+        assert out["bin"].to_list() == [1, 3, 2]
+
+    def test_a_value_outside_the_order_leaves_and_an_unsorted_sample_stays(self):
+        out = apply_bin_ranks(self._frame(["LOW", "presort", None, ""]), {"LOW": 1})
+        assert out["sampleId"].to_list() == ["s0", "s2", "s3"]
+        assert out["bin"].to_list() == [1, None, None]
+
+    def test_an_order_matching_no_sample_is_refused(self):
+        with pytest.raises(InputValidationError, match="no sample's FACS bin"):
+            apply_bin_ranks(self._frame(["LOW"]), {"HIGH": 1})

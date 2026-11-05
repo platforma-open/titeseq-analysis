@@ -19,7 +19,7 @@ export const EQUATION_OPTIONS: readonly { readonly value: Equation; readonly lab
 // Named by their formula: the two differ only in which SD and which denominator.
 const REPLICATE_ERROR_MODEL_LABELS: Record<ReplicateErrorModel, string> = {
   sd_over_sqrt_n: "Sample SD / √n",
-  phillips: "Population SD / √(n+1)",
+  pop_sd_over_sqrt_n_plus_1: "Population SD / √(n+1)",
 };
 
 export const REPLICATE_ERROR_MODEL_OPTIONS: readonly {

@@ -4,6 +4,9 @@ import { createDatasetSelection, createPrimaryRef, plRefsEqual } from "@platform
 import {
   PlAccordionSection,
   PlAlert,
+  PlBtnGhost,
+  PlElementList,
+  PlMaskIcon24,
   PlDatasetSelector,
   PlDropdown,
   PlDropdownRef,
@@ -11,16 +14,22 @@ import {
   PlSlideModal,
   PlTooltip,
 } from "@platforma-sdk/ui-vue";
-import { MIN_CONCENTRATION_POINTS } from "@platforma-open/platforma-open.titeseq-analysis.model";
-import { computed, watch } from "vue";
+import {
+  MIN_CONCENTRATION_POINTS,
+  refKey,
+} from "@platforma-open/platforma-open.titeseq-analysis.model";
+import { computed, ref, watch } from "vue";
 import { useApp } from "../app";
+import { closedSettingsWarnings } from "../closedSettingsWarnings";
 import { aboveZero, boundedBy, emptyError, wholeNumber } from "../fieldValidation";
 import { useFitSettings } from "../composables/useFitSettings";
+import { useNoun } from "../composables/useNoun";
 import { EQUATION_OPTIONS, REPLICATE_ERROR_MODEL_OPTIONS } from "../fitSettings";
 
 const open = defineModel<boolean>({ required: true });
 
 const app = useApp();
+const { noun, Noun } = useNoun();
 
 // The selector picks an abundance, or an abundance narrowed by one of its subset columns.
 // Stored as two refs so blocks saved before filters existed keep their `abundanceRef`.
@@ -64,11 +73,18 @@ watch(
 // PlNumberField.
 const warnings = computed(() => app.model.outputs.validationWarnings ?? []);
 
+// Advice about the settings. The user can close each one.
+const settingsWarnings = computed(() =>
+  (app.model.outputs.settingsWarnings ?? []).filter((m) => !closedSettingsWarnings.value.has(m)),
+);
+const closeSettingsWarning = (message: string) => {
+  closedSettingsWarnings.value = new Set([...closedSettingsWarnings.value, message]);
+};
+
 const binMode = computed(() => app.model.outputs.binMode === true);
 
 // Every replicate setting rides on the column, so clearing it hides them all. The stored values
 // stay: re-picking a column brings the previous combination back.
-const hasReplicates = computed(() => app.model.data.replicateColumnRef !== undefined);
 
 // Each equation reads only its own settings. A hidden setting keeps its stored value.
 const isLogFluorescence = computed(() => app.model.data.equation === "log_fluorescence");
@@ -116,10 +132,30 @@ function setAntigenColumn(ref: PlRef | undefined): void {
   if (!unchanged) app.model.data.targetAntigen = undefined;
 }
 
-// The model rejects a sort fraction without a bin column.
+const binOrderOpen = ref(true);
+
+/** The picked bin column's values in their default order: numeric, else alphabetical. */
+const binValues = (ref: PlRef | undefined): string[] | undefined =>
+  ref === undefined ? undefined : app.model.outputs.binValuesByRef?.[refKey(ref)];
+
+// The model rejects a sort fraction without a bin column. The order is seeded in the same
+// gesture as the pick: an order from another column means nothing for this one.
 function setBinColumn(ref: PlRef | undefined): void {
   app.model.data.binColumnRef = ref;
+  app.model.data.binOrder = binValues(ref);
   if (ref === undefined) app.model.data.sortFractionColumnRef = undefined;
+}
+
+const binOrderModified = computed(() => {
+  const current = app.model.data.binOrder;
+  const base = binValues(app.model.data.binColumnRef);
+  if (current === undefined || base === undefined) return false;
+  return current.length !== base.length || current.some((v, i) => v !== base[i]);
+});
+
+// A user gesture, so writing data from an output here is not the hairpin.
+function resetBinOrder(): void {
+  app.model.data.binOrder = binValues(app.model.data.binColumnRef);
 }
 </script>
 
@@ -134,8 +170,10 @@ function setBinColumn(ref: PlRef | undefined): void {
       required
     >
       <template #tooltip>
-        Per-sample, per-clonotype integer read counts from MiXCR. Selecting this column also anchors
-        the block to that upstream dataset. Normalized per-sample inside the block.
+        Per-sample, per-{{ noun }} integer read counts. Selecting this column also anchors the block
+        to that upstream dataset. Normalized per-sample inside the block. On a nucleotide variant
+        dataset whose amino-acid linker is present, each nucleotide variant is fitted on its own and
+        the fits are combined per amino-acid variant.
       </template>
     </PlDatasetSelector>
     <PlDropdownRef
@@ -158,10 +196,9 @@ function setBinColumn(ref: PlRef | undefined): void {
       @update:model-value="(eq) => eq && setEquation(eq)"
     >
       <template #tooltip>
-        Log fluorescence fit: fits a Hill curve to the mean log10 fluorescence of each clonotype.
-        The Hill exponent is fixed at 1. New blocks use this fit.
-        <br /><br />
-        Mean bin fit: fits a Hill curve to the read-weighted mean bin of each clonotype. The Hill
+        Log fluorescence fit: fits a Hill curve to the mean log10 fluorescence of each {{ noun }}.
+        The Hill exponent is fixed at 1. New blocks use this fit. <br /><br />
+        Mean bin fit: fits a Hill curve to the read-weighted mean bin of each {{ noun }}. The Hill
         exponent is free. Blocks created before the equation choice existed keep this fit.
         <br /><br />
         Each equation rates fit quality in its own way. "Good" means that the equation found a
@@ -178,11 +215,50 @@ function setBinColumn(ref: PlRef | undefined): void {
       clearable
     >
       <template #tooltip>
-        A per-sample positive integer that identifies the FACS bin. The Log fluorescence fit needs
-        it. The Mean bin fit can run without it, in no-bin mode. Kd,app from no-bin mode is not
-        comparable to Kd,app from bins.
+        A per-sample value that names the FACS bin: a number or a label. Set the bins' order below.
+        The Log fluorescence fit needs it. The Mean bin fit can run without it, in no-bin mode.
+        Kd,app from no-bin mode is not comparable to Kd,app from bins.
       </template>
     </PlDropdownRef>
+    <!-- The gates from low to high fluorescence. Position is the rank, so the values can be any
+         labels; removing one takes its samples out of the run. A block made before the order
+         existed has none and reads the column's integers until the user sets one. -->
+    <template v-if="app.model.data.binColumnRef !== undefined">
+      <!-- Collapsible, as sort-seq-analysis's gate order is. Open by default; the open state is
+           view state, so it lives in the component and resets with it. -->
+      <PlAccordionSection
+        v-if="app.model.data.binOrder !== undefined"
+        v-model="binOrderOpen"
+        label="FACS bin order"
+      >
+        <div class="titeseq-bin-order-label">
+          Lowest fluorescence at the top
+          <PlTooltip class="info">
+            <template #tooltip>
+              Drag the bins into order: the lowest fluorescence at the top, the highest at the
+              bottom. The position sets each bin's rank, so the bin values do not need to be
+              numbers. Remove a value, such as an unsorted sample, to leave its samples out of the
+              run.
+            </template>
+          </PlTooltip>
+        </div>
+        <PlElementList v-model:items="app.model.data.binOrder">
+          <template #item-title="{ item }">{{ item }}</template>
+        </PlElementList>
+        <PlBtnGhost v-if="binOrderModified" @click="resetBinOrder">
+          Reset to default
+          <template #append>
+            <PlMaskIcon24 name="reverse" />
+          </template>
+        </PlBtnGhost>
+      </PlAccordionSection>
+      <PlBtnGhost
+        v-else-if="binValues(app.model.data.binColumnRef) !== undefined"
+        @click="resetBinOrder"
+      >
+        Set the bin order
+      </PlBtnGhost>
+    </template>
     <!-- Shown whenever the fit reads bins, so the fields a required bin brings are visible before
          the bin is picked. -->
     <PlDropdownRef
@@ -243,7 +319,7 @@ function setBinColumn(ref: PlRef | undefined): void {
     >
       <template #tooltip>
         Optional. A per-sample column naming the replicate each sample belongs to. Each replicate is
-        a titration of its own: it is fitted alone, and the per-clonotype values are then combined.
+        a titration of its own: it is fitted alone, and the per-{{ noun }} values are then combined.
         The table then shows the combined Kd,app with its standard error and the SD across the
         replicates, and the Replicates page shows each replicate's own Kd,app. Leave empty to fit
         one titration.
@@ -252,6 +328,15 @@ function setBinColumn(ref: PlRef | undefined): void {
 
     <PlAlert v-for="(w, i) in warnings" :key="i" :type="w.severity === 'error' ? 'error' : 'warn'">
       {{ w.message }}
+    </PlAlert>
+    <PlAlert
+      v-for="m in settingsWarnings"
+      :key="m"
+      type="warn"
+      closeable
+      @update:model-value="(open: boolean) => open || closeSettingsWarning(m)"
+    >
+      {{ m }}
     </PlAlert>
 
     <!-- Every field here belongs to the log fluorescence fit; the mean bin fit has its own section. -->
@@ -268,9 +353,9 @@ function setBinColumn(ref: PlRef | undefined): void {
         :error-message="emptyError(app.model.data.plateauFloor)"
       >
         <template #tooltip>
-          The plateau that each clonotype must be able to reach at saturation, as a fraction of the
+          The plateau that each {{ noun }} must be able to reach at saturation, as a fraction of the
           gate range. The default is 0.667, for a screening library. For a library in which most
-          clonotypes bind, use a lower value, for example 0.4.
+          {{ noun }}s bind, use a lower value, for example 0.4.
         </template>
       </PlNumberField>
       <PlNumberField
@@ -310,12 +395,12 @@ function setBinColumn(ref: PlRef | undefined): void {
 
     <!--
       The whole Sample replicates section is hidden while it is being decided what stays. The
-      error across replicates is the sample SD over the square root of the replicate count; the
-      other model and the two pre-combine filters are not offered. `deriveArgs` pins the error
-      model to match, so a block that stored the other one still gets the sample SD. The code
-      behind every field here is untouched: uncomment this block and drop that pin to restore it.
+      error across replicates is the population SD over the square root of the replicate count plus
+      one; the other model and the two pre-combine filters are not offered. `deriveArgs` pins every field
+      here to its default, so a block that stored another value does not use it unseen. The code
+      behind every field here is untouched: uncomment this block and drop those pins to restore it.
 
-    <PlAccordionSection v-if="hasReplicates" label="Sample replicates">
+    <PlAccordionSection v-if="app.model.data.replicateColumnRef !== undefined" label="Sample replicates">
       <PlDropdown
         :model-value="app.model.data.replicateErrorModel"
         :options="REPLICATE_ERROR_MODEL_OPTIONS"
@@ -405,8 +490,8 @@ function setBinColumn(ref: PlRef | undefined): void {
         :error-message="emptyError(app.model.data.minReadsPerConcentration)"
       >
         <template #tooltip>
-          The fewest reads a clonotype needs at one concentration for that point to enter the fit. A
-          point below the floor is dropped, and the weighting handles what coverage is left. Both
+          The fewest reads a {{ noun }} needs at one concentration for that point to enter the fit.
+          A point below the floor is dropped, and the weighting handles what coverage is left. Both
           equations read it. The default is 3.
         </template>
       </PlNumberField>
@@ -443,7 +528,7 @@ function setBinColumn(ref: PlRef | undefined): void {
         :error-message="emptyError(app.model.data.r2ThresholdGood)"
       >
         <template #tooltip>
-          Clonotypes with weighted R² at or above this threshold and Hill coefficient in range
+          {{ Noun }}s with weighted R² at or above this threshold and Hill coefficient in range
           classify as Good. Default 0.8.
         </template>
       </PlNumberField>
@@ -458,7 +543,7 @@ function setBinColumn(ref: PlRef | undefined): void {
         :error-message="emptyError(app.model.data.r2ThresholdFailed)"
       >
         <template #tooltip>
-          Clonotypes with weighted R² below this threshold classify as Failed regardless of n.
+          {{ Noun }}s with weighted R² below this threshold classify as Failed regardless of n.
           Default 0.5.
         </template>
       </PlNumberField>
@@ -518,7 +603,7 @@ function setBinColumn(ref: PlRef | undefined): void {
       >
         <template #tooltip>
           Flags non-monotonic signals (potentially genuine tight binders showing a hook effect) when
-          the top concentration's clonotype frequency drops by more than this.
+          the top concentration's {{ noun }} frequency drops by more than this.
         </template>
       </PlNumberField>
       <PlNumberField
@@ -538,3 +623,10 @@ function setBinColumn(ref: PlRef | undefined): void {
     </PlAccordionSection>
   </PlSlideModal>
 </template>
+
+<style scoped>
+.titeseq-bin-order-label {
+  display: flex;
+  margin-bottom: -15px;
+}
+</style>
