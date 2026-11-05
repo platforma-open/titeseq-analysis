@@ -365,7 +365,7 @@ describe("a project stored on the v3 data model", () => {
   it("gains unset replicates and the per-replicate view state", () => {
     expect(migrated().version).toBe("v7");
     expect(migrated().data).toMatchObject({
-      replicateErrorModel: "pop_sd_over_sqrt_n_plus_1",
+      replicateErrorModel: "sd_over_sqrt_n",
       replicateCensoredMajority: 0.5,
     });
     expect(migrated().data.replicateColumnRef).toBeUndefined();
@@ -467,7 +467,8 @@ describe("the sample replicates", () => {
     const args = argsOf({ ...configured, replicateColumnRef: ref("replicate") });
     expect(args).toMatchObject({
       replicateColumnRef: ref("replicate"),
-      replicateErrorModel: "pop_sd_over_sqrt_n_plus_1",
+      // The standard error of a mean; Phillips's formula is kept for reproducing that paper only.
+      replicateErrorModel: "sd_over_sqrt_n",
       replicateCensoredMajority: 0.5,
     });
   });
@@ -483,7 +484,8 @@ describe("the sample replicates", () => {
     const stored = {
       ...configured,
       replicateColumnRef: ref("replicate"),
-      replicateErrorModel: "sd_over_sqrt_n" as const,
+      // A 2.5.0 block migrated from `phillips` stores this; it must not run unseen.
+      replicateErrorModel: "pop_sd_over_sqrt_n_plus_1" as const,
       replicateFitErrorCutoff: 1,
       replicateR2Floor: 0.8,
       replicateCensoredMajority: 0.9,

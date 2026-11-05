@@ -667,7 +667,7 @@ export const deriveArgs = (data: BlockData): BlockArgs => {
     }),
     // Every replicate setting rides on the column: without one the block fits one titration and
     // projects no replicate byte at all. While the Sample replicates section is hidden, every
-    // setting in it is pinned to its default — population SD / sqrt(n + 1), both filters off, a simple
+    // setting in it is pinned to its default — sample SD / sqrt(n), both filters off, a simple
     // majority — so a value a block stored before the section went away is not used unseen.
     // Restore the `data.replicate*` fields, and their checks, when that section comes back.
     ...(data.replicateColumnRef !== undefined && {

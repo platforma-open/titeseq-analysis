@@ -97,7 +97,7 @@ wf.body(func(args) {
 	// Which replicate each sample belongs to. Unbound, the block fits one titration and no
 	// replicate reaches the command line, the grouping or any output.
 	hasReplicate := !is_undefined(args.replicateColumnRef)
-	replicateErrorModel := args.replicateErrorModel == "sd_over_sqrt_n" ? "sd_over_sqrt_n" : "pop_sd_over_sqrt_n_plus_1"
+	replicateErrorModel := args.replicateErrorModel == "pop_sd_over_sqrt_n_plus_1" ? "pop_sd_over_sqrt_n_plus_1" : "sd_over_sqrt_n"
 
 	// Synonymous mode: a nucleotide dataset whose nt -> aa linker resolves. Each nt variant is still
 	// fitted on its own; the software then combines the fits per amino-acid variant.

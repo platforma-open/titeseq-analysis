@@ -101,10 +101,11 @@ Review fixes to the 2.5.0 fits and replicates:
 - A value censored at an edge of the range is rated by its wall (Below range, Above range) only
   under the log fluorescence fit. Under the mean bin fit it keeps the class its fits share, or
   Partial when they differ, so it never takes a value the column does not declare.
-- The error across replicates is now population SD / sqrt(n + 1) (`pop_sd_over_sqrt_n_plus_1`)
-  instead of sample SD / sqrt(n). On the block's own fits it lands closest to the published errors
-  it was scored against. The setting value `phillips` is renamed to `pop_sd_over_sqrt_n_plus_1`. It is smaller, so more variants rate Good. A project with a replicate column
-  goes stale on upgrade and gets the new error on its next run. The setting stays hidden.
+- The error across replicates stays sample SD / sqrt(n), the standard error of a mean of
+  independent replicates. The setting value `phillips` is renamed to `pop_sd_over_sqrt_n_plus_1`:
+  population SD / sqrt(n + 1), which reproduces the errors Phillips 2021 published. It is kept for
+  reproducing that paper, is not the default, and has no control in the UI. The setting stays hidden
+  and pinned to the default.
 - A value combined from replicates, or from synonymous copies, rates Good only when more than half
   of them were measured inside the range. One at an edge of the titration enters the mean at that
   edge, as in all four papers, so two of them agree exactly and shrink the SE without measuring
