@@ -303,21 +303,43 @@ describe("a project stored on the v6 data model", () => {
 });
 
 describe("the pages", () => {
-  const hrefs = (synonymous: boolean) => sectionsFor(synonymous).map((s) => s.href);
+  const hrefs = (synonymous: boolean) => sectionsFor({ synonymous }).map((s) => s.href);
 
   it("show the nucleotide variant table in synonymous mode, after the main table", () => {
     expect(hrefs(true)).toEqual([
       "/",
       "/nt-variants",
+      "/synonymous-noise",
+      "/titration-edges",
+      "/read-depth",
       "/titration-curves",
       "/kd-distribution",
       "/affinity-vs-fit",
     ]);
   });
 
-  it("leave every other input with the four pages it had", () => {
-    expect(sectionsFor(false)).toEqual([
+  it("show the parent, synonymous and replicate pages only where they apply", () => {
+    expect(
+      sectionsFor({ synonymous: true, parentMode: true, replicates: true }).map((s) => s.href),
+    ).toEqual([
+      "/",
+      "/nt-variants",
+      "/vs-parent",
+      "/synonymous-noise",
+      "/replicate-noise",
+      "/titration-edges",
+      "/read-depth",
+      "/titration-curves",
+      "/kd-distribution",
+      "/affinity-vs-fit",
+    ]);
+  });
+
+  it("give every other input the summary pages beside the four it had", () => {
+    expect(sectionsFor({ synonymous: false })).toEqual([
       { type: "link", href: "/", label: "Main" },
+      { type: "link", href: "/titration-edges", label: "Titration Edges" },
+      { type: "link", href: "/read-depth", label: "Read Depth" },
       { type: "link", href: "/titration-curves", label: "Titration Curves" },
       { type: "link", href: "/kd-distribution", label: "Kd Distribution" },
       { type: "link", href: "/affinity-vs-fit", label: "Affinity vs Fit Quality" },
@@ -396,10 +418,18 @@ describe("a project stored on the v4 data model", () => {
 });
 
 describe("the sections", () => {
-  it("are the same whether or not replicates were combined", () => {
-    // Per-replicate values are read by clicking a variant in the main table, not on a page.
-    expect(sectionsFor(false).map((s) => s.href)).toEqual([
+  it("show only Main before the first run", () => {
+    expect(sectionsFor(undefined)).toEqual([{ type: "link", href: "/", label: "Main" }]);
+  });
+
+  it("add only the noise page when replicates were combined", () => {
+    // Per-replicate values are read by clicking a variant in the main table; the noise page is
+    // the one replicate page.
+    expect(sectionsFor({ synonymous: false, replicates: true }).map((s) => s.href)).toEqual([
       "/",
+      "/replicate-noise",
+      "/titration-edges",
+      "/read-depth",
       "/titration-curves",
       "/kd-distribution",
       "/affinity-vs-fit",

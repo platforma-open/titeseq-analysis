@@ -20,8 +20,8 @@ Test_headers_match_the_software_and_ids_stay_apart_from_the_nt_grain := func() {
 	// The production call: the workflow always passes the -log10 spec.
 	cols := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: true, weighting: "none", affinityClassValues: VALUES, affinityClassCutoff: CUTOFF, boundRule: "", variantClass: true, kdNegLog10Spec: NEG_LOG10 }))
 	headers := ["kd", "kdNegLog10", "kdLog10Se", "kdLog10Sd", "affinityClass", "kdOutOfRange", "ntVariants", "ntMeasured",
-		"ntCensoredBelow", "ntCensoredAbove", "ntFailed", "kdLog10ParentDelta", "kdLog10ParentDeltaSe",
-		"variantClass"]
+		"ntCensoredBelow", "ntCensoredAbove", "ntFailed", "kdLog10SynonymSd", "fitReads", "kdLog10ParentDelta",
+		"kdLog10ParentDeltaSe", "variantClass"]
 	test.isEqual(len(headers), len(cols), "one column per per_variant.tsv value header")
 	for h in headers {
 		test.isFalse(is_undefined(cols[h]), "header " + h)
@@ -54,7 +54,7 @@ Test_counts_share_one_name_and_differ_by_state := func() {
 }
 
 Test_the_parent_delta_only_in_parent_mode := func() {
-	test.isEqual(10, len(variantColumns.variantColumns("blk", KD, { parentMode: false, weighting: "none", affinityClassValues: VALUES, affinityClassCutoff: CUTOFF, boundRule: "", variantClass: false })), "no delta columns")
+	test.isEqual(12, len(variantColumns.variantColumns("blk", KD, { parentMode: false, weighting: "none", affinityClassValues: VALUES, affinityClassCutoff: CUTOFF, boundRule: "", variantClass: false })), "no delta columns")
 	cols := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: true, weighting: "none", affinityClassValues: VALUES, affinityClassCutoff: CUTOFF, boundRule: "", variantClass: true }))
 	test.isEqual("pl7.app/vdj/kdLog10ParentDelta", cols.kdLog10ParentDelta.spec.name, "delta")
 	test.isEqual("pl7.app/vdj/kdLog10ParentDeltaSe", cols.kdLog10ParentDeltaSe.spec.name, "its error")
@@ -116,6 +116,7 @@ Test_with_replicates_the_replicate_error_columns_replace_the_synonym_ones := fun
 	test.isEqual("replicate SE", cols.kdLog10Se.spec.annotations["pl7.app/description"], "the replicates' SE")
 	test.isEqual("replicate SD", cols.kdLog10Sd.spec.annotations["pl7.app/description"], "the replicates' SD")
 	test.isEqual("aa_replicateCount", cols.replicateCount.id, "the counts come along")
+	test.isEqual("aa_kdLog10SynonymSd", cols.kdLog10SynonymSd.id, "the synonyms' own spread stays")
 }
 
 Test_the_class_takes_the_equations_declared_values := func() {

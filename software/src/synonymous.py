@@ -344,10 +344,30 @@ def parent_delta(variant: HasKd | None, parent: HasKd | None, is_parent: bool) -
     return variant.log10_kd - parent.log10_kd, se
 
 
+def _is_bound(value: HasKd) -> bool:
+    """True for a value censored at a wall of the titration."""
+    return bool(getattr(value, "out_of_range", False)) or getattr(value, "state", None) in ("below", "above")
+
+
+def synonym_spread(
+    aa_keys: list[str], nt_values: Mapping[str, HasKd], mapping: dict[str, str], stops: set[str]
+) -> list[float | None]:
+    """Per amino-acid variant, in `aa_keys` order: the SD of log10 Kd,app over its synonymous nt
+    variants measured inside the range. None with fewer than two, and for a stop variant."""
+    measured: dict[str, list[float]] = {}
+    for nt, value in nt_values.items():
+        aa = mapping.get(nt)
+        if aa is None or aa in stops or value.log10_kd is None or _is_bound(value):
+            continue
+        measured.setdefault(aa, []).append(value.log10_kd)
+    return [statistics.stdev(measured[aa]) if len(measured.get(aa, [])) >= 2 else None for aa in aa_keys]
+
+
 def parent_deltas(
     values: Mapping[str, HasKd], links: pl.DataFrame, mutations: pl.DataFrame, key: str
 ) -> tuple[list[float | None], list[float | None], dict]:
-    """The parent delta and its error for each variant of `values`, in its order, and the summary counts."""
+    """The parent delta and its error for each variant of `values`, in its order, and the summary
+    counts."""
     assignment, own, unidentifiable, several = resolve_parents(links, mutations, key)
     deltas: list[float | None] = []
     ses: list[float | None] = []
@@ -358,7 +378,18 @@ def parent_deltas(
         delta, se = parent_delta(value, parent, variant == parent_key)
         deltas.append(delta)
         ses.append(se)
+    parent_values = []
+    for parent_id in sorted(own):
+        value = values.get(own[parent_id])
+        parent_values.append(
+            {
+                "parentId": parent_id,
+                "log10Kd": None if value is None else value.log10_kd,
+                "log10KdSe": None if value is None else value.log10_kd_se,
+            }
+        )
     counts = {
+        "parentValues": parent_values,
         "parents": len(own) + len(unidentifiable),
         "unidentifiableParents": unidentifiable,
         "multiParentVariants": several,
@@ -463,6 +494,11 @@ def annotate_variants(
         )
         summary.update(counts)
 
+    spread = synonym_spread(list(aa_values), nt_values, mapping, stops)
+    per_variant = per_variant.with_columns(pl.Series("kdLog10SynonymSd", spread, dtype=pl.Float64))
+    present = [v for v in spread if v is not None]
+    summary["synonymSpread"] = {"variants": len(present), "median": statistics.median(present) if present else None}
+
     if inputs.nt_mutations is None:
         return per_variant, None
     fitted = list(nt_values)
@@ -483,5 +519,6 @@ def annotate_variants(
         nt_columns["kdLog10ParentDelta"] = deltas
         nt_columns["kdLog10ParentDeltaSe"] = delta_ses
         nt_schema.update(DELTA_SCHEMA)
+        counts.pop("parentValues")
         summary.update({"nt" + k[0].upper() + k[1:]: v for k, v in counts.items()})
     return per_variant, pl.DataFrame(nt_columns, schema=nt_schema)

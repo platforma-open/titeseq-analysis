@@ -247,7 +247,11 @@ wf.body(func(args) {
 		arg("--out-fitted-mean-bin").arg("fitted_mean_bin.tsv").
 		arg("--out-concentration-value").arg("concentration_value.tsv").
 		arg("--out-run-warnings").arg("run_warnings.json").
+		arg("--out-run-stats").arg("run_stats.json").
+		arg("--out-fit-reads").arg("fit_reads.tsv").
 		saveFile("per_clonotype.tsv").
+		saveFile("fit_reads.tsv").
+		saveFileContent("run_stats.json").
 		saveFile("mean_bin.tsv").
 		saveFile("fitted_mean_bin.tsv").
 		saveFile("concentration_value.tsv").
@@ -650,6 +654,14 @@ wf.body(func(args) {
 		partitionKeyLength: 0
 	}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
 
+	fitReadsImported := xsv.importFile(fit.getFile("fit_reads.tsv"), "tsv", {
+		axes: [{ column: "clonotypeKey", spec: clonotypeAxisSpec }],
+		columns: [variantColumnsLib.fitReadsColumn(blockId, "",
+			"Total reads of this variant over the samples of the titration, every replicate included.")],
+		storageFormat: "Parquet",
+		partitionKeyLength: 0
+	}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
+
 	// Synonymous mode: one row per amino-acid variant, on the linker's aa axis taken verbatim, so the
 	// columns join the profiler's aa columns. Names are the nt grain's; the axis alphabet tells the
 	// grains apart. Ids carry an "aa" prefix to stay apart from the nt columns in one frame.
@@ -841,7 +853,7 @@ wf.body(func(args) {
 		return pfb.build()
 	}
 
-	summaryPf := buildTracedPf([summaryImported], [])
+	summaryPf := buildTracedPf([summaryImported, fitReadsImported], [])
 	variantSources := is_undefined(variantImported) ? [] : [variantImported]
 	ntVariantSources := is_undefined(ntVariantImported) ? [] : [ntVariantImported]
 	// signalPf feeds this block's Titration Curves graph: meanBin (Y),
@@ -886,7 +898,9 @@ wf.body(func(args) {
 		signalPf: pframes.exportFrame(signalPf),
 		logHandle: fit.getStdoutStream(),
 		// What the run must tell the user, as a JSON list of sentences; [] when nothing.
-		runWarnings: fit.getFileContent("run_warnings.json")
+		runWarnings: fit.getFileContent("run_warnings.json"),
+		// Run-level numbers for the summary pages, as JSON.
+		runStats: fit.getFileContent("run_stats.json")
 	}
 	// The per-replicate values stay out of exportPf and out of the main table: their extra axis
 	// would fan every row out by the replicate count.

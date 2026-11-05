@@ -36,6 +36,8 @@ export type SynonymousSummary = {
   weighting?: "none" | "reads";
   /** Present when the amino-acid productive column resolved. */
   stopAaVariants?: number;
+  /** The SD of log10 Kd,app over measured synonymous copies, per amino-acid variant with two or more. */
+  synonymSpread?: { variants: number; median: number | null };
 };
 
 /**

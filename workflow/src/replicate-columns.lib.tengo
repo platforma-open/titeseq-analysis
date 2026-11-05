@@ -48,7 +48,7 @@ SD_DESCRIPTION := "The standard deviation of log10 Kd,app across the replicates 
 
 SE_DESCRIPTIONS := {
 	sd_over_sqrt_n: "Standard error of the mean log10 Kd,app across the replicates: their sample SD over the square root of their number. With one replicate, that fit's own standard error where the equation reports one. Empty for a bound and for a failed variant. At or below 0.5, Kd,app is rated Good.",
-	pop_sd_over_sqrt_n_plus_1: "Standard error of the mean log10 Kd,app across the replicates: their population SD over the square root of their number plus one,. With one replicate it is that replicate's own fit error. Empty for a bound and for a failed variant."
+	pop_sd_over_sqrt_n_plus_1: "Standard error of the mean log10 Kd,app across the replicates: their population SD over the square root of their number plus one. With one replicate it is that replicate's own fit error. Empty for a bound and for a failed variant."
 }
 
 /**

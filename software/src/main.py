@@ -148,6 +148,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--bin-ranks", default=None, help="JSON {bin value: rank}: the user's bin order, lowest fluorescence first"
     )
+    parser.add_argument("--out-run-stats", default=None, help="JSON run statistics for the summary pages")
+    parser.add_argument("--out-fit-reads", default=None, help="TSV [clonotypeKey, fitReads]; needs --out-run-stats")
     parser.add_argument("--nt-to-aa", default=None, help="TSV [ntKey, aaKey]: the nt -> aa linker")
     parser.add_argument("--aa-mutations", default=None, help="TSV [aaKey, mutationCount]")
     parser.add_argument("--aa-parent-links", default=None, help="TSV [aaKey, parentId]: the aa parent linker")
@@ -194,6 +196,7 @@ def main(argv: list[str] | None = None) -> int:
         sort_fraction_col=args.sort_fraction_column,
         replicates=replicates,
         synonymous=synonymous,
+        stats=args.out_run_stats is not None,
     )
     log("Writing output frames")
     _write_frame(outputs["per_clonotype"], args.out_per_clonotype)
@@ -211,6 +214,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.out_run_warnings is not None:
         with open(args.out_run_warnings, "w") as f:
             json.dump(outputs.get("run_warnings", []), f)
+    if args.out_run_stats is not None:
+        if args.out_fit_reads is not None:
+            _write_frame(outputs["fit_reads"], args.out_fit_reads)
+        with open(args.out_run_stats, "w") as f:
+            json.dump(outputs["run_stats"], f, sort_keys=True)
     log("CLI done")
     return 0
 

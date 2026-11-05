@@ -382,7 +382,10 @@ class TestCombineSynonymous:
             "ambiguousNtVariants": 1,
             "parentMode": False,
             "weighting": "none",
+            "synonymSpread": {"variants": 1, "median": 0.0},
         }
+        # WT's two measured copies agree; M has one measured copy, so no spread.
+        assert frame["kdLog10SynonymSd"].to_list() == [None, 0.0]
 
     def test_two_identical_copies_have_the_fit_error_term_as_their_se(self):
         frame, _, _ = combine_synonymous(self.PER_CLONOTYPE, SynonymousInputs(self.LINKS), log10_lo=LO, log10_hi=HI)

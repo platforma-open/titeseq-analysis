@@ -32,7 +32,7 @@ classColumn := func(blockId, id, description) {
 				"pl7.app/isDiscreteFilter": "true",
 				"pl7.app/discreteValues": "[\"wildtype\",\"synonymous\",\"stop\",\"1 nonsynonymous\",\">1 nonsynonymous\"]",
 				"pl7.app/table/visibility": "default",
-				"pl7.app/table/orderPriority": "203"
+				"pl7.app/table/orderPriority": "184"
 			}
 		}
 	}
@@ -70,6 +70,26 @@ SD_DESCRIPTION := {
 	reads: "Read-weighted SD of log10 Kd,app across the synonymous nucleotide variants in the mean: their spread alone, with no fit error. Empty with fewer than two variants, for a bound and for a failed variant."
 }
 
+// Total reads over the titration's samples, on the grain whose ids start with `idPrefix`.
+fitReadsColumn := func(blockId, idPrefix, description) {
+	return {
+		column: "fitReads",
+		id: idPrefix + "fitReads",
+		spec: {
+			name: "pl7.app/vdj/fitReads",
+			valueType: "Long",
+			domain: { "pl7.app/block": blockId },
+			annotations: {
+				"pl7.app/label": "Reads in fit",
+				"pl7.app/description": description,
+				"pl7.app/isScore": "false",
+				"pl7.app/table/visibility": "optional",
+				"pl7.app/table/orderPriority": "189"
+			}
+		}
+	}
+}
+
 // The parent delta and its error, on the grain whose ids start with `idPrefix`.
 deltaColumns := func(blockId, idPrefix, description) {
 	domain := { "pl7.app/block": blockId }
@@ -86,7 +106,7 @@ deltaColumns := func(blockId, idPrefix, description) {
 				"pl7.app/isScore": "false",
 				"pl7.app/format": "+.2f",
 				"pl7.app/table/visibility": "default",
-				"pl7.app/table/orderPriority": "199"
+				"pl7.app/table/orderPriority": "183"
 			}
 		}
 	}, {
@@ -103,7 +123,7 @@ deltaColumns := func(blockId, idPrefix, description) {
 				"pl7.app/isScore": "false",
 				"pl7.app/format": ".2f",
 				"pl7.app/table/visibility": "default",
-				"pl7.app/table/orderPriority": "198"
+				"pl7.app/table/orderPriority": "182"
 			}
 		}
 	}]
@@ -114,7 +134,8 @@ deltaColumns := func(blockId, idPrefix, description) {
  * @param kdAnnotations: the nucleotide grain's Kd,app annotations, unit included
  * @param opts: {parentMode, weighting, variantClass}; parentMode emits the parent delta and its
  *   error, weighting is "none" or "reads", variantClass emits the class column
- * @return xsv column descriptors
+ * @return xsv column descriptors. Table order: the Kd,app columns (orderPriority 185 to 202), then
+ *   the DMS columns (176 to 184).
  */
 variantColumns := func(blockId, kdAnnotations, opts) {
 	domain := { "pl7.app/block": blockId }
@@ -188,18 +209,33 @@ variantColumns := func(blockId, kdAnnotations, opts) {
 			}
 		}),
 		countColumn("ntVariants", blockId, "all", "NT variants",
-			"Synonymous nucleotide variants of this amino-acid variant that were fitted.", "default", "195"),
+			"Synonymous nucleotide variants of this amino-acid variant that were fitted.", "optional", "181"),
 		countColumn("ntMeasured", blockId, "measured", "NT variants measured",
-			"Nucleotide variants whose Kd,app lies inside the titrated range.", "optional", "194"),
+			"Nucleotide variants whose Kd,app lies inside the titrated range.", "optional", "180"),
 		countColumn("ntCensoredBelow", blockId, "censoredBelow", "NT variants censored low",
 			"Nucleotide variants whose Kd,app is at or below the lowest concentration. Each enters the mean at that concentration.",
-			"optional", "193"),
+			"optional", "179"),
 		countColumn("ntCensoredAbove", blockId, "censoredAbove", "NT variants censored high",
 			"Nucleotide variants whose Kd,app is at or above the highest concentration. Each enters the mean at that concentration.",
-			"optional", "192"),
+			"optional", "178"),
 		countColumn("ntFailed", blockId, "failed", "NT variants failed",
-			"Nucleotide variants rated Failed. They are left out of the mean.", "optional", "191")
+			"Nucleotide variants rated Failed. They are left out of the mean.", "optional", "177")
 	]
+	// The synonyms' own spread, kept apart from kdLog10Sd: with replicates that column is the
+	// replicates' spread.
+	cols = append(cols, column("kdLog10SynonymSd", {
+		name: "pl7.app/vdj/kdLog10SynonymSd",
+		valueType: "Double",
+		domain: domain,
+		annotations: {
+			"pl7.app/label": "Spread across synonymous copies (log10)",
+			"pl7.app/description": "SD of log10 Kd,app across the synonymous nucleotide variants measured inside the titrated range, each combined over the replicates first. Bound and failed variants are left out. Empty with fewer than two.",
+			"pl7.app/isScore": "false",
+			"pl7.app/format": ".2f",
+			"pl7.app/table/visibility": "optional",
+			"pl7.app/table/orderPriority": "176"
+		}
+	}))
 	// With replicates the SE and SD are the replicates' spread, and the counts come with them: the
 	// caller passes those columns in `opts.replicateColumns` and the synonym error columns go.
 	if !is_undefined(opts.replicateColumns) {
@@ -214,6 +250,8 @@ variantColumns := func(blockId, kdAnnotations, opts) {
 	if !is_undefined(opts.kdNegLog10Spec) {
 		cols = append(cols, column("kdNegLog10", opts.kdNegLog10Spec))
 	}
+	cols = append(cols, fitReadsColumn(blockId, "aa_",
+		"Total reads of this amino-acid variant's synonymous nucleotide variants over the samples of the titration, every replicate included."))
 	if opts.variantClass {
 		cols = append(cols, classColumn(blockId, "aa_variantClass",
 			"stop: the amino-acid variant is not productive, and has no Kd,app. Otherwise by its amino-acid mutation count: wildtype 0, 1 nonsynonymous 1, >1 nonsynonymous more."))
@@ -252,5 +290,6 @@ export ll.toStrict({
 	CLASS_NAME: CLASS_NAME,
 	CLASS_VALUES: CLASS_VALUES,
 	variantColumns: variantColumns,
-	ntVariantColumns: ntVariantColumns
+	ntVariantColumns: ntVariantColumns,
+	fitReadsColumn: fitReadsColumn
 })

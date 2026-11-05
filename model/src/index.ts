@@ -32,6 +32,7 @@ import {
 } from "./fitSettings";
 import { deriveTemplateParams } from "./templateParams";
 import type { InputKind, SynonymousSummary } from "./synonymous";
+import type { RunStats } from "./runStats";
 import {
   halfMatchedParentInput,
   inputKindOf,
@@ -56,6 +57,7 @@ export * from "./fitSettings";
 export { deriveTemplateParams };
 export type { PTableKey } from "@platforma-sdk/model";
 export type { InputKind, SynonymousSummary } from "./synonymous";
+export type { ParentHeadroom, RunStats } from "./runStats";
 export { nounOf } from "./synonymous";
 import {
   BlockModelV3,
@@ -190,6 +192,14 @@ export type BlockData = FitInputs &
     graphStateTitrationCurves: GraphMakerState;
     graphStateKDHistogram: GraphMakerState;
     graphStateAffinityVsFit: GraphMakerState;
+    /** Parent mode only. Optional so no migration is needed; the page supplies the default. */
+    graphStateVsParent?: GraphMakerState;
+    /** Synonymous mode only. Optional so no migration is needed; the page supplies the default. */
+    graphStateSynonymousNoise?: GraphMakerState;
+    /** The summary pages' graphs. Optional so no migration is needed; each page supplies its default. */
+    graphStateReplicateNoise?: GraphMakerState;
+    graphStateTitrationEdges?: GraphMakerState;
+    graphStateReadsByClass?: GraphMakerState;
     settingsOpen: boolean;
   };
 
@@ -249,6 +259,44 @@ const HILL_PLOT_COL = summaryCol("hillPlotPosition", "Double");
 const HILL_COEF_COL = summaryCol("hillCoefficient", "Double");
 const AFFINITY_CLASS_COL = summaryCol("affinityClass", "String");
 const FIT_FAILURE_REASON_COL = summaryCol("fitFailureReason", "String");
+
+export const PARENT_DELTA_COL = "pl7.app/vdj/kdLog10ParentDelta";
+
+/** The vs Parent histogram of log10 Kd,app vs Parent, on a log count axis. */
+export const VS_PARENT_DEFAULT_STATE: GraphMakerState = {
+  title: "",
+  template: "bins",
+  currentTab: null,
+  layersSettings: { bins: { fillColor: "#99E099" } },
+  axesSettings: { axisY: { scale: "log" }, other: { binsCount: 30 } },
+} as GraphMakerState;
+
+/** The Read Depth box plot: reads in the fit per affinity class, on a log axis. */
+export const READ_DEPTH_DEFAULT_STATE: GraphMakerState = {
+  title: "",
+  template: "box",
+  currentTab: null,
+  layersSettings: { box: {} },
+  axesSettings: { axisY: { scale: "log" } },
+} as GraphMakerState;
+
+/** A histogram on a log x axis, for the Titration Edges page. */
+export const LOG_HISTOGRAM_DEFAULT_STATE: GraphMakerState = {
+  title: "",
+  template: "bins",
+  currentTab: null,
+  layersSettings: { bins: {} },
+  axesSettings: { axisX: { scale: "log" }, other: { binsCount: 30 } },
+} as GraphMakerState;
+
+/** The Synonymous Noise and Replicate Noise histograms of a spread in log10 Kd,app. */
+export const NOISE_HISTOGRAM_DEFAULT_STATE: GraphMakerState = {
+  title: "",
+  template: "bins",
+  currentTab: null,
+  layersSettings: { bins: { fillColor: "#99E099" } },
+  axesSettings: { other: { binsCount: 30 } },
+} as GraphMakerState;
 
 // Pin colours by colorIdx so low_r2 stays green and n_out_of_range stays
 // purple across datasets. The "light" palette would otherwise assign by
@@ -806,15 +854,47 @@ export const settingsWarnings = (data: BlockData): string[] =>
     ? [GATE_FLUORESCENCE_MISSING]
     : [];
 
-export const sectionsFor = (synonymous: boolean) => [
-  { type: "link" as const, href: "/" as const, label: "Main" },
-  ...(synonymous
-    ? [{ type: "link" as const, href: "/nt-variants" as const, label: "NT Variants" }]
-    : []),
-  { type: "link" as const, href: "/titration-curves" as const, label: "Titration Curves" },
-  { type: "link" as const, href: "/kd-distribution" as const, label: "Kd Distribution" },
-  { type: "link" as const, href: "/affinity-vs-fit" as const, label: "Affinity vs Fit Quality" },
-];
+/** What a finished run found. Undefined before the first run. */
+export type RunShape = { synonymous: boolean; parentMode?: boolean; replicates?: boolean };
+
+/** The pages. Before the first run only Main shows: every other page reads the run's results. */
+export const sectionsFor = (run: RunShape | undefined) => {
+  const main = { type: "link" as const, href: "/" as const, label: "Main" };
+  if (run === undefined) return [main];
+  const { synonymous, parentMode = false, replicates = false } = run;
+  return [
+    main,
+    ...(synonymous
+      ? [{ type: "link" as const, href: "/nt-variants" as const, label: "NT Variants" }]
+      : []),
+    ...(parentMode
+      ? [{ type: "link" as const, href: "/vs-parent" as const, label: "Kd,app vs Parent" }]
+      : []),
+    ...(synonymous
+      ? [
+          {
+            type: "link" as const,
+            href: "/synonymous-noise" as const,
+            label: "Synonymous Noise",
+          },
+        ]
+      : []),
+    ...(replicates
+      ? [
+          {
+            type: "link" as const,
+            href: "/replicate-noise" as const,
+            label: "Replicate Noise",
+          },
+        ]
+      : []),
+    { type: "link" as const, href: "/titration-edges" as const, label: "Titration Edges" },
+    { type: "link" as const, href: "/read-depth" as const, label: "Read Depth" },
+    { type: "link" as const, href: "/titration-curves" as const, label: "Titration Curves" },
+    { type: "link" as const, href: "/kd-distribution" as const, label: "Kd Distribution" },
+    { type: "link" as const, href: "/affinity-vs-fit" as const, label: "Affinity vs Fit Quality" },
+  ];
+};
 
 type FitColumns = NonNullable<ReturnType<typeof variantSummaryCols>>;
 
@@ -822,7 +902,45 @@ type FitColumns = NonNullable<ReturnType<typeof variantSummaryCols>>;
  * A fit results table: `summaryCols` as primary columns, joined with the result pool's columns on
  * the Kd,app column's axis.
  */
-function fitTable(ctx: Ctx, summaryCols: FitColumns, tableState: PlDataTableStateV2) {
+/**
+ * The amino-acid variant's ID beside each nucleotide variant: the amino-acid axis label, reached
+ * through the nt -> aa linker. Shown second, after the nucleotide variant's own ID.
+ */
+function aaVariantIdColumns(ctx: Ctx, kdSpec: PColumnSpec) {
+  return ColumnsCollection(["result_pool"], { ctx: ctx.ctx })
+    .discover({
+      anchors: { main: kdSpec },
+      mode: "enrichment",
+      maxHops: 1,
+      include: {
+        name: [exactly("pl7.app/label")],
+        axes: [
+          {
+            name: [exactly("pl7.app/variantKey")],
+            domain: { "pl7.app/alphabet": [exactly("aminoacid")] },
+          },
+        ],
+      },
+    })
+    .getColumns()
+    .slice(0, 1)
+    .map((c) =>
+      c.withSpecs({
+        annotations: {
+          "pl7.app/label": "AA Variant Id",
+          "pl7.app/table/visibility": "default",
+          "pl7.app/table/orderPriority": "99000",
+        },
+      }),
+    );
+}
+
+function fitTable(
+  ctx: Ctx,
+  summaryCols: FitColumns,
+  tableState: PlDataTableStateV2,
+  { linkAaVariant = false } = {},
+) {
   const kdCol = summaryCols.find((c) => c.spec.name === "pl7.app/vdj/kd");
   if (!kdCol) return undefined;
 
@@ -856,11 +974,24 @@ function fitTable(ctx: Ctx, summaryCols: FitColumns, tableState: PlDataTableStat
         !spec.annotations?.["pl7.app/trace"]?.includes("milaboratories.titeseq-analysis")
       );
     })
-    .map((c) => c.withSpecs({ annotations: { "pl7.app/table/visibility": "optional" } }));
+    .map((c) => {
+      // Behind the block's own columns (176 and up), in the producer's order.
+      const priority = Number(c.getSpec().annotations?.["pl7.app/table/orderPriority"]);
+      return c.withSpecs({
+        annotations: {
+          "pl7.app/table/visibility": "optional",
+          ...(Number.isFinite(priority) && {
+            "pl7.app/table/orderPriority": String(priority / 10_000),
+          }),
+        },
+      });
+    });
 
   return createPlDataTableV3(ctx, {
     primaryColumns: summaryCols.map((c) => DataColumn.fromColumn(c)),
-    columns: resultPoolCols,
+    columns: linkAaVariant
+      ? [...aaVariantIdColumns(ctx, kdCol.spec), ...resultPoolCols]
+      : resultPoolCols,
     tableState,
   });
 }
@@ -1135,7 +1266,9 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     const ntCols =
       ctx.outputs?.resolve({ field: "ntVariantPf", allowPermanentAbsence: true })?.getPColumns() ??
       [];
-    return fitTable(ctx, [...summaryCols, ...ntCols], ctx.data.ntTableState);
+    return fitTable(ctx, [...summaryCols, ...ntCols], ctx.data.ntTableState, {
+      linkAaVariant: true,
+    });
   })
 
   .outputWithStatus("titrationCurvesPf", (ctx): PFrameHandle | undefined => {
@@ -1246,6 +1379,31 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     return createPFrameForGraphs(ctx, cols);
   })
 
+  // The reported grain alone: amino-acid variants in synonymous mode, the input's variants
+  // otherwise. The summary pages' graphs read it.
+  .outputWithStatus("reportedPfHandle", (ctx): PFrameHandle | undefined => {
+    const cols = variantSummaryCols(ctx) ?? ctx.outputs?.resolve("summaryPf")?.getPColumns();
+    if (cols === undefined) return undefined;
+    return createPFrameForGraphs(ctx, cols);
+  })
+
+  .output("reportedPfCols", (ctx) => {
+    const cols = variantSummaryCols(ctx) ?? ctx.outputs?.resolve("summaryPf")?.getPColumns();
+    if (cols === undefined) return undefined;
+    return cols.map((c) => ({ columnId: c.id, spec: c.spec }) satisfies PColumnIdAndSpec);
+  })
+
+  .output("runStats", (ctx): RunStats | undefined => {
+    // Stats from a run on another dataset say nothing about this one.
+    if (!plRefsEqualOrBothAbsent(ctx.activeArgs?.abundanceRef, ctx.data.abundanceRef))
+      return undefined;
+    return ctx.outputs
+      ?.resolve({ field: "runStats", allowPermanentAbsence: true })
+      ?.getDataAsJson<RunStats>();
+  })
+
+  .output("synonymousSummary", (ctx) => synonymousSummary(ctx))
+
   .output("replicatePfCols", (ctx) => {
     const cols = replicateCols(ctx);
     if (cols === undefined) return undefined;
@@ -1256,7 +1414,16 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
 
   .subtitle((ctx) => ctx.data.customBlockLabel || ctx.data.defaultBlockLabel || "")
 
-  .sections((ctx) => sectionsFor(variantSummaryCols(ctx) !== undefined))
+  .sections((ctx) => {
+    if (ctx.outputs?.resolve({ field: "summaryPf", allowPermanentAbsence: true }) === undefined)
+      return sectionsFor(undefined);
+    const cols = variantSummaryCols(ctx);
+    return sectionsFor({
+      synonymous: cols !== undefined,
+      parentMode: cols?.some((c) => c.spec.name === PARENT_DELTA_COL) ?? false,
+      replicates: replicateCols(ctx) !== undefined,
+    });
+  })
 
   .done();
 

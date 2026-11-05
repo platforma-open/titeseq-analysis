@@ -46,6 +46,15 @@ variants as repeats.
   `pl7.app/vdj/kdLog10ParentDeltaSe` give each variant's log10 Kd,app against its parent's
   (labels "Kd,app vs Parent (log10)" and "Kd,app vs Parent SE (log10)", the case
   clonotype-enrichment uses).
+- A new page, Kd,app vs Parent, shows a histogram of each amino-acid variant's parent delta. It exists
+  only where the parent delta does.
+- `pl7.app/vdj/kdLog10SynonymSd` on the amino-acid axis (label "Spread across synonymous copies (log10)", hidden
+  by default): the SD of log10 Kd,app across the synonymous nucleotide variants measured inside the
+  range, each combined over the replicates first. It stays when replicates replace
+  `kdLog10Sd` with their own spread. A new page, Synonymous Noise, shows its histogram: the copies
+  encode the same protein, so the spread is the measurement noise. With a replicate column, a new
+  page, Replicate Noise, shows the histogram of `kdLog10Sd`, the spread across replicates. Their
+  graph states are optional block data, so no migration is needed.
 - Every output column on a variant axis carries a level step in its trace, as sort-seq-analysis does
   (type `milaboratories.synthetic-repertoire-profiler.level`, importance 80): "NT Variants" on the
   nucleotide axis, "AA Variants" on the amino-acid axis. A column on neither axis, and every column
@@ -60,6 +69,8 @@ variants as repeats.
   graphs, and a second page, NT Variants, shows one row per nucleotide variant: its fit, its class
   and parent delta, and the result pool's columns on the nucleotide axis. The page exists in this
   mode only. Its table state is new block data, added by a v6 -> v7 migration.
+  Its second column, AA Variant Id, names the amino-acid variant each row encodes: the amino-acid
+  axis label, reached through the nt -> aa linker.
 - Page titles and help text name the input: clonotype, variant or peptide.
 - A run whose abundance holds no read count for any selected sample stops with "the abundance column
   has no reads for any selected sample", instead of a polars type error during normalization. This
@@ -106,6 +117,8 @@ Review fixes to the 2.5.0 fits and replicates:
   An integer column's order ranks the kept bins 1, 2, 3, ..., so labels that skip a number (1, 2,
   4) now sit at consecutive positions.
 - The first page is named Main, as in the other blocks, instead of Table.
+- The tables list the Kd,app columns first, then the DMS columns (variant class, the parent delta,
+  the nucleotide variant counts, the synonymous spread), then the columns of other blocks.
 - A log fluorescence fit with a FACS bin column but no gate fluorescence column shows a warning in
   the settings drawer, which the user can close: the fit then assumes that the gates are 0.65
   decades apart, which can offset Kd,app. It is a new model output, `settingsWarnings`, and is not

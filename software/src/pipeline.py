@@ -119,6 +119,7 @@ from replicate_combine import (
     collect_values,
     merge_all,
 )
+from run_stats import fit_reads, run_stats, with_fit_reads
 from synonymous import (
     COL_AA,
     SynonymousInputs,
@@ -737,8 +738,12 @@ def run(
     sort_fraction_col: str | None = None,
     replicates: ReplicateInputs | None = None,
     synonymous: SynonymousInputs | None = None,
+    stats: bool = False,
 ) -> dict:
     """Execute the full pipeline on an in-memory reads frame.
+
+    `stats` adds `fit_reads`, `run_stats` and per_variant's fitReads; unset, the outputs are the
+    ones the block had before.
 
     `sort_fraction_col`, when set, activates the Adams, Mora, Walczak, Kinney 2016
     eq. A3 correction inside `compute_mean_bin`. The column must be present in
@@ -871,7 +876,54 @@ def run(
                 wall_classes=params.equation == "log_fluorescence",
             )
         )
+    # Popped whether or not stats are asked for, so the summary JSON does not move.
+    parents = outputs["synonymous_summary"].pop("parentValues", None) if "synonymous_summary" in outputs else None
+    if stats:
+        _add_run_stats(outputs, reads, conc_bounds, synonymous, replicate_keys, parents)
     return outputs
+
+
+def _add_run_stats(
+    outputs: dict,
+    reads: pl.DataFrame,
+    conc_bounds: tuple[float | None, float | None],
+    synonymous: SynonymousInputs | None,
+    replicate_keys: list[str],
+    parents: list[dict] | None,
+) -> None:
+    """Add `fit_reads` ([clonotypeKey, fitReads]) and `run_stats` to the outputs, and fitReads to
+    `per_variant`. per_clonotype keeps its schema, so a run's existing outputs do not move."""
+    nt_frame = fit_reads(reads, COL_CLONOTYPE, COL_READS)
+    nt_totals = dict(nt_frame.iter_rows())
+    outputs["fit_reads"] = nt_frame
+    replicates = sorted(reads[COL_REPLICATE].cast(pl.Utf8).unique().to_list()) if replicate_keys else []
+    concentrations = reads.select(COL_CONC_STR).n_unique()
+    if "per_variant" in outputs and synonymous is not None:
+        per_variant = outputs["per_variant"]
+        mapping, _, _ = resolve_nt_to_aa(synonymous.nt_to_aa, sorted(nt_totals))
+        aa_totals: dict[str, int] = {}
+        for nt, n in nt_totals.items():
+            aa = mapping.get(nt)
+            if aa is not None:
+                aa_totals[aa] = aa_totals.get(aa, 0) + n
+        per_variant = with_fit_reads(per_variant, COL_AA, aa_totals)
+        outputs["per_variant"] = per_variant
+        outputs["run_stats"] = run_stats(
+            per_variant,
+            grain="aa",
+            conc_bounds=conc_bounds,
+            concentrations=concentrations,
+            replicates=replicates,
+            parents=parents,
+        )
+        return
+    outputs["run_stats"] = run_stats(
+        with_fit_reads(outputs["per_clonotype"], COL_CLONOTYPE, nt_totals),
+        grain="variant",
+        conc_bounds=conc_bounds,
+        concentrations=concentrations,
+        replicates=replicates,
+    )
 
 
 def _fit_replicates(

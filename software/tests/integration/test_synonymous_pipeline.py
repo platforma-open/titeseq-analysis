@@ -489,3 +489,41 @@ def test_the_cli_refuses_a_linker_without_its_outputs(tmp_path):
                 "--nt-to-aa", "links.tsv",
             ]
         )  # fmt: skip
+
+
+class TestRunStats:
+    @pytest.fixture(scope="class")
+    def with_stats(self, reads):
+        return run(reads, params=LF, synonymous=SynonymousInputs(_links(), **PARENT_INPUTS), stats=True)
+
+    def test_stats_leave_the_other_outputs_as_they_were(self, lf, with_stats):
+        assert_frame_equal(lf["per_clonotype"], with_stats["per_clonotype"])
+        assert lf["synonymous_summary"] == with_stats["synonymous_summary"]
+        assert "parentValues" not in lf["synonymous_summary"]
+
+    def test_fit_reads_sum_each_copy_on_both_grains(self, reads, with_stats):
+        totals = dict(with_stats["fit_reads"].iter_rows())
+        assert totals["wt_a"] == reads.filter(pl.col("clonotypeKey") == "wt_a")["reads"].sum()
+        wt = _aa(with_stats, "WT")
+        assert wt["fitReads"] == sum(totals[nt] for nt, aa in _links().iter_rows() if aa == "WT" and nt != "amb")
+
+    def test_the_stats_count_every_reported_variant_and_name_the_parent(self, with_stats):
+        stats = with_stats["run_stats"]
+        assert stats["grain"] == "aa"
+        assert stats["variants"] == with_stats["per_variant"].height
+        assert sum(stats["classes"].values()) == stats["variants"]
+        assert stats["concentrations"]["log10Lowest"] == pytest.approx(LOG_LO)
+        assert stats["concentrations"]["log10Highest"] == pytest.approx(LOG_HI)
+        assert stats["replicates"] == []
+        [parent] = stats["parents"]
+        assert parent["parentId"] == "P1"
+        assert parent["tightRoom"] == pytest.approx(parent["log10Kd"] - LOG_LO)
+        assert parent["weakRoom"] == pytest.approx(LOG_HI - parent["log10Kd"])
+
+    def test_without_the_linker_the_stats_read_the_variant_frame(self, reads):
+        out = run(reads, params=LF, stats=True)
+        stats = out["run_stats"]
+        assert stats["grain"] == "variant"
+        assert stats["variants"] == out["per_clonotype"].height
+        assert "parents" not in stats
+        assert "fitReads" not in out["per_clonotype"].columns
