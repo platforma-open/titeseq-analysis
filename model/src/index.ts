@@ -280,13 +280,13 @@ export const READ_DEPTH_DEFAULT_STATE: GraphMakerState = {
   axesSettings: { axisY: { scale: "log" } },
 } as GraphMakerState;
 
-/** A histogram on a log x axis, for the Titration Edges page. */
+/** A histogram on log x and y axes, for the Titration Edges page. */
 export const LOG_HISTOGRAM_DEFAULT_STATE: GraphMakerState = {
   title: "",
   template: "bins",
   currentTab: null,
   layersSettings: { bins: {} },
-  axesSettings: { axisX: { scale: "log" }, other: { binsCount: 30 } },
+  axesSettings: { axisX: { scale: "log" }, axisY: { scale: "log" }, other: { binsCount: 30 } },
 } as GraphMakerState;
 
 /** The Synonymous Noise and Replicate Noise histograms of a spread in log10 Kd,app. */
