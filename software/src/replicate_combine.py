@@ -232,7 +232,10 @@ def combine_replicates(
         se = _spread_se(points, error_model)
         sd = statistics.stdev(points)
     if se is not None:
-        cls = "Good" if math.isfinite(se) and se <= KD_SD_GOOD else "Partial"
+        # A replicate at a wall enters at the wall, so two of them agree exactly however wide the
+        # truth is. Their spread says nothing of the error, so the value cannot rate Good.
+        censored = any(v.state != "measured" for v in entered)
+        cls = "Good" if math.isfinite(se) and se <= KD_SD_GOOD and not censored else "Partial"
         return Merged(mean, se, sd, Classification(cls, None), False, counts)
     return Merged(mean, None, sd, Classification(entered[0].affinity_class, None), False, counts)
 

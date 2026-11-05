@@ -81,7 +81,7 @@ deltaColumns := func(blockId, idPrefix, description) {
 			valueType: "Double",
 			domain: domain,
 			annotations: {
-				"pl7.app/label": "Kd,app vs parent (log10)",
+				"pl7.app/label": "Kd,app vs Parent (log10)",
 				"pl7.app/description": description,
 				"pl7.app/isScore": "false",
 				"pl7.app/format": "+.2f",
@@ -98,7 +98,7 @@ deltaColumns := func(blockId, idPrefix, description) {
 			valueType: "Double",
 			domain: domain,
 			annotations: {
-				"pl7.app/label": "Kd,app vs parent SE (log10)",
+				"pl7.app/label": "Kd,app vs Parent SE (log10)",
 				"pl7.app/description": "The variant's and the parent's SE added in quadrature. Empty where either has none. The parent's own row is 0.",
 				"pl7.app/isScore": "false",
 				"pl7.app/format": ".2f",

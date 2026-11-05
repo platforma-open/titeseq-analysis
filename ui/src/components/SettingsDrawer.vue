@@ -4,6 +4,9 @@ import { createDatasetSelection, createPrimaryRef, plRefsEqual } from "@platform
 import {
   PlAccordionSection,
   PlAlert,
+  PlBtnGhost,
+  PlElementList,
+  PlMaskIcon24,
   PlDatasetSelector,
   PlDropdown,
   PlDropdownRef,
@@ -11,18 +14,17 @@ import {
   PlSlideModal,
   PlTooltip,
 } from "@platforma-sdk/ui-vue";
-import { MIN_CONCENTRATION_POINTS } from "@platforma-open/platforma-open.titeseq-analysis.model";
-import { computed, watch } from "vue";
+import {
+  MIN_CONCENTRATION_POINTS,
+  refKey,
+} from "@platforma-open/platforma-open.titeseq-analysis.model";
+import { computed, ref, watch } from "vue";
 import { useApp } from "../app";
 import { closedSettingsWarnings } from "../closedSettingsWarnings";
 import { aboveZero, boundedBy, emptyError, wholeNumber } from "../fieldValidation";
 import { useFitSettings } from "../composables/useFitSettings";
 import { useNoun } from "../composables/useNoun";
-import {
-  EQUATION_OPTIONS,
-  REPLICATE_ERROR_MODEL_OPTIONS,
-  SYNONYMOUS_WEIGHTING_OPTIONS,
-} from "../fitSettings";
+import { EQUATION_OPTIONS, REPLICATE_ERROR_MODEL_OPTIONS } from "../fitSettings";
 
 const open = defineModel<boolean>({ required: true });
 
@@ -130,10 +132,30 @@ function setAntigenColumn(ref: PlRef | undefined): void {
   if (!unchanged) app.model.data.targetAntigen = undefined;
 }
 
-// The model rejects a sort fraction without a bin column.
+const binOrderOpen = ref(true);
+
+/** The picked bin column's values in their default order: numeric, else alphabetical. */
+const binValues = (ref: PlRef | undefined): string[] | undefined =>
+  ref === undefined ? undefined : app.model.outputs.binValuesByRef?.[refKey(ref)];
+
+// The model rejects a sort fraction without a bin column. The order is seeded in the same
+// gesture as the pick: an order from another column means nothing for this one.
 function setBinColumn(ref: PlRef | undefined): void {
   app.model.data.binColumnRef = ref;
+  app.model.data.binOrder = binValues(ref);
   if (ref === undefined) app.model.data.sortFractionColumnRef = undefined;
+}
+
+const binOrderModified = computed(() => {
+  const current = app.model.data.binOrder;
+  const base = binValues(app.model.data.binColumnRef);
+  if (current === undefined || base === undefined) return false;
+  return current.length !== base.length || current.some((v, i) => v !== base[i]);
+});
+
+// A user gesture, so writing data from an output here is not the hairpin.
+function resetBinOrder(): void {
+  app.model.data.binOrder = binValues(app.model.data.binColumnRef);
 }
 </script>
 
@@ -193,11 +215,50 @@ function setBinColumn(ref: PlRef | undefined): void {
       clearable
     >
       <template #tooltip>
-        A per-sample positive integer that identifies the FACS bin. The Log fluorescence fit needs
-        it. The Mean bin fit can run without it, in no-bin mode. Kd,app from no-bin mode is not
-        comparable to Kd,app from bins.
+        A per-sample value that names the FACS bin: a number or a label. Set the bins' order below.
+        The Log fluorescence fit needs it. The Mean bin fit can run without it, in no-bin mode.
+        Kd,app from no-bin mode is not comparable to Kd,app from bins.
       </template>
     </PlDropdownRef>
+    <!-- The gates from low to high fluorescence. Position is the rank, so the values can be any
+         labels; removing one takes its samples out of the run. A block made before the order
+         existed has none and reads the column's integers until the user sets one. -->
+    <template v-if="app.model.data.binColumnRef !== undefined">
+      <!-- Collapsible, as sort-seq-analysis's gate order is. Open by default; the open state is
+           view state, so it lives in the component and resets with it. -->
+      <PlAccordionSection
+        v-if="app.model.data.binOrder !== undefined"
+        v-model="binOrderOpen"
+        label="FACS bin order"
+      >
+        <div class="titeseq-bin-order-label">
+          Lowest fluorescence at the top
+          <PlTooltip class="info">
+            <template #tooltip>
+              Drag the bins into order: the lowest fluorescence at the top, the highest at the
+              bottom. The position sets each bin's rank, so the bin values do not need to be
+              numbers. Remove a value, such as an unsorted sample, to leave its samples out of the
+              run.
+            </template>
+          </PlTooltip>
+        </div>
+        <PlElementList v-model:items="app.model.data.binOrder">
+          <template #item-title="{ item }">{{ item }}</template>
+        </PlElementList>
+        <PlBtnGhost v-if="binOrderModified" @click="resetBinOrder">
+          Reset to default
+          <template #append>
+            <PlMaskIcon24 name="reverse" />
+          </template>
+        </PlBtnGhost>
+      </PlAccordionSection>
+      <PlBtnGhost
+        v-else-if="binValues(app.model.data.binColumnRef) !== undefined"
+        @click="resetBinOrder"
+      >
+        Set the bin order
+      </PlBtnGhost>
+    </template>
     <!-- Shown whenever the fit reads bins, so the fields a required bin brings are visible before
          the bin is picked. -->
     <PlDropdownRef
@@ -418,24 +479,6 @@ function setBinColumn(ref: PlRef | undefined): void {
     </PlAccordionSection>
     -->
 
-    <PlAccordionSection v-if="app.model.outputs.synonymousCapable" label="Synonymous variants">
-      <PlDropdown
-        :model-value="app.model.data.synonymousWeighting ?? 'none'"
-        :options="SYNONYMOUS_WEIGHTING_OPTIONS"
-        label="Combine nucleotide variants"
-        @update:model-value="(w) => w && (app.model.data.synonymousWeighting = w)"
-      >
-        <template #tooltip>
-          How the fits of the synonymous nucleotide variants of one amino-acid variant are combined.
-          <br /><br />
-          Plain mean: the mean of their log10 Kd,app, each variant counted once, as in Starr et al.
-          The default. <br /><br />
-          Weighted by reads: each variant is weighted by its total reads over the titration, as the
-          enrichment and sort-seq blocks weight theirs.
-        </template>
-      </PlDropdown>
-    </PlAccordionSection>
-
     <PlAccordionSection label="Read coverage">
       <PlNumberField
         v-model="app.model.data.minReadsPerConcentration"
@@ -580,3 +623,10 @@ function setBinColumn(ref: PlRef | undefined): void {
     </PlAccordionSection>
   </PlSlideModal>
 </template>
+
+<style scoped>
+.titeseq-bin-order-label {
+  display: flex;
+  margin-bottom: -15px;
+}
+</style>

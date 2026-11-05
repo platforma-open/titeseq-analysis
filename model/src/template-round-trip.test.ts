@@ -31,6 +31,7 @@ const configured: BlockData = {
   filterRef: ref("filter"),
   concentrationColumnRef: ref("concentration"),
   binColumnRef: ref("bin"),
+  binOrder: ["LOW", "HIGH"],
   binFluorescenceColumnRef: ref("binFluorescence"),
   antigenColumnRef: ref("antigen"),
   sortFractionColumnRef: ref("sortFraction"),

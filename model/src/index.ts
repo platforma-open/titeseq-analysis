@@ -82,6 +82,12 @@ type FitInputs = {
   abundanceRef?: PlRef;
   concentrationColumnRef?: PlRef;
   binColumnRef?: PlRef;
+  /**
+   * The bin column's values, lowest fluorescence first; position is the gate's rank. A value left
+   * out takes no part in the run. Absent reads the column's own integers as the gates, as every
+   * block made before the order existed did.
+   */
+  binOrder?: string[];
   antigenColumnRef?: PlRef;
   sortFractionColumnRef?: PlRef;
   /**
@@ -114,7 +120,13 @@ type BlockLabels = {
 
 /** What every equation's args carry: the inputs except gate fluorescence, replicates, labels and
  *  subset. */
-type ArgsInputs = Omit<FitInputs, "binFluorescenceColumnRef" | "replicateColumnRef">;
+type ArgsInputs = Omit<
+  FitInputs,
+  "binFluorescenceColumnRef" | "replicateColumnRef" | "binOrder"
+> & {
+  /** Each kept bin value's rank, from 1. Present only when the user set an order. */
+  binRanks?: Record<string, number>;
+};
 /**
  * Appended last to every equation's args. Every replicate setting is present only beside a
  * replicate column, so a block that set none projects the args it always projected.
@@ -306,6 +318,7 @@ export const initBlockData = (params?: BlockParams): BlockData => ({
   filterRef: params?.filterRef,
   concentrationColumnRef: params?.concentrationColumnRef,
   binColumnRef: params?.binColumnRef,
+  binOrder: params?.binOrder,
   binFluorescenceColumnRef: params?.binFluorescenceColumnRef,
   antigenColumnRef: params?.antigenColumnRef,
   sortFractionColumnRef: params?.sortFractionColumnRef,
@@ -547,6 +560,22 @@ const DATASET_KEY_AXES: ReadonlySet<string> = new Set([
   "pl7.app/variantKey",
 ]);
 
+/** A stable string key for a ref, for maps keyed by column. */
+export const refKey = (ref: PlRef): string => `${ref.blockId}/${ref.name}`;
+
+/** Each bin value's rank: its position in the order, from 1. */
+export const binRanks = (order: string[]): Record<string, number> =>
+  Object.fromEntries(order.map((value, i) => [value, i + 1]));
+
+/** A column's values in the order a new pick seeds: numerically when all are numbers. */
+export const defaultBinOrder = (values: string[]): string[] => {
+  const unique = [...new Set(values)];
+  const numeric = unique.every((v) => v.trim() !== "" && Number.isFinite(Number(v)));
+  return numeric
+    ? unique.sort((a, b) => Number(a) - Number(b))
+    : unique.sort((a, b) => a.localeCompare(b));
+};
+
 /**
  * The block's workflow input, and the gate on whether it may run at all: a throw here marks the
  * args invalid and disables Run. Named rather than written inline so the staleness contract —
@@ -562,6 +591,8 @@ export const deriveArgs = (data: BlockData): BlockArgs => {
     throw new Error(
       "FACS sort fraction requires a FACS bin column — the correction only applies in bin mode",
     );
+  if (data.binColumnRef !== undefined && data.binOrder !== undefined && data.binOrder.length === 0)
+    throw new Error("Keep at least one FACS bin in the bin order");
 
   // Two halves, so `hill_gate_index` can place its settings between them: its args keep
   // v2.4.0's key order as well as its keys.
@@ -572,6 +603,9 @@ export const deriveArgs = (data: BlockData): BlockArgs => {
     antigenColumnRef: data.antigenColumnRef,
     sortFractionColumnRef: data.sortFractionColumnRef,
     targetAntigen: data.targetAntigen,
+    // Absent without an order, so a block that never set one projects the args it always did.
+    ...(data.binColumnRef !== undefined &&
+      data.binOrder !== undefined && { binRanks: binRanks(data.binOrder) }),
   };
   const labels: ArgsLabels = {
     // Strings have UI defaults but old stored data may lack them; coerce to
@@ -773,7 +807,7 @@ export const settingsWarnings = (data: BlockData): string[] =>
     : [];
 
 export const sectionsFor = (synonymous: boolean) => [
-  { type: "link" as const, href: "/" as const, label: "Table" },
+  { type: "link" as const, href: "/" as const, label: "Main" },
   ...(synonymous
     ? [{ type: "link" as const, href: "/nt-variants" as const, label: "NT Variants" }]
     : []),
@@ -874,7 +908,7 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
       ctx,
       (spec) =>
         isPColumnSpec(spec) &&
-        isIntegerValueType(spec.valueType) &&
+        (isIntegerValueType(spec.valueType) || spec.valueType === "String") &&
         spec.axesSpec.length === 1 &&
         spec.axesSpec[0].name === "pl7.app/sampleId",
     ),
@@ -941,6 +975,32 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
         spec.axesSpec.length === 1 &&
         spec.axesSpec[0].name === "pl7.app/sampleId",
     ).filter((opt) => !picked.some((ref) => plRefsEqual(opt.ref, ref)));
+  })
+
+  // Each bin option's distinct values, keyed by the option's ref, so a pick can seed the order in
+  // the same gesture: an output on the picked column alone would arrive a round trip late.
+  .output("binValuesByRef", (ctx): Record<string, string[]> | undefined => {
+    const options = filterPopulatedOptions(
+      ctx,
+      (spec) =>
+        isPColumnSpec(spec) &&
+        (isIntegerValueType(spec.valueType) || spec.valueType === "String") &&
+        spec.axesSpec.length === 1 &&
+        spec.axesSpec[0].name === "pl7.app/sampleId",
+    );
+    const out: Record<string, string[]> = {};
+    for (const option of options) {
+      const values = ctx.resultPool
+        .getDataByRef(option.ref)
+        ?.data?.getDataAsJson<Record<string, Record<string, string | number | null>>>()?.["data"];
+      if (values === undefined) continue;
+      out[refKey(option.ref)] = defaultBinOrder(
+        Object.values(values)
+          .filter((v): v is string | number => v !== null && v !== "")
+          .map(String),
+      );
+    }
+    return out;
   })
 
   .output("targetAntigenValues", (ctx): string[] | undefined => {
@@ -1051,10 +1111,6 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     const axis = ctx.resultPool.getPColumnSpecByRef(ctx.data.abundanceRef)?.axesSpec[1];
     return axis === undefined ? undefined : inputKindOf(axis);
   })
-
-  // Whether the picked dataset turns synonymous mode on, before any run: the drawer shows the
-  // synonymous settings only then.
-  .output("synonymousCapable", (ctx) => poolSynonymousAaAxis(ctx) !== undefined)
 
   // In synonymous mode the table shows one row per amino-acid variant. Each nucleotide variant's own
   // fit stays in summaryPf, which the graphs read.

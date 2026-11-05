@@ -69,7 +69,9 @@ class TestErrorModels:
         assert m.log10_kd_se == pytest.approx(statistics.stdev(self.POINTS) / math.sqrt(3))
 
     def test_the_population_error_is_the_population_sd_over_root_n_plus_one(self):
-        m = combine_replicates([_value(str(i), p) for i, p in enumerate(self.POINTS)], error_model="pop_sd_over_sqrt_n_plus_1")
+        m = combine_replicates(
+            [_value(str(i), p) for i, p in enumerate(self.POINTS)], error_model="pop_sd_over_sqrt_n_plus_1"
+        )
         assert m.log10_kd_se == pytest.approx(statistics.pstdev(self.POINTS) / math.sqrt(4))
 
     def test_the_two_error_models_report_the_same_value(self):
@@ -98,7 +100,9 @@ class TestErrorModels:
         values = [_value(str(i), p) for i, p in enumerate(self.POINTS)]
         expected = statistics.stdev(self.POINTS)
         assert combine_replicates(values).log10_kd_sd == pytest.approx(expected)
-        assert combine_replicates(values, error_model="pop_sd_over_sqrt_n_plus_1").log10_kd_sd == pytest.approx(expected)
+        assert combine_replicates(values, error_model="pop_sd_over_sqrt_n_plus_1").log10_kd_sd == pytest.approx(
+            expected
+        )
 
     def test_a_wide_spread_rates_partial(self):
         m = combine_replicates([_value("A", -9.0), _value("B", -6.0)])
@@ -285,3 +289,22 @@ class TestBoundClassAndRangeSide:
     def test_under_the_mean_bin_fit_replicates_that_disagree_give_partial(self):
         values = [_value("A", HI, state="above", cls="Good"), _value("B", HI, state="above", cls="Partial")]
         assert combine_replicates(values, wall_classes=False).classification.affinity_class == "Partial"
+
+
+class TestPartlyCensored:
+    def test_replicates_at_a_wall_cap_the_class_at_partial(self):
+        # Two flat replicates enter at the top wall and agree exactly; the spread is small, but
+        # it measures the clipping, not the error.
+        values = [
+            _value("rep1", -5.0, state="above", cls="Above range"),
+            _value("rep2", -5.91, se=0.2),
+            _value("rep3", -5.0, state="above", cls="Above range"),
+        ]
+        m = combine_replicates(values, error_model="pop_sd_over_sqrt_n_plus_1")
+        assert m.log10_kd == pytest.approx((-5.0 - 5.91 - 5.0) / 3)
+        assert m.log10_kd_se <= 0.5
+        assert m.classification.affinity_class == "Partial"
+
+    def test_measured_replicates_alone_still_rate_good(self):
+        m = combine_replicates([_value("A", -8.0), _value("B", -8.1), _value("C", -7.9)])
+        assert m.classification.affinity_class == "Good"

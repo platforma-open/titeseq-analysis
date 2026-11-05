@@ -21,8 +21,9 @@ variants as repeats.
 - `pl7.app/vdj/kdLog10Sd` on the amino-acid axis: the SD of log10 Kd,app across the synonymous
   nucleotide variants in the mean, their spread alone with no fit-error floor (read-weighted under
   `reads`). Empty with fewer than two variants, for a bound and for a stop or failed variant.
-- New setting `synonymousWeighting` (block data and the kind's init params; the drawer shows it only
-  for a dataset that turns this mode on). Unset or `none`: the plain mean above. `reads`: each
+- Hidden setting `synonymousWeighting` (block data and the kind's init params; the drawer does not
+  show it, as neither sibling DMS block offers a combining choice, so a template sets it). Unset or
+  `none`: the plain mean above, as Starr combines synonyms. `reads`: each
   nucleotide variant is weighted by its total reads over the titration, in the mean, the spread and
   the fit-error term. Unset, the args and the command line are those of a block without the setting.
 - Amino-acid columns sit on the linker's amino-acid axis and reuse the nucleotide names:
@@ -42,7 +43,9 @@ variants as repeats.
   the graphs keep their curves, and their class is `stop`. Starr nulls stop variants per barcode;
   this block's nucleotide grain keeps each raw fit.
 - Where the amino-acid mutation count and parent link resolve, `pl7.app/vdj/kdLog10ParentDelta` and
-  `pl7.app/vdj/kdLog10ParentDeltaSe` give each variant's log10 Kd,app against its parent's.
+  `pl7.app/vdj/kdLog10ParentDeltaSe` give each variant's log10 Kd,app against its parent's
+  (labels "Kd,app vs Parent (log10)" and "Kd,app vs Parent SE (log10)", the case
+  clonotype-enrichment uses).
 - Every output column on a variant axis carries a level step in its trace, as sort-seq-analysis does
   (type `milaboratories.synthetic-repertoire-profiler.level`, importance 80): "NT Variants" on the
   nucleotide axis, "AA Variants" on the amino-acid axis. A column on neither axis, and every column
@@ -81,6 +84,10 @@ Review fixes to the 2.5.0 fits and replicates:
   instead of sample SD / sqrt(n). On the block's own fits it lands closest to the published errors
   it was scored against. The setting value `phillips` is renamed to `pop_sd_over_sqrt_n_plus_1`. It is smaller, so more variants rate Good. A project with a replicate column
   goes stale on upgrade and gets the new error on its next run. The setting stays hidden.
+- A value combined from replicates, or from synonymous copies, rates Good only when every one of
+  them was measured inside the range. One at an edge of the titration enters the mean at that
+  edge, as in all four papers, so two of them agree exactly and shrink the SE without measuring
+  anything. Such a value now rates Partial. Its Kd,app is unchanged.
 - Every hidden Sample replicates setting is pinned to its default, not the error model alone, and
   none of them can disable Run.
 - The (bin, concentration) grid check no longer counts an unsorted sample as a gate.
@@ -90,6 +97,15 @@ Review fixes to the 2.5.0 fits and replicates:
 - The export again carries R², the fit failure reason and `kdOutOfRange`, and under the mean bin
   fit the Hill coefficient, beside the affinity class, Kd,app, -log10 Kd,app and its SE. 2.5.0
   exported only those four.
+- The FACS bin column can hold labels as well as integers. Picking a bin column lists its values,
+  lowest fluorescence first (numbers numerically, labels alphabetically), and the user drags them
+  into order, as sort-seq-analysis does for its gates. Position is the gate's rank. A value removed
+  from the list, such as an unsorted sample, takes its samples out of the run. The order is new
+  block data (`binOrder`, also a kind init param) and reaches the software as `--bin-ranks`. A
+  block that never set an order projects no ranks and reads the column's integers as before.
+  An integer column's order ranks the kept bins 1, 2, 3, ..., so labels that skip a number (1, 2,
+  4) now sit at consecutive positions.
+- The first page is named Main, as in the other blocks, instead of Table.
 - A log fluorescence fit with a FACS bin column but no gate fluorescence column shows a warning in
   the settings drawer, which the user can close: the fit then assumes that the gates are 0.65
   decades apart, which can offset Kd,app. It is a new model output, `settingsWarnings`, and is not

@@ -9,8 +9,8 @@ from pathlib import Path
 
 import polars as pl
 
-from constants import DEFAULT_CENSORED_MAJORITY, DEFAULT_PARAMS, REPLICATE_ERROR_MODELS, FitParams
-from io_layer import read_reads_table
+from constants import COL_BIN, DEFAULT_CENSORED_MAJORITY, DEFAULT_PARAMS, REPLICATE_ERROR_MODELS, FitParams
+from io_layer import apply_bin_ranks, read_reads_table
 from log import log
 from pipeline import run
 from replicate_combine import Filters, ReplicateInputs
@@ -145,6 +145,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--out-run-warnings", default=None, help="JSON list of what the run must tell the user; [] when nothing"
     )
+    parser.add_argument(
+        "--bin-ranks", default=None, help="JSON {bin value: rank}: the user's bin order, lowest fluorescence first"
+    )
     parser.add_argument("--nt-to-aa", default=None, help="TSV [ntKey, aaKey]: the nt -> aa linker")
     parser.add_argument("--aa-mutations", default=None, help="TSV [aaKey, mutationCount]")
     parser.add_argument("--aa-parent-links", default=None, help="TSV [aaKey, parentId]: the aa parent linker")
@@ -165,8 +168,16 @@ def main(argv: list[str] | None = None) -> int:
     synonymous = _synonymous_inputs(args, parser)
 
     log(f"Reading input table: {args.reads}")
-    reads = read_reads_table(args.reads)
+    # With an order the bin values are labels, read as text so "01" stays "01".
+    reads = read_reads_table(args.reads, text_columns=[COL_BIN] if args.bin_ranks else [])
     log(f"Loaded {reads.height} rows, {len(reads.columns)} columns")
+    if args.bin_ranks:
+        with open(args.bin_ranks) as f:
+            ranks = json.load(f)
+        before = reads.height
+        reads = apply_bin_ranks(reads, ranks)
+        order = ", ".join(f"{rank} = {value}" for value, rank in sorted(ranks.items(), key=lambda kv: kv[1]))
+        log(f"Bin order: {order}; {before - reads.height} rows outside the order left out")
     params = DEFAULT_PARAMS
     if args.params:
         # FitParams rejects an unknown `equation`. An absent one means a pre-existing project on

@@ -317,7 +317,7 @@ describe("the pages", () => {
 
   it("leave every other input with the four pages it had", () => {
     expect(sectionsFor(false)).toEqual([
-      { type: "link", href: "/", label: "Table" },
+      { type: "link", href: "/", label: "Main" },
       { type: "link", href: "/titration-curves", label: "Titration Curves" },
       { type: "link", href: "/kd-distribution", label: "Kd Distribution" },
       { type: "link", href: "/affinity-vs-fit", label: "Affinity vs Fit Quality" },

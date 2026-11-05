@@ -254,6 +254,13 @@ wf.body(func(args) {
 		saveFileContent("run_warnings.json").
 		saveStdoutStream()
 
+	// The user's bin order: each kept bin value's rank. Absent, the column's own integers are the
+	// gates, so a block that never set an order runs the command it always ran.
+	if hasBin && !is_undefined(args.binRanks) {
+		execBuilder.writeFile("bin_ranks.json", canonical.encode(args.binRanks)).
+			arg("--bin-ranks").arg("bin_ranks.json")
+	}
+
 	if hasAntigen {
 		execBuilder.arg("--antigen-column-ref").arg("antigen")
 		if !is_undefined(args.targetAntigen) && args.targetAntigen != "" {

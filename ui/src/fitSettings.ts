@@ -1,12 +1,10 @@
 import type {
   Equation,
   ReplicateErrorModel,
-  SynonymousWeighting,
 } from "@platforma-open/platforma-open.titeseq-analysis.model";
 import {
   EQUATIONS,
   REPLICATE_ERROR_MODELS,
-  SYNONYMOUS_WEIGHTINGS,
 } from "@platforma-open/platforma-open.titeseq-analysis.model";
 
 // Exhaustive over the model's equation union: a new equation fails to compile until it is named.
@@ -31,13 +29,3 @@ export const REPLICATE_ERROR_MODEL_OPTIONS: readonly {
   value,
   label: REPLICATE_ERROR_MODEL_LABELS[value],
 }));
-
-const SYNONYMOUS_WEIGHTING_LABELS: Record<SynonymousWeighting, string> = {
-  none: "Plain mean",
-  reads: "Weighted by reads",
-};
-
-export const SYNONYMOUS_WEIGHTING_OPTIONS: readonly {
-  readonly value: SynonymousWeighting;
-  readonly label: string;
-}[] = SYNONYMOUS_WEIGHTINGS.map((value) => ({ value, label: SYNONYMOUS_WEIGHTING_LABELS[value] }));

@@ -254,7 +254,10 @@ def combine(copies: list[Copy], *, weighted: bool = False, wall_classes: bool = 
         se = _floored_weighted_se(entered, mean) if weighted else _floored_se(entered)
         sd = _spread_sd(entered, mean, weighted)
     if se is not None:
-        cls = "Good" if math.isfinite(se) and se <= KD_SD_GOOD else "Partial"
+        # A copy at a wall enters at the wall, so two of them agree exactly however wide the truth
+        # is. Their spread says nothing of the error, so the value cannot rate Good.
+        censored = any(c.state != "measured" for c in entered)
+        cls = "Good" if math.isfinite(se) and se <= KD_SD_GOOD and not censored else "Partial"
         return Combined(mean, se, Classification(cls, None), False, counts, sd)
     return Combined(mean, None, Classification(entered[0].affinity_class, None), False, counts, sd)
 

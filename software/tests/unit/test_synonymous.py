@@ -560,3 +560,14 @@ class TestCombineSynonymous:
     def test_parent_links_without_mutation_counts_are_refused(self):
         with pytest.raises(ValueError, match="mutation counts"):
             SynonymousInputs(self.LINKS, aa_parent_links=pl.DataFrame({"aaKey": [], "parentId": []}))
+
+
+class TestPartlyCensoredCopies:
+    def test_copies_at_a_wall_cap_the_class_at_partial(self):
+        c = combine([Copy("above", -5.0, None, "Good"), Copy("above", -5.0, None, "Good"), _measured(-5.9, se=0.2)])
+        assert c.log10_kd_se is not None and c.log10_kd_se <= 0.5
+        assert c.classification.affinity_class == "Partial"
+        assert c.out_of_range is False
+
+    def test_measured_copies_alone_still_rate_good(self):
+        assert combine([_measured(-8.0, se=0.1), _measured(-8.1, se=0.1)]).classification.affinity_class == "Good"

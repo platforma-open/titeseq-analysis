@@ -7,6 +7,7 @@ import pytest
 
 from io_layer import (
     InputValidationError,
+    apply_bin_ranks,
     canonicalize_concentration,
     max_bin_label,
     validate_antigen_filter,
@@ -681,3 +682,26 @@ class TestValidateSortFraction:
         )
         with pytest.raises(InputValidationError, match="null"):
             validate_sort_fraction(df, "sort_fraction")
+
+
+class TestApplyBinRanks:
+    def _frame(self, bins):
+        return pl.DataFrame({"sampleId": [f"s{i}" for i in range(len(bins))], "bin": bins})
+
+    def test_labels_become_their_rank(self):
+        out = apply_bin_ranks(self._frame(["LOW", "HIGH", "MID"]), {"LOW": 1, "MID": 2, "HIGH": 3})
+        assert out["bin"].to_list() == [1, 3, 2]
+        assert out["bin"].dtype == pl.Int64
+
+    def test_an_integer_column_matches_as_text(self):
+        out = apply_bin_ranks(self._frame([4, 1, 2]), {"4": 1, "2": 2, "1": 3})
+        assert out["bin"].to_list() == [1, 3, 2]
+
+    def test_a_value_outside_the_order_leaves_and_an_unsorted_sample_stays(self):
+        out = apply_bin_ranks(self._frame(["LOW", "presort", None, ""]), {"LOW": 1})
+        assert out["sampleId"].to_list() == ["s0", "s2", "s3"]
+        assert out["bin"].to_list() == [1, None, None]
+
+    def test_an_order_matching_no_sample_is_refused(self):
+        with pytest.raises(InputValidationError, match="no sample's FACS bin"):
+            apply_bin_ranks(self._frame(["LOW"]), {"HIGH": 1})

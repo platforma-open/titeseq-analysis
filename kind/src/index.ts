@@ -71,6 +71,8 @@ export type BlockParams = {
   filterRef?: PlRef;
   concentrationColumnRef?: PlRef;
   binColumnRef?: PlRef;
+  /** The FACS bin column's values, lowest fluorescence first. A value left out takes no part. */
+  binOrder?: string[];
   antigenColumnRef?: PlRef;
   sortFractionColumnRef?: PlRef;
   /** The gate's measured mean log10 fluorescence. Read by the log-fluorescence fit only. */
@@ -164,6 +166,10 @@ function check<T>(is: Guard<T>, must: string): Check<T> {
 /** A real number. `isNumber` alone admits `NaN` and the infinities, which no setting means. */
 const isFiniteNumber: Guard<number> = (v): v is number => isNumber(v) && Number.isFinite(v);
 
+/** A list of distinct strings with at least one. */
+const isNonEmptyStringList: Guard<string[]> = (v): v is string[] =>
+  Array.isArray(v) && v.length > 0 && v.every(isString) && new Set(v).size === v.length;
+
 /** A number at or above `min`, the way the args lambda words the same bound. */
 function isNumberFrom(min: number): Guard<number> {
   return (v): v is number => isFiniteNumber(v) && v >= min;
@@ -203,6 +209,7 @@ const CONTRACT = {
   filterRef: check(isPlRef, "a reference to a subset column"),
   concentrationColumnRef: check(isPlRef, "a reference to a concentration column"),
   binColumnRef: check(isPlRef, "a reference to a FACS bin column"),
+  binOrder: check(isNonEmptyStringList, "a non-empty list of distinct strings"),
   antigenColumnRef: check(isPlRef, "a reference to an antigen column"),
   sortFractionColumnRef: check(isPlRef, "a reference to a FACS sort fraction column"),
   binFluorescenceColumnRef: check(isPlRef, "a reference to a gate fluorescence column"),

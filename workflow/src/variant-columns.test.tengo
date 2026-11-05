@@ -58,6 +58,7 @@ Test_the_parent_delta_only_in_parent_mode := func() {
 	cols := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: true, weighting: "none", affinityClassValues: VALUES, affinityClassCutoff: CUTOFF, boundRule: "", variantClass: true }))
 	test.isEqual("pl7.app/vdj/kdLog10ParentDelta", cols.kdLog10ParentDelta.spec.name, "delta")
 	test.isEqual("pl7.app/vdj/kdLog10ParentDeltaSe", cols.kdLog10ParentDeltaSe.spec.name, "its error")
+	test.isEqual("Kd,app vs Parent (log10)", cols.kdLog10ParentDelta.spec.annotations["pl7.app/label"], "label case")
 }
 
 Test_descriptions_name_the_weighting := func() {

@@ -270,3 +270,15 @@ describe("the replicate settings", () => {
     expect(DEFAULT_CENSORED_MAJORITY).toBe(0.5);
   });
 });
+
+describe("the bin order", () => {
+  it("accepts a list of distinct labels", () => {
+    expect(parse({ binOrder: ["LOW", "MID", "HIGH"] })).toEqual({
+      binOrder: ["LOW", "MID", "HIGH"],
+    });
+  });
+
+  it.each([[[]], [["a", "a"]], [["a", 1]], ["a"]])("refuses %o", (v) => {
+    expect(() => parse({ binOrder: v })).toThrow("'binOrder' must be");
+  });
+});
