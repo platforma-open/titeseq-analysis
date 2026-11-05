@@ -28,8 +28,8 @@ The class is decided once, on the combined value:
 
   Failed       no copy in the mean
   Partial      a bound
-  Good         SE at or below KD_SD_GOOD
-  Partial      SE above KD_SD_GOOD, or not finite
+  Good         SE at or below KD_SD_GOOD, with more than half the copies in the mean measured
+  Partial      SE above KD_SD_GOOD or not finite, or half or more of the copies at a wall
   copy's own   n = 1 and the equation reports no SE: the combined value is that copy's fit, rated by
                its equation's own rule
 
@@ -255,9 +255,9 @@ def combine(copies: list[Copy], *, weighted: bool = False, wall_classes: bool = 
         sd = _spread_sd(entered, mean, weighted)
     if se is not None:
         # A copy at a wall enters at the wall, so two of them agree exactly however wide the truth
-        # is. Their spread says nothing of the error, so the value cannot rate Good.
-        censored = any(c.state != "measured" for c in entered)
-        cls = "Good" if math.isfinite(se) and se <= KD_SD_GOOD and not censored else "Partial"
+        # is. Good needs more than half the copies in the mean measured.
+        measured_majority = 2 * sum(c.state == "measured" for c in entered) > n
+        cls = "Good" if math.isfinite(se) and se <= KD_SD_GOOD and measured_majority else "Partial"
         return Combined(mean, se, Classification(cls, None), False, counts, sd)
     return Combined(mean, None, Classification(entered[0].affinity_class, None), False, counts, sd)
 

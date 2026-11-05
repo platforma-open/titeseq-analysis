@@ -308,3 +308,24 @@ class TestPartlyCensored:
     def test_measured_replicates_alone_still_rate_good(self):
         m = combine_replicates([_value("A", -8.0), _value("B", -8.1), _value("C", -7.9)])
         assert m.classification.affinity_class == "Good"
+
+    def test_a_measured_majority_rates_good_with_one_replicate_at_a_wall(self):
+        values = [
+            _value("rep1", -9.8),
+            _value("rep2", -9.9),
+            _value("rep3", -10.0, state="below", cls="Below range"),
+        ]
+        m = combine_replicates(values)
+        assert m.log10_kd == pytest.approx((-9.8 - 9.9 - 10.0) / 3)
+        assert m.classification.affinity_class == "Good"
+
+    def test_half_measured_is_not_a_majority(self):
+        values = [
+            _value("rep1", -9.8),
+            _value("rep2", -9.9),
+            _value("rep3", -10.0, state="below", cls="Below range"),
+            _value("rep4", -10.0, state="below", cls="Below range"),
+        ]
+        m = combine_replicates(values)
+        assert m.log10_kd_se <= 0.5
+        assert m.classification.affinity_class == "Partial"

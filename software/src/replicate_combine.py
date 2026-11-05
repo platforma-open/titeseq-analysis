@@ -28,8 +28,9 @@ per-replicate results and reduces them to one.
 
 The class is decided once, on the combined value: Failed with no entered replicate; for a bound,
 the wall it sits at under "log_fluorescence", and under "hill_gate_index" the class its replicates
-share, else Partial (`classify.bound_class`); Good for an SE at or below KD_SD_GOOD, Partial above
-it; and the single replicate's own class when n = 1 and there is no SE.
+share, else Partial (`classify.bound_class`); Good for an SE at or below KD_SD_GOOD with more than
+half the entered replicates measured, Partial otherwise; and the single replicate's own class when
+n = 1 and there is no SE.
 
 Two rules that both read R² are distinct. The R² gate (`FitParams.r2_gate_min`) runs inside each
 replicate's own fit and rates the fit Failed, so the replicate enters as "failed". The R² floor
@@ -233,9 +234,9 @@ def combine_replicates(
         sd = statistics.stdev(points)
     if se is not None:
         # A replicate at a wall enters at the wall, so two of them agree exactly however wide the
-        # truth is. Their spread says nothing of the error, so the value cannot rate Good.
-        censored = any(v.state != "measured" for v in entered)
-        cls = "Good" if math.isfinite(se) and se <= KD_SD_GOOD and not censored else "Partial"
+        # truth is. Good needs more than half the entered replicates measured.
+        measured_majority = 2 * sum(v.state == "measured" for v in entered) > n
+        cls = "Good" if math.isfinite(se) and se <= KD_SD_GOOD and measured_majority else "Partial"
         return Merged(mean, se, sd, Classification(cls, None), False, counts)
     return Merged(mean, None, sd, Classification(entered[0].affinity_class, None), False, counts)
 

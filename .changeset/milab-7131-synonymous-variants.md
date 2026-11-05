@@ -55,6 +55,10 @@ variants as repeats.
   encode the same protein, so the spread is the measurement noise. With a replicate column, a new
   page, Replicate Noise, shows the histogram of `kdLog10Sd`, the spread across replicates. Their
   graph states are optional block data, so no migration is needed.
+- Two new summary pages, on every input kind. Titration Edges shows a histogram of Kd,app by
+  affinity class, on log Kd,app and count axes: variants bound at the lowest or highest concentration
+  pile up at the two edges. Read Depth shows a box plot of the reads in the fit per affinity class,
+  on a log axis. Their graph states are optional block data, so no migration is needed.
 - Every output column on a variant axis carries a level step in its trace, as sort-seq-analysis does
   (type `milaboratories.synthetic-repertoire-profiler.level`, importance 80): "NT Variants" on the
   nucleotide axis, "AA Variants" on the amino-acid axis. A column on neither axis, and every column
@@ -95,10 +99,10 @@ Review fixes to the 2.5.0 fits and replicates:
   instead of sample SD / sqrt(n). On the block's own fits it lands closest to the published errors
   it was scored against. The setting value `phillips` is renamed to `pop_sd_over_sqrt_n_plus_1`. It is smaller, so more variants rate Good. A project with a replicate column
   goes stale on upgrade and gets the new error on its next run. The setting stays hidden.
-- A value combined from replicates, or from synonymous copies, rates Good only when every one of
-  them was measured inside the range. One at an edge of the titration enters the mean at that
+- A value combined from replicates, or from synonymous copies, rates Good only when more than half
+  of them were measured inside the range. One at an edge of the titration enters the mean at that
   edge, as in all four papers, so two of them agree exactly and shrink the SE without measuring
-  anything. Such a value now rates Partial. Its Kd,app is unchanged.
+  anything. A value with half or more at an edge now rates Partial. Its Kd,app is unchanged.
 - Every hidden Sample replicates setting is pinned to its default, not the error model alone, and
   none of them can disable Run.
 - The (bin, concentration) grid check no longer counts an unsorted sample as a gate.

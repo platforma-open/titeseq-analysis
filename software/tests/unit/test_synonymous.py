@@ -574,3 +574,19 @@ class TestPartlyCensoredCopies:
 
     def test_measured_copies_alone_still_rate_good(self):
         assert combine([_measured(-8.0, se=0.1), _measured(-8.1, se=0.1)]).classification.affinity_class == "Good"
+
+    def test_a_measured_majority_rates_good_with_one_copy_at_a_wall(self):
+        c = combine([_measured(-9.8, se=0.1), _measured(-9.9, se=0.1), Copy("below", -10.0, None, "Good")])
+        assert c.classification.affinity_class == "Good"
+
+    def test_half_measured_copies_are_not_a_majority(self):
+        c = combine(
+            [
+                _measured(-9.8, se=0.1),
+                _measured(-9.9, se=0.1),
+                Copy("below", -10.0, None, "Good"),
+                Copy("below", -10.0, None, "Good"),
+            ]
+        )
+        assert c.log10_kd_se is not None and c.log10_kd_se <= 0.5
+        assert c.classification.affinity_class == "Partial"
