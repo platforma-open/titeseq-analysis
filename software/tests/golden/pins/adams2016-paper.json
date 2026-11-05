@@ -1,0 +1,159 @@
+{
+  "agreement": {
+    "aa": {
+      "allClipped": {
+        "medianAbsDiff": 0.0,
+        "n": 2776,
+        "r": 0.9435,
+        "within0.5": 0.8534
+      },
+      "good": {
+        "medianAbsDiff": 0.1854,
+        "n": 554,
+        "r": 0.9413,
+        "within0.5": 0.7852
+      }
+    },
+    "nt": {
+      "allClipped": {
+        "medianAbsDiff": 0.0059,
+        "n": 3647,
+        "r": 0.9541,
+        "within0.5": 0.8462
+      },
+      "good": {
+        "medianAbsDiff": 0.1706,
+        "n": 919,
+        "r": 0.931,
+        "within0.5": 0.7976
+      }
+    }
+  },
+  "classes": {
+    "aa": {
+      "Above range": 1589,
+      "Below range": 8,
+      "Failed": 31,
+      "Good": 569,
+      "Partial": 610
+    },
+    "nt": {
+      "Above range": 1939,
+      "Below range": 13,
+      "Failed": 35,
+      "Good": 943,
+      "Partial": 752
+    }
+  },
+  "clones": {
+    "102": {
+      "affinityClass": "Good",
+      "log10Kd": -7.765568,
+      "paperFlow": -5.76,
+      "paperTiteSeq": -7.25
+    },
+    "103": {
+      "affinityClass": "Partial",
+      "log10Kd": -5.791502,
+      "paperFlow": -5.15,
+      "paperTiteSeq": -5.44
+    },
+    "107": {
+      "affinityClass": "Partial",
+      "log10Kd": -9.443544,
+      "paperFlow": -9.28,
+      "paperTiteSeq": -9.18
+    },
+    "112": {
+      "affinityClass": "Good",
+      "log10Kd": -9.231133,
+      "paperFlow": -8.95,
+      "paperTiteSeq": -9.19
+    },
+    "132": {
+      "affinityClass": "Partial",
+      "log10Kd": -8.009951,
+      "paperFlow": -8.48,
+      "paperTiteSeq": -8.38
+    },
+    "133": {
+      "affinityClass": "Good",
+      "log10Kd": -8.454235,
+      "paperFlow": -8.55,
+      "paperTiteSeq": -8.62
+    },
+    "144": {
+      "affinityClass": "Good",
+      "log10Kd": -8.837182,
+      "paperFlow": -8.57,
+      "paperTiteSeq": -8.86
+    },
+    "18": {
+      "affinityClass": "Above range",
+      "log10Kd": -5.0,
+      "paperFlow": -5.0,
+      "paperTiteSeq": -5.0
+    },
+    "22": {
+      "affinityClass": "Good",
+      "log10Kd": -7.909218,
+      "paperFlow": -5.69,
+      "paperTiteSeq": -7.53
+    },
+    "3": {
+      "affinityClass": "Good",
+      "log10Kd": -5.051876,
+      "paperFlow": -5.0,
+      "paperTiteSeq": -5.0
+    },
+    "39": {
+      "affinityClass": "Good",
+      "log10Kd": -7.638241,
+      "paperFlow": -7.08,
+      "paperTiteSeq": -7.28
+    },
+    "45": {
+      "affinityClass": "Partial",
+      "log10Kd": -5.571845,
+      "paperFlow": -5.4,
+      "paperTiteSeq": -5.0
+    },
+    "5": {
+      "affinityClass": "Good",
+      "log10Kd": -8.465307,
+      "paperFlow": -8.34,
+      "paperTiteSeq": -8.55
+    },
+    "7": {
+      "affinityClass": "Good",
+      "log10Kd": -6.670061,
+      "paperFlow": -5.53,
+      "paperTiteSeq": -5.39
+    },
+    "93": {
+      "affinityClass": "Good",
+      "log10Kd": -8.195062,
+      "paperFlow": -7.35,
+      "paperTiteSeq": -7.6
+    },
+    "94": {
+      "affinityClass": "Good",
+      "log10Kd": -8.683469,
+      "paperFlow": -8.46,
+      "paperTiteSeq": -8.5
+    },
+    "opt": {
+      "affinityClass": "Partial",
+      "log10Kd": -9.367081,
+      "paperFlow": -9.5,
+      "paperTiteSeq": -9.5
+    },
+    "pJK36": {
+      "affinityClass": "Good",
+      "log10Kd": -8.785526,
+      "paperFlow": -8.61,
+      "paperTiteSeq": -8.92
+    }
+  },
+  "digest": "0c775e4954d5ba28"
+}
