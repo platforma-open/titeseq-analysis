@@ -657,7 +657,7 @@ wf.body(func(args) {
 	fitReadsImported := xsv.importFile(fit.getFile("fit_reads.tsv"), "tsv", {
 		axes: [{ column: "clonotypeKey", spec: clonotypeAxisSpec }],
 		columns: [variantColumnsLib.fitReadsColumn(blockId, "",
-			"Total reads of this variant over the samples of the titration, every replicate included.")],
+			"The reads this variant's fit used, every replicate included: sorted samples only, at concentrations that pass the read floor.")],
 		storageFormat: "Parquet",
 		partitionKeyLength: 0
 	}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })

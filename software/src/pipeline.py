@@ -879,13 +879,36 @@ def run(
     # Popped whether or not stats are asked for, so the summary JSON does not move.
     parents = outputs["synonymous_summary"].pop("parentValues", None) if "synonymous_summary" in outputs else None
     if stats:
-        _add_run_stats(outputs, reads, conc_bounds, synonymous, replicate_keys, parents)
+        in_fit = _reads_in_fit(reads, signal_frame, params, has_bin, replicate_keys)
+        _add_run_stats(outputs, reads, in_fit, conc_bounds, synonymous, replicate_keys, parents)
     return outputs
+
+
+def _reads_in_fit(
+    reads: pl.DataFrame,
+    signal_frame: pl.DataFrame,
+    params: FitParams,
+    has_bin: bool,
+    replicate_keys: list[str],
+) -> pl.DataFrame:
+    """The rows of `reads` the fits used: sorted samples only, at points that pass the read floor
+    and carry a signal."""
+    keys = [COL_CLONOTYPE, *replicate_keys, COL_CONC_STR]
+    points = (
+        signal_frame.filter(
+            (pl.col(CLONOTYPE_READS_AT_CONC) >= params.min_reads_per_concentration) & pl.col(SIGNAL).is_not_null()
+        )
+        .select(keys)
+        .unique()
+    )
+    sorted_reads = reads.filter(pl.col(COL_BIN).is_not_null()) if has_bin else reads
+    return sorted_reads.join(points, on=keys, how="semi")
 
 
 def _add_run_stats(
     outputs: dict,
     reads: pl.DataFrame,
+    reads_in_fit: pl.DataFrame,
     conc_bounds: tuple[float | None, float | None],
     synonymous: SynonymousInputs | None,
     replicate_keys: list[str],
@@ -893,8 +916,10 @@ def _add_run_stats(
 ) -> None:
     """Add `fit_reads` ([clonotypeKey, fitReads]) and `run_stats` to the outputs, and fitReads to
     `per_variant`. per_clonotype keeps its schema, so a run's existing outputs do not move."""
-    nt_frame = fit_reads(reads, COL_CLONOTYPE, COL_READS)
-    nt_totals = dict(nt_frame.iter_rows())
+    nt_totals = dict(fit_reads(reads_in_fit, COL_CLONOTYPE, COL_READS).iter_rows())
+    # Every variant gets a row, 0 where the read floor left no point.
+    all_keys = sorted(reads[COL_CLONOTYPE].cast(pl.Utf8).unique().to_list())
+    nt_frame = with_fit_reads(pl.DataFrame({COL_CLONOTYPE: all_keys}), COL_CLONOTYPE, nt_totals)
     outputs["fit_reads"] = nt_frame
     replicates = sorted(reads[COL_REPLICATE].cast(pl.Utf8).unique().to_list()) if replicate_keys else []
     concentrations = reads.select(COL_CONC_STR).n_unique()

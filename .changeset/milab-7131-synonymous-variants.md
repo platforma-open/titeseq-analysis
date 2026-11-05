@@ -59,6 +59,9 @@ variants as repeats.
   affinity class, on log Kd,app and count axes: variants bound at the lowest or highest concentration
   pile up at the two edges. Read Depth shows a box plot of the reads in the fit per affinity class,
   on a log axis. Their graph states are optional block data, so no migration is needed.
+- `pl7.app/vdj/fitReads` ("Reads in fit", hidden by default) on both grains: the reads the fits
+  used, every replicate included. It counts sorted samples only, at concentrations that pass the
+  read floor; a variant whose points all fall under the floor reads 0.
 - Every output column on a variant axis carries a level step in its trace, as sort-seq-analysis does
   (type `milaboratories.synthetic-repertoire-profiler.level`, importance 80): "NT Variants" on the
   nucleotide axis, "AA Variants" on the amino-acid axis. A column on neither axis, and every column

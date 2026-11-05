@@ -70,7 +70,7 @@ SD_DESCRIPTION := {
 	reads: "Read-weighted SD of log10 Kd,app across the synonymous nucleotide variants in the mean: their spread alone, with no fit error. Empty with fewer than two variants, for a bound and for a failed variant."
 }
 
-// Total reads over the titration's samples, on the grain whose ids start with `idPrefix`.
+// The reads the fits used, on the grain whose ids start with `idPrefix`.
 fitReadsColumn := func(blockId, idPrefix, description) {
 	return {
 		column: "fitReads",
@@ -251,7 +251,7 @@ variantColumns := func(blockId, kdAnnotations, opts) {
 		cols = append(cols, column("kdNegLog10", opts.kdNegLog10Spec))
 	}
 	cols = append(cols, fitReadsColumn(blockId, "aa_",
-		"Total reads of this amino-acid variant's synonymous nucleotide variants over the samples of the titration, every replicate included."))
+		"The reads the fits of this amino-acid variant's synonymous nucleotide variants used, every replicate included: sorted samples only, at concentrations that pass the read floor."))
 	if opts.variantClass {
 		cols = append(cols, classColumn(blockId, "aa_variantClass",
 			"stop: the amino-acid variant is not productive, and has no Kd,app. Otherwise by its amino-acid mutation count: wildtype 0, 1 nonsynonymous 1, >1 nonsynonymous more."))

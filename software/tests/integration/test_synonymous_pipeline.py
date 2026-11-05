@@ -507,6 +507,33 @@ class TestRunStats:
         wt = _aa(with_stats, "WT")
         assert wt["fitReads"] == sum(totals[nt] for nt, aa in _links().iter_rows() if aa == "WT" and nt != "amb")
 
+    def test_fit_reads_leave_out_points_under_the_read_floor(self, reads, with_stats):
+        # LOST has 2 reads a concentration, under the floor of 3 at every point.
+        assert reads.filter(pl.col("clonotypeKey") == "l_a")["reads"].sum() > 0
+        assert dict(with_stats["fit_reads"].iter_rows())["l_a"] == 0
+        assert _aa(with_stats, "LOST")["fitReads"] == 0
+
+    def test_fit_reads_leave_out_unsorted_samples(self, reads, with_stats):
+        unsorted = pl.DataFrame(
+            {
+                "clonotypeKey": ["wt_a"],
+                "sampleId": ["s_unsorted"],
+                "concentrationStr": [str(CONCS[4])],
+                "concentration": [float(CONCS[4])],
+                "bin": [None],
+                "reads": [500],
+            },
+            schema=reads.schema,
+        )
+        out = run(
+            pl.concat([reads, unsorted]),
+            params=LF,
+            synonymous=SynonymousInputs(_links(), **PARENT_INPUTS),
+            stats=True,
+        )
+        expected = dict(with_stats["fit_reads"].iter_rows())["wt_a"]
+        assert dict(out["fit_reads"].iter_rows())["wt_a"] == expected
+
     def test_the_stats_count_every_reported_variant_and_name_the_parent(self, with_stats):
         stats = with_stats["run_stats"]
         assert stats["grain"] == "aa"
