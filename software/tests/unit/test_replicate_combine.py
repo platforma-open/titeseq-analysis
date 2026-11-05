@@ -19,6 +19,7 @@ from replicate_combine import (
     combine_replicates,
     merge_all,
     replicate_value,
+    require_copy_majority,
 )
 
 LO = -10.0
@@ -329,3 +330,47 @@ class TestPartlyCensored:
         m = combine_replicates(values)
         assert m.log10_kd_se <= 0.5
         assert m.classification.affinity_class == "Partial"
+
+
+def _aa_row(log10_kd, se, *, measured, below=0, above=0, cls="Partial"):
+    """One replicate's amino-acid value, as the synonymous combination writes it."""
+    return {
+        "kd": 10.0**log10_kd,
+        "affinityClass": cls,
+        "kdOutOfRange": False,
+        "kdLog10Se": se,
+        "ntMeasured": measured,
+        "ntCensoredBelow": below,
+        "ntCensoredAbove": above,
+    }
+
+
+class TestCopyMajority:
+    """Starr order: the copies combine inside each replicate, then the replicates combine."""
+
+    def _merged(self, rows):
+        frames = [(f"rep{i}", pl.DataFrame([{"aaKey": "A", **row}])) for i, row in enumerate(rows)]
+        collected = collect_values(frames, "aaKey", log10_lo=LO, log10_hi=HI)
+        return require_copy_majority(collected, merge_all(collected))["A"]
+
+    def test_replicates_built_mostly_from_wall_copies_do_not_rate_good(self):
+        # Each replicate: one copy measured near -8, two at the low wall. Each replicate value is
+        # measured, and the replicates agree on the walls, so the SE alone would say Good.
+        rows = [_aa_row(x, 1.0, measured=1, below=2) for x in (-9.33, -9.36, -9.30)]
+        m = self._merged(rows)
+        assert m.log10_kd_se <= 0.5
+        assert m.classification.affinity_class == "Partial"
+
+    def test_a_copy_majority_over_the_replicates_still_rates_good(self):
+        rows = [_aa_row(x, 0.2, measured=2, below=1) for x in (-8.65, -8.70, -8.60)]
+        assert self._merged(rows).classification.affinity_class == "Good"
+
+    def test_half_the_copies_measured_is_not_a_majority(self):
+        rows = [_aa_row(-9.0, 0.2, measured=1, below=1), _aa_row(-9.05, 0.2, measured=1, above=1)]
+        assert self._merged(rows).classification.affinity_class == "Partial"
+
+    def test_copies_of_a_failed_replicate_are_not_counted(self):
+        # The failed replicate's censored copies never entered the mean.
+        failed = {**_aa_row(-8.0, None, measured=0, below=3), "kd": None, "affinityClass": "Failed"}
+        rows = [_aa_row(-8.0, 0.2, measured=2), _aa_row(-8.05, 0.2, measured=2), failed]
+        assert self._merged(rows).classification.affinity_class == "Good"

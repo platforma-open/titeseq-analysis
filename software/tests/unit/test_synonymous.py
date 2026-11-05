@@ -134,6 +134,34 @@ class TestCombine:
         mixed = combine([Copy("above", HI, None, "Good"), Copy("above", HI, None, "Partial")], wall_classes=False)
         assert mixed.classification.affinity_class == "Partial"
 
+    def test_copies_at_opposite_walls_with_no_measured_copy_fail(self):
+        # Their mean would sit inside the range, a value no copy measured.
+        c = combine([Copy("below", LO, None, "Below range"), Copy("above", HI, None, "Above range")])
+        assert (c.log10_kd, c.log10_kd_se, c.out_of_range) == (None, None, None)
+        assert c.classification.affinity_class == "Failed"
+        assert c.classification.failure_reason == "conflicting_censoring"
+        assert c.counts == {"measured": 0, "below": 1, "above": 1, "failed": 0}
+
+    def test_a_majority_on_one_wall_sets_the_bound(self):
+        copies = [Copy("below", LO, None, "Below range")] * 2 + [Copy("above", HI, None, "Above range")]
+        c = combine(copies)
+        assert (c.log10_kd, c.log10_kd_se, c.out_of_range) == (LO, None, True)
+        assert c.classification.affinity_class == "Below range"
+
+    def test_under_the_mean_bin_fit_a_majority_bound_reads_the_class_of_its_own_wall(self):
+        copies = [Copy("above", HI, None, "Good")] * 2 + [Copy("below", LO, None, "Partial")]
+        c = combine(copies, wall_classes=False)
+        assert (c.log10_kd, c.classification.affinity_class) == (HI, "Good")
+
+    def test_read_weighting_does_not_move_a_bound_off_its_wall(self):
+        copies = [
+            Copy("below", LO, None, "Below range", weight=10.0),
+            Copy("below", LO, None, "Below range", weight=1.0),
+            Copy("above", HI, None, "Above range", weight=1000.0),
+        ]
+        c = combine(copies, weighted=True)
+        assert (c.log10_kd, c.out_of_range) == (LO, True)
+
     def test_a_censored_copy_beside_a_measured_one_enters_at_the_wall(self):
         c = combine([Copy("above", HI, None, "Partial"), _measured(-8.0)])
         assert c.log10_kd == pytest.approx((HI - 8.0) / 2)

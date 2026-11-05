@@ -118,6 +118,7 @@ from replicate_combine import (
     build_per_replicate_frame,
     collect_values,
     merge_all,
+    require_copy_majority,
 )
 from run_stats import fit_reads, run_stats, with_fit_reads
 from synonymous import (
@@ -1156,11 +1157,14 @@ def _combine_replicate_synonymous(
         aa_frames.append((label, per_variant))
 
     aa_collected = collect_values(aa_frames, COL_AA, log10_lo=log10_lo, log10_hi=log10_hi)
-    aa_merged = merge_all(
+    aa_merged = require_copy_majority(
         aa_collected,
-        error_model=replicates.error_model,
-        censored_majority=replicates.censored_majority,
-        wall_classes=wall_classes,
+        merge_all(
+            aa_collected,
+            error_model=replicates.error_model,
+            censored_majority=replicates.censored_majority,
+            wall_classes=wall_classes,
+        ),
     )
 
     fitted_nt = sorted(merged)

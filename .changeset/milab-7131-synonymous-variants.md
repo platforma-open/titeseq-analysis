@@ -17,7 +17,10 @@ variants as repeats.
   two or more variants, the SE is the larger of their spread, SD / sqrt(n), and their own fit SEs
   combined, sqrt(sum of se_i^2) / n, where the equation reports a fit SE. With one variant, its own
   fit SE where the equation reports one. A variant censored at the edge of the titration enters at
-  that edge; a Failed one is left out and counted.
+  that edge; a Failed one is left out and counted. With no variant measured inside the range, the
+  value is the edge that holds at least half of them and more than the other edge, as replicates
+  are combined; otherwise the amino-acid variant is Failed (`conflicting_censoring`), since a mean
+  of opposite edges would land inside the range.
 - `pl7.app/vdj/kdLog10Sd` on the amino-acid axis: the SD of log10 Kd,app across the synonymous
   nucleotide variants in the mean, their spread alone with no fit-error floor (read-weighted under
   `reads`). Empty with fewer than two variants, for a bound and for a stop or failed variant.
@@ -105,7 +108,10 @@ Review fixes to the 2.5.0 fits and replicates:
 - A value combined from replicates, or from synonymous copies, rates Good only when more than half
   of them were measured inside the range. One at an edge of the titration enters the mean at that
   edge, as in all four papers, so two of them agree exactly and shrink the SE without measuring
-  anything. A value with half or more at an edge now rates Partial. Its Kd,app is unchanged.
+  anything. A value with half or more at an edge now rates Partial. Its Kd,app is unchanged. With
+  both, the rule also counts the copies over the replicates that enter the mean: a replicate's
+  value enters as measured when one of its copies was, so two replicates made mostly of edge copies
+  would otherwise agree and rate Good.
 - Every hidden Sample replicates setting is pinned to its default, not the error model alone, and
   none of them can disable Run.
 - The (bin, concentration) grid check no longer counts an unsorted sample as a gate.

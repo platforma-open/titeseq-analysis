@@ -30,6 +30,23 @@ Side = Literal["below", "above"]
 # The value's place against the titrated range, as the kdRangeSide column reports it.
 RANGE_SIDE: dict[Side | None, str] = {"below": "Below range", None: "In range", "above": "Above range"}
 
+# Members censored at opposite walls with no side holding the majority.
+REASON_CONFLICTING = "conflicting_censoring"
+
+
+def censored_side(sides: list[Side], majority: float) -> Side | None:
+    """The wall a value with no measured member sits at, or None when its members conflict.
+
+    One side must hold at least `majority` of the members and more than the other side. Averaging
+    opposite walls would land inside the titrated range and mean nothing.
+    """
+    n = len(sides)
+    share = {side: sides.count(side) / n for side in ("below", "above")}
+    for side, other in (("below", "above"), ("above", "below")):
+        if share[side] >= majority and share[side] > share[other]:
+            return side
+    return None
+
 
 def r2_undefined(r2: float | None) -> bool:
     """A signal with no variance gives weighted_r2 a zero denominator, so it returns NaN.

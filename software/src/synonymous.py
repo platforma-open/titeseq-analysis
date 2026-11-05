@@ -21,13 +21,17 @@ fit; a copy with no reads carries no weight and stays out of the mean:
                               weighted mean x_w; fit-error sqrt(sum w_i^2 se_i^2) / sum w_i
   SD           the spread of the copies in the mean alone, never floored: for n >= 2, the sample SD
                unweighted, sqrt(n / (n - 1) * sum w_i (x_i - x_w)^2 / sum w_i) weighted; null for n = 1
-  bound        every copy in the mean censored on the same side; the value is that wall, with no SE
-               and no SD
+  bound        no copy in the mean measured, and one side holds at least half of them and more than
+               the other side; the value is that side's wall, with no SE and no SD. The replicates'
+               default majority, `classify.censored_side`
+  conflict     no copy in the mean measured, and neither side holds that majority: averaging
+               opposite walls would land inside the range and mean nothing, so the variant fails
 
 The class is decided once, on the combined value:
 
-  Failed       no copy in the mean
-  Partial      a bound
+  Failed       no copy in the mean, or a conflict (`conflicting_censoring`)
+  bound        the wall's class under log fluorescence; under the mean bin fit, the class the copies
+               at that wall share, else Partial
   Good         SE at or below KD_SD_GOOD, with more than half the copies in the mean measured
   Partial      SE above KD_SD_GOOD or not finite, or half or more of the copies at a wall
   copy's own   n = 1 and the equation reports no SE: the combined value is that copy's fit, rated by
@@ -57,8 +61,8 @@ from typing import Literal, Protocol
 
 import polars as pl
 
-from classify import Classification, bound_class
-from constants import COL_CLONOTYPE, KD_SD_GOOD
+from classify import REASON_CONFLICTING, Classification, bound_class, censored_side
+from constants import COL_CLONOTYPE, DEFAULT_CENSORED_MAJORITY, KD_SD_GOOD
 
 COL_NT = "ntKey"
 COL_AA = "aaKey"
@@ -241,12 +245,13 @@ def combine(copies: list[Copy], *, weighted: bool = False, wall_classes: bool = 
         mean = math.fsum(c.weight * c.log10_kd for c in entered) / math.fsum(c.weight for c in entered)
     else:
         mean = math.fsum(c.log10_kd for c in entered) / n
-    sides = {c.state for c in entered}
-    bound = sides == {"below"} or sides == {"above"}
-    if bound:
-        side = entered[0].state
-        cls = bound_class(side, [c.affinity_class for c in entered], wall_classes=wall_classes)
-        return Combined(mean, None, Classification(cls, None), True, counts)
+    if not any(c.state == "measured" for c in entered):
+        side = censored_side([c.state for c in entered], DEFAULT_CENSORED_MAJORITY)
+        if side is None:
+            return Combined(None, None, Classification("Failed", REASON_CONFLICTING), None, counts)
+        on_side = [c for c in entered if c.state == side]
+        cls = bound_class(side, [c.affinity_class for c in on_side], wall_classes=wall_classes)
+        return Combined(on_side[0].log10_kd, None, Classification(cls, None), True, counts)
 
     if n == 1:
         se, sd = entered[0].log10_kd_se, None

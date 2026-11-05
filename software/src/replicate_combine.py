@@ -41,12 +41,12 @@ from __future__ import annotations
 
 import math
 import statistics
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Literal
 
 import polars as pl
 
-from classify import RANGE_SIDE, Classification, Side, bound_class
+from classify import RANGE_SIDE, REASON_CONFLICTING, Classification, Side, bound_class, censored_side
 from constants import (
     COL_CLONOTYPE,
     COL_REPLICATE,
@@ -63,7 +63,6 @@ ENTERED: tuple[ReplicateState, ...] = ("measured", "below", "above")
 
 REASON_ALL_FILTERED = "all_replicates_filtered"
 REASON_ALL_FAILED = "all_replicates_failed"
-REASON_CONFLICTING = "conflicting_censoring"
 
 
 @dataclass(frozen=True)
@@ -191,15 +190,12 @@ def _bound(
     Averaging opposite walls would land inside the titrated range and mean nothing, so one side
     must hold the majority. The threshold is the block's own rule; no paper defines one.
     """
-    n = len(entered)
-    sides: tuple[Side, Side] = ("below", "above")
-    share = {side: sum(1 for v in entered if v.state == side) / n for side in sides}
-    for side, other in (sides, sides[::-1]):
-        if share[side] >= majority and share[side] > share[other]:
-            on_side = [v for v in entered if v.state == side]
-            cls = bound_class(side, [v.affinity_class for v in on_side], wall_classes=wall_classes)
-            return Merged(on_side[0].log10_kd, None, None, Classification(cls, None), True, counts, side)
-    return Merged(None, None, None, Classification("Failed", REASON_CONFLICTING), None, counts)
+    side = censored_side([v.state for v in entered], majority)
+    if side is None:
+        return Merged(None, None, None, Classification("Failed", REASON_CONFLICTING), None, counts)
+    on_side = [v for v in entered if v.state == side]
+    cls = bound_class(side, [v.affinity_class for v in on_side], wall_classes=wall_classes)
+    return Merged(on_side[0].log10_kd, None, None, Classification(cls, None), True, counts, side)
 
 
 def combine_replicates(
@@ -389,6 +385,26 @@ def build_combined_clonotype_frame(collected: Collected, merged: dict[str, Merge
 _NT_COUNT_FIELDS = ("ntVariants", "ntMeasured", "ntCensoredBelow", "ntCensoredAbove", "ntFailed")
 
 COMBINED_VARIANT_SCHEMA: dict[str, pl.DataType] = {**PER_VARIANT_SCHEMA, **COUNT_SCHEMA}
+
+
+def require_copy_majority(collected: Collected, merged: dict[str, Merged]) -> dict[str, Merged]:
+    """Good amino-acid values downgraded to Partial unless more than half of their copy fits were
+    measured, counted over the replicates that entered the mean.
+
+    A replicate's amino-acid value with a measured copy enters the replicates' mean as measured,
+    however many of its copies sat at a wall. Two such replicates agree on the walls and shrink the
+    SE, so the majority rule is applied again on the copies.
+    """
+    out: dict[str, Merged] = {}
+    for key, m in merged.items():
+        if m.classification.affinity_class == "Good":
+            rows = [row for value, row in collected[key] if value.state in ENTERED]
+            measured = sum(int(row["ntMeasured"] or 0) for row in rows)
+            entered = measured + sum(int(row[f] or 0) for row in rows for f in ("ntCensoredBelow", "ntCensoredAbove"))
+            if 2 * measured <= entered:
+                m = replace(m, classification=Classification("Partial", None))
+        out[key] = m
+    return out
 
 
 def build_combined_variant_frame(collected: Collected, merged: dict[str, Merged]) -> pl.DataFrame:

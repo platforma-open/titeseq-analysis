@@ -181,8 +181,8 @@ variantColumns := func(blockId, kdAnnotations, opts) {
 			domain: domain,
 			annotations: {
 				"pl7.app/label": "Affinity class",
-				"pl7.app/description": "The class of the value combined over the synonymous nucleotide variants. Good: the standard error is 0.5 or less. Partial: the standard error is more than 0.5. " +
-					opts.boundRule + " Failed: no nucleotide variant has a Kd,app. A single variant with no standard error keeps its own class.",
+				"pl7.app/description": "The class of the value combined over the synonymous nucleotide variants. Good: the standard error is 0.5 or less, and more than half the variants were measured inside the range. Partial: the standard error is more than 0.5, or half or more of the variants sit at an edge of the range. " +
+					opts.boundRule + " Failed: no nucleotide variant has a Kd,app, or the variants sit at opposite edges with neither edge holding most of them. A single variant with no standard error keeps its own class.",
 				"pl7.app/isScore": "true",
 				"pl7.app/isDiscreteFilter": "true",
 				// The equation's own classes, as on the nucleotide grain, so one filter fits both.
