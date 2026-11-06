@@ -124,12 +124,13 @@ Review fixes to the 2.5.0 fits and replicates:
   exported only those four.
 - The FACS bin column can hold labels as well as integers. Picking a bin column lists its values,
   lowest fluorescence first (numbers numerically, labels alphabetically), and the user drags them
-  into order, as sort-seq-analysis does for its gates. Position is the gate's rank. A value removed
-  from the list, such as an unsorted sample, takes its samples out of the run. The order is new
+  into order, as sort-seq-analysis does for its gates. Position is the gate's rank. Unlike
+  sort-seq-analysis, no gate can be removed: a gate left out would drop its cells and bias every
+  mean bin. A bin value missing from the order, as from a template made on other data or a column
+  that changed after the order was set, fails the run and names the value; values match with
+  surrounding whitespace trimmed. A sample with an empty bin value stays unsorted. The order is new
   block data (`binOrder`, also a kind init param) and reaches the software as `--bin-ranks`. A
   block that never set an order projects no ranks and reads the column's integers as before.
-  An integer column's order ranks the kept bins 1, 2, 3, ..., so labels that skip a number (1, 2,
-  4) now sit at consecutive positions.
 - The first page is named Main, as in the other blocks, instead of Table.
 - The tables list the Kd,app columns first, then the DMS columns (variant class, the parent delta,
   the nucleotide variant counts, the synonymous spread), then the columns of other blocks.

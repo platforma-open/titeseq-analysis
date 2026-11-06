@@ -176,10 +176,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.bin_ranks:
         with open(args.bin_ranks) as f:
             ranks = json.load(f)
-        before = reads.height
         reads = apply_bin_ranks(reads, ranks)
         order = ", ".join(f"{rank} = {value}" for value, rank in sorted(ranks.items(), key=lambda kv: kv[1]))
-        log(f"Bin order: {order}; {before - reads.height} rows outside the order left out")
+        log(f"Bin order: {order}")
     params = DEFAULT_PARAMS
     if args.params:
         # FitParams rejects an unknown `equation`. An absent one means a pre-existing project on

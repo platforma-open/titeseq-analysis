@@ -697,10 +697,25 @@ class TestApplyBinRanks:
         out = apply_bin_ranks(self._frame([4, 1, 2]), {"4": 1, "2": 2, "1": 3})
         assert out["bin"].to_list() == [1, 3, 2]
 
-    def test_a_value_outside_the_order_leaves_and_an_unsorted_sample_stays(self):
-        out = apply_bin_ranks(self._frame(["LOW", "presort", None, ""]), {"LOW": 1})
-        assert out["sampleId"].to_list() == ["s0", "s2", "s3"]
+    def test_an_unsorted_sample_stays_unsorted(self):
+        out = apply_bin_ranks(self._frame(["LOW", None, ""]), {"LOW": 1})
+        assert out["sampleId"].to_list() == ["s0", "s1", "s2"]
         assert out["bin"].to_list() == [1, None, None]
+
+    def test_a_value_outside_the_order_is_refused_by_name(self):
+        # Dropping a gate's samples would bias every mean bin; a stale order or a template from
+        # another dataset must fail instead.
+        with pytest.raises(InputValidationError, match="'presort'"):
+            apply_bin_ranks(self._frame(["LOW", "presort"]), {"LOW": 1})
+
+    def test_whitespace_around_a_value_does_not_split_it_from_the_order(self):
+        out = apply_bin_ranks(self._frame(["LOW ", " HIGH"]), {" LOW": 1, "HIGH ": 2})
+        assert out["bin"].to_list() == [1, 2]
+
+    def test_a_gate_missing_from_the_data_keeps_the_positions_of_the_others(self):
+        # Gate 3 sorted no cells: gate 4 stays at position 4, not 3.
+        out = apply_bin_ranks(self._frame(["1", "2", "4"]), {"1": 1, "2": 2, "3": 3, "4": 4})
+        assert out["bin"].to_list() == [1, 2, 4]
 
     def test_an_order_matching_no_sample_is_refused(self):
         with pytest.raises(InputValidationError, match="no sample's FACS bin"):

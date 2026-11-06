@@ -221,7 +221,7 @@ function resetBinOrder(): void {
       </template>
     </PlDropdownRef>
     <!-- The gates from low to high fluorescence. Position is the rank, so the values can be any
-         labels; removing one takes its samples out of the run. A block made before the order
+         labels. No value can be removed: a gate left out would bias every mean bin. A block made before the order
          existed has none and reads the column's integers until the user sets one. -->
     <template v-if="app.model.data.binColumnRef !== undefined">
       <!-- Collapsible, as sort-seq-analysis's gate order is. Open by default; the open state is
@@ -237,12 +237,12 @@ function resetBinOrder(): void {
             <template #tooltip>
               Drag the bins into order: the lowest fluorescence at the top, the highest at the
               bottom. The position sets each bin's rank, so the bin values do not need to be
-              numbers. Remove a value, such as an unsorted sample, to leave its samples out of the
-              run.
+              numbers. Every gate takes part: leaving one out would drop its cells and bias every
+              mean bin. An unsorted sample has an empty bin value.
             </template>
           </PlTooltip>
         </div>
-        <PlElementList v-model:items="app.model.data.binOrder">
+        <PlElementList v-model:items="app.model.data.binOrder" disable-removing>
           <template #item-title="{ item }">{{ item }}</template>
         </PlElementList>
         <PlBtnGhost v-if="binOrderModified" @click="resetBinOrder">

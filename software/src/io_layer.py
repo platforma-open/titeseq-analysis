@@ -202,21 +202,30 @@ def validate_bin_column(df: pl.DataFrame) -> None:
 def apply_bin_ranks(df: pl.DataFrame, ranks: dict[str, int]) -> pl.DataFrame:
     """Replace each bin value with its rank in the user's order.
 
-    A sample with no bin stays unsorted. A sample whose bin value is not in the order takes no part
-    in the run, so its rows leave here. Values match as text, so an integer column's 1 matches "1".
+    A sample with no bin stays unsorted. Every other bin value must be in the order: a gate left out
+    would drop its cells and bias every mean bin. Values match as text with surrounding whitespace
+    trimmed, so an integer column's 1 matches "1". A rank keeps its position when another gate has no
+    samples.
     """
     if COL_BIN not in df.columns:
         return df
     if not ranks or any(not isinstance(r, int) or r < 1 for r in ranks.values()):
         raise InputValidationError("bin order must rank at least one bin, each from 1")
+    ranks = {str(value).strip(): rank for value, rank in ranks.items()}
     key = pl.col(COL_BIN).cast(pl.Utf8).str.strip_chars()
     unsorted = pl.col(COL_BIN).is_null() | (key == "")
-    kept = df.filter(unsorted | key.is_in(list(ranks)))
-    if kept.filter(~unsorted).height == 0:
+    sorted_values = df.filter(~unsorted).select(key.unique()).to_series().to_list()
+    if not any(v in ranks for v in sorted_values):
         raise InputValidationError(
             f"no sample's FACS bin is in the bin order {sorted(ranks)}: check the order matches the bin column"
         )
-    return kept.with_columns(
+    missing = sorted(v for v in sorted_values if v not in ranks)
+    if missing:
+        raise InputValidationError(
+            f"FACS bin values {missing} are not in the bin order {sorted(ranks)}: every gate must be ranked; "
+            "reset the order to the bin column's values"
+        )
+    return df.with_columns(
         pl.when(unsorted).then(None).otherwise(key.replace_strict(ranks, default=None)).cast(pl.Int64).alias(COL_BIN)
     )
 
