@@ -3,9 +3,7 @@
 Every nucleotide variant is fitted on its own before this module runs. Only the per-copy results are
 combined here; raw counts of two copies are never pooled.
 
-The combination is the mean of the copies' log10 K_D. Unweighted, it is Starr's plain arithmetic mean
-(Starr 2020, 2022). Read-weighted, each copy carries its total reads, w_i, over the samples that enter the
-fit; a copy with no reads carries no weight and stays out of the mean:
+The combination is Starr's plain arithmetic mean of the copies' log10 K_D (Starr 2020, 2022):
 
   copies       the fitted nucleotide variants that map to exactly one amino-acid variant
   failed       a copy rated Failed, or with no usable K_D; left out of the mean and counted
@@ -13,14 +11,11 @@ fit; a copy with no reads carries no weight and stays out of the mean:
                counted by direction ("below" the lowest concentration, "above" the highest)
   measured     every other copy; enters at its own log10 K_D
   SE           for n >= 2 copies in the mean, the larger of two terms, the spread and the fit-error
-               term. The fit-error term sums over the copies that have a fit SE; it is null when none
-               has one, and the SE is then the spread. For n = 1, the copy's own fit SE where the
-               equation reports one, else null.
-                 unweighted   spread sample SD / sqrt(n); fit-error sqrt(sum se_i^2) / n
-                 weighted     spread sqrt(n / (n - 1) * sum w_i^2 (x_i - x_w)^2) / sum w_i, around the
-                              weighted mean x_w; fit-error sqrt(sum w_i^2 se_i^2) / sum w_i
-  SD           the spread of the copies in the mean alone, never floored: for n >= 2, the sample SD
-               unweighted, sqrt(n / (n - 1) * sum w_i (x_i - x_w)^2 / sum w_i) weighted; null for n = 1
+               term: the spread is the sample SD / sqrt(n), the fit-error term sqrt(sum se_i^2) / n
+               over the copies that have a fit SE. With no fit SE the SE is the spread. For n = 1, the
+               copy's own fit SE where the equation reports one, else null.
+  SD           the spread of the copies in the mean alone, never floored: for n >= 2, the sample SD;
+               null for n = 1
   bound        no copy in the mean measured, and one side holds at least half of them and more than
                the other side; the value is that side's wall, with no SE and no SD. The replicates'
                default majority, `classify.censored_side`
@@ -82,8 +77,6 @@ REASON_NO_UNMUTATED = "no-unmutated-variant"
 REASON_SEVERAL_UNMUTATED = "several-unmutated-variants"
 
 CopyState = Literal["measured", "below", "above", "failed"]
-Weighting = Literal["none", "reads"]
-WEIGHTINGS: tuple[Weighting, ...] = ("none", "reads")
 
 PER_VARIANT_SCHEMA: dict[str, pl.DataType] = {
     COL_AA: pl.Utf8,
@@ -108,7 +101,7 @@ DELTA_SCHEMA: dict[str, pl.DataType] = {
 
 @dataclass(frozen=True)
 class SynonymousInputs:
-    """The nt -> aa linker, the per-variant columns that resolved, and the weighting.
+    """The nt -> aa linker and the per-variant columns that resolved.
 
     The amino-acid parent delta needs `aa_mutations` and `aa_parent_links`; the amino-acid class needs
     `aa_mutations`; the nucleotide class needs `aa_mutations` and `nt_mutations`; `stop` needs
@@ -118,7 +111,6 @@ class SynonymousInputs:
     nt_to_aa: pl.DataFrame  # [ntKey, aaKey]
     aa_mutations: pl.DataFrame | None = None  # [aaKey, mutationCount]
     aa_parent_links: pl.DataFrame | None = None  # [aaKey, parentId]
-    weighting: Weighting = "none"
     aa_productive: pl.DataFrame | None = None  # [aaKey, productive], "true" / "false"
     nt_mutations: pl.DataFrame | None = None  # [ntKey, mutationCount]
     nt_parent_links: pl.DataFrame | None = None  # [ntKey, parentId]
@@ -128,8 +120,6 @@ class SynonymousInputs:
             raise ValueError("the amino-acid parent links need the amino-acid mutation counts")
         if self.nt_parent_links is not None and self.nt_mutations is None:
             raise ValueError("the nucleotide parent links need the nucleotide mutation counts")
-        if self.weighting not in WEIGHTINGS:
-            raise ValueError(f"unknown weighting: {self.weighting}")
 
 
 class HasKd(Protocol):
@@ -148,7 +138,6 @@ class Copy:
     log10_kd: float | None
     log10_kd_se: float | None
     affinity_class: str
-    weight: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -198,7 +187,7 @@ def copy_from_fit(row: dict, log10_lo: float | None, log10_hi: float | None) -> 
 
 
 def _floored_se(entered: list[Copy]) -> float:
-    """max(spread, fit-error term) over n >= 2 unweighted copies; the spread alone when no copy has a
+    """max(spread, fit-error term) over n >= 2 copies; the spread alone when no copy has a
     fit SE."""
     n = len(entered)
     spread = statistics.stdev([c.log10_kd for c in entered]) / math.sqrt(n)
@@ -208,43 +197,18 @@ def _floored_se(entered: list[Copy]) -> float:
     return max(spread, math.sqrt(math.fsum(se * se for se in fit_ses)) / n)
 
 
-def _floored_weighted_se(entered: list[Copy], mean: float) -> float:
-    """The read-weighted counterpart of `_floored_se`, around the weighted mean."""
-    n = len(entered)
-    total = math.fsum(c.weight for c in entered)
-    scatter = math.fsum(c.weight**2 * (c.log10_kd - mean) ** 2 for c in entered)
-    spread = math.sqrt(n / (n - 1) * scatter) / total
-    fit = [c.weight**2 * c.log10_kd_se**2 for c in entered if c.log10_kd_se is not None]
-    if not fit:
-        return spread
-    return max(spread, math.sqrt(math.fsum(fit)) / total)
-
-
-def _spread_sd(entered: list[Copy], mean: float, weighted: bool) -> float:
-    """The SD of n >= 2 copies around `mean`."""
-    if not weighted:
-        return statistics.stdev([c.log10_kd for c in entered])
-    n = len(entered)
-    total = math.fsum(c.weight for c in entered)
-    scatter = math.fsum(c.weight * (c.log10_kd - mean) ** 2 for c in entered)
-    return math.sqrt(n / (n - 1) * scatter / total)
-
-
-def combine(copies: list[Copy], *, weighted: bool = False, wall_classes: bool = True) -> Combined:
-    """The mean over one amino-acid variant's copies, and its class. `weighted` reads each copy's
-    `weight`. `wall_classes` is True under the equation that rates a bound by its wall."""
+def combine(copies: list[Copy], *, wall_classes: bool = True) -> Combined:
+    """The mean over one amino-acid variant's copies, and its class. `wall_classes` is True under the
+    equation that rates a bound by its wall."""
     counts: dict[CopyState, int] = {"measured": 0, "below": 0, "above": 0, "failed": 0}
     for c in copies:
         counts[c.state] += 1
-    entered = [c for c in copies if c.state != "failed" and (not weighted or c.weight > 0)]
+    entered = [c for c in copies if c.state != "failed"]
     n = len(entered)
     if n == 0:
         return Combined(None, None, Classification("Failed", None), None, counts)
 
-    if weighted:
-        mean = math.fsum(c.weight * c.log10_kd for c in entered) / math.fsum(c.weight for c in entered)
-    else:
-        mean = math.fsum(c.log10_kd for c in entered) / n
+    mean = math.fsum(c.log10_kd for c in entered) / n
     if not any(c.state == "measured" for c in entered):
         side = censored_side([c.state for c in entered], DEFAULT_CENSORED_MAJORITY)
         if side is None:
@@ -256,8 +220,8 @@ def combine(copies: list[Copy], *, weighted: bool = False, wall_classes: bool = 
     if n == 1:
         se, sd = entered[0].log10_kd_se, None
     else:
-        se = _floored_weighted_se(entered, mean) if weighted else _floored_se(entered)
-        sd = _spread_sd(entered, mean, weighted)
+        se = _floored_se(entered)
+        sd = statistics.stdev([c.log10_kd for c in entered])
     if se is not None:
         # A copy at a wall enters at the wall, so two of them agree exactly however wide the truth
         # is. Good needs more than half the copies in the mean measured.
@@ -408,7 +372,6 @@ def combine_synonymous(
     *,
     log10_lo: float | None,
     log10_hi: float | None,
-    reads: dict[str, float] | None = None,
     wall_classes: bool = True,
 ) -> tuple[pl.DataFrame, pl.DataFrame | None, dict]:
     """The amino-acid frame, the nucleotide frame, and the run summary, from the per-nt-variant fits.
@@ -417,12 +380,8 @@ def combine_synonymous(
     the nt-grain columns that resolved.
 
     `log10_lo` and `log10_hi` are log10 of the lowest and highest non-zero concentrations: the walls
-    a censored copy enters at. `reads` is each nt variant's total reads over the samples that enter
-    the fit; read-weighting needs it, and a variant absent from it carries no weight.
+    a censored copy enters at.
     """
-    weighted = inputs.weighting == "reads"
-    if weighted and reads is None:
-        raise ValueError("read-weighting needs the reads of each nt variant")
     fitted = per_clonotype[COL_CLONOTYPE].cast(pl.Utf8).to_list()
     mapping, unmapped, ambiguous = resolve_nt_to_aa(inputs.nt_to_aa, fitted)
 
@@ -431,11 +390,8 @@ def combine_synonymous(
     for row in rows:
         aa = mapping.get(row[COL_CLONOTYPE])
         if aa is not None:
-            c = copy_from_fit(row, log10_lo, log10_hi)
-            if weighted:
-                c = replace(c, weight=float(reads.get(row[COL_CLONOTYPE], 0.0)))
-            copies.setdefault(aa, []).append(c)
-    combined = {aa: combine(copies[aa], weighted=weighted, wall_classes=wall_classes) for aa in sorted(copies)}
+            copies.setdefault(aa, []).append(copy_from_fit(row, log10_lo, log10_hi))
+    combined = {aa: combine(copies[aa], wall_classes=wall_classes) for aa in sorted(copies)}
     stops = stop_variants(inputs.aa_productive) if inputs.aa_productive is not None else set()
     # A stop variant has no value: its counts stay, every value goes.
     combined = {aa: replace(STOP, counts=c.counts) if aa in stops else c for aa, c in combined.items()}
@@ -446,7 +402,6 @@ def combine_synonymous(
         "unmappedNtVariants": unmapped,
         "ambiguousNtVariants": ambiguous,
         "parentMode": inputs.aa_parent_links is not None,
-        "weighting": inputs.weighting,
     }
     if inputs.aa_productive is not None:
         summary["stopAaVariants"] = sum(1 for aa in combined if aa in stops)

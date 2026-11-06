@@ -55,20 +55,11 @@ countColumn := func(header, blockId, state, label, description, visibility, prio
 	})
 }
 
-KD_DESCRIPTION := {
-	none: "Kd,app of the amino-acid variant: 10 to the mean log10 Kd,app of its synonymous nucleotide variants, each fitted on its own. The mean is unweighted. A variant censored at the edge of the titration enters at that edge.",
-	reads: "Kd,app of the amino-acid variant: 10 to the mean log10 Kd,app of its synonymous nucleotide variants, each fitted on its own. Each variant is weighted by its total reads over the titration. A variant censored at the edge of the titration enters at that edge."
-}
+KD_DESCRIPTION := "Kd,app of the amino-acid variant: 10 to the mean log10 Kd,app of its synonymous nucleotide variants, each fitted on its own. The mean is unweighted. A variant censored at the edge of the titration enters at that edge."
 
-SE_DESCRIPTION := {
-	none: "Standard error of the mean log10 Kd,app. With two or more synonymous nucleotide variants, the larger of two terms: their spread, the SD over the square root of their number; and their own fit SEs, the root of the sum of squares over their number, where the equation reports a fit SE. With one variant, its own fit SE where the equation reports one. Empty for a bound and for a failed variant. At or below 0.5, Kd,app is rated Good.",
-	reads: "Standard error of the read-weighted mean log10 Kd,app. With two or more synonymous nucleotide variants, the larger of two terms: their read-weighted spread; and their own fit SEs, each weighted by its reads, added in quadrature and divided by the total reads, where the equation reports a fit SE. With one variant, its own fit SE where the equation reports one. Empty for a bound and for a failed variant. At or below 0.5, Kd,app is rated Good."
-}
+SE_DESCRIPTION := "Standard error of the mean log10 Kd,app. With two or more synonymous nucleotide variants, the larger of two terms: their spread, the SD over the square root of their number; and their own fit SEs, the root of the sum of squares over their number, where the equation reports a fit SE. With one variant, its own fit SE where the equation reports one. Empty for a bound and for a failed variant. At or below 0.5, Kd,app is rated Good."
 
-SD_DESCRIPTION := {
-	none: "SD of log10 Kd,app across the synonymous nucleotide variants in the mean: their spread alone, with no fit error. Empty with fewer than two variants, for a bound and for a failed variant.",
-	reads: "Read-weighted SD of log10 Kd,app across the synonymous nucleotide variants in the mean: their spread alone, with no fit error. Empty with fewer than two variants, for a bound and for a failed variant."
-}
+SD_DESCRIPTION := "SD of log10 Kd,app across the synonymous nucleotide variants in the mean: their spread alone, with no fit error. Empty with fewer than two variants, for a bound and for a failed variant."
 
 // The reads the fits used, on the grain whose ids start with `idPrefix`.
 fitReadsColumn := func(blockId, idPrefix, description) {
@@ -132,8 +123,8 @@ deltaColumns := func(blockId, idPrefix, description) {
 /**
  * @param blockId: the block id stamped into every domain, as on the nucleotide grain
  * @param kdAnnotations: the nucleotide grain's Kd,app annotations, unit included
- * @param opts: {parentMode, weighting, variantClass}; parentMode emits the parent delta and its
- *   error, weighting is "none" or "reads", variantClass emits the class column
+ * @param opts: {parentMode, variantClass}; parentMode emits the parent delta and its error,
+ *   variantClass emits the class column
  * @return xsv column descriptors. Table order: the Kd,app columns (orderPriority 185 to 202), then
  *   the DMS columns (176 to 184).
  */
@@ -145,7 +136,7 @@ variantColumns := func(blockId, kdAnnotations, opts) {
 			valueType: "Double",
 			domain: domain,
 			annotations: maps.merge(kdAnnotations, {
-				"pl7.app/description": KD_DESCRIPTION[opts.weighting]
+				"pl7.app/description": KD_DESCRIPTION
 			})
 		}),
 		// Error of the value above, on the same axes. The absence-declaration annotation is pending its key.
@@ -155,7 +146,7 @@ variantColumns := func(blockId, kdAnnotations, opts) {
 			domain: domain,
 			annotations: {
 				"pl7.app/label": "Kd,app SE (log10)",
-				"pl7.app/description": SE_DESCRIPTION[opts.weighting],
+				"pl7.app/description": SE_DESCRIPTION,
 				"pl7.app/isScore": "true",
 				"pl7.app/score/rankingOrder": "increasing",
 				"pl7.app/table/visibility": "default",
@@ -168,7 +159,7 @@ variantColumns := func(blockId, kdAnnotations, opts) {
 			domain: domain,
 			annotations: {
 				"pl7.app/label": "Kd,app SD across synonyms (log10)",
-				"pl7.app/description": SD_DESCRIPTION[opts.weighting],
+				"pl7.app/description": SD_DESCRIPTION,
 				"pl7.app/isScore": "false",
 				"pl7.app/format": ".2f",
 				"pl7.app/table/visibility": "default",

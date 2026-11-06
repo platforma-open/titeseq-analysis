@@ -153,15 +153,6 @@ class TestCombine:
         c = combine(copies, wall_classes=False)
         assert (c.log10_kd, c.classification.affinity_class) == (HI, "Good")
 
-    def test_read_weighting_does_not_move_a_bound_off_its_wall(self):
-        copies = [
-            Copy("below", LO, None, "Below range", weight=10.0),
-            Copy("below", LO, None, "Below range", weight=1.0),
-            Copy("above", HI, None, "Above range", weight=1000.0),
-        ]
-        c = combine(copies, weighted=True)
-        assert (c.log10_kd, c.out_of_range) == (LO, True)
-
     def test_a_censored_copy_beside_a_measured_one_enters_at_the_wall(self):
         c = combine([Copy("above", HI, None, "Partial"), _measured(-8.0)])
         assert c.log10_kd == pytest.approx((HI - 8.0) / 2)
@@ -179,10 +170,6 @@ class TestCombine:
         assert c.log10_kd_se is None
         assert c.classification.affinity_class == "Good"
         assert combine([_measured(-8.0, cls="Partial")]).classification.affinity_class == "Partial"
-
-
-def _weighted(value, weight, se=None, state="measured"):
-    return Copy(state, value, se, "Good", weight)
 
 
 class TestSynonymSd:
@@ -207,58 +194,6 @@ class TestSynonymSd:
     def test_a_bound_has_no_sd(self):
         c = combine([Copy("below", LO, None, "Partial"), Copy("below", LO, None, "Partial")])
         assert c.log10_kd_sd is None
-
-    def test_the_read_weighted_sd(self):
-        copies = [_weighted(-8.0, 3.0), _weighted(-9.0, 1.0)]
-        c = combine(copies, weighted=True)
-        mean = -8.25
-        expected = math.sqrt(2 / 1 * (3 * (-8.0 - mean) ** 2 + 1 * (-9.0 - mean) ** 2) / 4)
-        assert c.log10_kd_sd == pytest.approx(expected)
-
-    def test_equal_weights_give_the_plain_sd(self):
-        values = [-8.0, -8.4, -7.9]
-        weighted = combine([_weighted(v, 5.0) for v in values], weighted=True)
-        assert weighted.log10_kd_sd == pytest.approx(statistics.stdev(values))
-
-
-class TestCombineReadWeighted:
-    def test_the_value_is_the_read_weighted_mean(self):
-        c = combine([_weighted(-8.0, 3.0), _weighted(-9.0, 1.0)], weighted=True)
-        assert c.log10_kd == pytest.approx(-8.25)
-
-    def test_the_spread_is_the_siblings_read_weighted_scatter(self):
-        copies = [_weighted(-8.0, 3.0), _weighted(-9.0, 1.0), _weighted(-8.5, 2.0)]
-        c = combine(copies, weighted=True)
-        mean = (3 * -8.0 + 1 * -9.0 + 2 * -8.5) / 6
-        scatter = 9 * (-8.0 - mean) ** 2 + 1 * (-9.0 - mean) ** 2 + 4 * (-8.5 - mean) ** 2
-        assert c.log10_kd == pytest.approx(mean)
-        assert c.log10_kd_se == pytest.approx(math.sqrt(3 / 2 * scatter) / 6)
-
-    def test_the_weighted_fit_error_term_floors_the_se(self):
-        c = combine([_weighted(-8.0, 3.0, se=0.4), _weighted(-8.0, 1.0, se=0.8)], weighted=True)
-        # zero scatter; fit-error term sqrt(3^2 * 0.4^2 + 1^2 * 0.8^2) / 4
-        assert c.log10_kd_se == pytest.approx(math.sqrt(9 * 0.16 + 0.64) / 4)
-
-    def test_the_spread_stands_when_it_exceeds_the_weighted_fit_error_term(self):
-        c = combine([_weighted(-7.0, 1.0, se=0.01), _weighted(-9.0, 1.0, se=0.01)], weighted=True)
-        assert c.log10_kd_se == pytest.approx(1.0)
-
-    def test_equal_weights_give_the_unweighted_result(self):
-        values = [(-8.0, 0.3), (-8.4, 0.2), (-7.9, None)]
-        plain = combine([_measured(v, se) for v, se in values])
-        weighted = combine([_weighted(v, 5.0, se) for v, se in values], weighted=True)
-        assert weighted.log10_kd == pytest.approx(plain.log10_kd)
-        assert weighted.log10_kd_se == pytest.approx(plain.log10_kd_se)
-
-    def test_a_copy_with_no_reads_stays_out_of_the_mean(self):
-        c = combine([_weighted(-8.0, 2.0, se=0.3), _weighted(-9.0, 0.0, se=0.3)], weighted=True)
-        assert c.log10_kd == pytest.approx(-8.0)
-        assert c.log10_kd_se == 0.3
-        assert c.counts["measured"] == 2
-
-    def test_weights_are_ignored_unless_asked_for(self):
-        c = combine([_weighted(-8.0, 3.0), _weighted(-9.0, 1.0)])
-        assert c.log10_kd == pytest.approx(-8.5)
 
 
 class TestVariantClass:
@@ -409,7 +344,6 @@ class TestCombineSynonymous:
             "unmappedNtVariants": 1,
             "ambiguousNtVariants": 1,
             "parentMode": False,
-            "weighting": "none",
             "synonymSpread": {"variants": 1, "median": 0.0},
         }
         # WT's two measured copies agree; M has one measured copy, so no spread.
@@ -438,25 +372,6 @@ class TestCombineSynonymous:
         assert summary["parents"] == 1
         assert summary["unidentifiableParents"] == []
         assert summary["multiParentVariants"] == 0
-
-    def test_read_weighting_weights_each_copy_by_its_reads(self):
-        inputs = SynonymousInputs(self.LINKS, weighting="reads")
-        reads = {"wt1": 100.0, "wt2": 100.0, "m1": 30.0, "m2": 10.0}
-        frame, _, summary = combine_synonymous(self.PER_CLONOTYPE, inputs, log10_lo=LO, log10_hi=HI, reads=reads)
-        assert summary["weighting"] == "reads"
-        wt = frame.filter(pl.col("aaKey") == "WT").row(0, named=True)
-        # zero scatter; fit-error term sqrt(2 * 100^2 * 0.1^2) / 200
-        assert wt["kdLog10Se"] == pytest.approx(math.sqrt(2 * 100**2 * 0.01) / 200)
-
-    def test_read_weighting_without_reads_is_refused(self):
-        with pytest.raises(ValueError, match="reads"):
-            combine_synonymous(
-                self.PER_CLONOTYPE, SynonymousInputs(self.LINKS, weighting="reads"), log10_lo=LO, log10_hi=HI
-            )
-
-    def test_an_unknown_weighting_is_refused(self):
-        with pytest.raises(ValueError, match="weighting"):
-            SynonymousInputs(self.LINKS, weighting="depth")
 
     CLASS_INPUTS = {
         "aa_mutations": pl.DataFrame({"aaKey": ["WT", "M"], "mutationCount": ["0", "1"]}),

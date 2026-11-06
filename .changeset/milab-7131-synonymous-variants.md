@@ -22,13 +22,10 @@ variants as repeats.
   are combined; otherwise the amino-acid variant is Failed (`conflicting_censoring`), since a mean
   of opposite edges would land inside the range.
 - `pl7.app/vdj/kdLog10Sd` on the amino-acid axis: the SD of log10 Kd,app across the synonymous
-  nucleotide variants in the mean, their spread alone with no fit-error floor (read-weighted under
-  `reads`). Empty with fewer than two variants, for a bound and for a stop or failed variant.
-- Hidden setting `synonymousWeighting` (block data and the kind's init params; the drawer does not
-  show it, as neither sibling DMS block offers a combining choice, so a template sets it). Unset or
-  `none`: the plain mean above, as Starr combines synonyms. `reads`: each
-  nucleotide variant is weighted by its total reads over the titration, in the mean, the spread and
-  the fit-error term. Unset, the args and the command line are those of a block without the setting.
+  nucleotide variants in the mean, their spread alone with no fit-error floor. Empty with fewer than two variants, for a bound and for a stop or failed variant.
+- The mean is always the plain mean, as Starr combines synonyms; there is no read-weighted option.
+  Read-weighting let one deep copy swamp the others: two copies 2 decades apart, with 1,000 and 10
+  reads and no fit SE, rated Good with an SE of 0.04.
 - Amino-acid columns sit on the linker's amino-acid axis and reuse the nucleotide names:
   `pl7.app/vdj/kd`, `pl7.app/vdj/kdNegLog10`, `pl7.app/vdj/kdLog10Se`, `pl7.app/vdj/affinityClass`,
   `pl7.app/vdj/kdOutOfRange`. The affinity class takes the equation's declared values and cutoff,

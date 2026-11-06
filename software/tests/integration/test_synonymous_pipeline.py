@@ -297,26 +297,6 @@ class TestNucleotideParentDelta:
         ]
 
 
-class TestReadWeighting:
-    @pytest.fixture(scope="class")
-    def weighted(self, reads):
-        return run(reads, params=LF, synonymous=SynonymousInputs(_links(), weighting="reads", **PARENT_INPUTS))
-
-    def test_each_copy_weighs_its_total_reads_over_the_titration(self, reads, weighted):
-        totals = {nt: reads.filter(pl.col("clonotypeKey") == nt)["reads"].sum() for nt in ("wt_a", "wt_b", "wt_c")}
-        fits = weighted["per_clonotype"].filter(pl.col("clonotypeKey").is_in(list(totals)))
-        x = {r["clonotypeKey"]: math.log10(r["kd"]) for r in fits.iter_rows(named=True)}
-        mean = sum(totals[nt] * x[nt] for nt in totals) / sum(totals.values())
-        assert math.log10(_aa(weighted, "WT")["kd"]) == pytest.approx(mean, abs=1e-9)
-        assert weighted["synonymous_summary"]["weighting"] == "reads"
-
-    def test_the_weighted_mean_differs_from_the_plain_mean(self, lf, weighted):
-        assert _aa(weighted, "WT")["kd"] != pytest.approx(_aa(lf, "WT")["kd"], rel=1e-12)
-
-    def test_the_nucleotide_outputs_do_not_move(self, lf, weighted):
-        assert_frame_equal(weighted["per_clonotype"], lf["per_clonotype"])
-
-
 class TestHillGateIndex:
     def test_one_copy_has_no_se_and_keeps_its_own_class(self, reads):
         out = run(reads, params=HILL, synonymous=SynonymousInputs(_links()))
@@ -365,29 +345,6 @@ def test_the_cli_writes_the_amino_acid_frame_and_the_summary(tmp_path, reads):
     summary = json.loads((tmp_path / "summary.json").read_text())
     assert summary["parentMode"] is True
     assert summary["unidentifiableParents"] == []
-
-
-def test_the_cli_passes_read_weighting_on(tmp_path, reads):
-    reads.write_parquet(tmp_path / "reads.parquet")
-    _links().write_csv(tmp_path / "nt_to_aa.tsv", separator="\t")
-    (tmp_path / "params.json").write_text(json.dumps({"equation": "log_fluorescence", "plateau_floor": 2 / 3}))
-    out = {name: str(tmp_path / f"{name}.tsv") for name in ("pc", "mb", "fmb", "cv", "pv")}
-    rc = main(
-        [
-            "--reads", str(tmp_path / "reads.parquet"),
-            "--params", str(tmp_path / "params.json"),
-            "--out-per-clonotype", out["pc"],
-            "--out-mean-bin", out["mb"],
-            "--out-fitted-mean-bin", out["fmb"],
-            "--out-concentration-value", out["cv"],
-            "--nt-to-aa", str(tmp_path / "nt_to_aa.tsv"),
-            "--out-per-variant", out["pv"],
-            "--out-synonymous-summary", str(tmp_path / "summary.json"),
-            "--synonymous-weighting", "reads",
-        ]
-    )  # fmt: skip
-    assert rc == 0
-    assert json.loads((tmp_path / "summary.json").read_text())["weighting"] == "reads"
 
 
 def test_the_cli_writes_the_nucleotide_frame_with_the_nt_mutation_count(tmp_path, reads):
@@ -463,18 +420,6 @@ def test_the_cli_refuses_an_nt_mutation_count_without_its_output(tmp_path):
                 "--out-fitted-mean-bin", "c", "--out-concentration-value", "d",
                 "--nt-to-aa", "links.tsv", "--out-per-variant", "e", "--out-synonymous-summary", "f",
                 "--nt-mutations", "m.tsv",
-            ]
-        )  # fmt: skip
-
-
-def test_the_cli_refuses_weighting_without_a_linker():
-    with pytest.raises(SystemExit):
-        main(
-            [
-                "--reads", "r.parquet",
-                "--out-per-clonotype", "a", "--out-mean-bin", "b",
-                "--out-fitted-mean-bin", "c", "--out-concentration-value", "d",
-                "--synonymous-weighting", "reads",
             ]
         )  # fmt: skip
 

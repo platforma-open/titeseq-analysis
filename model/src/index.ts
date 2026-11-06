@@ -13,7 +13,6 @@ import type {
 } from "@platforma-sdk/model";
 import type {
   BlockParams,
-  SynonymousWeighting,
   ReplicateErrorModel,
 } from "@platforma-open/platforma-open.titeseq-analysis.kind";
 import {
@@ -43,7 +42,6 @@ import {
 export type {
   BlockParams,
   Equation,
-  SynonymousWeighting,
   ReplicateErrorModel,
 } from "@platforma-open/platforma-open.titeseq-analysis.kind";
 export {
@@ -51,7 +49,6 @@ export {
   DEFAULT_REPLICATE_ERROR_MODEL,
   EQUATIONS,
   REPLICATE_ERROR_MODELS,
-  SYNONYMOUS_WEIGHTINGS,
 } from "@platforma-open/platforma-open.titeseq-analysis.kind";
 export * from "./fitSettings";
 export { deriveTemplateParams };
@@ -132,12 +129,10 @@ type ArgsInputs = Omit<
 /**
  * Appended last to every equation's args. Every replicate setting is present only beside a
  * replicate column, so a block that set none projects the args it always projected.
- * `synonymousWeighting` is present only as "reads".
  */
 type ArgsLabels = BlockLabels & {
   inputFilter?: string;
   replicateColumnRef?: PlRef;
-  synonymousWeighting?: "reads";
 } & Partial<ReplicateSettings>;
 type CommonArgs = ArgsInputs & ArgsLabels;
 
@@ -184,8 +179,6 @@ export type BlockData = FitInputs &
     graphStateReplicates: GraphMakerState;
     /** Subset column picked with the abundance in PlDatasetSelector (e.g. a Repertoire Labeling label). */
     filterRef?: PlRef;
-    /** How synonymous nucleotide variants are combined per amino-acid variant. Absent reads as "none". */
-    synonymousWeighting?: SynonymousWeighting;
     tableState: PlDataTableStateV2;
     /** The nucleotide variant table, shown in synonymous mode only. */
     ntTableState: PlDataTableStateV2;
@@ -403,7 +396,6 @@ export const initBlockData = (params?: BlockParams): BlockData => ({
   hookEffectThresholdNoBin:
     params?.hookEffectThresholdNoBin ?? HILL_GATE_INDEX_DEFAULTS.hookEffectThresholdNoBin,
   hookEffectMinReads: params?.hookEffectMinReads ?? HILL_GATE_INDEX_DEFAULTS.hookEffectMinReads,
-  synonymousWeighting: params?.synonymousWeighting,
   defaultBlockLabel: "Tite-Seq Analysis",
   customBlockLabel: params?.customBlockLabel ?? "",
   tableState: createPlDataTableStateV2(),
@@ -675,8 +667,6 @@ export const deriveArgs = (data: BlockData): BlockArgs => {
       replicateErrorModel: DEFAULT_REPLICATE_ERROR_MODEL,
       replicateCensoredMajority: DEFAULT_CENSORED_MAJORITY,
     }),
-    // Absent unless "reads", so a block that never set it projects the args it always did.
-    ...(data.synonymousWeighting === "reads" && { synonymousWeighting: "reads" as const }),
   };
 
   switch (data.equation) {

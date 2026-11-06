@@ -14,7 +14,7 @@ from io_layer import apply_bin_ranks, read_reads_table
 from log import log
 from pipeline import run
 from replicate_combine import Filters, ReplicateInputs
-from synonymous import COL_AA, COL_MUTATIONS, COL_NT, COL_PARENT, COL_PRODUCTIVE, WEIGHTINGS, SynonymousInputs
+from synonymous import COL_AA, COL_MUTATIONS, COL_NT, COL_PARENT, COL_PRODUCTIVE, SynonymousInputs
 
 
 def _write_frame(frame: pl.DataFrame, path: str) -> None:
@@ -75,8 +75,8 @@ _SYNONYMOUS_ONLY = (
 
 def _synonymous_inputs(args: argparse.Namespace, parser: argparse.ArgumentParser) -> SynonymousInputs | None:
     if args.nt_to_aa is None:
-        if any(getattr(args, name) for name in _SYNONYMOUS_ONLY) or args.synonymous_weighting != "none":
-            parser.error("the synonymous-mode inputs, outputs and --synonymous-weighting need --nt-to-aa")
+        if any(getattr(args, name) for name in _SYNONYMOUS_ONLY):
+            parser.error("the synonymous-mode inputs and outputs need --nt-to-aa")
         return None
     if not args.out_per_variant or not args.out_synonymous_summary:
         parser.error("--nt-to-aa needs --out-per-variant and --out-synonymous-summary")
@@ -90,7 +90,6 @@ def _synonymous_inputs(args: argparse.Namespace, parser: argparse.ArgumentParser
         nt_to_aa=_read_keys(args.nt_to_aa, {COL_NT: pl.Utf8, COL_AA: pl.Utf8}),
         aa_mutations=_read_keys(args.aa_mutations, {COL_AA: pl.Utf8, COL_MUTATIONS: pl.Utf8}),
         aa_parent_links=_read_keys(args.aa_parent_links, {COL_AA: pl.Utf8, COL_PARENT: pl.Utf8}),
-        weighting=args.synonymous_weighting,
         aa_productive=_read_keys(args.aa_productive, {COL_AA: pl.Utf8, COL_PRODUCTIVE: pl.Utf8}),
         nt_mutations=_read_keys(args.nt_mutations, {COL_NT: pl.Utf8, COL_MUTATIONS: pl.Utf8}),
         nt_parent_links=_read_keys(args.nt_parent_links, {COL_NT: pl.Utf8, COL_PARENT: pl.Utf8}),
@@ -159,12 +158,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--nt-mutations", default=None, help="TSV [ntKey, mutationCount]")
     parser.add_argument("--nt-parent-links", default=None, help="TSV [ntKey, parentId]: the nt parent linker")
     parser.add_argument("--out-per-nt-variant", default=None, help="the nt-grain synonymous columns")
-    parser.add_argument(
-        "--synonymous-weighting",
-        choices=WEIGHTINGS,
-        default="none",
-        help="none: plain mean of the synonymous nt variants; reads: each weighted by its total reads",
-    )
     args = parser.parse_args(argv)
     replicates = _replicate_inputs(args, parser)
     synonymous = _synonymous_inputs(args, parser)

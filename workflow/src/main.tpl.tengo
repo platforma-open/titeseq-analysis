@@ -115,9 +115,6 @@ wf.body(func(args) {
 
 	// The concentration column's label, and the unit read from it: the text in its trailing
 	// parentheses when it has them ("Antigen concentration (M)" -> "M"), else the whole label.
-	// "none" when the setting is absent: Starr's plain mean.
-	synonymousWeighting := args.synonymousWeighting == "reads" ? "reads" : "none"
-
 	unitLabel := ""
 	if !is_undefined(concSpec.annotations) && !is_undefined(concSpec.annotations["pl7.app/label"]) {
 		unitLabel = text.trim_space(concSpec.annotations["pl7.app/label"])
@@ -315,10 +312,6 @@ wf.body(func(args) {
 			arg("--out-synonymous-summary").arg("synonymous_summary.json").
 			saveFile("per_variant.tsv").
 			saveFileContent("synonymous_summary.json")
-		// Absent unless "reads", so a run without the setting keeps its command line.
-		if synonymousWeighting == "reads" {
-			execBuilder.arg("--synonymous-weighting").arg("reads")
-		}
 		if syn.aaClass {
 			execBuilder.
 				addFile("aa_mutations.tsv", keyTable(func(b) {
@@ -671,7 +664,6 @@ wf.body(func(args) {
 			axes: [{ column: "aaKey", spec: syn.aaAxis }],
 			columns: variantColumnsLib.variantColumns(blockId, kdAnnotations, {
 				parentMode: syn.parentMode,
-				weighting: synonymousWeighting,
 				variantClass: syn.aaClass,
 				kdNegLog10Spec: kdNegLog10Spec,
 				affinityClassValues: affinityClassValues,

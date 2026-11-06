@@ -55,7 +55,6 @@ const configured: BlockData = {
   hookEffectThresholdBin: 0.35,
   hookEffectThresholdNoBin: 0.05,
   hookEffectMinReads: 50,
-  synonymousWeighting: "reads",
   customBlockLabel: "CD19 titration",
 };
 

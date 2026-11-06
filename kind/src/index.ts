@@ -41,15 +41,6 @@ export const DEFAULT_REPLICATE_ERROR_MODEL: ReplicateErrorModel = "sd_over_sqrt_
 export const DEFAULT_CENSORED_MAJORITY = 0.5;
 
 /**
- * How the synonymous nucleotide variants of one amino-acid variant are combined. `none` is the plain
- * mean of their log10 Kd,app; `reads` weights each by its total reads over the titration. Read only on
- * a nucleotide dataset whose nt -> aa linker resolves.
- */
-export const SYNONYMOUS_WEIGHTINGS = ["none", "reads"] as const;
-
-export type SynonymousWeighting = (typeof SYNONYMOUS_WEIGHTINGS)[number];
-
-/**
  * This block's init-params contract — what a creator or a project template supplies to seed a
  * new instance: the columns a titration is read from (and an optional subset of the dataset), the
  * fit's tuning, and the user's own label.
@@ -111,8 +102,6 @@ export type BlockParams = {
   replicateR2Floor?: number;
   /** Absent reads as 0.5. */
   replicateCensoredMajority?: number;
-  /** Absent reads as `none`. */
-  synonymousWeighting?: SynonymousWeighting;
   customBlockLabel?: string;
 };
 
@@ -192,8 +181,6 @@ const isPositiveNumber: Guard<number> = (v): v is number => isFiniteNumber(v) &&
 
 /** A share from one half to the whole: below one half no side can be the majority. */
 const isMajority: Guard<number> = (v): v is number => isFiniteNumber(v) && v >= 0.5 && v <= 1;
-const isSynonymousWeighting: Guard<SynonymousWeighting> = (v): v is SynonymousWeighting =>
-  isString(v) && (SYNONYMOUS_WEIGHTINGS as readonly string[]).includes(v);
 
 /**
  * The runtime half of the contract. The `satisfies` clause is what stops it drifting: every
@@ -237,10 +224,6 @@ const CONTRACT = {
   replicateFitErrorCutoff: check(isPositiveNumber, "a number above 0"),
   replicateR2Floor: check(isFraction, "a number between 0 and 1"),
   replicateCensoredMajority: check(isMajority, "a number between 0.5 and 1"),
-  synonymousWeighting: check(
-    isSynonymousWeighting,
-    `one of ${SYNONYMOUS_WEIGHTINGS.map((w) => `"${w}"`).join(" or ")}`,
-  ),
   customBlockLabel: check(isString, "a string"),
 } satisfies { [K in keyof Required<BlockParams>]: Check<NonNullable<BlockParams[K]>> };
 

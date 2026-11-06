@@ -867,13 +867,11 @@ def run(
         outputs["run_warnings"] = list(dict.fromkeys(notices))
     # With replicates the synonymous combination already ran inside each replicate.
     if synonymous is not None and replicates is None:
-        reads_per_copy = _reads_per_copy(reads) if synonymous.weighting == "reads" else None
         outputs.update(
             _combine_synonymous(
                 outputs["per_clonotype"],
                 synonymous,
                 conc_bounds,
-                reads_per_copy,
                 wall_classes=params.equation == "log_fluorescence",
             )
         )
@@ -1050,17 +1048,10 @@ def _log_filters(replicates: ReplicateInputs, collected: Collected) -> None:
     log(f"Replicate filters: {', '.join(named)}; {dropped} replicate fits left out of the means")
 
 
-def _reads_per_copy(reads: pl.DataFrame) -> dict[str, float]:
-    """Each nt variant's total reads over the samples of the titration, after the antigen filter."""
-    totals = reads.group_by(pl.col(COL_CLONOTYPE).cast(pl.Utf8)).agg(pl.col(COL_READS).fill_null(0).sum())
-    return dict(zip(totals[COL_CLONOTYPE].to_list(), totals[COL_READS].cast(pl.Float64).to_list()))
-
-
 def _combine_synonymous(
     per_clonotype: pl.DataFrame,
     synonymous: SynonymousInputs,
     conc_bounds: tuple[float | None, float | None],
-    reads_per_copy: dict[str, float] | None,
     *,
     wall_classes: bool,
 ) -> dict:
@@ -1071,11 +1062,9 @@ def _combine_synonymous(
         synonymous,
         log10_lo=math.log10(lo) if lo is not None else None,
         log10_hi=math.log10(hi) if hi is not None else None,
-        reads=reads_per_copy,
         wall_classes=wall_classes,
     )
-    weighting = "each nt variant weighted by its total reads" if reads_per_copy is not None else "unweighted"
-    log(f"Synonymous combination: mean of log10 Kd,app, {weighting}")
+    log("Synonymous combination: plain mean of log10 Kd,app")
     log(
         f"Synonymous variants: {summary['ntVariants']} nucleotide variants -> {summary['aaVariants']} "
         f"amino-acid variants; left out: {summary['unmappedNtVariants']} with no amino-acid variant, "
@@ -1133,12 +1122,10 @@ def _combine_replicate_synonymous(
     """Starr's order: synonymous copies combine inside each replicate, then the replicates combine.
 
     The class, the stop rule and both parent deltas are decided once, on the combined values. The
-    per-replicate pass therefore reads the linker, the weighting and the productive flag only. The
+    per-replicate pass therefore reads the linker and the productive flag only. The
     per-replicate output is the amino-acid one: the main table's rows are amino-acid variants.
     """
-    copies_only = SynonymousInputs(
-        nt_to_aa=synonymous.nt_to_aa, weighting=synonymous.weighting, aa_productive=synonymous.aa_productive
-    )
+    copies_only = SynonymousInputs(nt_to_aa=synonymous.nt_to_aa, aa_productive=synonymous.aa_productive)
     filtered_by_replicate: dict[str, set[str]] = {}
     for key, values in collected.items():
         for value, _row in values:
@@ -1148,11 +1135,8 @@ def _combine_replicate_synonymous(
     aa_frames: list[tuple[str, pl.DataFrame]] = []
     for label, per_clonotype in frames:
         masked = _mask_filtered(per_clonotype, filtered_by_replicate.get(label, set()))
-        reads_per_copy = None
-        if synonymous.weighting == "reads":
-            reads_per_copy = _reads_per_copy(reads.filter(pl.col(COL_REPLICATE) == label))
         per_variant, _nt, _summary = combine_synonymous(
-            masked, copies_only, log10_lo=log10_lo, log10_hi=log10_hi, reads=reads_per_copy, wall_classes=wall_classes
+            masked, copies_only, log10_lo=log10_lo, log10_hi=log10_hi, wall_classes=wall_classes
         )
         aa_frames.append((label, per_variant))
 
@@ -1176,7 +1160,6 @@ def _combine_replicate_synonymous(
         "unmappedNtVariants": unmapped,
         "ambiguousNtVariants": ambiguous,
         "parentMode": synonymous.aa_parent_links is not None,
-        "weighting": synonymous.weighting,
         "replicates": len(frames),
         "errorModel": replicates.error_model,
     }
