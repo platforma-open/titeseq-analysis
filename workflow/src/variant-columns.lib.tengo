@@ -249,7 +249,7 @@ variantColumns := func(blockId, kdAnnotations, opts) {
 	}
 	if opts.parentMode {
 		cols = cols + deltaColumns(blockId, "aa_",
-			"log10 Kd,app of this amino-acid variant minus that of its parent. Negative binds tighter than the parent. The parent's own row is 0.")
+			"log10 Kd,app of this amino-acid variant minus that of its parent. A variant censored at the edge of the titration reads from that edge, so its delta is a bound and its error is empty. Negative binds tighter than the parent. The parent's own row is 0.")
 	}
 	return cols
 }
