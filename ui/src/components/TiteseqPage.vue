@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { defaultSubtitle } from "@platforma-open/platforma-open.titeseq-analysis.model";
 import { PlAlert, PlBlockPage } from "@platforma-sdk/ui-vue";
 import { computed } from "vue";
 import { useApp } from "../app";
@@ -24,7 +25,7 @@ const warnings = computed(() => app.model.outputs.validationWarnings ?? []);
 <template>
   <PlBlockPage
     v-model:subtitle="subtitle"
-    :subtitle-placeholder="app.model.data.defaultBlockLabel"
+    :subtitle-placeholder="defaultSubtitle(app.model.data)"
     :title="title"
     :no-body-gutters="mode === 'graph'"
   >

@@ -96,8 +96,12 @@ type ReplicateSettings = {
 };
 
 type BlockLabels = {
-  defaultBlockLabel: string;
   customBlockLabel: string;
+  /**
+   * Label of the picked abundance (or of its subset) as the result pool shows it. Written when the
+   * user picks the abundance; feeds the subtitle only, never the workflow.
+   */
+  subtitleLabel?: string;
 };
 
 /** What every equation's args carry: the inputs except gate fluorescence, replicates, labels and
@@ -107,7 +111,8 @@ type ArgsInputs = Omit<FitInputs, "binFluorescenceColumnRef" | "replicateColumnR
  * Appended last to every equation's args. Every replicate setting is present only beside a
  * replicate column, so a block that set none projects the args it always projected.
  */
-type ArgsLabels = BlockLabels & {
+type ArgsLabels = {
+  traceLabel: string;
   inputFilter?: string;
   replicateColumnRef?: PlRef;
 } & Partial<ReplicateSettings>;
@@ -172,8 +177,11 @@ export type BlockDataV1 = Omit<BlockDataV2, "equation" | "plateauFloor">;
 /** v2: the equation choice, before the log-fluorescence R² gate. Never released. */
 export type BlockDataV2 = Omit<BlockDataV3, "r2GateEnabled" | "r2GateMin">;
 
+/** v6: the label the UI derived from the result pool, before the subtitle had its own field. */
+export type BlockDataV6 = Omit<BlockData, "subtitleLabel"> & { defaultBlockLabel: string };
+
 /** v4 and v5: a checkbox turned the R² and SE limits on and off. */
-export type BlockDataV5 = BlockData & { r2GateEnabled: boolean };
+export type BlockDataV5 = BlockDataV6 & { r2GateEnabled: boolean };
 
 /** v3: the R² gate, before sample replicates. Never released. */
 export type BlockDataV3 = Omit<
@@ -316,7 +324,6 @@ export const initBlockData = (params?: BlockParams): BlockData => ({
   hookEffectThresholdNoBin:
     params?.hookEffectThresholdNoBin ?? HILL_GATE_INDEX_DEFAULTS.hookEffectThresholdNoBin,
   hookEffectMinReads: params?.hookEffectMinReads ?? HILL_GATE_INDEX_DEFAULTS.hookEffectMinReads,
-  defaultBlockLabel: "Tite-Seq Analysis",
   customBlockLabel: params?.customBlockLabel ?? "",
   tableState: createPlDataTableStateV2(),
   graphStateTitrationCurves: {
@@ -408,11 +415,30 @@ export const migrateV4ToV5 = (v4: BlockDataV5): BlockDataV5 => ({
  * clears both limits, and one with it on keeps them, so the args do not move and it does not
  * re-run.
  */
-export const migrateV5ToV6 = ({ r2GateEnabled, ...v5 }: BlockDataV5): BlockData => ({
+export const migrateV5ToV6 = ({ r2GateEnabled, ...v5 }: BlockDataV5): BlockDataV6 => ({
   ...v5,
   r2GateMin: r2GateEnabled ? v5.r2GateMin : undefined,
   kdSeGateMax: r2GateEnabled ? v5.kdSeGateMax : undefined,
 });
+
+/**
+ * v6 -> v7. The old label joined the target antigen with the abundance label from the result
+ * pool. The antigen part is recomputed from data; the abundance part returns on the next pick.
+ */
+export const migrateV6ToV7 = ({ defaultBlockLabel: _, ...v6 }: BlockDataV6): BlockData => ({
+  ...v6,
+  subtitleLabel: "",
+});
+
+/** Settings part of the block label, shared by the trace label and the subtitle. */
+export function labelFromParams(data: BlockData): string {
+  return data.targetAntigen ?? "";
+}
+
+/** Subtitle shown when the user has not set a custom block label. */
+export function defaultSubtitle(data: BlockData): string {
+  return [labelFromParams(data), data.subtitleLabel].filter(Boolean).join(" - ");
+}
 
 export const dataModel = new DataModelBuilder({ kind })
   .from<BlockDataV1>("v1")
@@ -420,7 +446,8 @@ export const dataModel = new DataModelBuilder({ kind })
   .migrate<BlockDataV3>("v3", migrateV2ToV3)
   .migrate<BlockDataV5>("v4", migrateV3ToV4)
   .migrate<BlockDataV5>("v5", migrateV4ToV5)
-  .migrate<BlockData>("v6", migrateV5ToV6)
+  .migrate<BlockDataV6>("v6", migrateV5ToV6)
+  .migrate<BlockData>("v7", migrateV6ToV7)
   .init(({ params }) => initBlockData(params));
 
 type Ctx = RenderCtx<BlockArgs, BlockData>;
@@ -551,10 +578,11 @@ export const deriveArgs = (data: BlockData): BlockArgs => {
   }
 
   const labels: ArgsLabels = {
-    // Strings have UI defaults but old stored data may lack them; coerce to
-    // empty/safe values rather than throw — they don't break the workflow.
-    defaultBlockLabel: data.defaultBlockLabel ?? "Tite-Seq Analysis",
-    customBlockLabel: data.customBlockLabel ?? "",
+    traceLabel:
+      data.customBlockLabel ||
+      (labelFromParams(data)
+        ? `Tite-Seq Analysis (${labelFromParams(data)})`
+        : "Tite-Seq Analysis"),
     // The subset's canonical column id, which the workflow stamps as the outputs'
     // `pl7.app/inputSubset`. Absent without a filter, so unfiltered args are unchanged.
     ...(data.filterRef !== undefined && {
@@ -1047,7 +1075,7 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
 
   .title(() => "Tite-Seq Analysis")
 
-  .subtitle((ctx) => ctx.data.customBlockLabel || ctx.data.defaultBlockLabel || "")
+  .subtitle((ctx) => ctx.data.customBlockLabel || defaultSubtitle(ctx.data))
 
   .sections(() => sectionsFor())
 
