@@ -54,6 +54,8 @@ export { deriveTemplateParams };
 export type { PTableKey } from "@platforma-sdk/model";
 export type { InputKind, SynonymousSummary } from "./synonymous";
 export { nounOf } from "./synonymous";
+export type { ChartPin } from "./variantPanel";
+export { variantCurvePins } from "./variantPanel";
 import {
   BlockModelV3,
   ColumnsCollection,
@@ -179,6 +181,11 @@ export type BlockData = FitInputs &
     replicateDrilldownKey?: PTableKey;
     /** Grid state of the drill-down table. UI-only. Optional so no migration is needed. */
     replicateDrilldownTableState?: PlDataTableStateV2;
+    /**
+     * The variant panel's curves. One state for every variant: the open variant is a hidden pin,
+     * never saved here. UI-only; optional so no migration is needed.
+     */
+    graphStateVariantCurves?: GraphMakerState;
     graphStateReplicates: GraphMakerState;
     /** Subset column picked with the abundance in PlDatasetSelector (e.g. a Repertoire Labeling label). */
     filterRef?: PlRef;
@@ -355,6 +362,15 @@ export const EXPLORER_CURVES_DEFAULT_STATE: GraphMakerState = {
  * replicates as points and the replicates' mean curve. No error bars: a scatterplot has none.
  */
 export const EXPLORER_SCATTER_DEFAULT_STATE: GraphMakerState = {
+  title: "",
+  template: "dots",
+  currentTab: null,
+  layersSettings: { dots: {} },
+  axesSettings: { axisX: { scale: "log" } },
+};
+
+/** The variant panel's curves: each replicate's points and fitted curve on a log concentration axis. */
+export const VARIANT_CURVES_DEFAULT_STATE: GraphMakerState = {
   title: "",
   template: "dots",
   currentTab: null,

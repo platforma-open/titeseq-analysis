@@ -8,11 +8,13 @@ import {
   PlAgTextAndButtonCell,
   PlPlaceholder,
   PlSlideModal,
+  PlTabs,
   usePlDataTableSettingsV2,
 } from "@platforma-sdk/ui-vue";
 import { computed, ref, watch } from "vue";
 import { useApp } from "../app";
 import TiteseqPage from "../components/TiteseqPage.vue";
+import VariantCurves from "../panel/VariantCurves.vue";
 import { useNoun } from "../composables/useNoun";
 import { readTableLabel } from "../utils/readTableLabel";
 
@@ -45,10 +47,21 @@ const drilldownOpen = computed({
 });
 
 function openDrilldown(key?: PTableKey) {
-  if (key === undefined || app.model.outputs.replicates !== true) return;
+  if (key === undefined) return;
   app.model.data.replicateDrilldownTableState = undefined;
   app.model.data.replicateDrilldownKey = key;
 }
+
+// The variant panel's tabs. Curves exist for every run; the Replicates tab only with replicates.
+const PANEL_TABS = [
+  { value: "curves" as const, label: "Curves" },
+  { value: "replicates" as const, label: "Replicates" },
+];
+const panelTab = ref<(typeof PANEL_TABS)[number]["value"]>("curves");
+const openRowKey = computed(() => {
+  const value = app.model.data.replicateDrilldownKey?.[0];
+  return value === undefined || value === null ? undefined : String(value);
+});
 
 const drilldownTableState = computed({
   get: () => app.model.data.replicateDrilldownTableState ?? createPlDataTableStateV2(),
@@ -95,9 +108,7 @@ watch(
 // the table never gets a button. `cell-renderer-selector` is re-applied whenever it changes.
 // `invokeRowsOnDoubleClick` makes the button fire the row's double-click, so the button and a
 // double-click anywhere on the row take the same path into the drill-down.
-const keyAxisName = computed(() =>
-  app.model.outputs.replicates === true ? app.model.outputs.summaryKeyAxisId?.name : undefined,
-);
+const keyAxisName = computed(() => app.model.outputs.summaryKeyAxisId?.name);
 
 function isVariantColumn(spec: PTableColumnSpec | undefined, axisName: string): boolean {
   if (spec === undefined) return false;
@@ -131,9 +142,14 @@ const cellRendererSelector = computed(() => {
       @row-double-clicked="openDrilldown"
     />
     <PlSlideModal v-model="drilldownOpen" width="80%">
-      <template #title>{{ drilldownVariantLabel ?? "Replicates" }}</template>
+      <template #title>{{ drilldownVariantLabel ?? openRowKey ?? "Variant" }}</template>
+      <PlTabs v-model="panelTab" :options="PANEL_TABS" />
+      <VariantCurves v-if="panelTab === 'curves' && openRowKey" :row-key="openRowKey" />
+      <div v-else-if="app.model.outputs.replicates !== true" class="titeseq-panel-none">
+        This run has no replicates.
+      </div>
       <PlAgDataTableV2
-        v-if="drilldownReady"
+        v-else-if="drilldownReady"
         v-model="drilldownTableState"
         :settings="drilldownSettings"
         show-export-button
@@ -148,3 +164,10 @@ const cellRendererSelector = computed(() => {
     </PlSlideModal>
   </TiteseqPage>
 </template>
+
+<style scoped>
+.titeseq-panel-none {
+  padding: 16px;
+  color: var(--txt-03);
+}
+</style>
