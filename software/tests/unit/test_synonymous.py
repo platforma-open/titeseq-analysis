@@ -760,6 +760,32 @@ class TestSynonymOutlier:
         assert nt["n2"]["kdLog10SynonymDelta"] == pytest.approx(2.0, abs=1e-9)
         assert _note(frame, "A") == "n2: weaker, at least 2.00 decades, above range"
 
+    def test_copies_at_a_wall_outnumbering_the_one_measured_copy_are_each_flagged_against_it(self):
+        # Seen on Adams 2016: one copy measured, several at the upper wall. Each wall copy is tested
+        # against the measured one alone and gets the same least gap; the measured copy has no other
+        # measured copy and is not tested.
+        rows = [("n1", 1e-8, "Good", False, 0.1)]
+        rows += [(f"w{i}", 1e-5, "Above range", True, None) for i in (1, 2, 3)]
+        rows += [("m1", 1e-8, "Good", False, 0.1), ("m2", 10.0**-8.2, "Good", False, 0.1)]
+        links = pl.DataFrame({"ntKey": ["n1", "w1", "w2", "w3", "m1", "m2"], "aaKey": ["A", "A", "A", "A", "M", "M"]})
+        frame, per_nt, summary = combine_synonymous(
+            _per_clonotype(rows), SynonymousInputs(links), log10_lo=LO, log10_hi=HI
+        )
+        nt = {r["ntKey"]: r for r in per_nt.iter_rows(named=True)}
+        # Only M's two copies enter the sigma: deviations +-0.1 * sqrt(2).
+        sigma = 1.4826 * 0.1 * math.sqrt(2)
+        assert summary["synonymOutlier"]["datasetSigma"] == pytest.approx(sigma, abs=1e-12)
+        assert nt["n1"]["kdLog10SynonymDelta"] is None and nt["n1"]["synonymOutlier"] is None
+        for w in ("w1", "w2", "w3"):
+            assert nt[w]["kdLog10SynonymDelta"] == pytest.approx(2.0, abs=1e-9)
+            assert nt[w]["kdLog10SynonymZ"] == pytest.approx(2.0 / (sigma * math.sqrt(2)), abs=1e-9)
+            assert nt[w]["synonymOutlier"] is True
+        assert _note(frame, "A") == "; ".join(f"w{i}: weaker, at least 2.00 decades, above range" for i in (1, 2, 3))
+        # The variant is a mean, not a bound, and with its copies mostly at a wall it is Partial.
+        a = frame.filter(pl.col("aaKey") == "A").row(0, named=True)
+        assert (a["kdOutOfRange"], a["affinityClass"]) == (False, "Partial")
+        assert summary["synonymOutlier"]["flaggedNtVariants"] == 3
+
     @pytest.mark.parametrize("k", [2, 3, 5])
     def test_the_dataset_sigma_recovers_the_spread_of_the_copies(self, k):
         # Each deviation is taken from a mean that includes the copy; unscaled, the MAD would read
