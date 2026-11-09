@@ -1,5 +1,7 @@
 # @platforma-open/platforma-open.titeseq-analysis.model
 
+## 2.5.2
+
 ## 2.5.1
 
 ### Patch Changes

@@ -1,5 +1,12 @@
 # @platforma-open/platforma-open.titeseq-analysis.ui
 
+## 2.5.2
+
+### Patch Changes
+
+- 3540e34: Keep the block subtitle in sync with the chosen input's current label
+  - @platforma-open/platforma-open.titeseq-analysis.model@2.5.2
+
 ## 2.5.1
 
 ### Patch Changes

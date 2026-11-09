@@ -1,6 +1,6 @@
 {
   "name": "@platforma-open/platforma-open.titeseq-analysis.model",
-  "version": "2.5.1",
+  "version": "2.5.2",
   "private": true,
   "description": "Block model",
   "type": "module",
