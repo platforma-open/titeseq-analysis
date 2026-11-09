@@ -115,6 +115,25 @@ class TestLogFluorescenceFit:
         assert fitted.min() >= BINS[0] - 0.5
         assert fitted.max() <= BINS[-1] + 0.5
 
+    @pytest.mark.parametrize("params", [LF, HILL], ids=["log_fluorescence", "hill_gate_index"])
+    def test_a_curve_covers_every_fitted_concentration_not_only_its_own_points(self, params):
+        # SHORT has no reads at the top concentration; its curve is still written there.
+        out = run(_frame(_lf_reads("FULL", 1e-8), _lf_reads("SHORT", 1e-8, concs=CONCS[:-1])), params=params)
+        fitted = out["fitted_mean_bin"].filter(pl.col("clonotypeKey") == "SHORT")
+        assert sorted(fitted["concentrationStr"].to_list()) == sorted(str(c) for c in CONCS)
+        values = fitted.sort("concentrationStr").join(
+            pl.DataFrame({"concentrationStr": [str(c) for c in CONCS], "c": CONCS}), on="concentrationStr"
+        )
+        rising = values.sort("c")["fittedMeanBin"].to_numpy()
+        assert (rising[1:] >= rising[:-1] - 1e-9).all()
+
+    def test_a_failed_fit_draws_no_curve(self):
+        # An R² gate no fit can pass: the in-range fit rates Failed and leaves no fitted values.
+        gated = FitParams(equation="log_fluorescence", r2_gate_min=1.0)
+        out = run(_frame(_lf_reads("G1", 1e-8), _lf_reads("G2", 1e-8)), params=gated)
+        assert _row(out, "G1")["affinityClass"] == "Failed"
+        assert out["fitted_mean_bin"].height == 0
+
     def test_a_tighter_binder_reports_a_smaller_kd(self):
         out = run(_frame(_lf_reads("TIGHT", 1e-9), _lf_reads("LOOSE", 1e-7)), params=LF)
         assert _row(out, "TIGHT")["kd"] < _row(out, "LOOSE")["kd"]

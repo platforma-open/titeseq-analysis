@@ -46,6 +46,12 @@ def _hill(x: np.ndarray, log_kd: float, n: float, amplitude: float, baseline: fl
     return baseline + top_minus_base * xn / (kd**n + xn)
 
 
+def predict(x: np.ndarray, kd: float, n: float, top: float, baseline: float) -> np.ndarray:
+    """The fitted curve at arbitrary concentrations: baseline + (top - baseline) x^n / (K_D^n + x^n)."""
+    xn = np.power(np.asarray(x, dtype=float), n)
+    return baseline + (top - baseline) * xn / (kd**n + xn)
+
+
 def weighted_r2(y: np.ndarray, y_hat: np.ndarray, w: np.ndarray) -> float:
     """R11: R²_w = 1 − Σ(w·(y−ŷ)²) / Σ(w·(y−ȳ_w)²), ȳ_w = Σ(w·y)/Σ(w).
 

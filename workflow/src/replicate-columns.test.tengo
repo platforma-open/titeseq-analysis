@@ -76,10 +76,25 @@ Test_the_per_replicate_columns_carry_neg_log10 := func() {
 	test.isEqual("rep_kdNegLog10", with.kdNegLog10.id, "the -log10 column's id")
 	test.isEqual("pl7.app/vdj/kdNegLog10", with.kdNegLog10.spec.name, "the -log10 column's name")
 	test.isEqual("Double", with.kdNegLog10.spec.valueType, "the -log10 column is a Double")
+	test.isEqual("^$", with.kdNegLog10.filterOutRegex, "an empty value is left out, not stored as NA")
 	test.isEqual("hidden", with.kdNegLog10.spec.annotations["pl7.app/table/visibility"],
 		"it stays out of pickers like every other per-replicate column")
 	test.isEqual("201", with.kdNegLog10.spec.annotations["pl7.app/table/orderPriority"],
 		"-log10 sits directly after the affinity class, as it does in the main table")
 	test.isEqual("202", with.affinityClass.spec.annotations["pl7.app/table/orderPriority"],
 		"the affinity class leads the panel")
+}
+
+Test_the_per_replicate_copy_columns_match_the_amino_acid_headers := func() {
+	cols := byHeader(replicateColumns.perReplicateCopyColumns("blk", "rep_"))
+	test.isEqual(3, len(cols), "one column per extra per_replicate.tsv header")
+	test.isEqual("pl7.app/vdj/kdLog10SynonymSd", cols.kdLog10SynonymSd.spec.name, "the spread keeps the combined name")
+	test.isEqual("pl7.app/vdj/kdNtVariants", cols.ntVariants.spec.name, "the copy count keeps the combined name")
+	test.isEqual("all", cols.ntVariants.spec.domain["pl7.app/vdj/kdNtVariantState"], "all copies")
+	test.isEqual("measured", cols.ntMeasured.spec.domain["pl7.app/vdj/kdNtVariantState"], "measured copies")
+	for h in ["kdLog10SynonymSd", "ntVariants", "ntMeasured"] {
+		test.isEqual("rep_" + h, cols[h].id, "id of " + h)
+		test.isEqual("hidden", cols[h].spec.annotations["pl7.app/table/visibility"], h + " stays out of pickers")
+		test.isEqual("blk", cols[h].spec.domain["pl7.app/block"], "the block domain for " + h)
+	}
 }

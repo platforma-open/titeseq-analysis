@@ -97,12 +97,14 @@ parentAxisOf := func(linker) {
  *   ntClass      aaClass and the nucleotide mutation count: the nucleotide variant class
  *   ntParentMode the nucleotide mutation count and parent link: the nucleotide parent delta
  *   aaProductive the amino-acid productive flag: the stop class, and no Kd,app for a stop variant
+ *   aaLabel      the amino-acid variants' label: the graphs name each synonymous group by it
  *
- * @param candidates: {aaToNt, aaMutationCounts, parentLinks, aaProductive, ntMutationCounts}, each an
- *   array of bundle columns ({spec, data}) or undefined
+ * @param candidates: {aaToNt, aaMutationCounts, parentLinks, aaProductive, ntMutationCounts,
+ *   aaLabels}, each an array of bundle columns ({spec, data}) or undefined
  * @param variantAxis: the abundance's variant axis spec
  * @return {synonymous, linker, aaAxis, parentMode, aaMutationCount, aaParentLink, parentAxis,
- *   aaClass, ntClass, aaProductive, ntMutationCount, ntParentMode, ntParentLink, ntParentAxis}
+ *   aaClass, ntClass, aaProductive, aaLabel, ntMutationCount, ntParentMode, ntParentLink,
+ *   ntParentAxis}
  */
 resolve := func(candidates, variantAxis) {
 	res := {
@@ -130,6 +132,7 @@ resolve := func(candidates, variantAxis) {
 	}
 
 	res.aaProductive = single(candidates.aaProductive, isOnlyOn(res.aaAxis))
+	res.aaLabel = single(candidates.aaLabels, isOnlyOn(res.aaAxis))
 	res.ntMutationCount = single(candidates.ntMutationCounts, isOnlyOn(variantAxis))
 	res.aaClass = !is_undefined(res.aaMutationCount)
 	res.ntClass = res.aaClass && !is_undefined(res.ntMutationCount)

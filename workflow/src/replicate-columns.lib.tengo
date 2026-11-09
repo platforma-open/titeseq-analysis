@@ -215,9 +215,12 @@ perReplicateColumns := func(blockId, idPrefix, kdAnnotations, classValues) {
 		},
 		// The panel reports Kd,app the way the main table does, which carries -log10 under every
 		// equation.
+		// An empty value is left out rather than stored as NA: the graphs count NA as 0. The import
+		// takes it on its own, since the filter skips the whole row of its import.
 		{
 			column: "kdNegLog10",
 			id: idPrefix + "kdNegLog10",
+			filterOutRegex: "^$",
 			spec: hidden("pl7.app/vdj/kdNegLog10", "Double", "-log10 Kd,app (per replicate)",
 				"-log10 of the Kd,app this replicate contributed to the mean. Larger is tighter binding. A replicate at an edge of the titration reports that edge.",
 				{ "pl7.app/format": ".2f", "pl7.app/table/orderPriority": "201" })
@@ -226,11 +229,67 @@ perReplicateColumns := func(blockId, idPrefix, kdAnnotations, classValues) {
 	return columns
 }
 
+/**
+ * Synonymous mode: the copies behind one replicate's amino-acid value. Headers match the extra
+ * columns of the amino-acid per_replicate.tsv. Names are the combined columns', told apart by the
+ * replicate axis; hidden like every per-replicate column.
+ *
+ * @param blockId: the block id stamped into every domain
+ * @param idPrefix: prepended to each column's xsv id
+ * @return xsv column descriptors
+ */
+perReplicateCopyColumns := func(blockId, idPrefix) {
+	domain := { "pl7.app/block": blockId }
+	count := func(header, state, label, description, priority) {
+		countDomain := maps.merge(domain, { "pl7.app/vdj/kdNtVariantState": state })
+		return {
+			column: header,
+			id: idPrefix + header,
+			spec: {
+				name: "pl7.app/vdj/kdNtVariants",
+				valueType: "Int",
+				domain: countDomain,
+				annotations: {
+					"pl7.app/label": label,
+					"pl7.app/description": description,
+					"pl7.app/isScore": "false",
+					"pl7.app/table/visibility": "hidden",
+					"pl7.app/table/orderPriority": priority
+				}
+			}
+		}
+	}
+	return [
+		{
+			column: "kdLog10SynonymSd",
+			id: idPrefix + "kdLog10SynonymSd",
+			spec: {
+				name: "pl7.app/vdj/kdLog10SynonymSd",
+				valueType: "Double",
+				domain: domain,
+				annotations: {
+					"pl7.app/label": "Spread across synonymous copies (log10, per replicate)",
+					"pl7.app/description": "SD of log10 Kd,app across the synonymous nucleotide variants measured inside the titrated range in this replicate alone. Bound and failed variants are left out. Empty with fewer than two.",
+					"pl7.app/isScore": "false",
+					"pl7.app/format": ".2f",
+					"pl7.app/table/visibility": "hidden",
+					"pl7.app/table/orderPriority": "199"
+				}
+			}
+		},
+		count("ntVariants", "all", "NT variants (per replicate)",
+			"Synonymous nucleotide variants of this amino-acid variant fitted in this replicate.", "198"),
+		count("ntMeasured", "measured", "NT variants measured (per replicate)",
+			"Nucleotide variants whose Kd,app lies inside the titrated range in this replicate.", "198.5")
+	]
+}
+
 export ll.toStrict({
 	COUNT_NAME: COUNT_NAME,
 	axisSpec: axisSpec,
 	countColumns: countColumns,
 	sdColumn: sdColumn,
 	seColumn: seColumn,
-	perReplicateColumns: perReplicateColumns
+	perReplicateColumns: perReplicateColumns,
+	perReplicateCopyColumns: perReplicateCopyColumns
 })

@@ -4,7 +4,6 @@ import { GraphMaker } from "@milaboratories/graph-maker";
 import type { PColumnIdAndSpec } from "@platforma-sdk/model";
 import { computed } from "vue";
 import { useApp } from "../app";
-import TiteseqPage from "../components/TiteseqPage.vue";
 
 const app = useApp();
 
@@ -75,16 +74,14 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
 </script>
 
 <template>
-  <TiteseqPage title="Affinity vs Fit Quality" mode="graph">
-    <GraphMaker
-      v-model="app.model.data.graphStateAffinityVsFit"
-      chart-type="scatterplot"
-      :data-state-key="app.model.outputs.summaryPfHandle"
-      :p-frame="app.model.outputs.summaryPfHandle"
-      :default-options="defaultOptions"
-      :status-text="{
-        noPframe: { title: 'Open Inputs (top right) to configure the block and run it.' },
-      }"
-    />
-  </TiteseqPage>
+  <GraphMaker
+    v-model="app.model.data.graphStateAffinityVsFit"
+    chart-type="scatterplot"
+    :data-state-key="app.model.outputs.summaryPfHandle"
+    :p-frame="app.model.outputs.summaryPfHandle"
+    :default-options="defaultOptions"
+    :status-text="{
+      noPframe: { title: 'Open Inputs (top right) to configure the block and run it.' },
+    }"
+  />
 </template>

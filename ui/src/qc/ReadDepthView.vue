@@ -5,7 +5,6 @@ import { GraphMaker } from "@milaboratories/graph-maker";
 import { READ_DEPTH_DEFAULT_STATE } from "@platforma-open/platforma-open.titeseq-analysis.model";
 import { computed } from "vue";
 import { useApp } from "../app";
-import TiteseqPage from "../components/TiteseqPage.vue";
 
 const app = useApp();
 
@@ -30,16 +29,14 @@ const defaultOptions = computed((): PredefinedGraphOption<"discrete">[] | undefi
 </script>
 
 <template>
-  <TiteseqPage title="Read Depth" mode="graph">
-    <GraphMaker
-      v-model="graphState"
-      chart-type="discrete"
-      :data-state-key="app.model.outputs.reportedPfHandle"
-      :p-frame="app.model.outputs.reportedPfHandle"
-      :default-options="defaultOptions"
-      :status-text="{
-        noPframe: { title: 'Open Inputs (top right) to configure the block and run it.' },
-      }"
-    />
-  </TiteseqPage>
+  <GraphMaker
+    v-model="graphState"
+    chart-type="discrete"
+    :data-state-key="app.model.outputs.reportedPfHandle"
+    :p-frame="app.model.outputs.reportedPfHandle"
+    :default-options="defaultOptions"
+    :status-text="{
+      noPframe: { title: 'Open Inputs (top right) to configure the block and run it.' },
+    }"
+  />
 </template>

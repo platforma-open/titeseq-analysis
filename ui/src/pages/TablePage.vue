@@ -1,12 +1,7 @@
 <script setup lang="ts">
 import type { PTableKey } from "@platforma-open/platforma-open.titeseq-analysis.model";
-import {
-  createPlDataTableStateV2,
-  getRawPlatformaInstance,
-  isLabelColumn,
-  pTableValue,
-} from "@platforma-sdk/model";
-import type { PTableColumnSpec, PTableHandle } from "@platforma-sdk/model";
+import { createPlDataTableStateV2, isLabelColumn } from "@platforma-sdk/model";
+import type { PTableColumnSpec } from "@platforma-sdk/model";
 import {
   PL_PLACEHOLDER_TEXTS,
   PlAgDataTableV2,
@@ -19,6 +14,7 @@ import { computed, ref, watch } from "vue";
 import { useApp } from "../app";
 import TiteseqPage from "../components/TiteseqPage.vue";
 import { useNoun } from "../composables/useNoun";
+import { readTableLabel } from "../utils/readTableLabel";
 
 const app = useApp();
 const { noun, Noun } = useNoun();
@@ -74,20 +70,7 @@ const drilldownReady = computed(() => {
   return out !== undefined && (!out.ok || out.value !== undefined);
 });
 
-// The panel title names the variant. The model cannot resolve the label, so the UI reads it from
-// the drill-down table's hidden label column: the table holds one variant, so row 0 names it.
-async function readVariantLabel(handle: PTableHandle): Promise<string | undefined> {
-  const driver = getRawPlatformaInstance().pFrameDriver;
-  const specs = await driver.getSpec(handle);
-  const iLabel = specs.findIndex((s) => s.type === "column" && isLabelColumn(s.spec));
-  if (iLabel < 0) return undefined;
-  const { rows } = await driver.getShape(handle);
-  if (rows === 0) return undefined;
-  const [labels] = await driver.getData(handle, [iLabel], { offset: 0, length: 1 });
-  const label = pTableValue(labels, 0);
-  return typeof label === "string" ? label : undefined;
-}
-
+// The panel title names the variant, read from the drill-down table's hidden label column.
 const drilldownVariantLabel = ref<string>();
 watch(
   () => {
@@ -97,7 +80,7 @@ watch(
   async (handle) => {
     drilldownVariantLabel.value = undefined;
     if (handle === undefined) return;
-    const label = await readVariantLabel(handle);
+    const label = await readTableLabel(handle);
     // A later selection may have replaced the table while the read was in flight.
     const current = app.model.outputs.replicateDrilldownTable;
     if (current?.ok && current.value?.fullTableHandle === handle) {

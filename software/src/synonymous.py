@@ -50,7 +50,7 @@ from __future__ import annotations
 
 import math
 import statistics
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass, replace
 from typing import Literal, Protocol
 
@@ -91,6 +91,13 @@ PER_VARIANT_SCHEMA: dict[str, pl.DataType] = {
     "ntCensoredBelow": pl.Int64,
     "ntCensoredAbove": pl.Int64,
     "ntFailed": pl.Int64,
+}
+# The copies behind one replicate's amino-acid value, carried into the per-replicate rows: the
+# spread of the measured copies inside that replicate, and how many copies there were.
+PER_REPLICATE_COPY_COLUMNS: dict[str, pl.DataType] = {
+    "kdLog10SynonymSd": pl.Float64,
+    "ntVariants": pl.Int64,
+    "ntMeasured": pl.Int64,
 }
 CLASS_SCHEMA: dict[str, pl.DataType] = {COL_CLASS: pl.Utf8}
 DELTA_SCHEMA: dict[str, pl.DataType] = {
@@ -152,6 +159,34 @@ class Combined:
 
 def _keys(frame: pl.DataFrame, *cols: str) -> pl.DataFrame:
     return frame.select([pl.col(c).cast(pl.Utf8) for c in cols]).drop_nulls().unique()
+
+
+COL_LABEL = "label"
+COL_AA_VARIANT = "aaVariant"
+
+
+def nt_aa_variants(
+    nt_to_aa: pl.DataFrame, aa_labels: pl.DataFrame | None, curved: Collection[str] | None = None
+) -> pl.DataFrame:
+    """Each nt variant's amino-acid variant: its key, and its label where the graphs tab by it.
+
+    One row per nt variant that maps to exactly one amino-acid variant, with that variant's key.
+    The label (else the key) is set only on an nt variant in `curved`, and only where its
+    amino-acid variant has at least 2 of them: the synonymous graphs list exactly those, on the
+    nt axis, where the linker cannot reach. `curved` None counts every nt variant.
+    """
+    per_nt = _keys(nt_to_aa, COL_NT, COL_AA).group_by(COL_NT).agg(pl.col(COL_AA)).filter(pl.col(COL_AA).list.len() == 1)
+    frame = per_nt.select(pl.col(COL_NT).alias(COL_CLONOTYPE), pl.col(COL_AA).list.first())
+    has_curve = pl.lit(True) if curved is None else pl.col(COL_CLONOTYPE).is_in(list(curved))
+    frame = frame.with_columns(has_curve.alias("_curved"))
+    frame = frame.with_columns((pl.col("_curved") & (pl.col("_curved").sum().over(COL_AA) >= 2)).alias("_shown"))
+    if aa_labels is not None:
+        labels = _keys(aa_labels, COL_AA, COL_LABEL).unique(subset=[COL_AA], keep="first")
+        frame = frame.join(labels, on=COL_AA, how="left")
+    else:
+        frame = frame.with_columns(pl.lit(None, dtype=pl.Utf8).alias(COL_LABEL))
+    variant = pl.when(pl.col("_shown")).then(pl.coalesce(COL_LABEL, COL_AA)).otherwise(None)
+    return frame.select(COL_CLONOTYPE, COL_AA, variant.alias(COL_AA_VARIANT)).sort(COL_CLONOTYPE)
 
 
 def resolve_nt_to_aa(nt_to_aa: pl.DataFrame, fitted: list[str]) -> tuple[dict[str, str], int, int]:
@@ -347,18 +382,7 @@ def parent_deltas(
         delta, se = parent_delta(value, parent, variant == parent_key)
         deltas.append(delta)
         ses.append(se)
-    parent_values = []
-    for parent_id in sorted(own):
-        value = values.get(own[parent_id])
-        parent_values.append(
-            {
-                "parentId": parent_id,
-                "log10Kd": None if value is None else value.log10_kd,
-                "log10KdSe": None if value is None else value.log10_kd_se,
-            }
-        )
     counts = {
-        "parentValues": parent_values,
         "parents": len(own) + len(unidentifiable),
         "unidentifiableParents": unidentifiable,
         "multiParentVariants": several,
@@ -479,6 +503,5 @@ def annotate_variants(
         nt_columns["kdLog10ParentDelta"] = deltas
         nt_columns["kdLog10ParentDeltaSe"] = delta_ses
         nt_schema.update(DELTA_SCHEMA)
-        counts.pop("parentValues")
         summary.update({"nt" + k[0].upper() + k[1:]: v for k, v in counts.items()})
     return per_variant, pl.DataFrame(nt_columns, schema=nt_schema)

@@ -74,6 +74,11 @@ wf.prepare(func(args) {
 		axes: [{ anchor: "abundance", idx: 1 }],
 		name: "pl7.app/repertoire/mutationCount"
 	}, "ntMutationCounts")
+	// The amino-acid variants' labels: the graphs name each synonymous group by them.
+	bb.addMulti({
+		axes: [{ name: "pl7.app/variantKey", type: "String", domain: { "pl7.app/alphabet": "aminoacid" } }],
+		name: "pl7.app/label"
+	}, "aaLabels")
 
 	return { columns: bb.build() }
 })
@@ -106,7 +111,8 @@ wf.body(func(args) {
 		aaMutationCounts: columns.getColumns("aaMutationCounts"),
 		parentLinks: columns.getColumns("parentLinks"),
 		aaProductive: columns.getColumns("aaProductive"),
-		ntMutationCounts: columns.getColumns("ntMutationCounts")
+		ntMutationCounts: columns.getColumns("ntMutationCounts"),
+		aaLabels: columns.getColumns("aaLabels")
 	}, abundanceSpec.axesSpec[1])
 
 	// The nt grain's own synonymous columns, in per_nt_variant.tsv.
@@ -243,15 +249,21 @@ wf.body(func(args) {
 		arg("--out-mean-bin").arg("mean_bin.tsv").
 		arg("--out-fitted-mean-bin").arg("fitted_mean_bin.tsv").
 		arg("--out-concentration-value").arg("concentration_value.tsv").
+		arg("--out-concentration-order").arg("concentration_order.json").
+		arg("--out-concentration-label").arg("concentration_label.tsv").
+		arg("--out-signal-series").arg("signal_series.tsv").
+		arg("--out-combined-signal").arg("combined_signal.tsv").
 		arg("--out-run-warnings").arg("run_warnings.json").
-		arg("--out-run-stats").arg("run_stats.json").
 		arg("--out-fit-reads").arg("fit_reads.tsv").
 		saveFile("per_clonotype.tsv").
 		saveFile("fit_reads.tsv").
-		saveFileContent("run_stats.json").
 		saveFile("mean_bin.tsv").
 		saveFile("fitted_mean_bin.tsv").
 		saveFile("concentration_value.tsv").
+		saveFile("concentration_label.tsv").
+		saveFile("signal_series.tsv").
+		saveFile("combined_signal.tsv").
+		saveFileContent("concentration_order.json").
 		saveFileContent("run_warnings.json").
 		saveStdoutStream()
 
@@ -312,6 +324,22 @@ wf.body(func(args) {
 			arg("--out-synonymous-summary").arg("synonymous_summary.json").
 			saveFile("per_variant.tsv").
 			saveFileContent("synonymous_summary.json")
+		if hasReplicate {
+			execBuilder.
+				arg("--out-per-replicate-nt").arg("per_replicate_nt.tsv").
+				saveFile("per_replicate_nt.tsv")
+		}
+		execBuilder.
+			arg("--out-nt-aa-variant").arg("nt_aa_variant.tsv").
+			saveFile("nt_aa_variant.tsv")
+		if !is_undefined(syn.aaLabel) {
+			execBuilder.
+				addFile("aa_labels.tsv", keyTable(func(b) {
+					b.add(syn.aaLabel, { header: "label" })
+					b.setAxisHeader(syn.aaAxis, "aaKey")
+				})).
+				arg("--aa-labels").arg("aa_labels.tsv")
+		}
 		if syn.aaClass {
 			execBuilder.
 				addFile("aa_mutations.tsv", keyTable(func(b) {
@@ -762,6 +790,111 @@ wf.body(func(args) {
 		[{ column: "concentrationStr", spec: concAxisSpec }]
 	)
 
+	// Each concentration as a category label that sorts as text in numeric order ("01 · 3.16e-10"):
+	// the category graphs group by it, since they sort a String axis as text.
+	concLabelImported := importSignal(
+		fit.getFile("concentration_label.tsv"),
+		"concentrationLabel",
+		{
+			name: "pl7.app/vdj/concentrationLabel",
+			valueType: "String",
+			domain: { "pl7.app/block": blockId },
+			annotations: {
+				"pl7.app/label": "Concentration",
+				"pl7.app/description": "The concentration, led by its rank so that it sorts in numeric order.",
+				"pl7.app/isScore": "false",
+				"pl7.app/table/visibility": "hidden"
+			}
+		},
+		[{ column: "concentrationStr", spec: concAxisSpec }]
+	)
+
+	// The observed signal and the fitted curve in one value column, told apart by a series axis
+	// (Observed, Fitted): a category graph takes one value column, and draws the two as two lines.
+	signalSeriesImported := importSignal(
+		fit.getFile("signal_series.tsv"),
+		"value",
+		{
+			name: "pl7.app/vdj/titrationSignal",
+			valueType: "Double",
+			domain: { "pl7.app/block": blockId },
+			annotations: {
+				"pl7.app/label": meanBinLabel,
+				"pl7.app/description": "The observed signal and the fitted curve, by series.",
+				"pl7.app/isScore": "false",
+				"pl7.app/table/visibility": "hidden"
+			}
+		},
+		concAxes + [{
+			column: "series",
+			spec: {
+				name: "pl7.app/vdj/signalSeries",
+				type: "String",
+				domain: { "pl7.app/block": blockId },
+				annotations: { "pl7.app/label": "Series" }
+			}
+		}]
+	)
+
+	// A column's filterOutRegex skips the whole row for every column of its import. So each filtered
+	// column is imported on its own and the rest together; returns the merged column map.
+	importSplit := func(file, axes, columns) {
+		plain := []
+		groups := []
+		for c in columns {
+			if is_undefined(c.filterOutRegex) {
+				plain = append(plain, c)
+			} else {
+				groups = append(groups, [c])
+			}
+		}
+		if len(plain) > 0 {
+			groups = [plain] + groups
+		}
+		res := {}
+		for g in groups {
+			res = maps.merge(res, xsv.importFile(file, "tsv", {
+				axes: axes,
+				columns: g,
+				storageFormat: "Parquet",
+				partitionKeyLength: 0
+			}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" }))
+		}
+		return res
+	}
+
+	// Per variant and concentration, over the replicates that drew a curve: the observed mean, its
+	// standard error, and the mean curve. Each column skips its own empty cells, so a missing value
+	// is absent rather than read as 0.
+	combinedColumn := func(column, name, label, description) {
+		return {
+			column: column,
+			filterOutRegex: "^$",
+			spec: {
+				name: name,
+				valueType: "Double",
+				domain: { "pl7.app/block": blockId },
+				annotations: {
+					"pl7.app/label": label,
+					"pl7.app/description": description,
+					"pl7.app/isScore": "false",
+					"pl7.app/table/visibility": "hidden"
+				}
+			}
+		}
+	}
+	combinedSignalImported := importSplit(fit.getFile("combined_signal.tsv"), [
+		{ column: "clonotypeKey", spec: clonotypeAxisSpec },
+		{ column: "concentrationStr", spec: concAxisSpec }
+	], [
+		combinedColumn("combinedMeanBin", "pl7.app/vdj/combinedMeanBin", meanBinLabel + " (mean)",
+			"The observed signal, averaged over the replicates that drew a curve."),
+		combinedColumn("combinedMeanBinSe", "pl7.app/vdj/combinedMeanBinSe", meanBinLabel + " (SE)",
+			"The standard error of that mean: sample SD over the square root of the replicate count."),
+		combinedColumn("combinedFittedMeanBin", "pl7.app/vdj/combinedFittedMeanBin", fittedMeanBinLabel + " (mean)",
+			"The replicates' fitted curves, averaged at each concentration.")
+	])
+
 	// Each replicate's own value, keyed by (variant, replicate). The names are the combined
 	// columns' — the extra axis is what distinguishes them — and they are hidden by default so a
 	// downstream picker offers the combined answer first. In synonymous mode the variant is the
@@ -769,18 +902,62 @@ wf.body(func(args) {
 	replicateImported := undefined
 	if hasReplicate {
 		replicateVariantAxis := { column: "clonotypeKey", spec: clonotypeAxisSpec }
+		replicateColumns := replicateColumnsLib.perReplicateColumns(blockId, "rep_", kdAnnotations, affinityClassValues)
 		if syn.synonymous {
 			replicateVariantAxis = { column: "aaKey", spec: syn.aaAxis }
+			replicateColumns = append(replicateColumns, replicateColumnsLib.perReplicateCopyColumns(blockId, "rep_")...)
 		}
-		replicateImported = xsv.importFile(fit.getFile("per_replicate.tsv"), "tsv", {
-			axes: [
-				replicateVariantAxis,
-				{ column: "replicate", spec: replicateAxisSpec }
-			],
-			columns: replicateColumnsLib.perReplicateColumns(blockId, "rep_", kdAnnotations, affinityClassValues),
-			storageFormat: "Parquet",
-			partitionKeyLength: 0
-		}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
+		replicateImported = importSplit(fit.getFile("per_replicate.tsv"), [
+			replicateVariantAxis,
+			{ column: "replicate", spec: replicateAxisSpec }
+		], replicateColumns)
+	}
+
+	// Synonymous mode: each nt variant's amino-acid variant. The key, on every nt variant that maps
+	// to one: the Explorer page filters an amino-acid variant's copies by it. The label, only on
+	// copies with a fitted curve where at least 2 of them share it: the synonymous graphs tab by it
+	// on the nt axis, where they reach it without the linker. An empty label is left out, not NA.
+	ntAaVariantImported := undefined
+	if syn.synonymous {
+		ntAaVariantImported = importSplit(fit.getFile("nt_aa_variant.tsv"), [{ column: "clonotypeKey", spec: clonotypeAxisSpec }], [{
+				column: "aaKey",
+				spec: {
+					name: "pl7.app/vdj/aaVariantKey",
+					valueType: "String",
+					domain: { "pl7.app/block": blockId },
+					annotations: {
+						"pl7.app/label": "AA Variant Key",
+						"pl7.app/description": "The key of the amino-acid variant this nucleotide variant encodes.",
+						"pl7.app/isScore": "false",
+						"pl7.app/table/visibility": "hidden"
+					}
+				}
+			}, {
+				column: "aaVariant",
+				filterOutRegex: "^$",
+				spec: {
+					name: "pl7.app/vdj/aaVariantId",
+					valueType: "String",
+					domain: { "pl7.app/block": blockId },
+					annotations: {
+						"pl7.app/label": "AA Variant Id",
+						"pl7.app/description": "The amino-acid variant this nucleotide variant encodes, by its label.",
+						"pl7.app/isDiscreteFilter": "true",
+						"pl7.app/isScore": "false",
+						"pl7.app/table/visibility": "hidden"
+					}
+				}
+			}])
+	}
+
+	// Synonymous mode with replicates: every nt copy's own fit in every replicate, the values the
+	// amino-acid per-replicate rows combine.
+	replicateNtImported := undefined
+	if hasReplicate && syn.synonymous {
+		replicateNtImported = importSplit(fit.getFile("per_replicate_nt.tsv"), [
+			{ column: "clonotypeKey", spec: clonotypeAxisSpec },
+			{ column: "replicate", spec: replicateAxisSpec }
+		], replicateColumnsLib.perReplicateColumns(blockId, "repnt_", kdAnnotations, affinityClassValues))
 	}
 
 	// Trace injection. `makeTrace` bundles the upstream abundance provenance
@@ -850,7 +1027,13 @@ wf.body(func(args) {
 	ntVariantSources := is_undefined(ntVariantImported) ? [] : [ntVariantImported]
 	// signalPf feeds this block's Titration Curves graph: meanBin (Y),
 	// fittedMeanBin (curve overlay), concentrationValue (numeric X).
-	signalPf := buildTracedPf([meanBinImported, fittedMeanBinImported, concValueImported], [])
+	// In synonymous mode also each nt variant's amino-acid variant, which the Synonymous Curves
+	// graph tabs by.
+	signalSources := [meanBinImported, fittedMeanBinImported, concValueImported, concLabelImported, signalSeriesImported, combinedSignalImported]
+	if syn.synonymous {
+		signalSources = append(signalSources, ntAaVariantImported)
+	}
+	signalPf := buildTracedPf(signalSources, [])
 	// exportPf is what downstream blocks see. Reuses the same pcolumn resources — no re-import.
 	// An allowlist: the affinity answer, the fit quality behind it, and in synonymous mode each
 	// variant's change against its parent. The per-concentration signal, the replicate counts and
@@ -891,19 +1074,23 @@ wf.body(func(args) {
 		logHandle: fit.getStdoutStream(),
 		// What the run must tell the user, as a JSON list of sentences; [] when nothing.
 		runWarnings: fit.getFileContent("run_warnings.json"),
-		// Run-level numbers for the summary pages, as JSON.
-		runStats: fit.getFileContent("run_stats.json")
+		// The non-zero concentrations, lowest first: the graphs' category order.
+		concentrationOrder: fit.getFileContent("concentration_order.json")
 	}
 	// The per-replicate values stay out of exportPf and out of the main table: their extra axis
 	// would fan every row out by the replicate count.
 	if hasReplicate {
 		outputs.replicatePf = pframes.exportFrame(buildTracedPf([replicateImported], []))
 	}
+	if !is_undefined(replicateNtImported) {
+		outputs.replicateNtPf = pframes.exportFrame(buildTracedPf([replicateNtImported, ntAaVariantImported], []))
+	}
 	if syn.synonymous {
 		outputs.variantSummaryPf = pframes.exportFrame(buildTracedPf(variantSources, []))
 		outputs.synonymousSummary = fit.getFileContent("synonymous_summary.json")
 		if hasNtVariantColumns {
-			outputs.ntVariantPf = pframes.exportFrame(buildTracedPf(ntVariantSources, []))
+			// With each copy's amino-acid key and label: the NT pages filter by them.
+			outputs.ntVariantPf = pframes.exportFrame(buildTracedPf(ntVariantSources + [ntAaVariantImported], []))
 		}
 	}
 

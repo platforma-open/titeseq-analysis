@@ -5,7 +5,6 @@ import type { PColumnIdAndSpec } from "@platforma-sdk/model";
 import { PlAlert } from "@platforma-sdk/ui-vue";
 import { computed } from "vue";
 import { useApp } from "../app";
-import TiteseqPage from "../components/TiteseqPage.vue";
 import { useNoun } from "../composables/useNoun";
 
 const app = useApp();
@@ -79,26 +78,24 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
 </script>
 
 <template>
-  <TiteseqPage title="Titration Curves" mode="graph">
-    <PlAlert v-if="hasResults && !binMode" type="warn">
-      No-bin mode: Kd,app values reflect {{ noun }} frequency shifts, not fluorescence. They are not
-      comparable to bin-derived results — do not mix in the same Lead Selection ranking.
-    </PlAlert>
-    <PlAlert v-if="isEmpty" type="warn">
-      All {{ noun }}s failed to fit. On the fit results page, loosen the limits in Settings or read
-      the fit log in Logs.
-    </PlAlert>
+  <PlAlert v-if="hasResults && !binMode" type="warn">
+    No-bin mode: Kd,app values reflect {{ noun }} frequency shifts, not fluorescence. They are not
+    comparable to bin-derived results — do not mix in the same Lead Selection ranking.
+  </PlAlert>
+  <PlAlert v-if="isEmpty" type="warn">
+    All {{ noun }}s failed to fit. On the fit results page, loosen the limits in Settings or read
+    the fit log in Logs.
+  </PlAlert>
 
-    <GraphMaker
-      v-model="app.model.data.graphStateTitrationCurves"
-      chart-type="scatterplot"
-      :data-state-key="app.model.outputs.titrationCurvesPf"
-      :p-frame="app.model.outputs.titrationCurvesPf"
-      :default-options="defaultOptions"
-      default-palette="bright"
-      :status-text="{
-        noPframe: { title: 'Open Inputs (top right) to configure the block and run it.' },
-      }"
-    />
-  </TiteseqPage>
+  <GraphMaker
+    v-model="app.model.data.graphStateTitrationCurves"
+    chart-type="scatterplot"
+    :data-state-key="app.model.outputs.titrationCurvesPf"
+    :p-frame="app.model.outputs.titrationCurvesPf"
+    :default-options="defaultOptions"
+    default-palette="bright"
+    :status-text="{
+      noPframe: { title: 'Open Inputs (top right) to configure the block and run it.' },
+    }"
+  />
 </template>

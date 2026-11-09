@@ -9,12 +9,31 @@ from pathlib import Path
 
 import polars as pl
 
-from constants import COL_BIN, DEFAULT_CENSORED_MAJORITY, DEFAULT_PARAMS, REPLICATE_ERROR_MODELS, FitParams
+from constants import (
+    COL_BIN,
+    COL_CLONOTYPE,
+    COL_CONC_STR,
+    COL_CONC_VAL,
+    DEFAULT_CENSORED_MAJORITY,
+    DEFAULT_PARAMS,
+    REPLICATE_ERROR_MODELS,
+    FitParams,
+)
 from io_layer import apply_bin_ranks, read_reads_table
 from log import log
+from output_build import build_combined_signal_frame, build_concentration_label_frame, build_signal_series_frame
 from pipeline import run
 from replicate_combine import Filters, ReplicateInputs
-from synonymous import COL_AA, COL_MUTATIONS, COL_NT, COL_PARENT, COL_PRODUCTIVE, SynonymousInputs
+from synonymous import (
+    COL_AA,
+    COL_LABEL,
+    COL_MUTATIONS,
+    COL_NT,
+    COL_PARENT,
+    COL_PRODUCTIVE,
+    SynonymousInputs,
+    nt_aa_variants,
+)
 
 
 def _write_frame(frame: pl.DataFrame, path: str) -> None:
@@ -25,7 +44,12 @@ def _write_frame(frame: pl.DataFrame, path: str) -> None:
         frame.write_csv(p, separator="\t")
 
 
-_REPLICATE_ONLY = ("out_per_replicate", "replicate_fit_error_cutoff", "replicate_r2_floor")
+_REPLICATE_ONLY = (
+    "out_per_replicate",
+    "out_per_replicate_nt",
+    "replicate_fit_error_cutoff",
+    "replicate_r2_floor",
+)
 
 
 def _replicate_inputs(args: argparse.Namespace, parser: argparse.ArgumentParser) -> ReplicateInputs | None:
@@ -65,6 +89,9 @@ def _read_keys(path: str | None, columns: dict[str, pl.DataType]) -> pl.DataFram
 _SYNONYMOUS_ONLY = (
     "out_per_variant",
     "out_per_nt_variant",
+    "out_per_replicate_nt",
+    "out_nt_aa_variant",
+    "aa_labels",
     "aa_mutations",
     "aa_parent_links",
     "aa_productive",
@@ -103,6 +130,32 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out-mean-bin", required=True)
     parser.add_argument("--out-fitted-mean-bin", required=True)
     parser.add_argument("--out-concentration-value", required=True)
+    parser.add_argument(
+        "--out-signal-series",
+        default=None,
+        help="TSV of the observed mean bin and the fitted curve in one value column, keyed by series",
+    )
+    parser.add_argument(
+        "--out-combined-signal",
+        default=None,
+        help="TSV per variant and concentration: observed mean over replicates, its SE, and the mean curve",
+    )
+    parser.add_argument(
+        "--out-concentration-label",
+        default=None,
+        help="TSV [concentrationStr, concentrationLabel]: labels that sort as text in numeric order",
+    )
+    parser.add_argument(
+        "--out-concentration-order",
+        default=None,
+        help="JSON list of the non-zero concentration strings, lowest concentration first",
+    )
+    parser.add_argument("--aa-labels", default=None, help="TSV [aaKey, label]: the amino-acid variants' labels")
+    parser.add_argument(
+        "--out-nt-aa-variant",
+        default=None,
+        help="synonymous mode: TSV [clonotypeKey, aaVariant], each nt variant's amino-acid variant",
+    )
     parser.add_argument("--params", default=None, help="path to params JSON (optional)")
     parser.add_argument("--target-antigen", default=None)
     parser.add_argument("--antigen-column-ref", default=None)
@@ -142,13 +195,17 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--out-per-replicate", default=None, help="one row per (variant, replicate)")
     parser.add_argument(
+        "--out-per-replicate-nt",
+        default=None,
+        help="synonymous mode with replicates: one row per (nt variant, replicate)",
+    )
+    parser.add_argument(
         "--out-run-warnings", default=None, help="JSON list of what the run must tell the user; [] when nothing"
     )
     parser.add_argument(
         "--bin-ranks", default=None, help="JSON {bin value: rank}: the user's bin order, lowest fluorescence first"
     )
-    parser.add_argument("--out-run-stats", default=None, help="JSON run statistics for the summary pages")
-    parser.add_argument("--out-fit-reads", default=None, help="TSV [clonotypeKey, fitReads]; needs --out-run-stats")
+    parser.add_argument("--out-fit-reads", default=None, help="TSV [clonotypeKey, fitReads]: the reads each fit used")
     parser.add_argument("--nt-to-aa", default=None, help="TSV [ntKey, aaKey]: the nt -> aa linker")
     parser.add_argument("--aa-mutations", default=None, help="TSV [aaKey, mutationCount]")
     parser.add_argument("--aa-parent-links", default=None, help="TSV [aaKey, parentId]: the aa parent linker")
@@ -188,15 +245,33 @@ def main(argv: list[str] | None = None) -> int:
         sort_fraction_col=args.sort_fraction_column,
         replicates=replicates,
         synonymous=synonymous,
-        stats=args.out_run_stats is not None,
+        read_depth=args.out_fit_reads is not None,
     )
     log("Writing output frames")
     _write_frame(outputs["per_clonotype"], args.out_per_clonotype)
     _write_frame(outputs["mean_bin"], args.out_mean_bin)
     _write_frame(outputs["fitted_mean_bin"], args.out_fitted_mean_bin)
     _write_frame(outputs["concentration_value"], args.out_concentration_value)
+    if args.out_signal_series is not None:
+        series = build_signal_series_frame(outputs["mean_bin"], outputs["fitted_mean_bin"])
+        _write_frame(series, args.out_signal_series)
+    if args.out_combined_signal is not None:
+        combined = build_combined_signal_frame(outputs["mean_bin"], outputs["fitted_mean_bin"])
+        _write_frame(combined, args.out_combined_signal)
+    if args.out_concentration_label is not None:
+        _write_frame(build_concentration_label_frame(outputs["concentration_value"]), args.out_concentration_label)
+    if args.out_concentration_order is not None:
+        order = outputs["concentration_value"].sort(COL_CONC_VAL)[COL_CONC_STR].to_list()
+        with open(args.out_concentration_order, "w") as f:
+            json.dump(order, f)
+    if synonymous is not None and args.out_nt_aa_variant is not None:
+        labels = _read_keys(args.aa_labels, {COL_AA: pl.Utf8, COL_LABEL: pl.Utf8})
+        curved = outputs["fitted_mean_bin"][COL_CLONOTYPE].unique().to_list()
+        _write_frame(nt_aa_variants(synonymous.nt_to_aa, labels, curved), args.out_nt_aa_variant)
     if args.out_per_replicate is not None:
         _write_frame(outputs["per_replicate"], args.out_per_replicate)
+    if args.out_per_replicate_nt is not None:
+        _write_frame(outputs["per_replicate_nt"], args.out_per_replicate_nt)
     if synonymous is not None:
         _write_frame(outputs["per_variant"], args.out_per_variant)
         if args.out_per_nt_variant is not None:
@@ -206,11 +281,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.out_run_warnings is not None:
         with open(args.out_run_warnings, "w") as f:
             json.dump(outputs.get("run_warnings", []), f)
-    if args.out_run_stats is not None:
-        if args.out_fit_reads is not None:
-            _write_frame(outputs["fit_reads"], args.out_fit_reads)
-        with open(args.out_run_stats, "w") as f:
-            json.dump(outputs["run_stats"], f, sort_keys=True)
+    if args.out_fit_reads is not None:
+        _write_frame(outputs["fit_reads"], args.out_fit_reads)
     log("CLI done")
     return 0
 

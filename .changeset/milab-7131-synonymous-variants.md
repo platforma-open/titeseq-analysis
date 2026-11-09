@@ -46,16 +46,16 @@ variants as repeats.
   `pl7.app/vdj/kdLog10ParentDeltaSe` give each variant's log10 Kd,app against its parent's
   (labels "Kd,app vs Parent (log10)" and "Kd,app vs Parent SE (log10)", the case
   clonotype-enrichment uses).
-- A new page, Kd,app vs Parent, shows a histogram of each amino-acid variant's parent delta. It exists
+- A new QC view, Kd,app vs Parent, shows a histogram of each amino-acid variant's parent delta. It exists
   only where the parent delta does.
 - `pl7.app/vdj/kdLog10SynonymSd` on the amino-acid axis (label "Spread across synonymous copies (log10)", hidden
   by default): the SD of log10 Kd,app across the synonymous nucleotide variants measured inside the
   range, each combined over the replicates first. It stays when replicates replace
-  `kdLog10Sd` with their own spread. A new page, Synonymous Noise, shows its histogram: the copies
+  `kdLog10Sd` with their own spread. A new QC view, Synonymous Noise, shows its histogram: the copies
   encode the same protein, so the spread is the measurement noise. With a replicate column, a new
-  page, Replicate Noise, shows the histogram of `kdLog10Sd`, the spread across replicates. Their
+  QC view, Replicate Noise, shows the histogram of `kdLog10Sd`, the spread across replicates. Their
   graph states are optional block data, so no migration is needed.
-- Two new summary pages, on every input kind. Titration Edges shows a histogram of Kd,app by
+- Two new QC views, on every input kind. Titration Edges shows a histogram of Kd,app by
   affinity class, on log Kd,app and count axes: variants bound at the lowest or highest concentration
   pile up at the two edges. Read Depth shows a box plot of the reads in the fit per affinity class,
   on a log axis. Their graph states are optional block data, so no migration is needed.
@@ -129,6 +129,56 @@ Review fixes to the 2.5.0 fits and replicates:
   block data (`binOrder`, also a kind init param) and reaches the software as `--bin-ranks`. A
   block that never set an order projects no ranks and reads the column's integers as before.
 - The first page is named Main, as in the other blocks, instead of Table.
+- The pages are Main, NT Variants (synonymous mode), Replicates (with a replicate column) and QC.
+  QC holds every chart as a tab, as feature-integration's Panel QC page holds its views: Read Depth,
+  Affinity vs Fit Quality, Titration Curves, Titration Edges, then Replicate Noise and Kd,app vs
+  Parent where the run produced their column, Synonymous Noise where some amino-acid variant has two
+  or more nucleotide copies, and Kd Distribution. The open tab is view state, not stored.
+- The Replicates page holds up to four tabs. By Replicate (AA by Replicate in synonymous mode) lists the
+  value each replicate contributed to the mean; in synonymous mode each row also carries the spread
+  of the measured copies inside that replicate (`pl7.app/vdj/kdLog10SynonymSd`) and the copy counts
+  (`pl7.app/vdj/kdNtVariants`, all and measured). NT by Replicate (synonymous mode) lists every
+  nucleotide copy's own fit in every replicate, beside its amino-acid variant; the software writes
+  it as `per_replicate_nt.tsv` (`--out-per-replicate-nt`). Synonymous Curves (where some variant has
+  two or more copies) shows one amino-acid variant per tab, each copy's fitted curve at every
+  concentration as a line through the mean over replicates with a standard-error bar. It is a
+  category chart, the only kind that draws error bars, so the concentrations sit evenly spaced.
+  Synonymous Kd,app (same condition) shows each copy's -log10 Kd,app as the mean over replicates
+  with a standard-error bar; a replicate at an edge of the titration enters at that edge, and a
+  failed one is left out. Both graphs list only amino-acid variants with two or more copies that
+  have a fitted curve: the software writes each copy's amino-acid key, and its label only for
+  those copies (`--out-nt-aa-variant`). The table and graph states are optional block data, so no
+  migration is needed.
+- A new page, Explorer (synonymous mode), lists the amino-acid variants. Double-clicking a row
+  opens its nucleotide copies in a side panel; with replicates, double-clicking a copy shows its
+  value in each replicate. The open rows and table states are optional block data, so no
+  migration is needed.
+- The Explorer has two curve tabs, sharing one multi-select that picks the variants by their
+  affinity class across the replicates (Good by default). Curves (mean ± SE): one panel per variant,
+  its observed signal and its fitted curve at every concentration, each a point at the mean over
+  replicates with a standard-error bar, in two colours and without connecting lines. A category
+  graph takes one value column, so the software stacks the two under a series axis
+  (`pl7.app/vdj/titrationSignal` on `pl7.app/vdj/signalSeries`, hidden; `signal_series.tsv`,
+  `--out-signal-series`). The observed points come only from the replicates whose fit drew a
+  curve, so both series average the same replicates. The concentrations sit in numeric order
+  through a new hidden String column on the concentration axis, `pl7.app/vdj/concentrationLabel`
+  ("01 · 3.16e-10"; `concentration_label.tsv`, `--out-concentration-label`): a faceted category
+  graph sorts its groups as text. Curves (log axis): one panel per variant on a log concentration
+  axis, the observed mean over replicates as points and the replicates' mean fitted curve, without
+  error bars. Both read new hidden columns on the variant and concentration axes, over the
+  replicates whose fit drew a curve: `pl7.app/vdj/combinedMeanBin`, its standard error
+  `pl7.app/vdj/combinedMeanBinSe` (sample SD over the square root of the replicate count), and
+  `pl7.app/vdj/combinedFittedMeanBin` (`combined_signal.tsv`, `--out-combined-signal`).
+- The block builds on SDK model and ui-vue 1.88 and workflow-tengo 6.22.
+- The NT Variants page can show all nucleotide variants or only the synonymous copies the graphs
+  list (`ntSynonymousOnly`, optional block data).
+- Each fitted curve is written at every concentration the run fitted on, not only the points its
+  own fit saw. A replicate missing a concentration used to drop out of the mean over replicates
+  there, which drew a step in the curve. Kd,app and the fits are unchanged.
+- Under the log fluorescence fit, a fit rated Failed (by the R² or SE gate) writes no fitted
+  curve, as under the mean bin fit. Its curve used to reach the graphs.
+- The per-replicate -log10 Kd,app column leaves an empty value out instead of storing it as NA,
+  which the graphs read as 0.
 - The tables list the Kd,app columns first, then the DMS columns (variant class, the parent delta,
   the nucleotide variant counts, the synonymous spread), then the columns of other blocks.
 - A log fluorescence fit with a FACS bin column but no gate fluorescence column shows a warning in

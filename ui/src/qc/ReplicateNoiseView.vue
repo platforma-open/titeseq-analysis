@@ -5,7 +5,6 @@ import { GraphMaker } from "@milaboratories/graph-maker";
 import { NOISE_HISTOGRAM_DEFAULT_STATE } from "@platforma-open/platforma-open.titeseq-analysis.model";
 import { computed } from "vue";
 import { useApp } from "../app";
-import TiteseqPage from "../components/TiteseqPage.vue";
 
 const app = useApp();
 
@@ -25,16 +24,14 @@ const defaultOptions = computed((): PredefinedGraphOption<"histogram">[] | undef
 </script>
 
 <template>
-  <TiteseqPage title="Replicate Noise" mode="graph">
-    <GraphMaker
-      v-model="graphState"
-      chart-type="histogram"
-      :data-state-key="app.model.outputs.reportedPfHandle"
-      :p-frame="app.model.outputs.reportedPfHandle"
-      :default-options="defaultOptions"
-      :status-text="{
-        noPframe: { title: 'Open Inputs (top right) to configure the block and run it.' },
-      }"
-    />
-  </TiteseqPage>
+  <GraphMaker
+    v-model="graphState"
+    chart-type="histogram"
+    :data-state-key="app.model.outputs.reportedPfHandle"
+    :p-frame="app.model.outputs.reportedPfHandle"
+    :default-options="defaultOptions"
+    :status-text="{
+      noPframe: { title: 'Open Inputs (top right) to configure the block and run it.' },
+    }"
+  />
 </template>

@@ -11,8 +11,11 @@ from output_build import (
     PER_CLONOTYPE_SCHEMA,
     add_diagnostic_plot_columns,
     add_neg_log10_kd,
+    build_combined_signal_frame,
+    build_concentration_label_frame,
     build_concentration_value_frame,
     build_mean_bin_frame,
+    build_signal_series_frame,
     flag_kd_out_of_range,
 )
 
@@ -207,3 +210,96 @@ class TestNegLog10Kd:
     def test_a_non_positive_kd_has_none_rather_than_minus_infinity(self):
         frame = pl.DataFrame({"kd": [0.0]})
         assert add_neg_log10_kd(frame)["kdNegLog10"].to_list() == [None]
+
+
+class TestConcentrationLabelFrame:
+    def test_labels_sort_as_text_in_numeric_order(self):
+        concs = [1e-5, 3.16e-6, 1e-6, 1e-7, 1e-8, 1e-9, 3.16e-10, 1e-10, 3e-11, 1e-11]
+        frame = pl.DataFrame({"concentrationStr": [str(c) for c in concs], "concentration": concs})
+        labels = build_concentration_label_frame(frame)
+        by_text = labels.sort("concentrationLabel")["concentrationStr"].to_list()
+        assert by_text == [str(c) for c in sorted(concs)]
+        assert labels.filter(pl.col("concentrationStr") == "1e-11")["concentrationLabel"].item() == "01 · 1e-11"
+
+
+def _two_replicates():
+    """Variant A measured in r1 and r2 at two concentrations; both replicates drew a curve."""
+    keys = {
+        "clonotypeKey": ["A"] * 4,
+        "replicate": ["r1", "r1", "r2", "r2"],
+        "concentrationStr": ["1e-9", "1e-8"] * 2,
+    }
+    mean_bin = pl.DataFrame({**keys, "meanBin": [1.0, 2.0, 2.0, 4.0]})
+    fitted = pl.DataFrame({**keys, "fittedMeanBin": [1.2, 2.2, 1.8, 3.8]})
+    return mean_bin, fitted
+
+
+class TestSignalSeriesFrame:
+    def test_stacks_observed_and_fitted_by_series(self):
+        keys = {"clonotypeKey": ["A", "A"], "replicate": ["r1", "r1"], "concentrationStr": ["1e-9", "1e-8"]}
+        mean_bin = pl.DataFrame({**keys, "meanBin": [1.5, 2.5]})
+        fitted = pl.DataFrame({**keys, "fittedMeanBin": [1.4, 2.6]})
+        frame = build_signal_series_frame(mean_bin, fitted)
+        assert frame.columns == ["clonotypeKey", "replicate", "concentrationStr", "series", "value"]
+        values = {(r["series"], r["concentrationStr"]): r["value"] for r in frame.iter_rows(named=True)}
+        assert values == {
+            ("Observed", "1e-9"): 1.5,
+            ("Observed", "1e-8"): 2.5,
+            ("Fitted", "1e-9"): 1.4,
+            ("Fitted", "1e-8"): 2.6,
+        }
+
+    def test_observed_points_come_only_from_fits_with_a_curve(self):
+        keys = {"clonotypeKey": ["A", "A"], "replicate": ["r1", "r2"], "concentrationStr": ["1e-9", "1e-9"]}
+        mean_bin = pl.DataFrame({**keys, "meanBin": [1.5, 3.0]})
+        fitted = pl.DataFrame(
+            {"clonotypeKey": ["A"], "replicate": ["r1"], "concentrationStr": ["1e-9"], "fittedMeanBin": [1.4]}
+        )
+        observed = build_signal_series_frame(mean_bin, fitted).filter(pl.col("series") == "Observed")
+        assert observed["replicate"].to_list() == ["r1"]
+
+
+class TestCombinedSignalFrame:
+    def test_mean_and_standard_error_over_replicates(self):
+        mean_bin, fitted = _two_replicates()
+        frame = build_combined_signal_frame(mean_bin, fitted)
+        assert frame.columns == [
+            "clonotypeKey",
+            "concentrationStr",
+            "combinedMeanBin",
+            "combinedMeanBinSe",
+            "combinedFittedMeanBin",
+        ]
+        row = frame.filter(pl.col("concentrationStr") == "1e-8").row(0, named=True)
+        assert row["combinedMeanBin"] == pytest.approx(3.0)
+        # Sample SD of [2, 4] is sqrt(2); over sqrt(2) replicates.
+        assert row["combinedMeanBinSe"] == pytest.approx(1.0)
+        assert row["combinedFittedMeanBin"] == pytest.approx(3.0)
+
+    def test_replicates_without_a_curve_are_left_out(self):
+        mean_bin, fitted = _two_replicates()
+        frame = build_combined_signal_frame(mean_bin, fitted.filter(pl.col("replicate") == "r1"))
+        row = frame.filter(pl.col("concentrationStr") == "1e-8").row(0, named=True)
+        assert row["combinedMeanBin"] == pytest.approx(2.0)
+        assert row["combinedMeanBinSe"] is None
+        assert row["combinedFittedMeanBin"] == pytest.approx(2.2)
+
+    def test_curve_concentrations_without_a_measurement_keep_the_curve(self):
+        mean_bin, fitted = _two_replicates()
+        frame = build_combined_signal_frame(mean_bin.filter(pl.col("concentrationStr") == "1e-9"), fitted)
+        row = frame.filter(pl.col("concentrationStr") == "1e-8").row(0, named=True)
+        assert row["combinedMeanBin"] is None
+        assert row["combinedFittedMeanBin"] == pytest.approx(3.0)
+
+    def test_without_replicates_the_mean_is_the_single_value(self):
+        keys = {"clonotypeKey": ["A"], "concentrationStr": ["1e-9"]}
+        frame = build_combined_signal_frame(
+            pl.DataFrame({**keys, "meanBin": [1.5]}), pl.DataFrame({**keys, "fittedMeanBin": [1.4]})
+        )
+        assert frame.row(0, named=True) == {
+            "clonotypeKey": "A",
+            "concentrationStr": "1e-9",
+            "combinedMeanBin": 1.5,
+            "combinedMeanBinSe": None,
+            "combinedFittedMeanBin": 1.4,
+        }

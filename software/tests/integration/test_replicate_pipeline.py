@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import math
+import statistics
 
 import numpy as np
 import polars as pl
@@ -344,6 +345,18 @@ class TestReplicateCli:
         per_clonotype = pl.read_csv(out / "per_clonotype.tsv", separator="\t")
         assert per_clonotype.filter(pl.col("clonotypeKey") == "c1")["replicateCount"].item() == 2
 
+    def test_the_cli_refuses_the_nucleotide_per_replicate_frame_without_the_linker(self):
+        with pytest.raises(SystemExit):
+            main(
+                [
+                    "--reads", "r.parquet",
+                    "--out-per-clonotype", "a", "--out-mean-bin", "b",
+                    "--out-fitted-mean-bin", "c", "--out-concentration-value", "d",
+                    "--replicate-column", "replicate", "--out-per-replicate", "e",
+                    "--out-per-replicate-nt", "f",
+                ]
+            )  # fmt: skip
+
     def test_the_cli_refuses_a_censored_majority_below_a_half(self, tmp_path):
         with pytest.raises(SystemExit):
             main(
@@ -426,6 +439,28 @@ class TestStarrOrdering:
         # Replicate A's reads are both copies'.
         reads = dict(zip(frame["replicate"].to_list(), frame["replicateReads"].to_list()))
         assert reads["A"] > reads["B"]
+
+    def test_the_per_replicate_frame_carries_the_copies_inside_each_replicate(self, outputs):
+        nt = run(UNBALANCED, params=LF, replicates=REPS)["per_replicate"]
+        log10 = {(r["clonotypeKey"], r["replicate"]): math.log10(r["kd"]) for r in nt.iter_rows(named=True)}
+        rows = {r["replicate"]: r for r in outputs["per_replicate"].iter_rows(named=True)}
+        assert rows["A"]["kdLog10SynonymSd"] == pytest.approx(
+            statistics.stdev([log10[("c1", "A")], log10[("c2", "A")]])
+        )
+        assert (rows["A"]["ntVariants"], rows["A"]["ntMeasured"]) == (2, 2)
+        # One copy has no spread.
+        assert rows["B"]["kdLog10SynonymSd"] is None
+        assert (rows["B"]["ntVariants"], rows["B"]["ntMeasured"]) == (1, 1)
+
+    def test_the_nucleotide_per_replicate_frame_holds_every_copy_in_every_replicate(self, outputs):
+        nt = run(UNBALANCED, params=LF, replicates=REPS)["per_replicate"]
+        frame = outputs["per_replicate_nt"]
+        assert frame.columns[:2] == ["clonotypeKey", "replicate"]
+        assert (
+            frame.sort("clonotypeKey", "replicate")
+            .select("clonotypeKey", "replicate", "kd")
+            .equals(nt.sort("clonotypeKey", "replicate").select("clonotypeKey", "replicate", "kd"))
+        )
 
     def test_the_nucleotide_counts_add_up_over_the_replicates(self, outputs):
         row = outputs["per_variant"].row(0, named=True)

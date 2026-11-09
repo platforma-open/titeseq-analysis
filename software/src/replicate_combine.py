@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import math
 import statistics
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from typing import Literal
 
@@ -309,18 +310,25 @@ def merge_all(
 
 
 def build_per_replicate_frame(
-    collected: Collected, key_col: str, reads: dict[tuple[str, str], int] | None = None
+    collected: Collected,
+    key_col: str,
+    reads: dict[tuple[str, str], int] | None = None,
+    extra: Mapping[str, pl.DataType] | None = None,
 ) -> pl.DataFrame:
     """One row per (variant, replicate): the value that replicate contributed, and its state.
 
     `kd` is the value as it enters the mean, so a censored replicate reports the wall it passed
     and a filtered one reports the K_D the filter rejected. `reads` maps (variant, replicate) to
     the reads that replicate's fit saw, which is what separates a wide value from a wrong one.
+    `extra` names further columns copied as they are from each value's source row.
     """
-    schema: dict[str, pl.DataType] = {key_col: pl.Utf8, **PER_REPLICATE_COLUMNS}
+    extra = extra or {}
+    schema: dict[str, pl.DataType] = {key_col: pl.Utf8, **PER_REPLICATE_COLUMNS, **extra}
     cols: dict[str, list] = {name: [] for name in schema}
     for key in sorted(collected):
-        for value, _row in collected[key]:
+        for value, row in collected[key]:
+            for name in extra:
+                cols[name].append(row[name])
             cols[key_col].append(key)
             cols[COL_REPLICATE].append(value.replicate)
             cols["replicateReads"].append(None if reads is None else reads.get((key, value.replicate)))

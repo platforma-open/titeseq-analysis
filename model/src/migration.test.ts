@@ -1,6 +1,13 @@
 import type { PlRef } from "@platforma-sdk/model";
 import { describe, expect, it } from "vitest";
-import type { BlockArgs, BlockData, BlockDataV1, BlockDataV3, BlockDataV5 } from "./index";
+import type {
+  BlockArgs,
+  BlockData,
+  BlockDataV1,
+  BlockDataV3,
+  BlockDataV5,
+  RunShape,
+} from "./index";
 import {
   HILL_GATE_INDEX_DEFAULTS,
   dataModel,
@@ -11,6 +18,8 @@ import {
   migrateV3ToV4,
   migrateV4ToV5,
   migrateV5ToV6,
+  qcViewsFor,
+  replicateViewsFor,
   sectionsFor,
 } from "./index";
 
@@ -274,46 +283,64 @@ describe("a project stored on the v6 data model", () => {
 });
 
 describe("the pages", () => {
-  const hrefs = (synonymous: boolean) => sectionsFor({ synonymous }).map((s) => s.href);
-
-  it("show the nucleotide variant table in synonymous mode, after the main table", () => {
-    expect(hrefs(true)).toEqual([
+  it("are the tables, the Explorer in synonymous mode, and one QC page", () => {
+    expect(sectionsFor({ synonymous: true }).map((s) => s.href)).toEqual([
       "/",
       "/nt-variants",
-      "/synonymous-noise",
-      "/titration-edges",
-      "/read-depth",
-      "/titration-curves",
-      "/kd-distribution",
-      "/affinity-vs-fit",
+      "/explorer",
+      "/qc",
+    ]);
+    expect(sectionsFor({ synonymous: false }).map((s) => s.href)).toEqual(["/", "/qc"]);
+  });
+
+  it("add the Replicates page where the run had replicates", () => {
+    expect(sectionsFor({ synonymous: true, replicates: true }).map((s) => s.href)).toEqual([
+      "/",
+      "/nt-variants",
+      "/explorer",
+      "/replicates",
+      "/qc",
     ]);
   });
 
-  it("show the parent, synonymous and replicate pages only where they apply", () => {
+  it("give the Replicates page the nt views in synonymous mode, the copy graphs only with copies", () => {
+    const views = (run: RunShape) => replicateViewsFor(run).map((v) => v.value);
+    expect(views({ synonymous: false, replicates: true })).toEqual(["variant-replicates"]);
+    expect(views({ synonymous: true, synonymousCopies: false, replicates: true })).toEqual([
+      "variant-replicates",
+      "nt-replicates",
+    ]);
+    expect(views({ synonymous: true, synonymousCopies: true, replicates: true })).toEqual([
+      "variant-replicates",
+      "nt-replicates",
+      "synonymous-curves",
+      "synonymous-kd",
+    ]);
+  });
+
+  it("give the QC page a tab per view, the run-specific ones only where they apply", () => {
+    const views = (run: RunShape) => qcViewsFor(run).map((v) => v.value);
+    const first = ["read-depth", "affinity-vs-fit", "titration-curves", "titration-edges"];
+    expect(views({ synonymous: false })).toEqual([...first, "kd-distribution"]);
     expect(
-      sectionsFor({ synonymous: true, parentMode: true, replicates: true }).map((s) => s.href),
-    ).toEqual([
-      "/",
-      "/nt-variants",
-      "/vs-parent",
-      "/synonymous-noise",
-      "/replicate-noise",
-      "/titration-edges",
-      "/read-depth",
-      "/titration-curves",
-      "/kd-distribution",
-      "/affinity-vs-fit",
+      views({ synonymous: true, synonymousCopies: true, parentMode: true, replicates: true }),
+    ).toEqual([...first, "replicate-noise", "vs-parent", "synonymous-noise", "kd-distribution"]);
+    expect(views({ synonymous: false, replicates: true })).toEqual([
+      ...first,
+      "replicate-noise",
+      "kd-distribution",
     ]);
   });
 
-  it("give every other input the summary pages beside the four it had", () => {
-    expect(sectionsFor({ synonymous: false })).toEqual([
-      { type: "link", href: "/", label: "Main" },
-      { type: "link", href: "/titration-edges", label: "Titration Edges" },
-      { type: "link", href: "/read-depth", label: "Read Depth" },
-      { type: "link", href: "/titration-curves", label: "Titration Curves" },
-      { type: "link", href: "/kd-distribution", label: "Kd Distribution" },
-      { type: "link", href: "/affinity-vs-fit", label: "Affinity vs Fit Quality" },
+  it("offer no synonymous spread when every amino-acid variant has one nucleotide copy", () => {
+    const views = (run: RunShape) => qcViewsFor(run).map((v) => v.value);
+    expect(views({ synonymous: true, synonymousCopies: false, parentMode: true })).toEqual([
+      "read-depth",
+      "affinity-vs-fit",
+      "titration-curves",
+      "titration-edges",
+      "vs-parent",
+      "kd-distribution",
     ]);
   });
 });
@@ -391,20 +418,6 @@ describe("a project stored on the v4 data model", () => {
 describe("the sections", () => {
   it("show only Main before the first run", () => {
     expect(sectionsFor(undefined)).toEqual([{ type: "link", href: "/", label: "Main" }]);
-  });
-
-  it("add only the noise page when replicates were combined", () => {
-    // Per-replicate values are read by clicking a variant in the main table; the noise page is
-    // the one replicate page.
-    expect(sectionsFor({ synonymous: false, replicates: true }).map((s) => s.href)).toEqual([
-      "/",
-      "/replicate-noise",
-      "/titration-edges",
-      "/read-depth",
-      "/titration-curves",
-      "/kd-distribution",
-      "/affinity-vs-fit",
-    ]);
   });
 });
 

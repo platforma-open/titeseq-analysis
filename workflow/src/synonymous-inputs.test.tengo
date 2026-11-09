@@ -156,3 +156,10 @@ Test_the_nt_parent_delta_needs_the_nt_mutation_count_and_parent_link := func() {
 	test.isTrue(res.ntParentMode, "no aa input needed")
 	test.isFalse(res.parentMode, "and the aa delta stays off")
 }
+
+Test_the_amino_acid_label_resolves_on_the_linker_axis_only := func() {
+	res := synonymousInputs.resolve({ aaToNt: [col(aa, nt)], aaLabels: [col(aa), col(otherAa)] }, nt)
+	test.isTrue(synonymousInputs.sameAxis(aa, res.aaLabel.spec.axesSpec[0]), "the label of this run's aa axis")
+	none := synonymousInputs.resolve({ aaToNt: [col(aa, nt)] }, nt)
+	test.isTrue(is_undefined(none.aaLabel), "no label column, no label")
+}
