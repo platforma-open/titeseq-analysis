@@ -158,7 +158,6 @@ blockTest(
       hookEffectThresholdBin: 0.2,
       hookEffectThresholdNoBin: 0.02,
       hookEffectMinReads: 20,
-      defaultBlockLabel: "Tite-Seq Analysis",
       customBlockLabel: "",
       tableState: createPlDataTableStateV2(),
       graphStateTitrationCurves: {
@@ -478,7 +477,6 @@ blockTest(
         hookEffectThresholdBin: 0.2,
         hookEffectThresholdNoBin: 0.02,
         hookEffectMinReads: 20,
-        defaultBlockLabel: "Tite-Seq Analysis",
         customBlockLabel: "",
         tableState: createPlDataTableStateV2(),
         graphStateTitrationCurves: {
