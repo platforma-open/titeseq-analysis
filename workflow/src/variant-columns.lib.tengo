@@ -55,7 +55,10 @@ countColumn := func(header, blockId, state, label, description, visibility, prio
 	})
 }
 
-KD_DESCRIPTION := "Kd,app of the amino-acid variant: 10 to the mean log10 Kd,app of its synonymous nucleotide variants, each fitted on its own. The mean is unweighted. A variant censored at the edge of the titration enters at that edge."
+// The software's |z| threshold for a synonymous outlier.
+SYNONYM_OUTLIER_Z := "2.5"
+
+KD_DESCRIPTION :="Kd,app of the amino-acid variant: 10 to the mean log10 Kd,app of its synonymous nucleotide variants, each fitted on its own. The mean is unweighted. A variant censored at the edge of the titration enters at that edge."
 
 SE_DESCRIPTION := "Standard error of the mean log10 Kd,app. With two or more synonymous nucleotide variants, the larger of two terms: their spread, the SD over the square root of their number; and their own fit SEs, the root of the sum of squares over their number, where the equation reports a fit SE. With one variant, its own fit SE where the equation reports one. Empty for a bound and for a failed variant. At or below 0.5, Kd,app is rated Good."
 
@@ -126,7 +129,7 @@ deltaColumns := func(blockId, idPrefix, description) {
  * @param opts: {parentMode, variantClass}; parentMode emits the parent delta and its error,
  *   variantClass emits the class column
  * @return xsv column descriptors. Table order: the Kd,app columns (orderPriority 185 to 202), then
- *   the DMS columns (176 to 184).
+ *   the DMS columns (175 to 184).
  */
 variantColumns := func(blockId, kdAnnotations, opts) {
 	domain := { "pl7.app/block": blockId }
@@ -227,6 +230,24 @@ variantColumns := func(blockId, kdAnnotations, opts) {
 			"pl7.app/table/orderPriority": "176"
 		}
 	}))
+	cols = append(cols, {
+		column: "synonymOutliers",
+		id: "aa_synonymOutliers",
+		allowNA: true,
+		naRegex: "",
+		spec: {
+			name: "pl7.app/vdj/synonymOutliers",
+			valueType: "String",
+			domain: domain,
+			annotations: {
+				"pl7.app/label": "Synonymous outlier",
+				"pl7.app/description": "The synonymous nucleotide variants that disagree with the other copies of this amino-acid variant: |z| of " + SYNONYM_OUTLIER_Z + " or more. Empty when none is flagged, and for a variant that is not tested: one with fewer than two copies in its mean, a bound, a failed and a stop variant.",
+				"pl7.app/isScore": "false",
+				"pl7.app/table/visibility": "default",
+				"pl7.app/table/orderPriority": "175"
+			}
+		}
+	})
 	// With replicates the SE and SD are the replicates' spread, and the counts come with them: the
 	// caller passes those columns in `opts.replicateColumns` and the synonym error columns go.
 	if !is_undefined(opts.replicateColumns) {
@@ -259,11 +280,46 @@ variantColumns := func(blockId, kdAnnotations, opts) {
  * match the software's per_nt_variant.tsv.
  *
  * @param blockId: the block id stamped into every domain
- * @param opts: {variantClass, parentMode}
+ * @param opts: {variantClass, parentMode}; the outlier test columns are always emitted
  * @return xsv column descriptors
  */
 ntVariantColumns := func(blockId, opts) {
-	cols := []
+	domain := { "pl7.app/block": blockId }
+	// Empty for a copy that is not tested.
+	outlierColumn := func(header, valueType, label, description, extra) {
+		return {
+			column: header,
+			id: "nt_" + header,
+			allowNA: true,
+			naRegex: "",
+			spec: {
+				name: "pl7.app/vdj/" + header,
+				valueType: valueType,
+				domain: domain,
+				annotations: maps.merge({
+					"pl7.app/label": label,
+					"pl7.app/description": description,
+					"pl7.app/isScore": "false"
+				}, extra)
+			}
+		}
+	}
+	cols := [
+		outlierColumn("kdLog10SynonymDelta", "Double", "Synonymous Kd gap (log10)",
+			"log10 Kd,app of this nucleotide variant minus the mean of the other synonymous copies of its amino-acid variant measured inside the range. For a copy at the edge of the titration, the least the gap can be. Empty for a copy that is not tested: its amino-acid variant has fewer than two copies in its mean, or is a bound, a failed or a stop variant.",
+			{ "pl7.app/format": "+.2f", "pl7.app/table/visibility": "default", "pl7.app/table/orderPriority": "174" }),
+		outlierColumn("kdLog10SynonymDeltaSe", "Double", "Synonymous Kd gap SE",
+			"Error of the gap: this copy's and the others' SE added in quadrature where both exist, else the run's robust spread of copies around their amino-acid mean, scaled for the number of others. Empty for a copy that is not tested.",
+			{ "pl7.app/format": ".2f", "pl7.app/table/visibility": "optional", "pl7.app/table/orderPriority": "173" }),
+		outlierColumn("kdLog10SynonymZ", "Double", "Synonymous z",
+			"The gap over its error. Empty for a copy that is not tested, or when the error is missing or 0.",
+			{ "pl7.app/format": "+.2f", "pl7.app/table/visibility": "optional", "pl7.app/table/orderPriority": "172" }),
+		// The software writes "true"/"false"; xsv.importFile admits no Boolean valueType.
+		outlierColumn("synonymOutlier", "String", "Synonymous outlier",
+			"True when |z| is " + SYNONYM_OUTLIER_Z + " or more: this copy disagrees with the other copies of its amino-acid variant. With two copies both get the same |z|. Empty where z is.",
+			{ "pl7.app/isDiscreteFilter": "true", "pl7.app/discreteValues": "[\"true\",\"false\"]",
+				"pl7.app/table/visibility": "default", "pl7.app/table/orderPriority": "175" })
+	]
 	if opts.variantClass {
 		cols = append(cols, classColumn(blockId, "nt_variantClass",
 			"The class of the nucleotide variant's amino-acid variant: stop, 1 nonsynonymous or >1 nonsynonymous. Under an unmutated amino-acid variant, wildtype with no nucleotide mutation and synonymous with some. A stop variant keeps its own fit."))

@@ -115,9 +115,10 @@ wf.body(func(args) {
 		aaLabels: columns.getColumns("aaLabels")
 	}, abundanceSpec.axesSpec[1])
 
-	// The nt grain's own synonymous columns, in per_nt_variant.tsv.
+	// The nt grain's own synonymous columns, in per_nt_variant.tsv. The outlier test is always there;
+	// the class and parent delta only when their inputs resolve.
 	ntVariantOpts := { variantClass: syn.ntClass, parentMode: syn.ntParentMode }
-	hasNtVariantColumns := syn.ntClass || syn.ntParentMode
+	hasNtVariantColumns := syn.synonymous
 
 	// The concentration column's label, and the unit read from it: the text in its trailing
 	// parentheses when it has them ("Antigen concentration (M)" -> "M"), else the whole label.
@@ -358,13 +359,16 @@ wf.body(func(args) {
 		}
 		if hasNtVariantColumns {
 			execBuilder.
+				arg("--out-per-nt-variant").arg("per_nt_variant.tsv").
+				saveFile("per_nt_variant.tsv")
+		}
+		if syn.ntClass || syn.ntParentMode {
+			execBuilder.
 				addFile("nt_mutations.tsv", keyTable(func(b) {
 					b.add(syn.ntMutationCount, { header: "mutationCount" })
 					b.setAxisHeader(ntAxis, "ntKey")
 				})).
-				arg("--nt-mutations").arg("nt_mutations.tsv").
-				arg("--out-per-nt-variant").arg("per_nt_variant.tsv").
-				saveFile("per_nt_variant.tsv")
+				arg("--nt-mutations").arg("nt_mutations.tsv")
 		}
 		if syn.ntParentMode {
 			execBuilder.
@@ -707,7 +711,8 @@ wf.body(func(args) {
 		}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
 	}
 
-	// Synonymous mode: the nt grain's class and parent delta, on the abundance's variant axis.
+	// Synonymous mode: the nt grain's outlier test, and its class and parent delta where they
+	// resolve, on the abundance's variant axis.
 	ntVariantImported := undefined
 	if hasNtVariantColumns {
 		ntVariantImported = xsv.importFile(fit.getFile("per_nt_variant.tsv"), "tsv", {
@@ -1049,7 +1054,7 @@ wf.body(func(args) {
 		exportAllowed.hillCoefficient = false
 	}
 	// In synonymous mode the amino-acid grain exports under its "aa_" ids, and the nucleotide
-	// grain's own columns (class, parent delta) under their "nt_" ids.
+	// grain's allowed columns (parent delta) under their "nt_" ids.
 	exportSources := [summaryImported] + variantSources + ntVariantSources
 	exportExcluded := []
 	for src in exportSources {
@@ -1081,10 +1086,8 @@ wf.body(func(args) {
 	if syn.synonymous {
 		outputs.variantSummaryPf = pframes.exportFrame(buildTracedPf(variantSources, []))
 		outputs.synonymousSummary = fit.getFileContent("synonymous_summary.json")
-		if hasNtVariantColumns {
-			// With each copy's amino-acid key and label: the NT pages filter by them.
-			outputs.ntVariantPf = pframes.exportFrame(buildTracedPf(ntVariantSources + [ntAaVariantImported], []))
-		}
+		// With each copy's amino-acid key and label: the NT pages filter by them.
+		outputs.ntVariantPf = pframes.exportFrame(buildTracedPf(ntVariantSources + [ntAaVariantImported], []))
 	}
 
 	return {
