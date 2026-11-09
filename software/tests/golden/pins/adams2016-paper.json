@@ -155,5 +155,356 @@
       "paperTiteSeq": -8.92
     }
   },
-  "digest": "0c775e4954d5ba28"
+  "digest": "61483951d52c13df",
+  "synonymOutlier": {
+    "datasetSigma": 0.265073,
+    "flagged": {
+      "aa": 37,
+      "atWall": 45,
+      "inRange": 21,
+      "nt": 66
+    },
+    "flaggedVariants": {
+      "0900a285fb23": {
+        "atWall": true,
+        "delta": 1.575803,
+        "z": 4.203594
+      },
+      "0b81a84cdcc0": {
+        "atWall": false,
+        "delta": 2.189792,
+        "z": 6.641214
+      },
+      "0fab5a91f4f9": {
+        "atWall": true,
+        "delta": 0.887236,
+        "z": 3.0555
+      },
+      "103841c5b9cf": {
+        "atWall": true,
+        "delta": 1.058563,
+        "z": 2.823812
+      },
+      "159ac6c8ec84": {
+        "atWall": true,
+        "delta": 0.939281,
+        "z": 3.06874
+      },
+      "1659de298cfd": {
+        "atWall": true,
+        "delta": 1.058563,
+        "z": 2.823812
+      },
+      "18b691175a77": {
+        "atWall": true,
+        "delta": 1.275927,
+        "z": 3.40365
+      },
+      "220681da7a7b": {
+        "atWall": true,
+        "delta": 2.630032,
+        "z": 8.1012
+      },
+      "245ee7e8ea5c": {
+        "atWall": false,
+        "delta": 1.28693,
+        "z": 2.562946
+      },
+      "2801fa620dfa": {
+        "atWall": true,
+        "delta": 1.146575,
+        "z": 3.058592
+      },
+      "2caf9e16619f": {
+        "atWall": true,
+        "delta": 1.603798,
+        "z": 4.278274
+      },
+      "3149ba313475": {
+        "atWall": true,
+        "delta": 2.630032,
+        "z": 8.1012
+      },
+      "3741106809f9": {
+        "atWall": false,
+        "delta": 1.038017,
+        "z": 3.682821
+      },
+      "41e989678fff": {
+        "atWall": false,
+        "delta": -0.355755,
+        "z": -2.584176
+      },
+      "48a7237b2072": {
+        "atWall": true,
+        "delta": 0.972883,
+        "z": 3.178522
+      },
+      "494f562720a8": {
+        "atWall": true,
+        "delta": 1.845911,
+        "z": 4.924131
+      },
+      "4e2eb7ea3386": {
+        "atWall": true,
+        "delta": 1.272119,
+        "z": 3.393492
+      },
+      "50561b385139": {
+        "atWall": true,
+        "delta": 1.074318,
+        "z": 3.309187
+      },
+      "554779cb7ce4": {
+        "atWall": true,
+        "delta": 1.00053,
+        "z": 2.669003
+      },
+      "572e862e6701": {
+        "atWall": false,
+        "delta": 2.731472,
+        "z": 5.638213
+      },
+      "5d3f6e9cb2f5": {
+        "atWall": true,
+        "delta": 1.845911,
+        "z": 4.924131
+      },
+      "6261369f88a7": {
+        "atWall": true,
+        "delta": 1.481489,
+        "z": 5.102014
+      },
+      "6bf3f39d4ebc": {
+        "atWall": false,
+        "delta": -1.038017,
+        "z": -3.682821
+      },
+      "6c95b557b8c3": {
+        "atWall": false,
+        "delta": -1.48074,
+        "z": -3.62251
+      },
+      "74af83edacf5": {
+        "atWall": true,
+        "delta": 1.606184,
+        "z": 4.284639
+      },
+      "77c7d2d31651": {
+        "atWall": false,
+        "delta": -2.589083,
+        "z": -3.285763
+      },
+      "77dbedaf11d7": {
+        "atWall": false,
+        "delta": -0.785431,
+        "z": -2.991468
+      },
+      "7830f767db13": {
+        "atWall": true,
+        "delta": 1.146575,
+        "z": 3.058592
+      },
+      "78dfe1614dd6": {
+        "atWall": true,
+        "delta": 1.058563,
+        "z": 2.823812
+      },
+      "7f8fe89e1d15": {
+        "atWall": true,
+        "delta": 1.058563,
+        "z": 2.823812
+      },
+      "821e6196fc71": {
+        "atWall": true,
+        "delta": 2.293585,
+        "z": 7.898745
+      },
+      "83bfd3ab57af": {
+        "atWall": false,
+        "delta": 0.785431,
+        "z": 2.991468
+      },
+      "861f4e0fb363": {
+        "atWall": true,
+        "delta": 1.146575,
+        "z": 3.058592
+      },
+      "8a46c9b341de": {
+        "atWall": false,
+        "delta": -1.999336,
+        "z": -2.673991
+      },
+      "8dd169e2c22b": {
+        "atWall": true,
+        "delta": 1.606184,
+        "z": 4.284639
+      },
+      "8dda34968518": {
+        "atWall": true,
+        "delta": 0.938968,
+        "z": 2.504782
+      },
+      "8df1e1b60df6": {
+        "atWall": true,
+        "delta": 1.606184,
+        "z": 4.284639
+      },
+      "8eb707f6fa27": {
+        "atWall": true,
+        "delta": 1.074318,
+        "z": 3.309187
+      },
+      "90893e7907eb": {
+        "atWall": false,
+        "delta": -0.572097,
+        "z": -2.868613
+      },
+      "9457a5ee2a75": {
+        "atWall": false,
+        "delta": 1.138808,
+        "z": 2.794413
+      },
+      "97f75123e7bb": {
+        "atWall": true,
+        "delta": 2.73054,
+        "z": 7.283958
+      },
+      "a3206416887c": {
+        "atWall": true,
+        "delta": 1.240352,
+        "z": 3.30875
+      },
+      "a9a47e02ed6a": {
+        "atWall": false,
+        "delta": -0.815346,
+        "z": -3.805011
+      },
+      "afe062bc6b26": {
+        "atWall": true,
+        "delta": 1.845911,
+        "z": 4.924131
+      },
+      "bb0b8b6d5a3c": {
+        "atWall": false,
+        "delta": -2.189792,
+        "z": -6.641214
+      },
+      "bb45079404fb": {
+        "atWall": false,
+        "delta": 1.0442,
+        "z": 2.648015
+      },
+      "bb9efdab71c5": {
+        "atWall": false,
+        "delta": -3.34597,
+        "z": -8.811473
+      },
+      "be2b930ce830": {
+        "atWall": true,
+        "delta": 1.200462,
+        "z": 3.202338
+      },
+      "c1f401577d0d": {
+        "atWall": true,
+        "delta": 1.058563,
+        "z": 2.823812
+      },
+      "c2566ca0c619": {
+        "atWall": true,
+        "delta": 1.845911,
+        "z": 4.924131
+      },
+      "c329f01790c0": {
+        "atWall": false,
+        "delta": -0.460696,
+        "z": -2.576178
+      },
+      "cdd1165f7c5d": {
+        "atWall": true,
+        "delta": 1.146575,
+        "z": 3.058592
+      },
+      "ce90815683fa": {
+        "atWall": true,
+        "delta": 0.938968,
+        "z": 2.504782
+      },
+      "d3cebb8e1585": {
+        "atWall": true,
+        "delta": 0.988632,
+        "z": 2.637265
+      },
+      "d754ff022863": {
+        "atWall": true,
+        "delta": 2.630032,
+        "z": 8.1012
+      },
+      "e064291e262f": {
+        "atWall": false,
+        "delta": 2.589083,
+        "z": 3.285763
+      },
+      "e5f4a98445d5": {
+        "atWall": false,
+        "delta": 0.483465,
+        "z": 3.030126
+      },
+      "e61e7c21130b": {
+        "atWall": true,
+        "delta": 2.630032,
+        "z": 8.1012
+      },
+      "e7f2b5e8f78a": {
+        "atWall": true,
+        "delta": 0.938968,
+        "z": 2.504782
+      },
+      "ea0ab29f5dd8": {
+        "atWall": true,
+        "delta": 0.979529,
+        "z": 2.612981
+      },
+      "ea94e832679d": {
+        "atWall": false,
+        "delta": 0.312768,
+        "z": 3.698178
+      },
+      "f0067de8d13c": {
+        "atWall": true,
+        "delta": 0.988632,
+        "z": 2.637265
+      },
+      "f0bb31a4a1ab": {
+        "atWall": true,
+        "delta": 1.146575,
+        "z": 3.058592
+      },
+      "f0e7988d0827": {
+        "atWall": true,
+        "delta": 1.845911,
+        "z": 4.924131
+      },
+      "f27d0fa1765d": {
+        "atWall": true,
+        "delta": 1.606184,
+        "z": 4.284639
+      },
+      "f6ea41ea5284": {
+        "atWall": true,
+        "delta": 1.606184,
+        "z": 4.284639
+      }
+    },
+    "tested": {
+      "aa": 277,
+      "atWall": 155,
+      "inRange": 738,
+      "nt": 893
+    },
+    "zSd": {
+      "inRange": 1.135726,
+      "inRangeNotFlagged": 0.904974
+    }
+  }
 }
