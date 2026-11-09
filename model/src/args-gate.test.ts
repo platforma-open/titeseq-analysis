@@ -27,10 +27,10 @@ const hillConfigured: BlockData = { ...configured, equation: "hill_gate_index" }
  * already holds results, so this pair has to stay fixed unless a change to the fit intends it.
  */
 const LOG_FLUORESCENCE_ARGS_JSON =
-  '{"abundanceRef":{"__isRef":true,"blockId":"b1","name":"abundance"},"concentrationColumnRef":{"__isRef":true,"blockId":"b1","name":"concentration"},"binColumnRef":{"__isRef":true,"blockId":"b1","name":"bin"},"antigenColumnRef":{"__isRef":true,"blockId":"b1","name":"antigen"},"sortFractionColumnRef":{"__isRef":true,"blockId":"b1","name":"sortFraction"},"targetAntigen":"CD19","binFluorescenceColumnRef":{"__isRef":true,"blockId":"b1","name":"binFluorescence"},"equation":"log_fluorescence","plateauFloor":0.667,"minReadsPerConcentration":3,"minConcentrationPoints":5,"r2GateMin":0.8,"kdSeGateMax":1,"defaultBlockLabel":"Tite-Seq Analysis","customBlockLabel":"CD19 titration","inputFilter":"{\\"__isRef\\":true,\\"blockId\\":\\"b1\\",\\"name\\":\\"filter\\"}"}';
+  '{"abundanceRef":{"__isRef":true,"blockId":"b1","name":"abundance"},"concentrationColumnRef":{"__isRef":true,"blockId":"b1","name":"concentration"},"binColumnRef":{"__isRef":true,"blockId":"b1","name":"bin"},"antigenColumnRef":{"__isRef":true,"blockId":"b1","name":"antigen"},"sortFractionColumnRef":{"__isRef":true,"blockId":"b1","name":"sortFraction"},"targetAntigen":"CD19","binFluorescenceColumnRef":{"__isRef":true,"blockId":"b1","name":"binFluorescence"},"equation":"log_fluorescence","plateauFloor":0.667,"minReadsPerConcentration":3,"minConcentrationPoints":5,"r2GateMin":0.8,"kdSeGateMax":1,"traceLabel":"CD19 titration","inputFilter":"{\\"__isRef\\":true,\\"blockId\\":\\"b1\\",\\"name\\":\\"filter\\"}"}';
 
 const HILL_GATE_INDEX_ARGS_JSON =
-  '{"abundanceRef":{"__isRef":true,"blockId":"b1","name":"abundance"},"concentrationColumnRef":{"__isRef":true,"blockId":"b1","name":"concentration"},"binColumnRef":{"__isRef":true,"blockId":"b1","name":"bin"},"antigenColumnRef":{"__isRef":true,"blockId":"b1","name":"antigen"},"sortFractionColumnRef":{"__isRef":true,"blockId":"b1","name":"sortFraction"},"targetAntigen":"CD19","minReadsPerConcentration":3,"minConcentrationPoints":5,"r2ThresholdGood":0.8,"r2ThresholdFailed":0.5,"nMin":0.5,"nMax":2,"hookEffectThresholdBin":0.2,"hookEffectThresholdNoBin":0.02,"hookEffectMinReads":20,"defaultBlockLabel":"Tite-Seq Analysis","customBlockLabel":"CD19 titration","inputFilter":"{\\"__isRef\\":true,\\"blockId\\":\\"b1\\",\\"name\\":\\"filter\\"}"}';
+  '{"abundanceRef":{"__isRef":true,"blockId":"b1","name":"abundance"},"concentrationColumnRef":{"__isRef":true,"blockId":"b1","name":"concentration"},"binColumnRef":{"__isRef":true,"blockId":"b1","name":"bin"},"antigenColumnRef":{"__isRef":true,"blockId":"b1","name":"antigen"},"sortFractionColumnRef":{"__isRef":true,"blockId":"b1","name":"sortFraction"},"targetAntigen":"CD19","minReadsPerConcentration":3,"minConcentrationPoints":5,"r2ThresholdGood":0.8,"r2ThresholdFailed":0.5,"nMin":0.5,"nMax":2,"hookEffectThresholdBin":0.2,"hookEffectThresholdNoBin":0.02,"hookEffectMinReads":20,"traceLabel":"CD19 titration","inputFilter":"{\\"__isRef\\":true,\\"blockId\\":\\"b1\\",\\"name\\":\\"filter\\"}"}';
 
 describe("a required numeric setting the scientist cleared disables Run", () => {
   // One row per setting the selected equation reads. A throw out of `deriveArgs` is what the
@@ -158,5 +158,27 @@ describe("the gate fluorescence warning", () => {
 
   it("does not show before a FACS bin column is selected", () => {
     expect(settingsWarnings({ ...withoutGates, binColumnRef: undefined })).toEqual([]);
+  });
+});
+
+describe("the trace label", () => {
+  it("is the scientist's own label when set", () => {
+    expect(deriveArgs(configured).traceLabel).toBe("CD19 titration");
+  });
+
+  it("names the block and the target antigen otherwise", () => {
+    expect(deriveArgs({ ...configured, customBlockLabel: "" }).traceLabel).toBe(
+      "Tite-Seq Analysis (CD19)",
+    );
+  });
+
+  it("names the block alone without a target antigen", () => {
+    const data = { ...configured, antigenColumnRef: undefined, targetAntigen: undefined };
+    expect(deriveArgs({ ...data, customBlockLabel: "" }).traceLabel).toBe("Tite-Seq Analysis");
+  });
+
+  it("does not depend on the subtitle's pool-derived part", () => {
+    const data = { ...configured, customBlockLabel: "" };
+    expect(deriveArgs({ ...data, subtitleLabel: "Abundance" })).toEqual(deriveArgs(data));
   });
 });

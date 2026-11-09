@@ -6,6 +6,7 @@ import type {
   BlockDataV1,
   BlockDataV3,
   BlockDataV5,
+  BlockDataV6,
   RunShape,
 } from "./index";
 import {
@@ -18,6 +19,7 @@ import {
   migrateV3ToV4,
   migrateV4ToV5,
   migrateV5ToV6,
+  migrateV6ToV7,
   qcViewsFor,
   replicateViewsFor,
   sectionsFor,
@@ -59,7 +61,7 @@ const v240Project: BlockDataV1 = {
 /** The project as the block will hold it after the upgrade, through the real version chain. */
 const upgraded = (): BlockData => {
   const migrated = dataModel.migrate({ version: "v1", data: v240Project });
-  expect(migrated.version).toBe("v7");
+  expect(migrated.version).toBe("v8");
   return migrated.data;
 };
 
@@ -82,8 +84,9 @@ describe("a project created on v2.4.0 or earlier", () => {
 
   it("keeps every setting, reference and piece of view state it stored", () => {
     const data = upgraded();
-    for (const [field, value] of Object.entries(v240Project)) {
-      expect(data[field as keyof BlockDataV1]).toEqual(value);
+    const { defaultBlockLabel: _, ...stored } = v240Project;
+    for (const [field, value] of Object.entries(stored)) {
+      expect(data[field as keyof BlockData]).toEqual(value);
     }
   });
 
@@ -114,7 +117,7 @@ describe("a project created on a v2 development build", () => {
       version: "v2",
       data: { ...v2Project, equation: "log_fluorescence" },
     });
-    expect(migrated.version).toBe("v7");
+    expect(migrated.version).toBe("v8");
     expect(migrated.data.r2GateMin).toBeUndefined();
   });
 
@@ -239,8 +242,8 @@ describe("the R² and SE limits", () => {
   });
 });
 
-describe("a project stored on the v6 data model", () => {
-  const { ntTableState: _n, ...v6Project }: BlockData = {
+describe("a project stored on the v7 data model", () => {
+  const { ntTableState: _n, ...v7Project }: BlockData = {
     ...initBlockData(),
     abundanceRef: ref("abundance"),
     concentrationColumnRef: ref("concentration"),
@@ -248,25 +251,25 @@ describe("a project stored on the v6 data model", () => {
     customBlockLabel: "CD19 titration",
     settingsOpen: true,
   };
-  // A v6 project 2.5.0 wrote with a current error-model name.
-  const stored = v6Project;
-  const migrated = () => dataModel.migrate({ version: "v6", data: stored });
+  // A v7 project 2.5.2 wrote with a current error-model name.
+  const stored = v7Project;
+  const migrated = () => dataModel.migrate({ version: "v7", data: stored });
 
   it("renames the error model 2.5.0 stored as phillips", () => {
     const legacy = dataModel.migrate({
-      version: "v6",
+      version: "v7",
       data: { ...stored, replicateErrorModel: "phillips" },
     });
     expect(legacy.data.replicateErrorModel).toBe("pop_sd_over_sqrt_n_plus_1");
     const other = dataModel.migrate({
-      version: "v6",
+      version: "v7",
       data: { ...stored, replicateErrorModel: "sd_over_sqrt_n" },
     });
     expect(other.data.replicateErrorModel).toBe("sd_over_sqrt_n");
   });
 
   it("gains an empty nucleotide variant table state", () => {
-    expect(migrated().version).toBe("v7");
+    expect(migrated().version).toBe("v8");
     expect(migrated().data.ntTableState).toEqual(initBlockData().ntTableState);
   });
 
@@ -361,7 +364,7 @@ describe("a project stored on the v3 data model", () => {
   const migrated = () => dataModel.migrate({ version: "v3", data: stored });
 
   it("gains unset replicates and the per-replicate view state", () => {
-    expect(migrated().version).toBe("v7");
+    expect(migrated().version).toBe("v8");
     expect(migrated().data).toMatchObject({
       replicateErrorModel: "sd_over_sqrt_n",
       replicateCensoredMajority: 0.5,
@@ -396,7 +399,7 @@ describe("a project stored on the v4 data model", () => {
   const migrated = (n: number | undefined) => dataModel.migrate({ version: "v4", data: stored(n) });
 
   it.each([3, 4])("raises a point count of %i to 5", (n) => {
-    expect(migrated(n).version).toBe("v7");
+    expect(migrated(n).version).toBe("v8");
     expect(migrated(n).data.minConcentrationPoints).toBe(5);
   });
 
@@ -503,7 +506,7 @@ describe("a project stored on the v5 data model", () => {
   const migrated = (r2GateEnabled: boolean) =>
     dataModel.migrate({ version: "v5", data: { ...base(), r2GateEnabled } });
   it("with the checkbox off, clears both limits", () => {
-    expect(migrated(false).version).toBe("v7");
+    expect(migrated(false).version).toBe("v8");
     expect(migrated(false).data.r2GateMin).toBeUndefined();
     expect(migrated(false).data.kdSeGateMax).toBeUndefined();
   });
@@ -524,6 +527,26 @@ describe("a project stored on the v5 data model", () => {
     const { r2GateEnabled: _e, ...rest } = base();
     const data = migrateV5ToV6({ ...base(), r2GateEnabled: true });
     expect(Object.hasOwn(data, "r2GateEnabled")).toBe(false);
+    expect(data).toEqual(rest);
+  });
+});
+
+describe("a project stored on the v6 data model", () => {
+  const stored = (): BlockDataV6 =>
+    migrateV5ToV6({
+      ...migrateV4ToV5(migrateV3ToV4(migrateV2ToV3(migrateV1ToV2(v240Project)))),
+      r2GateEnabled: false,
+    });
+
+  it("drops the pool-derived label and starts the subtitle's input part empty", () => {
+    const data = migrateV6ToV7(stored());
+    expect(Object.hasOwn(data, "defaultBlockLabel")).toBe(false);
+    expect(data.subtitleLabel).toBe("");
+  });
+
+  it("moves nothing else", () => {
+    const { defaultBlockLabel: _, ...rest } = stored();
+    const { subtitleLabel: _s, ...data } = migrateV6ToV7(stored());
     expect(data).toEqual(rest);
   });
 });

@@ -130,11 +130,11 @@ describe("the template round trip", () => {
   it("does not carry the derived label, the drawer flag or view state", () => {
     const restored = roundTrip({
       ...configured,
-      defaultBlockLabel: "CD19 - Abundance",
+      subtitleLabel: "Abundance",
       settingsOpen: true,
     });
-    // Re-derived from the antigen and abundance labels by a `watchEffect` on mount.
-    expect(restored.defaultBlockLabel).toBe("Tite-Seq Analysis");
+    // Written again when the scientist picks the abundance.
+    expect(restored.subtitleLabel).toBeUndefined();
     expect(restored.settingsOpen).toBe(false);
     expect(restored.tableState).toEqual(initBlockData().tableState);
     expect(restored.ntTableState).toEqual(initBlockData().ntTableState);

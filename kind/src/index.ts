@@ -46,10 +46,9 @@ export const DEFAULT_CENSORED_MAJORITY = 0.5;
  * fit's tuning, and the user's own label.
  *
  * Excluded on purpose:
- *   * `defaultBlockLabel` — derived from the target antigen and the abundance column's label, and
- *     rewritten by a `watchEffect` the moment the UI mounts. A template value for it would be
- *     overwritten before anyone could read it. Only the scientist's own `customBlockLabel` is
- *     worth restoring.
+ *   * `subtitleLabel` — the abundance column's label as the source project's result pool showed
+ *     it, written when the abundance is picked. It names data the new project may not hold. Only
+ *     the scientist's own `customBlockLabel` is worth restoring.
  *   * `settingsOpen` — whether the settings drawer is showing, which `onMounted` opens by itself
  *     for a block with no abundance column picked.
  *   * `tableState` and the three graph states — view state.
