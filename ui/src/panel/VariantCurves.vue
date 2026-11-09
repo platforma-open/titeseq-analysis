@@ -8,6 +8,7 @@ import type { GraphMakerState, PredefinedGraphOption } from "@milaboratories/gra
 import { GraphMaker } from "@milaboratories/graph-maker";
 import {
   VARIANT_CURVES_DEFAULT_STATE,
+  variantCurveDefaults,
   variantCurvePins,
 } from "@platforma-open/platforma-open.titeseq-analysis.model";
 import { computed } from "vue";
@@ -17,10 +18,7 @@ const props = defineProps<{ rowKey: string }>();
 
 const app = useApp();
 
-const REPLICATE_AXIS = "pl7.app/vdj/replicate";
-
 const cols = computed(() => app.model.outputs.titrationCurvesPfCols);
-const byName = (name: string) => cols.value?.find((p) => p.spec.name === name);
 
 // The state must exist in data before the binding reads it, or the chart never settles.
 app.model.data.graphStateVariantCurves ??= { ...VARIANT_CURVES_DEFAULT_STATE };
@@ -33,19 +31,9 @@ const graphState = computed({
   },
 });
 
-const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | undefined => {
-  const observed = byName("pl7.app/vdj/meanBin");
-  const fitted = byName("pl7.app/vdj/fittedMeanBin");
-  const concentration = byName("pl7.app/vdj/concentrationValue");
-  const replicateAxis = observed?.spec.axesSpec.find((a) => a.name === REPLICATE_AXIS);
-  if (!observed || !fitted || !concentration || !replicateAxis) return undefined;
-  return [
-    { inputName: "x", selectedSource: concentration.spec },
-    { inputName: "y", selectedSource: observed.spec },
-    { inputName: "grouping", selectedSource: replicateAxis },
-    { inputName: "additionalCurves", selectedSource: fitted.spec },
-  ];
-});
+const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | undefined =>
+  variantCurveDefaults(cols.value?.map((c) => c.spec) ?? []),
+);
 
 const pins = computed(() =>
   variantCurvePins(

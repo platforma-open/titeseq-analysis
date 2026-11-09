@@ -54,8 +54,8 @@ export { deriveTemplateParams };
 export type { PTableKey } from "@platforma-sdk/model";
 export type { InputKind, SynonymousSummary } from "./synonymous";
 export { nounOf } from "./synonymous";
-export type { ChartPin } from "./variantPanel";
-export { variantCurvePins } from "./variantPanel";
+export type { ChartDefault, ChartPin } from "./variantPanel";
+export { variantCurveDefaults, variantCurvePins } from "./variantPanel";
 import {
   BlockModelV3,
   ColumnsCollection,

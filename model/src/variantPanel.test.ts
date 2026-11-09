@@ -1,6 +1,6 @@
 import type { PColumnSpec } from "@platforma-sdk/model";
 import { describe, expect, it } from "vitest";
-import { variantCurvePins } from "./variantPanel";
+import { variantCurveDefaults, variantCurvePins } from "./variantPanel";
 
 const NT_AXIS = {
   name: "pl7.app/variantKey",
@@ -21,6 +21,13 @@ const fitted: PColumnSpec = {
   name: "pl7.app/vdj/fittedMeanBin",
   valueType: "Double",
   axesSpec: [NT_AXIS, REPLICATE_AXIS, CONCENTRATION_AXIS],
+};
+const observed: PColumnSpec = { ...fitted, name: "pl7.app/vdj/meanBin" };
+const concentration: PColumnSpec = {
+  kind: "PColumn",
+  name: "pl7.app/vdj/concentrationValue",
+  valueType: "Double",
+  axesSpec: [CONCENTRATION_AXIS],
 };
 const aaKey: PColumnSpec = {
   kind: "PColumn",
@@ -70,5 +77,51 @@ describe("the variant curve pins", () => {
       axesSpec: [{ name: "pl7.app/other", type: "String" }],
     };
     expect(variantCurvePins([fitted, elsewhere], "aa-1", true)).toBeUndefined();
+  });
+});
+
+describe("the variant curve defaults", () => {
+  const specs = [observed, fitted, concentration, aaKey];
+  const sources = (input: string) =>
+    (variantCurveDefaults(specs) ?? [])
+      .filter((o) => o.inputName === input)
+      .map((o) => o.selectedSource);
+
+  // A scatterplot draws only once every axis of y that x lacks is faceted: grouping and a pinned
+  // filter on another column leave the axis free, and the chart asks for a data mapping instead.
+  it("facet every axis of the signal that the concentration column lacks", () => {
+    const [y] = sources("y");
+    const [x] = sources("x");
+    const free = (y as PColumnSpec).axesSpec.filter(
+      (a) => !(x as PColumnSpec).axesSpec.some((b) => b.name === a.name),
+    );
+    expect(free.length).toBeGreaterThan(0);
+    expect(sources("facetBy")).toEqual(expect.arrayContaining(free));
+  });
+
+  it("plot the observed signal against concentration with the fitted curve", () => {
+    expect(sources("x")).toEqual([concentration]);
+    expect(sources("y")).toEqual([observed]);
+    expect(sources("additionalCurves")).toEqual([fitted]);
+  });
+
+  it("colour by replicate", () => {
+    expect(sources("grouping")).toEqual([REPLICATE_AXIS]);
+  });
+
+  it("facet only the variant and colour nothing on a run without replicates", () => {
+    const single = (c: PColumnSpec): PColumnSpec => ({
+      ...c,
+      axesSpec: [NT_AXIS, CONCENTRATION_AXIS],
+    });
+    const defaults = variantCurveDefaults([single(observed), single(fitted), concentration]) ?? [];
+    expect(defaults.filter((o) => o.inputName === "facetBy").map((o) => o.selectedSource)).toEqual([
+      NT_AXIS,
+    ]);
+    expect(defaults.some((o) => o.inputName === "grouping")).toBe(false);
+  });
+
+  it("give no defaults while a column is missing", () => {
+    expect(variantCurveDefaults([observed, fitted])).toBeUndefined();
   });
 });
