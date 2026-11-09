@@ -766,8 +766,9 @@ def run(
     signal frames' key. Unset, every output, every grouping and every command line is the one the
     block had before replicates existed.
 
-    `synonymous`, when set, adds `per_variant` (one row per amino-acid variant) and
-    `synonymous_summary` (a JSON-ready dict) to the outputs. Every other output is unchanged.
+    `synonymous`, when set, adds `per_variant` (one row per amino-acid variant), `per_nt_variant`
+    (one row per fitted nt variant) and `synonymous_summary` (a JSON-ready dict) to the outputs.
+    Every other output is unchanged.
     """
     log(f"Pipeline start: {reads.height} reads rows")
     # Precedes canonicalization, which reports an empty frame as a missing concentration.
@@ -1072,10 +1073,18 @@ def _combine_synonymous(
         log(f"Stop codons: {summary['stopAaVariants']} amino-acid variants not productive; they get no Kd,app")
     else:
         log("Stop codons: off (no amino-acid productive column)")
-    outputs = {"per_variant": per_variant, "synonymous_summary": summary}
-    if per_nt_variant is not None:
-        outputs["per_nt_variant"] = per_nt_variant
-    return outputs
+    _log_synonym_outliers(summary)
+    return {"per_variant": per_variant, "per_nt_variant": per_nt_variant, "synonymous_summary": summary}
+
+
+def _log_synonym_outliers(summary: dict) -> None:
+    o = summary["synonymOutlier"]
+    sigma = "none" if o["datasetSigma"] is None else f"{o['datasetSigma']:.3f}"
+    log(
+        f"Synonymous outliers: {o['testedNtVariants']} nucleotide variants tested in {o['testedAaVariants']} "
+        f"amino-acid variants; {o['flaggedNtVariants']} flagged at |z| >= {o['zThreshold']} in "
+        f"{o['flaggedAaVariants']} amino-acid variants; dataset sigma {sigma}"
+    )
 
 
 def _mask_filtered(frame: pl.DataFrame, filtered: set[str]) -> pl.DataFrame:
@@ -1166,8 +1175,8 @@ def _combine_replicate_synonymous(
         # Every nt copy's own fit in every replicate: what the amino-acid rows above combine.
         "per_replicate_nt": build_per_replicate_frame(collected, COL_CLONOTYPE, per_replicate_reads),
         "per_variant": per_variant,
+        "per_nt_variant": per_nt_variant,
         "synonymous_summary": summary,
     }
-    if per_nt_variant is not None:
-        outputs["per_nt_variant"] = per_nt_variant
+    _log_synonym_outliers(summary)
     return outputs

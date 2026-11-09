@@ -109,8 +109,8 @@ def _synonymous_inputs(args: argparse.Namespace, parser: argparse.ArgumentParser
         parser.error("--nt-to-aa needs --out-per-variant and --out-synonymous-summary")
     if args.aa_parent_links is not None and args.aa_mutations is None:
         parser.error("--aa-parent-links needs --aa-mutations")
-    if (args.nt_mutations is None) != (args.out_per_nt_variant is None):
-        parser.error("--nt-mutations and --out-per-nt-variant come together")
+    if args.nt_mutations is not None and args.out_per_nt_variant is None:
+        parser.error("--nt-mutations needs --out-per-nt-variant")
     if args.nt_parent_links is not None and args.nt_mutations is None:
         parser.error("--nt-parent-links needs --nt-mutations")
     return SynonymousInputs(

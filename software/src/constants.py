@@ -39,6 +39,12 @@ REPLICATE_ERROR_MODELS: tuple[ReplicateErrorModel, ...] = ("sd_over_sqrt_n", "po
 # variant fails. The block's own rule: no paper defines one.
 DEFAULT_CENSORED_MAJORITY: float = 0.5
 
+# |z| at or above which a synonymous nucleotide variant is flagged as disagreeing with the others of
+# its amino-acid variant. The block's own rule.
+SYNONYM_OUTLIER_Z: float = 2.5
+# Scales a median absolute deviation to the SD of a normal distribution.
+MAD_TO_SD: float = 1.4826
+
 # The equation fitted to each clonotype.
 #   "log_fluorescence"  — log10(A*c/(c+K) + B) on mean log10 gate fluorescence, exponent fixed at 1,
 #                         weighted least squares. Requires gates (bin mode).

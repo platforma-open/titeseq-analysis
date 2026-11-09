@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import math
+import statistics
 
 import numpy as np
 import polars as pl
@@ -116,7 +117,7 @@ class TestEachCopyIsFittedOnItsOwn:
         combined = run(reads, params=params, synonymous=SynonymousInputs(_links(), **PARENT_INPUTS))
         for name in ("per_clonotype", "mean_bin", "fitted_mean_bin", "concentration_value"):
             assert_frame_equal(combined[name], plain[name])
-        assert set(combined) - set(plain) == {"per_variant", "synonymous_summary"}
+        assert set(combined) - set(plain) == {"per_variant", "per_nt_variant", "synonymous_summary"}
 
     def test_the_aa_value_is_the_mean_of_its_copies_fits_not_a_fit_of_pooled_reads(self, lf):
         per_nt = lf["per_clonotype"].filter(pl.col("clonotypeKey").is_in(["wt_a", "wt_b", "wt_c"]))
@@ -376,7 +377,16 @@ def test_the_cli_writes_the_nucleotide_frame_with_the_nt_mutation_count(tmp_path
     )  # fmt: skip
     assert rc == 0
     per_nt = pl.read_csv(out["pnv"], separator="\t")
-    assert per_nt.columns == ["ntKey", "variantClass", "kdLog10ParentDelta", "kdLog10ParentDeltaSe"]
+    assert per_nt.columns == [
+        "ntKey",
+        "variantClass",
+        "kdLog10ParentDelta",
+        "kdLog10ParentDeltaSe",
+        "kdLog10SynonymDelta",
+        "kdLog10SynonymDeltaSe",
+        "kdLog10SynonymZ",
+        "synonymOutlier",
+    ]
     assert per_nt.height == 13
     per_variant = pl.read_csv(out["pv"], separator="\t")
     assert "variantClass" in per_variant.columns
@@ -482,3 +492,102 @@ class TestReadDepth:
         out = run(reads, params=LF, read_depth=True)
         assert out["fit_reads"].height == reads["clonotypeKey"].n_unique()
         assert "fitReads" not in out["per_clonotype"].columns
+
+
+# ODD's fourth copy binds a decade weaker than its other three; SAME's three copies agree.
+OUTLIER_LIBRARY = {
+    "ODD": [("o_a", 1e-8, 800, 0.35), ("o_b", 1e-8, 600, 0.40), ("o_c", 1e-8, 1000, 0.30), ("o_d", 1e-7, 800, 0.35)],
+    "SAME": [("s_a", 1e-8, 800, 0.35), ("s_b", 1e-8, 600, 0.40), ("s_c", 1e-8, 1000, 0.30)],
+}
+OUTLIER_LINKS = pl.DataFrame(
+    {
+        "ntKey": [nt for cs in OUTLIER_LIBRARY.values() for nt, *_ in cs],
+        "aaKey": [aa for aa, cs in OUTLIER_LIBRARY.items() for _ in cs],
+    }
+)
+
+
+class TestSynonymOutlier:
+    @pytest.fixture(scope="class")
+    def outlier_reads(self) -> pl.DataFrame:
+        copies = [c for cs in OUTLIER_LIBRARY.values() for c in cs]
+        return pl.DataFrame([row for nt, kd, d, sd in copies for row in _reads(nt, kd, per_conc=d, sd_bins=sd)])
+
+    @staticmethod
+    def _fits(outputs) -> dict[str, tuple[float, float | None]]:
+        return {
+            r["clonotypeKey"]: (math.log10(r["kd"]), r["kdLog10Se"])
+            for r in outputs["per_clonotype"].iter_rows(named=True)
+        }
+
+    @staticmethod
+    def _nt(outputs) -> dict[str, dict]:
+        return {r["ntKey"]: r for r in outputs["per_nt_variant"].iter_rows(named=True)}
+
+    def test_with_fit_ses_the_odd_copy_alone_is_flagged(self, outlier_reads):
+        outputs = run(outlier_reads, params=LF, synonymous=SynonymousInputs(OUTLIER_LINKS))
+        fits, nt = self._fits(outputs), self._nt(outputs)
+        assert not any(r["kdOutOfRange"] for r in outputs["per_clonotype"].iter_rows(named=True))
+        # o_d against the other three, by the rule written out here.
+        others = [fits[k] for k in ("o_a", "o_b", "o_c")]
+        delta = fits["o_d"][0] - sum(v for v, _ in others) / 3
+        spread = statistics.stdev([v for v, _ in others]) / math.sqrt(3)
+        fit_error = math.sqrt(sum(se * se for _, se in others)) / 3
+        sigma = math.hypot(fits["o_d"][1], max(spread, fit_error))
+        assert nt["o_d"]["kdLog10SynonymDelta"] == pytest.approx(delta, abs=1e-9)
+        assert nt["o_d"]["kdLog10SynonymZ"] == pytest.approx(delta / sigma, abs=1e-9)
+        assert [k for k, r in nt.items() if r["synonymOutlier"]] == ["o_d"]
+        assert _aa(outputs, "ODD")["synonymOutliers"].startswith("o_d: weaker, ")
+        assert _aa(outputs, "SAME")["synonymOutliers"] is None
+
+    def test_without_fit_ses_the_dataset_sigma_scales_the_gap(self, outlier_reads):
+        outputs = run(outlier_reads, params=HILL, synonymous=SynonymousInputs(OUTLIER_LINKS))
+        fits, nt = self._fits(outputs), self._nt(outputs)
+        assert all(se is None for _, se in fits.values())
+        deviations = []
+        for copies in OUTLIER_LIBRARY.values():
+            values = [fits[k][0] for k, *_ in copies]
+            m = len(values)
+            deviations += [(v - sum(values) / m) * math.sqrt(m / (m - 1)) for v in values]
+        center = statistics.median(deviations)
+        sigma = 1.4826 * statistics.median(abs(d - center) for d in deviations)
+        assert outputs["synonymous_summary"]["synonymOutlier"]["datasetSigma"] == pytest.approx(sigma, abs=1e-12)
+        assert nt["o_a"]["kdLog10SynonymDeltaSe"] == pytest.approx(sigma * math.sqrt(1 + 1 / 3), abs=1e-12)
+        assert nt["s_a"]["kdLog10SynonymDeltaSe"] == pytest.approx(sigma * math.sqrt(1 + 1 / 2), abs=1e-12)
+        assert [k for k, r in nt.items() if r["synonymOutlier"]] == ["o_d"]
+
+    def test_the_cli_writes_the_outlier_frame_and_the_dataset_sigma_without_nt_mutations(self, tmp_path, outlier_reads):
+        outlier_reads.write_parquet(tmp_path / "reads.parquet")
+        OUTLIER_LINKS.write_csv(tmp_path / "nt_to_aa.tsv", separator="\t")
+        (tmp_path / "params.json").write_text(json.dumps({"equation": "hill_gate_index"}))
+        out = {name: str(tmp_path / f"{name}.tsv") for name in ("pc", "mb", "fmb", "cv", "pv", "pnv")}
+        rc = main(
+            [
+                "--reads", str(tmp_path / "reads.parquet"),
+                "--params", str(tmp_path / "params.json"),
+                "--out-per-clonotype", out["pc"],
+                "--out-mean-bin", out["mb"],
+                "--out-fitted-mean-bin", out["fmb"],
+                "--out-concentration-value", out["cv"],
+                "--nt-to-aa", str(tmp_path / "nt_to_aa.tsv"),
+                "--out-per-variant", out["pv"],
+                "--out-per-nt-variant", out["pnv"],
+                "--out-synonymous-summary", str(tmp_path / "summary.json"),
+            ]
+        )  # fmt: skip
+        assert rc == 0
+        per_nt = pl.read_csv(out["pnv"], separator="\t")
+        assert per_nt.columns == [
+            "ntKey",
+            "kdLog10SynonymDelta",
+            "kdLog10SynonymDeltaSe",
+            "kdLog10SynonymZ",
+            "synonymOutlier",
+        ]
+        assert dict(zip(per_nt["ntKey"], per_nt["synonymOutlier"]))["o_d"] is True
+        per_variant = pl.read_csv(out["pv"], separator="\t")
+        notes = dict(zip(per_variant["aaKey"], per_variant["synonymOutliers"]))
+        assert notes["ODD"].startswith("o_d: weaker, ") and notes["SAME"] is None
+        summary = json.loads((tmp_path / "summary.json").read_text())
+        assert summary["synonymOutlier"]["datasetSigma"] > 0
+        assert summary["synonymOutlier"]["flaggedAaVariants"] == 1

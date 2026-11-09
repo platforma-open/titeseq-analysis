@@ -39,6 +39,23 @@ it is `wildtype` with no nucleotide mutation and `synonymous` with some. Without
 is no `stop` class. A stop amino-acid variant has no K_D, SE or parent delta and is rated Failed; its
 nucleotide variants keep their own fits.
 
+The outlier test asks, per copy, whether it disagrees with the other copies of its amino-acid variant.
+It runs on the final values, over an amino-acid variant whose value is a mean of k >= 2 copies:
+
+  tested       the copies that enter that mean, measured and censored alike (a censored copy at its
+               wall); a failed copy is not. A bound, a failed and a stop amino-acid variant have no
+               mean, so none of its copies is tested
+  delta        the copy's log10 K_D minus the mean of the other copies'
+  sigma        sqrt(se^2 + se_others^2), where the copy has a fit SE and the others' SE exists: the
+               others' SE by the SE rule above over n = k - 1, the other copy's own fit SE for n = 1.
+               Otherwise the dataset sigma * sqrt(1 + 1/(k - 1))
+  dataset      1.4826 * MAD of every tested copy's deviation from its own amino-acid mean, pooled
+  sigma        over the run; robust to the few copies that are real outliers
+  z            delta / sigma; flagged at |z| >= SYNONYM_OUTLIER_Z. Null where sigma is null or 0
+
+With k = 2 the test is symmetric: both copies get the same |z|, and the amino-acid note names a
+disagreement, not an odd copy.
+
 The parent delta is log10 K_D of the variant minus that of its parent, both at amino-acid grain, with
 error sqrt(se_v^2 + se_p^2). A parent's own row is 0 with error 0. A parent is the one amino-acid variant
 with zero mutations linked to it; a parent with none or several cannot be identified. The nucleotide grain
@@ -50,14 +67,14 @@ from __future__ import annotations
 
 import math
 import statistics
-from collections.abc import Collection, Mapping
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Literal, Protocol
 
 import polars as pl
 
 from classify import REASON_CONFLICTING, Classification, bound_class, censored_side
-from constants import COL_CLONOTYPE, DEFAULT_CENSORED_MAJORITY, KD_SD_GOOD
+from constants import COL_CLONOTYPE, DEFAULT_CENSORED_MAJORITY, KD_SD_GOOD, MAD_TO_SD, SYNONYM_OUTLIER_Z
 
 COL_NT = "ntKey"
 COL_AA = "aaKey"
@@ -104,6 +121,15 @@ DELTA_SCHEMA: dict[str, pl.DataType] = {
     "kdLog10ParentDelta": pl.Float64,
     "kdLog10ParentDeltaSe": pl.Float64,
 }
+# The outlier test, per nt variant; null for a copy that is not tested.
+OUTLIER_SCHEMA: dict[str, pl.DataType] = {
+    "kdLog10SynonymDelta": pl.Float64,
+    "kdLog10SynonymDeltaSe": pl.Float64,
+    "kdLog10SynonymZ": pl.Float64,
+    "synonymOutlier": pl.Boolean,
+}
+# Per amino-acid variant: the flagged copies, in words; null when none is flagged.
+COL_OUTLIERS = "synonymOutliers"
 
 
 @dataclass(frozen=True)
@@ -221,7 +247,7 @@ def copy_from_fit(row: dict, log10_lo: float | None, log10_hi: float | None) -> 
     return Copy("measured", value, se if se is not None and math.isfinite(se) else None, cls)
 
 
-def _floored_se(entered: list[Copy]) -> float:
+def _floored_se(entered: Sequence[HasKd]) -> float:
     """max(spread, fit-error term) over n >= 2 copies; the spread alone when no copy has a
     fit SE."""
     n = len(entered)
@@ -367,6 +393,113 @@ def synonym_spread(
     return [statistics.stdev(measured[aa]) if len(measured.get(aa, [])) >= 2 else None for aa in aa_keys]
 
 
+@dataclass(frozen=True)
+class OutlierTest:
+    """One copy against the other copies of its amino-acid variant. For a copy at a wall (`bound`),
+    `delta` and `z` are the least the gap can be."""
+
+    delta: float
+    sigma: float | None
+    z: float | None
+    bound: bool = False
+
+    @property
+    def flagged(self) -> bool | None:
+        return None if self.z is None else abs(self.z) >= SYNONYM_OUTLIER_Z
+
+
+def outlier_groups(
+    aa_values: Mapping[str, HasKd], nt_values: Mapping[str, HasKd], mapping: dict[str, str], stops: set[str]
+) -> dict[str, list[tuple[str, HasKd]]]:
+    """Per amino-acid variant whose value is a mean of at least two copies: the copies in that mean,
+    by nt key. A copy enters when it has a log10 K_D, its own or its wall's."""
+    entered: dict[str, list[tuple[str, HasKd]]] = {}
+    for nt in sorted(nt_values):
+        aa = mapping.get(nt)
+        if aa is not None and nt_values[nt].log10_kd is not None:
+            entered.setdefault(aa, []).append((nt, nt_values[nt]))
+    groups: dict[str, list[tuple[str, HasKd]]] = {}
+    for aa, value in aa_values.items():
+        if aa in stops or value.log10_kd is None or _is_bound(value) or len(entered.get(aa, [])) < 2:
+            continue
+        groups[aa] = entered[aa]
+    return groups
+
+
+def _deviations(groups: Mapping[str, list[tuple[str, HasKd]]]) -> list[float]:
+    """Each copy measured inside the range minus the mean of the m >= 2 measured copies of its
+    amino-acid variant, times sqrt(m / (m - 1)): the mean includes the copy, which shrinks the
+    deviation's SD to sigma * sqrt((m - 1) / m). A copy at a wall is left out: its value is a bound."""
+    out: list[float] = []
+    for copies in groups.values():
+        values = [c.log10_kd for _, c in copies if not _is_bound(c)]
+        m = len(values)
+        if m < 2:
+            continue
+        mean = math.fsum(values) / m
+        inflate = math.sqrt(m / (m - 1))
+        out.extend((v - mean) * inflate for v in values)
+    return out
+
+
+def dataset_sigma(groups: Mapping[str, list[tuple[str, HasKd]]]) -> float | None:
+    """1.4826 * MAD of the pooled deviations; None with no deviation."""
+    deviations = _deviations(groups)
+    if not deviations:
+        return None
+    center = statistics.median(deviations)
+    return MAD_TO_SD * statistics.median(abs(d - center) for d in deviations)
+
+
+def outlier_tests(copies: list[tuple[str, HasKd]], sigma: float | None) -> dict[str, OutlierTest]:
+    """Each copy of one amino-acid variant against the mean of its other copies measured inside the
+    range. A copy at a wall is never among the others: its value is a bound, and would drag their
+    mean. A copy with no other measured copy is not tested. `sigma` is the dataset sigma, used where
+    a copy or the others have no SE."""
+    measured = [(nt, c) for nt, c in copies if not _is_bound(c)]
+    tests: dict[str, OutlierTest] = {}
+    for nt, copy in copies:
+        others = [c for other, c in measured if other != nt]
+        m = len(others)
+        if m == 0:
+            continue
+        delta = copy.log10_kd - math.fsum(c.log10_kd for c in others) / m
+        se_others = others[0].log10_kd_se if m == 1 else _floored_se(others)
+        if copy.log10_kd_se is not None and se_others is not None:
+            scale = math.hypot(copy.log10_kd_se, se_others)
+        elif sigma is not None:
+            scale = sigma * math.sqrt(1 + 1 / m)
+        else:
+            scale = None
+        z = None if scale is None or not math.isfinite(scale) or scale <= 0 else delta / scale
+        tests[nt] = OutlierTest(delta, scale, z, _is_bound(copy))
+    return tests
+
+
+def outlier_note(tests: Mapping[str, OutlierTest]) -> str | None:
+    """The flagged copies of one amino-acid variant, in words; None when none is flagged.
+
+    With two copies measured inside the range both are flagged or neither, so the note names the
+    pair. Otherwise each flagged copy, largest |z| first: weaker for a higher log10 K_D, tighter for
+    a lower one. A copy at a wall reads as the least gap, without a z.
+    """
+    flagged = sorted(((nt, t) for nt, t in tests.items() if t.flagged), key=lambda p: (-abs(p[1].z), p[0]))
+    if not flagged:
+        return None
+    if len(tests) == 2 and not any(t.bound for t in tests.values()):
+        a, b = sorted(tests)
+        t = tests[a]
+        return f"{a} vs {b}: disagree, {abs(t.delta):.2f} decades apart, |z| {abs(t.z):.2f}"
+
+    def describe(nt: str, t: OutlierTest) -> str:
+        side = "weaker" if t.delta > 0 else "tighter"
+        if t.bound:
+            return f"{nt}: {side}, at least {abs(t.delta):.2f} decades, {'above' if t.delta > 0 else 'below'} range"
+        return f"{nt}: {side}, {t.delta:+.2f} decades, z {t.z:+.2f}"
+
+    return "; ".join(describe(nt, t) for nt, t in flagged)
+
+
 def parent_deltas(
     values: Mapping[str, HasKd], links: pl.DataFrame, mutations: pl.DataFrame, key: str
 ) -> tuple[list[float | None], list[float | None], dict]:
@@ -397,11 +530,11 @@ def combine_synonymous(
     log10_lo: float | None,
     log10_hi: float | None,
     wall_classes: bool = True,
-) -> tuple[pl.DataFrame, pl.DataFrame | None, dict]:
+) -> tuple[pl.DataFrame, pl.DataFrame, dict]:
     """The amino-acid frame, the nucleotide frame, and the run summary, from the per-nt-variant fits.
 
-    The nucleotide frame, one row per fitted nt variant, exists when `nt_mutations` comes; it holds
-    the nt-grain columns that resolved.
+    The nucleotide frame holds one row per fitted nt variant: the outlier test, and the nt-grain class
+    and parent delta where their inputs came.
 
     `log10_lo` and `log10_hi` are log10 of the lowest and highest non-zero concentrations: the walls
     a censored copy enters at.
@@ -458,11 +591,11 @@ def annotate_variants(
     stops: set[str],
     inputs: SynonymousInputs,
     summary: dict,
-) -> tuple[pl.DataFrame, pl.DataFrame | None]:
-    """The class and parent-delta columns of the amino-acid frame, and the nucleotide frame.
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """The class, parent-delta and outlier columns of the amino-acid frame, and the nucleotide frame.
 
     Decided once, on the final values: `aa_values` in the order of `per_variant`'s rows, `nt_values`
-    one per fitted nt variant. Adds the parent counts to `summary`.
+    one per fitted nt variant. Adds the parent and outlier counts and the dataset sigma to `summary`.
     """
     aa_mutations = mutation_counts(inputs.aa_mutations, COL_AA) if inputs.aa_mutations is not None else None
     if aa_mutations is not None:
@@ -483,12 +616,25 @@ def annotate_variants(
     present = [v for v in spread if v is not None]
     summary["synonymSpread"] = {"variants": len(present), "median": statistics.median(present) if present else None}
 
-    if inputs.nt_mutations is None:
-        return per_variant, None
+    groups = outlier_groups(aa_values, nt_values, mapping, stops)
+    sigma = dataset_sigma(groups)
+    per_aa_tests = {aa: outlier_tests(copies, sigma) for aa, copies in groups.items()}
+    tests = {nt: t for group in per_aa_tests.values() for nt, t in group.items()}
+    notes = [outlier_note(per_aa_tests[aa]) if aa in per_aa_tests else None for aa in aa_values]
+    per_variant = per_variant.with_columns(pl.Series(COL_OUTLIERS, notes, dtype=pl.Utf8))
+    summary["synonymOutlier"] = {
+        "zThreshold": SYNONYM_OUTLIER_Z,
+        "datasetSigma": sigma,
+        "testedAaVariants": len(groups),
+        "testedNtVariants": len(tests),
+        "flaggedNtVariants": sum(1 for t in tests.values() if t.flagged),
+        "flaggedAaVariants": sum(1 for n in notes if n is not None),
+    }
+
     fitted = list(nt_values)
     nt_columns: dict[str, list] = {COL_NT: fitted}
     nt_schema: dict[str, pl.DataType] = {COL_NT: pl.Utf8}
-    if aa_mutations is not None:
+    if aa_mutations is not None and inputs.nt_mutations is not None:
         nt_mutations = mutation_counts(inputs.nt_mutations, COL_NT)
         nt_columns[COL_CLASS] = [
             None
@@ -504,4 +650,10 @@ def annotate_variants(
         nt_columns["kdLog10ParentDeltaSe"] = delta_ses
         nt_schema.update(DELTA_SCHEMA)
         summary.update({"nt" + k[0].upper() + k[1:]: v for k, v in counts.items()})
+    nt_tests = [tests.get(nt) for nt in fitted]
+    nt_columns["kdLog10SynonymDelta"] = [None if t is None else t.delta for t in nt_tests]
+    nt_columns["kdLog10SynonymDeltaSe"] = [None if t is None else t.sigma for t in nt_tests]
+    nt_columns["kdLog10SynonymZ"] = [None if t is None else t.z for t in nt_tests]
+    nt_columns["synonymOutlier"] = [None if t is None else t.flagged for t in nt_tests]
+    nt_schema.update(OUTLIER_SCHEMA)
     return per_variant, pl.DataFrame(nt_columns, schema=nt_schema)

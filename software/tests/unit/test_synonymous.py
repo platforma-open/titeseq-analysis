@@ -3,28 +3,37 @@
 from __future__ import annotations
 
 import math
+import random
 import statistics
 
 import polars as pl
 import pytest
 
-from constants import KD_SD_GOOD
+from classify import Classification
+from constants import KD_SD_GOOD, SYNONYM_OUTLIER_Z
+from replicate_combine import Merged
 from synonymous import (
     CLASS_ONE,
     CLASS_SEVERAL,
     CLASS_STOP,
     CLASS_SYNONYMOUS,
     CLASS_WILDTYPE,
+    OUTLIER_SCHEMA,
     REASON_NO_UNMUTATED,
     REASON_SEVERAL_UNMUTATED,
     Copy,
+    OutlierTest,
     SynonymousInputs,
     aa_class,
     combine,
     combine_synonymous,
     copy_from_fit,
+    dataset_sigma,
     nt_aa_variants,
     nt_class,
+    outlier_groups,
+    outlier_note,
+    outlier_tests,
     parent_delta,
     resolve_nt_to_aa,
     resolve_parents,
@@ -346,6 +355,16 @@ class TestCombineSynonymous:
             "ambiguousNtVariants": 1,
             "parentMode": False,
             "synonymSpread": {"variants": 1, "median": 0.0},
+            "ntParentMode": False,
+            # WT's two copies are tested and agree; M has one copy in its mean.
+            "synonymOutlier": {
+                "zThreshold": 2.5,
+                "datasetSigma": 0.0,
+                "testedAaVariants": 1,
+                "testedNtVariants": 2,
+                "flaggedNtVariants": 0,
+                "flaggedAaVariants": 0,
+            },
         }
         # WT's two measured copies agree; M has one measured copy, so no spread.
         assert frame["kdLog10SynonymSd"].to_list() == [None, 0.0]
@@ -421,7 +440,7 @@ class TestCombineSynonymous:
         inputs = SynonymousInputs(self.LINKS, aa_productive=productive, nt_mutations=self.CLASS_INPUTS["nt_mutations"])
         frame, per_nt, summary = combine_synonymous(self.PER_CLONOTYPE, inputs, log10_lo=LO, log10_hi=HI)
         assert "variantClass" not in frame.columns
-        assert per_nt.columns == ["ntKey"]
+        assert per_nt.columns == ["ntKey", *OUTLIER_SCHEMA]
         assert frame.filter(pl.col("aaKey") == "M")["kd"].item() is None
         assert summary["stopAaVariants"] == 1
 
@@ -430,7 +449,7 @@ class TestCombineSynonymous:
         frame, per_nt, summary = combine_synonymous(self.PER_CLONOTYPE, inputs, log10_lo=LO, log10_hi=HI)
         assert "variantClass" in frame.columns
         assert "kdLog10ParentDelta" not in frame.columns
-        assert per_nt is None
+        assert per_nt.columns == ["ntKey", *OUTLIER_SCHEMA]
         assert summary["parentMode"] is False
 
     NT_PARENT_LINKS = pl.DataFrame({"ntKey": ["wt1", "wt2", "m1", "m2"], "parentId": ["P", "P", "P", "P"]})
@@ -588,3 +607,216 @@ class TestNtAaVariants:
     def test_an_nt_variant_without_a_curve_gets_no_label(self):
         variants = self._variants(nt_aa_variants(self.LINKS, None, curved=["n1", "n2", "n3", "n5", "n6"]))
         assert variants["n6"] is None
+
+
+def _outlier_run(groups: dict[str, list[tuple[float, float | None]]]):
+    """combine_synonymous over measured copies given as (log10 K_D, fit SE); copy i of `aa` is `aa`+i."""
+    rows, links = [], []
+    for aa, copies in groups.items():
+        for i, (log10_kd, se) in enumerate(copies, start=1):
+            rows.append((f"{aa}{i}", 10.0**log10_kd, "Good", False, se))
+            links.append((f"{aa}{i}", aa))
+    inputs = SynonymousInputs(pl.DataFrame(links, schema=["ntKey", "aaKey"], orient="row"))
+    frame, per_nt, summary = combine_synonymous(_per_clonotype(rows), inputs, log10_lo=LO, log10_hi=HI)
+    return frame, {r["ntKey"]: r for r in per_nt.iter_rows(named=True)}, summary
+
+
+def _note(frame: pl.DataFrame, aa: str) -> str | None:
+    return frame.filter(pl.col("aaKey") == aa)["synonymOutliers"].item()
+
+
+class TestSynonymOutlier:
+    # Hand-checked: delta against the mean of the other two; the others' SE is max(SD/sqrt(2),
+    # sqrt(se_a^2 + se_b^2)/2); sigma = sqrt(se^2 + se_others^2).
+    THREE_ONE_ODD = [(-8.584, 0.25), (-8.338, 0.285), (-7.284, 0.25)]
+
+    def test_a_copy_a_decade_weaker_than_the_others_is_flagged(self):
+        frame, nt, _ = _outlier_run({"A": self.THREE_ONE_ODD})
+        # A3: delta 1.177; others' SE sqrt(0.0625 + 0.081225)/2 = 0.189555 beats 0.123.
+        assert nt["A3"]["kdLog10SynonymDelta"] == pytest.approx(1.177, abs=1e-9)
+        assert nt["A3"]["kdLog10SynonymDeltaSe"] == pytest.approx(0.313738, abs=1e-6)
+        assert nt["A3"]["kdLog10SynonymZ"] == pytest.approx(3.7515432936671926, abs=1e-6)
+        assert nt["A3"]["synonymOutlier"] is True
+        # A1: delta -0.773; the others' spread 1.054/2 = 0.527 beats their fit errors.
+        assert nt["A1"]["kdLog10SynonymDelta"] == pytest.approx(-0.773, abs=1e-9)
+        assert nt["A1"]["kdLog10SynonymZ"] == pytest.approx(-1.3252378449411428, abs=1e-6)
+        assert nt["A1"]["synonymOutlier"] is False
+        assert nt["A2"]["kdLog10SynonymZ"] == pytest.approx(-0.5692258474565922, abs=1e-6)
+        assert nt["A2"]["synonymOutlier"] is False
+        assert _note(frame, "A") == "A3: weaker, +1.18 decades, z +3.75"
+
+    def test_three_copies_that_agree_within_their_errors_are_not_flagged(self):
+        frame, nt, summary = _outlier_run({"A": [(-6.177, 0.655), (-6.918, 0.27), (-6.551, 0.587)]})
+        z = {key: row["kdLog10SynonymZ"] for key, row in nt.items()}
+        assert z["A1"] == pytest.approx(0.7633461527395291, abs=1e-6)
+        assert z["A2"] == pytest.approx(-1.073557733190834, abs=1e-6)
+        assert z["A3"] == pytest.approx(-0.005042163883396568, abs=1e-6)
+        assert max(abs(v) for v in z.values()) == pytest.approx(1.073557733190834, abs=1e-6)
+        assert not any(row["synonymOutlier"] for row in nt.values())
+        assert _note(frame, "A") is None
+        assert summary["synonymOutlier"]["flaggedNtVariants"] == 0
+
+    def test_two_copies_get_the_same_z_and_agree(self):
+        frame, nt, _ = _outlier_run({"A": self.THREE_ONE_ODD[:2]})
+        # The other copy's own SE: sigma = sqrt(0.25^2 + 0.285^2) = 0.379111 for both.
+        assert nt["A1"]["kdLog10SynonymDeltaSe"] == pytest.approx(nt["A2"]["kdLog10SynonymDeltaSe"])
+        assert nt["A1"]["kdLog10SynonymZ"] == pytest.approx(-0.6488868132152068, abs=1e-6)
+        assert nt["A2"]["kdLog10SynonymZ"] == pytest.approx(0.6488868132152068, abs=1e-6)
+        assert (nt["A1"]["synonymOutlier"], nt["A2"]["synonymOutlier"]) == (False, False)
+        assert _note(frame, "A") is None
+
+    def test_two_copies_that_disagree_are_named_as_a_pair(self):
+        frame, nt, _ = _outlier_run({"A": [(-8.0, 0.1), (-7.0, 0.1)]})
+        # |z| = 1 / sqrt(0.1^2 + 0.1^2) = 7.07 for both; neither is the odd one.
+        assert (nt["A1"]["synonymOutlier"], nt["A2"]["synonymOutlier"]) == (True, True)
+        assert nt["A2"]["kdLog10SynonymZ"] == pytest.approx(7.0710678118654755, abs=1e-6)
+        assert _note(frame, "A") == "A1 vs A2: disagree, 1.00 decades apart, |z| 7.07"
+
+    def test_without_a_se_the_dataset_sigma_scales_the_gap(self):
+        groups = {
+            "A": [(-8.0, None), (-8.2, None), (-8.1, None)],
+            "B": [(-7.0, None), (-7.2, None)],
+            "C": [(-9.0, None), (-9.1, None), (-9.2, None), (-7.9, None)],
+        }
+        frame, nt, summary = _outlier_run(groups)
+        # Deviations from each mean, times sqrt(m / (m - 1)): A (0.1 -0.1 0) * sqrt(3/2);
+        # B (0.1 -0.1) * sqrt(2); C (-0.2 -0.3 -0.4 0.9) * sqrt(4/3). Median -0.122474; absolute
+        # deviations from it, median |C2 - center| = 0.223940: sigma 1.4826 * 0.223940 = 0.332007.
+        sigma = 1.4826 * (0.3 * math.sqrt(4 / 3) - 0.1 * math.sqrt(3 / 2))
+        assert summary["synonymOutlier"]["datasetSigma"] == pytest.approx(sigma, abs=1e-12)
+        assert sigma == pytest.approx(0.33200703082780525, abs=1e-12)
+        # C4: delta 1.2 over sigma * sqrt(1 + 1/3).
+        assert nt["C4"]["kdLog10SynonymDelta"] == pytest.approx(1.2, abs=1e-9)
+        assert nt["C4"]["kdLog10SynonymDeltaSe"] == pytest.approx(sigma * math.sqrt(4 / 3), abs=1e-12)
+        assert nt["C4"]["kdLog10SynonymZ"] == pytest.approx(3.130146015131591, abs=1e-6)
+        assert nt["C3"]["kdLog10SynonymZ"] == pytest.approx(-1.391176006725152, abs=1e-6)
+        # B: delta 0.2 over sigma * sqrt(2).
+        assert nt["B1"]["kdLog10SynonymZ"] == pytest.approx(0.4259589198599156, abs=1e-6)
+        assert [key for key, row in nt.items() if row["synonymOutlier"]] == ["C4"]
+        assert _note(frame, "C") == "C4: weaker, +1.20 decades, z +3.13"
+        assert (_note(frame, "A"), _note(frame, "B")) == (None, None)
+        assert summary["synonymOutlier"] == {
+            "zThreshold": SYNONYM_OUTLIER_Z,
+            "datasetSigma": pytest.approx(sigma, abs=1e-12),
+            "testedAaVariants": 3,
+            "testedNtVariants": 9,
+            "flaggedNtVariants": 1,
+            "flaggedAaVariants": 1,
+        }
+
+    def test_a_copy_at_a_wall_is_tested_at_the_wall_with_the_dataset_sigma(self):
+        rows = [
+            ("n1", 1e-8, "Good", False, 0.1),
+            ("n2", 10.0**-8.1, "Good", False, 0.1),
+            ("n3", 1e-13, "Good", True, None),
+        ]
+        links = pl.DataFrame({"ntKey": ["n1", "n2", "n3"], "aaKey": ["A", "A", "A"]})
+        frame, per_nt, summary = combine_synonymous(
+            _per_clonotype(rows), SynonymousInputs(links), log10_lo=LO, log10_hi=HI
+        )
+        nt = {r["ntKey"]: r for r in per_nt.iter_rows(named=True)}
+        # Only n1 and n2 enter the sigma: deviations +-0.05 * sqrt(2), median 0, MAD 0.05 * sqrt(2).
+        sigma = 1.4826 * 0.05 * math.sqrt(2)
+        assert summary["synonymOutlier"]["datasetSigma"] == pytest.approx(sigma, abs=1e-12)
+        # n3 enters at the lower wall, -10, has no SE, and is tested against n1 and n2.
+        assert nt["n3"]["kdLog10SynonymDelta"] == pytest.approx(-1.95, abs=1e-9)
+        assert nt["n3"]["kdLog10SynonymZ"] == pytest.approx(-1.95 / (sigma * math.sqrt(1.5)), abs=1e-9)
+        # n1 is tested against n2 alone: the wall copy is never among the others.
+        assert nt["n1"]["kdLog10SynonymDelta"] == pytest.approx(0.1, abs=1e-9)
+        assert nt["n1"]["kdLog10SynonymZ"] == pytest.approx(0.1 / math.hypot(0.1, 0.1), abs=1e-9)
+        assert _note(frame, "A") == "n3: tighter, at least 1.95 decades, below range"
+
+    def test_a_copy_at_a_wall_does_not_drag_the_mean_the_others_are_tested_against(self):
+        # No SEs: the dataset sigma throughout. Before the wall copy was dropped from the others,
+        # A1 read against the mean of A2 and the wall, a decade away, and was flagged.
+        groups = {"B": [(-7.0, None), (-7.2, None)], "C": [(-9.0, None), (-9.1, None), (-9.2, None)]}
+        rows = [("A1", 1e-8, "Good", False, None), ("A2", 10.0**-8.1, "Good", False, None)]
+        rows.append(("A3", 1e-13, "Good", True, None))
+        links = [("A1", "A"), ("A2", "A"), ("A3", "A")]
+        for aa, copies in groups.items():
+            for i, (log10_kd, se) in enumerate(copies, start=1):
+                rows.append((f"{aa}{i}", 10.0**log10_kd, "Good", False, se))
+                links.append((f"{aa}{i}", aa))
+        inputs = SynonymousInputs(pl.DataFrame(links, schema=["ntKey", "aaKey"], orient="row"))
+        frame, per_nt, _ = combine_synonymous(_per_clonotype(rows), inputs, log10_lo=LO, log10_hi=HI)
+        nt = {r["ntKey"]: r for r in per_nt.iter_rows(named=True)}
+        assert nt["A1"]["kdLog10SynonymDelta"] == pytest.approx(0.1, abs=1e-9)
+        assert (nt["A1"]["synonymOutlier"], nt["A2"]["synonymOutlier"], nt["A3"]["synonymOutlier"]) == (
+            False,
+            False,
+            True,
+        )
+        assert _note(frame, "A") == "A3: tighter, at least 1.95 decades, below range"
+
+    def test_a_measured_copy_and_a_copy_at_a_wall_test_the_wall_copy_alone(self):
+        rows = [("n1", 1e-8, "Good", False, 0.1), ("n2", 1e-6 * 10, "Good", True, None)]
+        rows += [("m1", 1e-8, "Good", False, 0.1), ("m2", 10.0**-8.2, "Good", False, 0.1)]
+        links = pl.DataFrame({"ntKey": ["n1", "n2", "m1", "m2"], "aaKey": ["A", "A", "M", "M"]})
+        frame, per_nt, _ = combine_synonymous(_per_clonotype(rows), SynonymousInputs(links), log10_lo=LO, log10_hi=HI)
+        nt = {r["ntKey"]: r for r in per_nt.iter_rows(named=True)}
+        # n1 has no other measured copy to read against.
+        assert nt["n1"]["kdLog10SynonymDelta"] is None and nt["n1"]["synonymOutlier"] is None
+        # n2 enters at the upper wall, -6: two decades above n1, at least.
+        assert nt["n2"]["kdLog10SynonymDelta"] == pytest.approx(2.0, abs=1e-9)
+        assert _note(frame, "A") == "n2: weaker, at least 2.00 decades, above range"
+
+    @pytest.mark.parametrize("k", [2, 3, 5])
+    def test_the_dataset_sigma_recovers_the_spread_of_the_copies(self, k):
+        # Each deviation is taken from a mean that includes the copy; unscaled, the MAD would read
+        # sigma * sqrt((k - 1) / k): 0.71 at k = 2.
+        rng = random.Random(7)
+        groups = {
+            f"A{g}": [(f"n{g}_{i}", Copy("measured", rng.gauss(-8.0, 0.3), None, "Good")) for i in range(k)]
+            for g in range(3000)
+        }
+        assert dataset_sigma(groups) == pytest.approx(0.3, rel=0.05)
+
+    def test_a_failed_copy_is_not_tested_and_does_not_count(self):
+        rows = [("n1", 1e-8, "Good", False, 0.1), ("n2", 1e-7, "Good", False, 0.1), ("n3", None, "Failed", None, None)]
+        links = pl.DataFrame({"ntKey": ["n1", "n2", "n3"], "aaKey": ["A", "A", "A"]})
+        frame, per_nt, _ = combine_synonymous(_per_clonotype(rows), SynonymousInputs(links), log10_lo=LO, log10_hi=HI)
+        nt = {r["ntKey"]: r for r in per_nt.iter_rows(named=True)}
+        assert nt["n3"]["kdLog10SynonymDelta"] is None and nt["n3"]["synonymOutlier"] is None
+        # k = 2: the pair.
+        assert _note(frame, "A") == "n1 vs n2: disagree, 1.00 decades apart, |z| 7.07"
+
+    def test_a_bound_a_single_copy_and_a_stop_are_not_tested(self):
+        rows = [
+            ("b1", 1e-13, "Good", True, None),
+            ("b2", 1e-13, "Good", True, None),
+            ("s1", 1e-8, "Good", False, 0.1),
+            ("x1", 1e-8, "Good", False, 0.1),
+            ("x2", 1e-7, "Good", False, 0.1),
+        ]
+        links = pl.DataFrame({"ntKey": ["b1", "b2", "s1", "x1", "x2"], "aaKey": ["B", "B", "S", "X", "X"]})
+        productive = pl.DataFrame({"aaKey": ["B", "S", "X"], "productive": ["true", "true", "false"]})
+        frame, per_nt, summary = combine_synonymous(
+            _per_clonotype(rows), SynonymousInputs(links, aa_productive=productive), log10_lo=LO, log10_hi=HI
+        )
+        assert per_nt["kdLog10SynonymDelta"].null_count() == per_nt.height
+        assert frame["synonymOutliers"].null_count() == frame.height
+        assert summary["synonymOutlier"]["datasetSigma"] is None
+        assert summary["synonymOutlier"]["testedAaVariants"] == 0
+
+    def test_replicate_means_are_read_as_copies(self):
+        # With replicates the copies are each nt variant's mean over its replicates.
+        def merged(log10_kd, se, out_of_range=False):
+            return Merged(log10_kd, se, None, Classification("Good", None), out_of_range, {})
+
+        nt_values = {"n1": merged(-8.0, 0.1), "n2": merged(-8.1, 0.1), "n3": merged(-10.0, None, True)}
+        aa_values = {"A": merged(-8.7, 0.6), "B": merged(-10.0, None, True)}
+        mapping = {"n1": "A", "n2": "A", "n3": "A"}
+        groups = outlier_groups(aa_values, nt_values, mapping, set())
+        assert [nt for nt, _ in groups["A"]] == ["n1", "n2", "n3"]
+        assert "B" not in groups
+        # The out-of-range mean n3 is read as a wall copy: it stays out of the sigma.
+        assert dataset_sigma(groups) == pytest.approx(1.4826 * 0.05 * math.sqrt(2), abs=1e-12)
+        assert outlier_tests(groups["A"], dataset_sigma(groups))["n3"].bound is True
+
+    def test_a_zero_sigma_gives_no_z(self):
+        tests = outlier_tests(
+            [("a", Copy("measured", -8.0, None, "Good")), ("b", Copy("measured", -8.0, None, "Good"))], 0.0
+        )
+        assert tests["a"] == OutlierTest(0.0, 0.0, None)
+        assert tests["a"].flagged is None
+        assert outlier_note(tests) is None
