@@ -12,8 +12,8 @@ import type {
 } from "@platforma-open/milaboratories.samples-and-data.model";
 import { awaitStableState, blockTest } from "@platforma-sdk/test";
 import { TiteseqAnalysisBlockPointer as myBlockSpec } from "this-block";
-import { SamplesAndDataBlockPointer as samplesAndDataBlockSpec } from "@platforma-open/milaboratories.samples-and-data";
-import { ImportVdjBlockPointer as importVdjBlockSpec } from "@platforma-open/milaboratories.import-vdj";
+import { blockSpec as samplesAndDataBlockSpec } from "@platforma-open/milaboratories.samples-and-data";
+import { blockSpec as importVdjBlockSpec } from "@platforma-open/milaboratories.import-vdj";
 import type { BlockArgs as ImportVdjBlockArgs } from "@platforma-open/milaboratories.import-vdj.model";
 import { prepareSamplesAndDataArgs } from "./fixtures";
 
