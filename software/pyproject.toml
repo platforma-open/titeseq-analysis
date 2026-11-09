@@ -24,10 +24,11 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "-ra --strict-markers"
+addopts = "-ra --strict-markers -m \"not golden\""
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "hot_path: perf smoke tests",
+    "golden: published-study reproductions; run with -m golden (needs the study data)",
 ]
 
 [tool.coverage.run]

@@ -115,6 +115,25 @@ class TestLogFluorescenceFit:
         assert fitted.min() >= BINS[0] - 0.5
         assert fitted.max() <= BINS[-1] + 0.5
 
+    @pytest.mark.parametrize("params", [LF, HILL], ids=["log_fluorescence", "hill_gate_index"])
+    def test_a_curve_covers_every_fitted_concentration_not_only_its_own_points(self, params):
+        # SHORT has no reads at the top concentration; its curve is still written there.
+        out = run(_frame(_lf_reads("FULL", 1e-8), _lf_reads("SHORT", 1e-8, concs=CONCS[:-1])), params=params)
+        fitted = out["fitted_mean_bin"].filter(pl.col("clonotypeKey") == "SHORT")
+        assert sorted(fitted["concentrationStr"].to_list()) == sorted(str(c) for c in CONCS)
+        values = fitted.sort("concentrationStr").join(
+            pl.DataFrame({"concentrationStr": [str(c) for c in CONCS], "c": CONCS}), on="concentrationStr"
+        )
+        rising = values.sort("c")["fittedMeanBin"].to_numpy()
+        assert (rising[1:] >= rising[:-1] - 1e-9).all()
+
+    def test_a_failed_fit_draws_no_curve(self):
+        # An R² gate no fit can pass: the in-range fit rates Failed and leaves no fitted values.
+        gated = FitParams(equation="log_fluorescence", r2_gate_min=1.0)
+        out = run(_frame(_lf_reads("G1", 1e-8), _lf_reads("G2", 1e-8)), params=gated)
+        assert _row(out, "G1")["affinityClass"] == "Failed"
+        assert out["fitted_mean_bin"].height == 0
+
     def test_a_tighter_binder_reports_a_smaller_kd(self):
         out = run(_frame(_lf_reads("TIGHT", 1e-9), _lf_reads("LOOSE", 1e-7)), params=LF)
         assert _row(out, "TIGHT")["kd"] < _row(out, "LOOSE")["kd"]
@@ -496,3 +515,60 @@ class TestCompleteTitration:
         gated = FitParams(equation="log_fluorescence", require_all_concentrations=True)
         row = _row(run(_frame(_lf_reads("SHORT", 1e-8, concs=CONCS[:4])), params=gated), "SHORT")
         assert row["fitFailureReason"] == "insufficient_points"
+
+
+def _unsorted(rows: list[dict], conc: float) -> list[dict]:
+    """`rows` with every read at `conc` moved into one sample that carries no FACS bin."""
+    kept = [r for r in rows if r["concentration"] != conc]
+    moved = [r for r in rows if r["concentration"] == conc]
+    if not moved:
+        return kept
+    first = moved[0]
+    return kept + [
+        {
+            **first,
+            "sampleId": f"s_{conc}_unsorted",
+            "bin": None,
+            "reads": sum(r["reads"] for r in moved),
+        }
+    ]
+
+
+class TestUnsortedSamples:
+    """A sample with no FACS bin has no signal. Its point leaves; the rest of the curve stays."""
+
+    def test_an_unsorted_concentration_drops_one_point_not_the_variant(self):
+        reads = _frame(_unsorted(_lf_reads("A", 1e-8), CONCS[4]), _lf_reads("B", 1e-8))
+        out = run(reads, params=LF)
+        a, b = _row(out, "A"), _row(out, "B")
+        assert a["affinityClass"] != "Failed", a["fitFailureReason"]
+        assert math.log10(a["kd"]) == pytest.approx(math.log10(b["kd"]), abs=0.2)
+
+    def test_an_unsorted_point_does_not_count_toward_the_point_minimum(self):
+        # Five concentrations, one of them unsorted: four points remain, below the minimum of five.
+        concs = CONCS[2:7]
+        reads = _frame(_unsorted(_lf_reads("A", 1e-8, concs=concs), concs[0]))
+        row = _row(run(reads, params=LF), "A")
+        assert row["affinityClass"] == "Failed"
+        assert row["fitFailureReason"] != "convergence_failure"
+
+    def test_unsorted_zero_molar_samples_name_the_cause_of_the_lost_baseline(self):
+        zero = [
+            {
+                "clonotypeKey": c,
+                "sampleId": "s_0M",
+                "concentrationStr": "0",
+                "concentration": 0.0,
+                "bin": None,
+                "reads": 200,
+            }
+            for c in ("A", "B")
+        ]
+        out = run(_frame(_lf_reads("A", 1e-8), _lf_reads("B", 1e-9), zero), params=LF)
+        [warning] = out["run_warnings"]
+        assert "unsorted" in warning
+        assert "own baseline" in warning
+
+    def test_a_run_without_zero_molar_samples_raises_no_warning(self):
+        out = run(_frame(_lf_reads("A", 1e-8), _lf_reads("B", 1e-9)), params=LF)
+        assert "run_warnings" not in out

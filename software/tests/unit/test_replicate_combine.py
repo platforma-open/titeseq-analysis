@@ -8,6 +8,7 @@ from __future__ import annotations
 import math
 import statistics
 
+import polars as pl
 import pytest
 
 from replicate_combine import (
@@ -18,6 +19,7 @@ from replicate_combine import (
     combine_replicates,
     merge_all,
     replicate_value,
+    require_copy_majority,
 )
 
 LO = -10.0
@@ -67,14 +69,16 @@ class TestErrorModels:
         m = combine_replicates([_value(str(i), p) for i, p in enumerate(self.POINTS)])
         assert m.log10_kd_se == pytest.approx(statistics.stdev(self.POINTS) / math.sqrt(3))
 
-    def test_the_phillips_error_is_the_population_sd_over_root_n_plus_one(self):
-        m = combine_replicates([_value(str(i), p) for i, p in enumerate(self.POINTS)], error_model="phillips")
+    def test_the_population_error_is_the_population_sd_over_root_n_plus_one(self):
+        m = combine_replicates(
+            [_value(str(i), p) for i, p in enumerate(self.POINTS)], error_model="pop_sd_over_sqrt_n_plus_1"
+        )
         assert m.log10_kd_se == pytest.approx(statistics.pstdev(self.POINTS) / math.sqrt(4))
 
     def test_the_two_error_models_report_the_same_value(self):
         values = [_value(str(i), p) for i, p in enumerate(self.POINTS)]
         assert combine_replicates(values).log10_kd == pytest.approx(
-            combine_replicates(values, error_model="phillips").log10_kd
+            combine_replicates(values, error_model="pop_sd_over_sqrt_n_plus_1").log10_kd
         )
 
     def test_one_replicate_keeps_its_own_fit_error_by_default(self):
@@ -87,9 +91,9 @@ class TestErrorModels:
         assert m.log10_kd_se is None
         assert m.classification.affinity_class == "Partial"
 
-    def test_one_replicate_under_phillips_reports_its_own_fit_error(self):
+    def test_one_replicate_under_the_population_error_reports_its_own_fit_error(self):
         # The paper's form is 0 at n = 1, which would rate every single replicate Good.
-        m = combine_replicates([_value("A", -8.0, se=0.61)], error_model="phillips")
+        m = combine_replicates([_value("A", -8.0, se=0.61)], error_model="pop_sd_over_sqrt_n_plus_1")
         assert m.log10_kd_se == pytest.approx(0.61)
         assert m.classification.affinity_class == "Partial"
 
@@ -97,7 +101,9 @@ class TestErrorModels:
         values = [_value(str(i), p) for i, p in enumerate(self.POINTS)]
         expected = statistics.stdev(self.POINTS)
         assert combine_replicates(values).log10_kd_sd == pytest.approx(expected)
-        assert combine_replicates(values, error_model="phillips").log10_kd_sd == pytest.approx(expected)
+        assert combine_replicates(values, error_model="pop_sd_over_sqrt_n_plus_1").log10_kd_sd == pytest.approx(
+            expected
+        )
 
     def test_a_wide_spread_rates_partial(self):
         m = combine_replicates([_value("A", -9.0), _value("B", -6.0)])
@@ -230,14 +236,14 @@ class TestFrames:
         frame = build_per_replicate_frame(self._collected(), "clonotypeKey")
         assert frame.columns == [
             "clonotypeKey", "replicate", "replicateReads", "kd", "kdNegLog10", "kdLog10Se", "r2",
-            "affinityClass", "fitFailureReason", "kdState",
+            "affinityClass", "fitFailureReason",
         ]  # fmt: skip
         assert frame.height == 4
-        assert frame.filter(kdState="Left out, no fit").height == 2
+        assert frame.filter(affinityClass="Failed").height == 2
 
     def test_the_per_replicate_frame_reports_kd_in_the_published_form(self):
         frame = build_per_replicate_frame(self._collected(), "clonotypeKey")
-        measured = frame.filter(kdState="In the mean").sort("replicate")
+        measured = frame.filter(pl.col("affinityClass") != "Failed").sort("replicate")
         assert measured["kd"].to_list() == pytest.approx([1e-8, 2e-8])
         assert measured["kdNegLog10"].to_list() == pytest.approx([8.0, 7.69897], abs=1e-5)
 
@@ -272,3 +278,99 @@ class TestBoundClassAndRangeSide:
     def test_no_value_has_no_side(self):
         merged = combine_replicates([_value("A", -8.0, state="failed", cls="Failed")])
         assert merged.range_side is None
+
+    def test_the_mean_bin_fit_emits_no_wall_class_for_a_bound(self):
+        # "hill_gate_index" declares Good, Partial and Failed only: a wall class would fall outside
+        # the column's declared values and a downstream filter would drop the variant unseen.
+        values = [_value(r, HI, state="above", cls="Good") for r in ("A", "B")]
+        merged = combine_replicates(values, wall_classes=False)
+        assert merged.classification.affinity_class == "Good"
+        assert merged.range_side == "Above range"
+
+    def test_under_the_mean_bin_fit_replicates_that_disagree_give_partial(self):
+        values = [_value("A", HI, state="above", cls="Good"), _value("B", HI, state="above", cls="Partial")]
+        assert combine_replicates(values, wall_classes=False).classification.affinity_class == "Partial"
+
+
+class TestPartlyCensored:
+    def test_replicates_at_a_wall_cap_the_class_at_partial(self):
+        # Two flat replicates enter at the top wall and agree exactly; the spread is small, but
+        # it measures the clipping, not the error.
+        values = [
+            _value("rep1", -5.0, state="above", cls="Above range"),
+            _value("rep2", -5.91, se=0.2),
+            _value("rep3", -5.0, state="above", cls="Above range"),
+        ]
+        m = combine_replicates(values, error_model="pop_sd_over_sqrt_n_plus_1")
+        assert m.log10_kd == pytest.approx((-5.0 - 5.91 - 5.0) / 3)
+        assert m.log10_kd_se <= 0.5
+        assert m.classification.affinity_class == "Partial"
+
+    def test_measured_replicates_alone_still_rate_good(self):
+        m = combine_replicates([_value("A", -8.0), _value("B", -8.1), _value("C", -7.9)])
+        assert m.classification.affinity_class == "Good"
+
+    def test_a_measured_majority_rates_good_with_one_replicate_at_a_wall(self):
+        values = [
+            _value("rep1", -9.8),
+            _value("rep2", -9.9),
+            _value("rep3", -10.0, state="below", cls="Below range"),
+        ]
+        m = combine_replicates(values)
+        assert m.log10_kd == pytest.approx((-9.8 - 9.9 - 10.0) / 3)
+        assert m.classification.affinity_class == "Good"
+
+    def test_half_measured_is_not_a_majority(self):
+        values = [
+            _value("rep1", -9.8),
+            _value("rep2", -9.9),
+            _value("rep3", -10.0, state="below", cls="Below range"),
+            _value("rep4", -10.0, state="below", cls="Below range"),
+        ]
+        m = combine_replicates(values)
+        assert m.log10_kd_se <= 0.5
+        assert m.classification.affinity_class == "Partial"
+
+
+def _aa_row(log10_kd, se, *, measured, below=0, above=0, cls="Partial"):
+    """One replicate's amino-acid value, as the synonymous combination writes it."""
+    return {
+        "kd": 10.0**log10_kd,
+        "affinityClass": cls,
+        "kdOutOfRange": False,
+        "kdLog10Se": se,
+        "ntMeasured": measured,
+        "ntCensoredBelow": below,
+        "ntCensoredAbove": above,
+    }
+
+
+class TestCopyMajority:
+    """Starr order: the copies combine inside each replicate, then the replicates combine."""
+
+    def _merged(self, rows):
+        frames = [(f"rep{i}", pl.DataFrame([{"aaKey": "A", **row}])) for i, row in enumerate(rows)]
+        collected = collect_values(frames, "aaKey", log10_lo=LO, log10_hi=HI)
+        return require_copy_majority(collected, merge_all(collected))["A"]
+
+    def test_replicates_built_mostly_from_wall_copies_do_not_rate_good(self):
+        # Each replicate: one copy measured near -8, two at the low wall. Each replicate value is
+        # measured, and the replicates agree on the walls, so the SE alone would say Good.
+        rows = [_aa_row(x, 1.0, measured=1, below=2) for x in (-9.33, -9.36, -9.30)]
+        m = self._merged(rows)
+        assert m.log10_kd_se <= 0.5
+        assert m.classification.affinity_class == "Partial"
+
+    def test_a_copy_majority_over_the_replicates_still_rates_good(self):
+        rows = [_aa_row(x, 0.2, measured=2, below=1) for x in (-8.65, -8.70, -8.60)]
+        assert self._merged(rows).classification.affinity_class == "Good"
+
+    def test_half_the_copies_measured_is_not_a_majority(self):
+        rows = [_aa_row(-9.0, 0.2, measured=1, below=1), _aa_row(-9.05, 0.2, measured=1, above=1)]
+        assert self._merged(rows).classification.affinity_class == "Partial"
+
+    def test_copies_of_a_failed_replicate_are_not_counted(self):
+        # The failed replicate's censored copies never entered the mean.
+        failed = {**_aa_row(-8.0, None, measured=0, below=3), "kd": None, "affinityClass": "Failed"}
+        rows = [_aa_row(-8.0, 0.2, measured=2), _aa_row(-8.05, 0.2, measured=2), failed]
+        assert self._merged(rows).classification.affinity_class == "Good"

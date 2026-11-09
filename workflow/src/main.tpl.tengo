@@ -15,6 +15,9 @@ json := import("json")
 text := import("text")
 replicateColumnsLib := import(":replicate-columns")
 
+synonymousInputs := import(":synonymous-inputs")
+variantColumnsLib := import(":variant-columns")
+
 fitCurvesSw := assets.importSoftware("@platforma-open/platforma-open.titeseq-analysis.software:fit-curves")
 
 wf.prepare(func(args) {
@@ -44,6 +47,39 @@ wf.prepare(func(args) {
 		bb.addRef(json.decode(args.inputFilter))
 	}
 
+	// Synonymous-mode inputs: the nt -> aa linker and the amino-acid parent columns. Small per-variant
+	// columns, so awaiting their data here is cheap. The aa parent columns sit on the aa axis, which no
+	// anchor reaches: matched by name here, narrowed to the linker's aa axis in the body.
+	bb.addMulti({
+		axes: [{ anchor: "abundance", idx: 1 }],
+		name: "pl7.app/repertoire/aaToNt",
+		annotations: { "pl7.app/isLinkerColumn": "true" },
+		partialAxesMatch: true
+	}, "aaToNt")
+	bb.addMulti({
+		name: "pl7.app/repertoire/mutationCount",
+		domain: { "pl7.app/alphabet": "aminoacid" }
+	}, "aaMutationCounts")
+	bb.addMulti({
+		name: "pl7.app/repertoire/parentLink",
+		annotations: { "pl7.app/isLinkerColumn": "true" }
+	}, "parentLinks")
+	// The class inputs. The productive flag carries no alphabet domain; its axis does. A plain axis
+	// needs `type` to resolve; its domain matches as a subset.
+	bb.addMulti({
+		axes: [{ name: "pl7.app/variantKey", type: "String", domain: { "pl7.app/alphabet": "aminoacid" } }],
+		name: "pl7.app/vdj/sequence/productive"
+	}, "aaProductive")
+	bb.addMulti({
+		axes: [{ anchor: "abundance", idx: 1 }],
+		name: "pl7.app/repertoire/mutationCount"
+	}, "ntMutationCounts")
+	// The amino-acid variants' labels: the graphs name each synonymous group by them.
+	bb.addMulti({
+		axes: [{ name: "pl7.app/variantKey", type: "String", domain: { "pl7.app/alphabet": "aminoacid" } }],
+		name: "pl7.app/label"
+	}, "aaLabels")
+
 	return { columns: bb.build() }
 })
 
@@ -66,7 +102,23 @@ wf.body(func(args) {
 	// Which replicate each sample belongs to. Unbound, the block fits one titration and no
 	// replicate reaches the command line, the grouping or any output.
 	hasReplicate := !is_undefined(args.replicateColumnRef)
-	replicateErrorModel := args.replicateErrorModel == "phillips" ? "phillips" : "sd_over_sqrt_n"
+	replicateErrorModel := args.replicateErrorModel == "pop_sd_over_sqrt_n_plus_1" ? "pop_sd_over_sqrt_n_plus_1" : "sd_over_sqrt_n"
+
+	// Synonymous mode: a nucleotide dataset whose nt -> aa linker resolves. Each nt variant is still
+	// fitted on its own; the software then combines the fits per amino-acid variant.
+	syn := synonymousInputs.resolve({
+		aaToNt: columns.getColumns("aaToNt"),
+		aaMutationCounts: columns.getColumns("aaMutationCounts"),
+		parentLinks: columns.getColumns("parentLinks"),
+		aaProductive: columns.getColumns("aaProductive"),
+		ntMutationCounts: columns.getColumns("ntMutationCounts"),
+		aaLabels: columns.getColumns("aaLabels")
+	}, abundanceSpec.axesSpec[1])
+
+	// The nt grain's own synonymous columns, in per_nt_variant.tsv. The outlier test is always there;
+	// the class and parent delta only when their inputs resolve.
+	ntVariantOpts := { variantClass: syn.ntClass, parentMode: syn.ntParentMode }
+	hasNtVariantColumns := syn.synonymous
 
 	// The concentration column's label, and the unit read from it: the text in its trailing
 	// parentheses when it has them ("Antigen concentration (M)" -> "M"), else the whole label.
@@ -198,11 +250,30 @@ wf.body(func(args) {
 		arg("--out-mean-bin").arg("mean_bin.tsv").
 		arg("--out-fitted-mean-bin").arg("fitted_mean_bin.tsv").
 		arg("--out-concentration-value").arg("concentration_value.tsv").
+		arg("--out-concentration-order").arg("concentration_order.json").
+		arg("--out-concentration-label").arg("concentration_label.tsv").
+		arg("--out-signal-series").arg("signal_series.tsv").
+		arg("--out-combined-signal").arg("combined_signal.tsv").
+		arg("--out-run-warnings").arg("run_warnings.json").
+		arg("--out-fit-reads").arg("fit_reads.tsv").
 		saveFile("per_clonotype.tsv").
+		saveFile("fit_reads.tsv").
 		saveFile("mean_bin.tsv").
 		saveFile("fitted_mean_bin.tsv").
 		saveFile("concentration_value.tsv").
+		saveFile("concentration_label.tsv").
+		saveFile("signal_series.tsv").
+		saveFile("combined_signal.tsv").
+		saveFileContent("concentration_order.json").
+		saveFileContent("run_warnings.json").
 		saveStdoutStream()
+
+	// The user's bin order: each kept bin value's rank. Absent, the column's own integers are the
+	// gates, so a block that never set an order runs the command it always ran.
+	if hasBin && !is_undefined(args.binRanks) {
+		execBuilder.writeFile("bin_ranks.json", canonical.encode(args.binRanks)).
+			arg("--bin-ranks").arg("bin_ranks.json")
+	}
 
 	if hasAntigen {
 		execBuilder.arg("--antigen-column-ref").arg("antigen")
@@ -234,6 +305,91 @@ wf.body(func(args) {
 		}
 	}
 
+	if syn.synonymous {
+		keyTable := func(fill) {
+			b := pframes.tsvFileBuilder()
+			fill(b)
+			b.mem("4GiB")
+			b.cpu(1)
+			return b.build()
+		}
+		ntAxis := abundanceSpec.axesSpec[1]
+		execBuilder.
+			addFile("nt_to_aa.tsv", keyTable(func(b) {
+				b.add(syn.linker, { header: "link" })
+				b.setAxisHeader(ntAxis, "ntKey")
+				b.setAxisHeader(syn.aaAxis, "aaKey")
+			})).
+			arg("--nt-to-aa").arg("nt_to_aa.tsv").
+			arg("--out-per-variant").arg("per_variant.tsv").
+			arg("--out-synonymous-summary").arg("synonymous_summary.json").
+			saveFile("per_variant.tsv").
+			saveFileContent("synonymous_summary.json")
+		if hasReplicate {
+			execBuilder.
+				arg("--out-per-replicate-nt").arg("per_replicate_nt.tsv").
+				saveFile("per_replicate_nt.tsv")
+		}
+		execBuilder.
+			arg("--out-nt-aa-variant").arg("nt_aa_variant.tsv").
+			saveFile("nt_aa_variant.tsv")
+		if !is_undefined(syn.aaLabel) {
+			execBuilder.
+				addFile("aa_labels.tsv", keyTable(func(b) {
+					b.add(syn.aaLabel, { header: "label" })
+					b.setAxisHeader(syn.aaAxis, "aaKey")
+				})).
+				arg("--aa-labels").arg("aa_labels.tsv")
+		}
+		if syn.aaClass {
+			execBuilder.
+				addFile("aa_mutations.tsv", keyTable(func(b) {
+					b.add(syn.aaMutationCount, { header: "mutationCount" })
+					b.setAxisHeader(syn.aaAxis, "aaKey")
+				})).
+				arg("--aa-mutations").arg("aa_mutations.tsv")
+		}
+		if !is_undefined(syn.aaProductive) {
+			execBuilder.
+				addFile("aa_productive.tsv", keyTable(func(b) {
+					b.add(syn.aaProductive, { header: "productive" })
+					b.setAxisHeader(syn.aaAxis, "aaKey")
+				})).
+				arg("--aa-productive").arg("aa_productive.tsv")
+		}
+		if hasNtVariantColumns {
+			execBuilder.
+				arg("--out-per-nt-variant").arg("per_nt_variant.tsv").
+				saveFile("per_nt_variant.tsv")
+		}
+		if syn.ntClass || syn.ntParentMode {
+			execBuilder.
+				addFile("nt_mutations.tsv", keyTable(func(b) {
+					b.add(syn.ntMutationCount, { header: "mutationCount" })
+					b.setAxisHeader(ntAxis, "ntKey")
+				})).
+				arg("--nt-mutations").arg("nt_mutations.tsv")
+		}
+		if syn.ntParentMode {
+			execBuilder.
+				addFile("nt_parent_links.tsv", keyTable(func(b) {
+					b.add(syn.ntParentLink, { header: "link" })
+					b.setAxisHeader(ntAxis, "ntKey")
+					b.setAxisHeader(syn.ntParentAxis, "parentId")
+				})).
+				arg("--nt-parent-links").arg("nt_parent_links.tsv")
+		}
+		if syn.parentMode {
+			execBuilder.
+				addFile("aa_parent_links.tsv", keyTable(func(b) {
+					b.add(syn.aaParentLink, { header: "link" })
+					b.setAxisHeader(syn.aaAxis, "aaKey")
+					b.setAxisHeader(syn.parentAxis, "parentId")
+				})).
+				arg("--aa-parent-links").arg("aa_parent_links.tsv")
+		}
+	}
+
 	fit := execBuilder.run()
 
 	// Shared axis specs for the output PColumns.
@@ -259,12 +415,14 @@ wf.body(func(args) {
 		}
 	}
 
-	// R19b: swap "Mean bin" → "Clonotype frequency" in no-bin mode.
+	// R19b: swap "Mean bin" → "Clonotype frequency" in no-bin mode. The noun follows the input in
+	// synonymous mode only, so every other input keeps its exported labels.
+	noun := syn.synonymous ? synonymousInputs.nounOf(clonotypeAxisSpec) : "clonotype"
 	meanBinLabel := "Mean bin"
 	fittedMeanBinLabel := "Fitted mean bin"
 	if !hasBin {
-		meanBinLabel = "Clonotype frequency"
-		fittedMeanBinLabel = "Fitted clonotype frequency"
+		meanBinLabel = synonymousInputs.CAPITALIZED[noun] + " frequency"
+		fittedMeanBinLabel = "Fitted " + noun + " frequency"
 	} else if hasBinFluorescence {
 		// Measured gate positions put the signal and the fitted curve in log10 fluorescence.
 		meanBinLabel = "Mean log10 fluorescence"
@@ -294,6 +452,11 @@ wf.body(func(args) {
 	if concUnit != "" {
 		kdAnnotations["pl7.app/unit"] = concUnit
 	}
+	if hasReplicate {
+		// A replicate at an edge enters the mean at that edge, as the papers do, so the mean of a
+		// variant with one censored replicate is partly an edge value. The counts say how many.
+		kdAnnotations["pl7.app/description"] += " With sample replicates, Kd,app is the mean of log10 Kd,app across the replicates. A replicate at an edge of the range enters the mean at that edge. Replicates below range and Replicates above range give the number of such replicates."
+	}
 
 	// Import per_clonotype.tsv → summary PColumns.
 	// Python writes column `r2`; the output spec name `pl7.app/vdj/curveFitR2` is
@@ -318,6 +481,15 @@ wf.body(func(args) {
 		affinityClassValues = "[\"Good\",\"Partial\",\"Below range\",\"Above range\",\"Failed\"]"
 		affinityClassDescription = "Good: Kd,app inside the titrated range, with a standard error of log10 Kd,app at or below 0.5. Partial: Kd,app is inside the range and its standard error is larger. Below range: Kd,app is at most the lowest concentration titrated, so the variant binds tighter than this titration resolves. Above range: Kd,app is at least the highest concentration titrated, which covers a signal that stayed flat and dim and one that rose without reaching half-maximum. Failed: no fit, a gap in the titration while complete titrations are required, or the fit-quality gate is on and an in-range fit's R² is below its minimum or its standard error above its maximum; see the fit failure reason."
 		affinityClassCutoff = "[\"Good\",\"Partial\",\"Below range\"]"
+	}
+	// With replicates the class is given to the combined value, so the single-fit rules above do
+	// not apply to it.
+	boundRule := args.equation == "log_fluorescence" ?
+		"A value at an edge of the range gets Below range or Above range." :
+		"A value at an edge of the range keeps the class of its replicates if they all have the same class. If they do not, it gets Partial."
+	if hasReplicate {
+		affinityClassDescription = "The class of the combined value. Good: the standard error across the replicates is 0.5 or less. Partial: the standard error is more than 0.5. " +
+			boundRule + " Failed: no replicate has a Kd,app, or the replicates are at opposite edges of the range. With one replicate, the value keeps the class of that replicate if it has no standard error."
 	}
 	summaryColumns := [
 		{
@@ -451,23 +623,21 @@ wf.body(func(args) {
 	// single fit, and the range side. With replicates the SE is the spread across them, which every
 	// equation reports, beside the SD and the replicate counts. log10 K_D is the unit the fit solves
 	// in and the unit every error column carries, with or without replicates.
-	summaryColumns = append(summaryColumns, {
-		column: "kdNegLog10",
-		spec: {
-			name: "pl7.app/vdj/kdNegLog10",
-			valueType: "Double",
-			domain: { "pl7.app/block": blockId },
-			annotations: {
-				"pl7.app/label": "-log10 Kd,app",
-				"pl7.app/description": "Kd,app as -log10, the form every published analysis of this assay reports: a larger number is tighter binding. Its magnitude is the unit the fit solves in, so it shares a scale with the standard error beside it. Empty where there is no Kd,app.",
-				"pl7.app/isScore": "true",
-				"pl7.app/score/rankingOrder": "decreasing",
-				"pl7.app/format": ".2f",
-				"pl7.app/table/visibility": "default",
-				"pl7.app/table/orderPriority": "201"
-			}
+	kdNegLog10Spec := {
+		name: "pl7.app/vdj/kdNegLog10",
+		valueType: "Double",
+		domain: { "pl7.app/block": blockId },
+		annotations: {
+			"pl7.app/label": "-log10 Kd,app",
+			"pl7.app/description": "Kd,app as -log10, the form every published analysis of this assay reports: a larger number is tighter binding. Its magnitude is the unit the fit solves in, so it shares a scale with the standard error beside it. Empty where there is no Kd,app.",
+			"pl7.app/isScore": "true",
+			"pl7.app/score/rankingOrder": "decreasing",
+			"pl7.app/format": ".2f",
+			"pl7.app/table/visibility": "default",
+			"pl7.app/table/orderPriority": "201"
 		}
-	})
+	}
+	summaryColumns = append(summaryColumns, { column: "kdNegLog10", spec: kdNegLog10Spec })
 	if hasReplicate {
 		// With replicates, R² shows per replicate in the drill-down only.
 		withoutR2 := []
@@ -508,6 +678,50 @@ wf.body(func(args) {
 		storageFormat: "Parquet",
 		partitionKeyLength: 0
 	}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
+
+	fitReadsImported := xsv.importFile(fit.getFile("fit_reads.tsv"), "tsv", {
+		axes: [{ column: "clonotypeKey", spec: clonotypeAxisSpec }],
+		columns: [variantColumnsLib.fitReadsColumn(blockId, "",
+			"The reads this variant's fit used, every replicate included: sorted samples only, at concentrations that pass the read floor.")],
+		storageFormat: "Parquet",
+		partitionKeyLength: 0
+	}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
+
+	// Synonymous mode: one row per amino-acid variant, on the linker's aa axis taken verbatim, so the
+	// columns join the profiler's aa columns. Names are the nt grain's; the axis alphabet tells the
+	// grains apart. Ids carry an "aa" prefix to stay apart from the nt columns in one frame.
+	variantImported := undefined
+	if syn.synonymous {
+		variantImported = xsv.importFile(fit.getFile("per_variant.tsv"), "tsv", {
+			axes: [{ column: "aaKey", spec: syn.aaAxis }],
+			columns: variantColumnsLib.variantColumns(blockId, kdAnnotations, {
+				parentMode: syn.parentMode,
+				variantClass: syn.aaClass,
+				kdNegLog10Spec: kdNegLog10Spec,
+				affinityClassValues: affinityClassValues,
+				affinityClassCutoff: affinityClassCutoff,
+				boundRule: boundRule,
+				replicateColumns: hasReplicate ? [
+					replicateColumnsLib.seColumn(blockId, "aa_", replicateErrorModel),
+					replicateColumnsLib.sdColumn(blockId, "aa_")
+				] + replicateColumnsLib.countColumns(blockId, "aa_") : undefined
+			}),
+			storageFormat: "Parquet",
+			partitionKeyLength: 0
+		}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
+	}
+
+	// Synonymous mode: the nt grain's outlier test, and its class and parent delta where they
+	// resolve, on the abundance's variant axis.
+	ntVariantImported := undefined
+	if hasNtVariantColumns {
+		ntVariantImported = xsv.importFile(fit.getFile("per_nt_variant.tsv"), "tsv", {
+			axes: [{ column: "ntKey", spec: clonotypeAxisSpec }],
+			columns: variantColumnsLib.ntVariantColumns(blockId, ntVariantOpts),
+			storageFormat: "Parquet",
+			partitionKeyLength: 0
+		}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
+	}
 
 	// One import per TSV. Each pcolumn resource is reused in both signalPf and
 	// exportPf — one logical column, one resource. Replaces the prior
@@ -581,31 +795,207 @@ wf.body(func(args) {
 		[{ column: "concentrationStr", spec: concAxisSpec }]
 	)
 
-	// Each replicate's own value, keyed by (clonotype, replicate). The names are the combined
+	// Each concentration as a category label that sorts as text in numeric order ("01 · 3.16e-10"):
+	// the category graphs group by it, since they sort a String axis as text.
+	concLabelImported := importSignal(
+		fit.getFile("concentration_label.tsv"),
+		"concentrationLabel",
+		{
+			name: "pl7.app/vdj/concentrationLabel",
+			valueType: "String",
+			domain: { "pl7.app/block": blockId },
+			annotations: {
+				"pl7.app/label": "Concentration",
+				"pl7.app/description": "The concentration, led by its rank so that it sorts in numeric order.",
+				"pl7.app/isScore": "false",
+				"pl7.app/table/visibility": "hidden"
+			}
+		},
+		[{ column: "concentrationStr", spec: concAxisSpec }]
+	)
+
+	// The observed signal and the fitted curve in one value column, told apart by a series axis
+	// (Observed, Fitted): a category graph takes one value column, and draws the two as two lines.
+	signalSeriesImported := importSignal(
+		fit.getFile("signal_series.tsv"),
+		"value",
+		{
+			name: "pl7.app/vdj/titrationSignal",
+			valueType: "Double",
+			domain: { "pl7.app/block": blockId },
+			annotations: {
+				"pl7.app/label": meanBinLabel,
+				"pl7.app/description": "The observed signal and the fitted curve, by series.",
+				"pl7.app/isScore": "false",
+				"pl7.app/table/visibility": "hidden"
+			}
+		},
+		concAxes + [{
+			column: "series",
+			spec: {
+				name: "pl7.app/vdj/signalSeries",
+				type: "String",
+				domain: { "pl7.app/block": blockId },
+				annotations: { "pl7.app/label": "Series" }
+			}
+		}]
+	)
+
+	// A column's filterOutRegex skips the whole row for every column of its import. So each filtered
+	// column is imported on its own and the rest together; returns the merged column map.
+	importSplit := func(file, axes, columns) {
+		plain := []
+		groups := []
+		for c in columns {
+			if is_undefined(c.filterOutRegex) {
+				plain = append(plain, c)
+			} else {
+				groups = append(groups, [c])
+			}
+		}
+		if len(plain) > 0 {
+			groups = [plain] + groups
+		}
+		res := {}
+		for g in groups {
+			res = maps.merge(res, xsv.importFile(file, "tsv", {
+				axes: axes,
+				columns: g,
+				storageFormat: "Parquet",
+				partitionKeyLength: 0
+			}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" }))
+		}
+		return res
+	}
+
+	// Per variant and concentration, over the replicates that drew a curve: the observed mean, its
+	// standard error, and the mean curve. Each column skips its own empty cells, so a missing value
+	// is absent rather than read as 0.
+	combinedColumn := func(column, name, label, description) {
+		return {
+			column: column,
+			filterOutRegex: "^$",
+			spec: {
+				name: name,
+				valueType: "Double",
+				domain: { "pl7.app/block": blockId },
+				annotations: {
+					"pl7.app/label": label,
+					"pl7.app/description": description,
+					"pl7.app/isScore": "false",
+					"pl7.app/table/visibility": "hidden"
+				}
+			}
+		}
+	}
+	combinedSignalImported := importSplit(fit.getFile("combined_signal.tsv"), [
+		{ column: "clonotypeKey", spec: clonotypeAxisSpec },
+		{ column: "concentrationStr", spec: concAxisSpec }
+	], [
+		combinedColumn("combinedMeanBin", "pl7.app/vdj/combinedMeanBin", meanBinLabel + " (mean)",
+			"The observed signal, averaged over the replicates that drew a curve."),
+		combinedColumn("combinedMeanBinSe", "pl7.app/vdj/combinedMeanBinSe", meanBinLabel + " (SE)",
+			"The standard error of that mean: sample SD over the square root of the replicate count."),
+		combinedColumn("combinedFittedMeanBin", "pl7.app/vdj/combinedFittedMeanBin", fittedMeanBinLabel + " (mean)",
+			"The replicates' fitted curves, averaged at each concentration.")
+	])
+
+	// Each replicate's own value, keyed by (variant, replicate). The names are the combined
 	// columns' — the extra axis is what distinguishes them — and they are hidden by default so a
-	// downstream picker offers the combined answer first.
+	// downstream picker offers the combined answer first. In synonymous mode the variant is the
+	// amino-acid one, as are the main table's rows: the copies combine inside each replicate first.
 	replicateImported := undefined
 	if hasReplicate {
-		replicateImported = xsv.importFile(fit.getFile("per_replicate.tsv"), "tsv", {
-			axes: [
-				{ column: "clonotypeKey", spec: clonotypeAxisSpec },
-				{ column: "replicate", spec: replicateAxisSpec }
-			],
-			columns: replicateColumnsLib.perReplicateColumns(blockId, "rep_", kdAnnotations, affinityClassValues, true),
-			storageFormat: "Parquet",
-			partitionKeyLength: 0
-		}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
+		replicateVariantAxis := { column: "clonotypeKey", spec: clonotypeAxisSpec }
+		replicateColumns := replicateColumnsLib.perReplicateColumns(blockId, "rep_", kdAnnotations, affinityClassValues)
+		if syn.synonymous {
+			replicateVariantAxis = { column: "aaKey", spec: syn.aaAxis }
+			replicateColumns = append(replicateColumns, replicateColumnsLib.perReplicateCopyColumns(blockId, "rep_")...)
+		}
+		replicateImported = importSplit(fit.getFile("per_replicate.tsv"), [
+			replicateVariantAxis,
+			{ column: "replicate", spec: replicateAxisSpec }
+		], replicateColumns)
+	}
+
+	// Synonymous mode: each nt variant's amino-acid variant. The key, on every nt variant that maps
+	// to one: the Explorer page filters an amino-acid variant's copies by it. The label, only on
+	// copies with a fitted curve where at least 2 of them share it: the synonymous graphs tab by it
+	// on the nt axis, where they reach it without the linker. An empty label is left out, not NA.
+	ntAaVariantImported := undefined
+	if syn.synonymous {
+		ntAaVariantImported = importSplit(fit.getFile("nt_aa_variant.tsv"), [{ column: "clonotypeKey", spec: clonotypeAxisSpec }], [{
+				column: "aaKey",
+				spec: {
+					name: "pl7.app/vdj/aaVariantKey",
+					valueType: "String",
+					domain: { "pl7.app/block": blockId },
+					annotations: {
+						"pl7.app/label": "AA Variant Key",
+						"pl7.app/description": "The key of the amino-acid variant this nucleotide variant encodes.",
+						"pl7.app/isScore": "false",
+						"pl7.app/table/visibility": "hidden"
+					}
+				}
+			}, {
+				column: "aaVariant",
+				filterOutRegex: "^$",
+				spec: {
+					name: "pl7.app/vdj/aaVariantId",
+					valueType: "String",
+					domain: { "pl7.app/block": blockId },
+					annotations: {
+						"pl7.app/label": "AA Variant Id",
+						"pl7.app/description": "The amino-acid variant this nucleotide variant encodes, by its label.",
+						"pl7.app/isDiscreteFilter": "true",
+						"pl7.app/isScore": "false",
+						"pl7.app/table/visibility": "hidden"
+					}
+				}
+			}])
+	}
+
+	// Synonymous mode with replicates: every nt copy's own fit in every replicate, the values the
+	// amino-acid per-replicate rows combine.
+	replicateNtImported := undefined
+	if hasReplicate && syn.synonymous {
+		replicateNtImported = importSplit(fit.getFile("per_replicate_nt.tsv"), [
+			{ column: "clonotypeKey", spec: clonotypeAxisSpec },
+			{ column: "replicate", spec: replicateAxisSpec }
+		], replicateColumnsLib.perReplicateColumns(blockId, "repnt_", kdAnnotations, affinityClassValues))
 	}
 
 	// Trace injection. `makeTrace` bundles the upstream abundance provenance
 	// with a self-descriptor; `trace.inject` rewrites only the small spec resources
 	// (data resources are untouched thanks to splitDataAndSpec).
 	traceLabel := args.traceLabel
-	trace := pSpec.makeTrace(traceSpec, {
+	blockStep := {
 		type: "milaboratories.titeseq-analysis",
 		importance: 30,
 		label: traceLabel
-	})
+	}
+	trace := pSpec.makeTrace(traceSpec, blockStep)
+
+	// Synonymous mode: the nt and aa grains share names and labels, so a level step tells them
+	// apart. The type is the profiler's level type: label derivation counts a type from the newest
+	// step, so this step shadows the inherited "NT Variants". A column on neither variant axis keeps
+	// the plain trace.
+	levelTrace := func(label) {
+		return pSpec.makeTrace(traceSpec, blockStep, {
+			type: "milaboratories.synthetic-repertoire-profiler.level",
+			importance: 80,
+			label: label
+		})
+	}
+	levelTraces := {}
+	if syn.synonymous {
+		levelTraces[synonymousInputs.NT_LEVEL] = levelTrace(synonymousInputs.NT_LEVEL)
+		levelTraces[synonymousInputs.AA_LEVEL] = levelTrace(synonymousInputs.AA_LEVEL)
+	}
+	traceOf := func(spec) {
+		level := synonymousInputs.levelOf(spec, syn, clonotypeAxisSpec)
+		return is_undefined(level) ? trace : levelTraces[level]
+	}
 
 	buildTracedPf := func(sources, excludeKeys) {
 		excluded := {}
@@ -619,7 +1009,7 @@ wf.body(func(args) {
 			for k in maps.getKeys(src) {
 				if excluded[k] { continue }
 				v := src[k]
-				spec := trace.inject(v.spec)
+				spec := traceOf(v.spec).inject(v.spec)
 				// A run on a subset says so: its outputs cover only the subset's clonotypes.
 				if !is_undefined(filterColumn) {
 					spec.domain["pl7.app/inputSubset"] = args.inputFilter
@@ -630,36 +1020,74 @@ wf.body(func(args) {
 		return pfb.build()
 	}
 
-	summaryPf := buildTracedPf([summaryImported], [])
+	summaryPf := buildTracedPf([summaryImported, fitReadsImported], [])
+	variantSources := is_undefined(variantImported) ? [] : [variantImported]
+	ntVariantSources := is_undefined(ntVariantImported) ? [] : [ntVariantImported]
 	// signalPf feeds this block's Titration Curves graph: meanBin (Y),
 	// fittedMeanBin (curve overlay), concentrationValue (numeric X).
-	signalPf := buildTracedPf([meanBinImported, fittedMeanBinImported, concValueImported], [])
+	// In synonymous mode also each nt variant's amino-acid variant, which the Synonymous Curves
+	// graph tabs by.
+	signalSources := [meanBinImported, fittedMeanBinImported, concValueImported, concLabelImported, signalSeriesImported, combinedSignalImported]
+	if syn.synonymous {
+		signalSources = append(signalSources, ntAaVariantImported)
+	}
+	signalPf := buildTracedPf(signalSources, [])
 	// exportPf is what downstream blocks see. Reuses the same pcolumn resources — no re-import.
-	// An allowlist: the affinity answer only. Every other column stays in this block's own table
-	// and graphs. A column an equation does not write is simply absent.
+	// An allowlist: the affinity answer, the fit quality behind it, and in synonymous mode each
+	// variant's change against its parent. The per-concentration signal, the replicate counts and
+	// the plot positions stay in this block's own table and graphs. A column an equation or a run
+	// does not write is simply absent.
 	exportAllowed := {
 		affinityClass: true,
 		kd: true,
 		kdNegLog10: true,
-		kdLog10Se: true
+		kdLog10Se: true,
+		kdOutOfRange: true,
+		r2: true,
+		hillCoefficient: true,
+		fitFailureReason: true,
+		kdLog10ParentDelta: true,
+		kdLog10ParentDeltaSe: true
 	}
+	// The log fluorescence fit fixes the exponent at 1, so its column carries no information.
+	if args.equation == "log_fluorescence" {
+		exportAllowed.hillCoefficient = false
+	}
+	// In synonymous mode the amino-acid grain exports under its "aa_" ids, and the nucleotide
+	// grain's allowed columns (parent delta) under their "nt_" ids.
+	exportSources := [summaryImported] + variantSources + ntVariantSources
 	exportExcluded := []
-	for k in maps.getKeys(summaryImported) {
-		if !exportAllowed[k] {
-			exportExcluded = append(exportExcluded, k)
+	for src in exportSources {
+		for k in maps.getKeys(src) {
+			if !exportAllowed[text.trim_prefix(text.trim_prefix(k, "aa_"), "nt_")] {
+				exportExcluded = append(exportExcluded, k)
+			}
 		}
 	}
-	exportPf := buildTracedPf([summaryImported], exportExcluded)
+	exportPf := buildTracedPf(exportSources, exportExcluded)
 
 	outputs := {
 		summaryPf: pframes.exportFrame(summaryPf),
 		signalPf: pframes.exportFrame(signalPf),
-		logHandle: fit.getStdoutStream()
+		logHandle: fit.getStdoutStream(),
+		// What the run must tell the user, as a JSON list of sentences; [] when nothing.
+		runWarnings: fit.getFileContent("run_warnings.json"),
+		// The non-zero concentrations, lowest first: the graphs' category order.
+		concentrationOrder: fit.getFileContent("concentration_order.json")
 	}
 	// The per-replicate values stay out of exportPf and out of the main table: their extra axis
 	// would fan every row out by the replicate count.
 	if hasReplicate {
 		outputs.replicatePf = pframes.exportFrame(buildTracedPf([replicateImported], []))
+	}
+	if !is_undefined(replicateNtImported) {
+		outputs.replicateNtPf = pframes.exportFrame(buildTracedPf([replicateNtImported, ntAaVariantImported], []))
+	}
+	if syn.synonymous {
+		outputs.variantSummaryPf = pframes.exportFrame(buildTracedPf(variantSources, []))
+		outputs.synonymousSummary = fit.getFileContent("synonymous_summary.json")
+		// With each copy's amino-acid key and label: the NT pages filter by them.
+		outputs.ntVariantPf = pframes.exportFrame(buildTracedPf(ntVariantSources + [ntAaVariantImported], []))
 	}
 
 	return {

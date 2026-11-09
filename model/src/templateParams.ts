@@ -15,6 +15,7 @@ export function deriveTemplateParams(data: BlockData): BlockParams {
     filterRef: data.filterRef,
     concentrationColumnRef: data.concentrationColumnRef,
     binColumnRef: data.binColumnRef,
+    binOrder: data.binOrder,
     antigenColumnRef: data.antigenColumnRef,
     sortFractionColumnRef: data.sortFractionColumnRef,
     binFluorescenceColumnRef: data.binFluorescenceColumnRef,

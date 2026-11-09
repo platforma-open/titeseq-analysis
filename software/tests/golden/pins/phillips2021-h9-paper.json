@@ -1,0 +1,73 @@
+{
+  "agreement": {
+    "allClipped": {
+      "medianAbsDiff": 0.05,
+      "n": 2018,
+      "r": 0.9469,
+      "within0.5": 0.8662
+    },
+    "good": {
+      "medianAbsDiff": 0.0234,
+      "n": 1290,
+      "r": 0.9853,
+      "within0.5": 0.9984
+    }
+  },
+  "classes": {
+    "replicate": {
+      "Above range": 2024,
+      "Failed": 206,
+      "Good": 3869,
+      "Partial": 45
+    },
+    "replicateLowR2": 0,
+    "variant": {
+      "Above range": 630,
+      "Failed": 30,
+      "Good": 1290,
+      "Partial": 98
+    }
+  },
+  "clones": {
+    "1,2": {
+      "affinityClass": "Good",
+      "genotype": "11000000000",
+      "isogenic": -9.1155,
+      "log10Kd": -9.135796,
+      "paperTiteSeq": -9.0678
+    },
+    "1,2,6,7": {
+      "affinityClass": "Good",
+      "genotype": "11000110000",
+      "isogenic": -9.8166,
+      "log10Kd": -9.800492,
+      "paperTiteSeq": -9.8071
+    },
+    "1,2,6,7,8": {
+      "affinityClass": "Good",
+      "genotype": "11000111000",
+      "isogenic": -9.9218,
+      "log10Kd": -10.013402,
+      "paperTiteSeq": -10.0017
+    },
+    "6,7": {
+      "affinityClass": "Good",
+      "genotype": "00000110000",
+      "isogenic": -8.9578,
+      "log10Kd": -8.768573,
+      "paperTiteSeq": -8.8698
+    },
+    "som": {
+      "affinityClass": "Good",
+      "genotype": "11111111111",
+      "isogenic": -10.1755,
+      "log10Kd": -10.11294,
+      "paperTiteSeq": -10.0947
+    }
+  },
+  "digest": "c1b3f05e4fb77358",
+  "germline": {
+    "affinityClass": "Above range",
+    "negLog10Kd": 7.05
+  }
+}

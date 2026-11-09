@@ -19,12 +19,15 @@ export type Equation = (typeof EQUATIONS)[number];
 /**
  * How the error of a value combined over sample replicates is computed.
  *
- * `sd_over_sqrt_n` is the sample SD over the square root of the replicate count, falling back to
- * the single fit's own standard error for one replicate. `phillips` is the population SD over the
- * square root of the count plus one, which is 0 for one replicate; it reproduces the SEM published
- * with Phillips 2021.
+ * `sd_over_sqrt_n` is the sample SD over the square root of the replicate count.
+ * `pop_sd_over_sqrt_n_plus_1` is the population SD over the square root of the count plus one. With
+ * one replicate both fall back to that fit's own standard error.
+ *
+ * The default is `sd_over_sqrt_n`, the standard error of a mean of independent replicates.
+ * `pop_sd_over_sqrt_n_plus_1` reproduces the errors Phillips 2021 published and is smaller by design
+ * (x0.71 at three replicates); it is kept for reproducing that paper and has no control in the UI.
  */
-export const REPLICATE_ERROR_MODELS = ["sd_over_sqrt_n", "phillips"] as const;
+export const REPLICATE_ERROR_MODELS = ["sd_over_sqrt_n", "pop_sd_over_sqrt_n_plus_1"] as const;
 
 export type ReplicateErrorModel = (typeof REPLICATE_ERROR_MODELS)[number];
 
@@ -59,6 +62,8 @@ export type BlockParams = {
   filterRef?: PlRef;
   concentrationColumnRef?: PlRef;
   binColumnRef?: PlRef;
+  /** The FACS bin column's values, lowest fluorescence first. A value left out takes no part. */
+  binOrder?: string[];
   antigenColumnRef?: PlRef;
   sortFractionColumnRef?: PlRef;
   /** The gate's measured mean log10 fluorescence. Read by the log-fluorescence fit only. */
@@ -150,6 +155,10 @@ function check<T>(is: Guard<T>, must: string): Check<T> {
 /** A real number. `isNumber` alone admits `NaN` and the infinities, which no setting means. */
 const isFiniteNumber: Guard<number> = (v): v is number => isNumber(v) && Number.isFinite(v);
 
+/** A list of distinct strings with at least one. */
+const isNonEmptyStringList: Guard<string[]> = (v): v is string[] =>
+  Array.isArray(v) && v.length > 0 && v.every(isString) && new Set(v).size === v.length;
+
 /** A number at or above `min`, the way the args lambda words the same bound. */
 function isNumberFrom(min: number): Guard<number> {
   return (v): v is number => isFiniteNumber(v) && v >= min;
@@ -187,6 +196,7 @@ const CONTRACT = {
   filterRef: check(isPlRef, "a reference to a subset column"),
   concentrationColumnRef: check(isPlRef, "a reference to a concentration column"),
   binColumnRef: check(isPlRef, "a reference to a FACS bin column"),
+  binOrder: check(isNonEmptyStringList, "a non-empty list of distinct strings"),
   antigenColumnRef: check(isPlRef, "a reference to an antigen column"),
   sortFractionColumnRef: check(isPlRef, "a reference to a FACS sort fraction column"),
   binFluorescenceColumnRef: check(isPlRef, "a reference to a gate fluorescence column"),

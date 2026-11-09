@@ -15,9 +15,9 @@ With the log fluorescence fit, the block gives each variant one affinity class:
 - **Above range:** Kd,app is at or above the highest concentration.
 - **Failed:** the block cannot fit the variant. The fit failure reason gives the cause.
 
-The mean bin fit uses only Good, Partial and Failed, and rates them by R².
+The mean bin fit uses only Good, Partial and Failed. It rates a single fit by R².
 
-If you select a sample replicate column, the block fits each replicate separately. It then reports the mean of log10 Kd,app across the replicates and the standard error of that mean.
+If you select a sample replicate column, the block fits each replicate separately. It then reports the mean of log10 Kd,app across the replicates and the standard error of that mean. The class of the mean comes from that standard error, with both fits.
 
 The table shows Kd,app in molar units and as -log10 Kd,app. A larger -log10 Kd,app means tighter binding.
 

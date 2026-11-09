@@ -256,6 +256,21 @@ describe("the replicate settings", () => {
 
   it("names the default error model and the default censoring majority", () => {
     expect(REPLICATE_ERROR_MODELS).toContain(DEFAULT_REPLICATE_ERROR_MODEL);
+    // The standard error of a mean; Phillips's formula stays accepted for reproducing that paper.
+    expect(DEFAULT_REPLICATE_ERROR_MODEL).toBe("sd_over_sqrt_n");
+    expect(REPLICATE_ERROR_MODELS).toContain("pop_sd_over_sqrt_n_plus_1");
     expect(DEFAULT_CENSORED_MAJORITY).toBe(0.5);
+  });
+});
+
+describe("the bin order", () => {
+  it("accepts a list of distinct labels", () => {
+    expect(parse({ binOrder: ["LOW", "MID", "HIGH"] })).toEqual({
+      binOrder: ["LOW", "MID", "HIGH"],
+    });
+  });
+
+  it.each([[[]], [["a", "a"]], [["a", 1]], ["a"]])("refuses %o", (v) => {
+    expect(() => parse({ binOrder: v })).toThrow("'binOrder' must be");
   });
 });

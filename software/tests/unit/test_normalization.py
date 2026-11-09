@@ -113,7 +113,14 @@ class TestNullGateLabels:
         # Half the clonotype's reads sit in gate 4; the other half are unsorted (`bin` null).
         return pl.DataFrame(
             [
-                {"clonotypeKey": "A", "sampleId": "s", "concentrationStr": "0", "concentration": 0.0, "bin": b, "reads": r}
+                {
+                    "clonotypeKey": "A",
+                    "sampleId": "s",
+                    "concentrationStr": "0",
+                    "concentration": 0.0,
+                    "bin": b,
+                    "reads": r,
+                }
                 for b, r in ((4, 50), (None, 50))
             ],
             schema_overrides={"bin": pl.Int64},

@@ -1,0 +1,37 @@
+<script setup lang="ts">
+/** Replicates only: a histogram of each variant's SD of log10 Kd,app across its replicates. */
+import type { GraphMakerState, PredefinedGraphOption } from "@milaboratories/graph-maker";
+import { GraphMaker } from "@milaboratories/graph-maker";
+import { NOISE_HISTOGRAM_DEFAULT_STATE } from "@platforma-open/platforma-open.titeseq-analysis.model";
+import { computed } from "vue";
+import { useApp } from "../app";
+
+const app = useApp();
+
+const graphState = computed({
+  get: (): GraphMakerState =>
+    app.model.data.graphStateReplicateNoise ?? NOISE_HISTOGRAM_DEFAULT_STATE,
+  set: (state: GraphMakerState) => {
+    app.model.data.graphStateReplicateNoise = state;
+  },
+});
+
+const defaultOptions = computed((): PredefinedGraphOption<"histogram">[] | undefined => {
+  const sd = app.model.outputs.reportedPfCols?.find((p) => p.spec.name === "pl7.app/vdj/kdLog10Sd");
+  if (!sd) return undefined;
+  return [{ inputName: "value", selectedSource: sd.spec }];
+});
+</script>
+
+<template>
+  <GraphMaker
+    v-model="graphState"
+    chart-type="histogram"
+    :data-state-key="app.model.outputs.reportedPfHandle"
+    :p-frame="app.model.outputs.reportedPfHandle"
+    :default-options="defaultOptions"
+    :status-text="{
+      noPframe: { title: 'Open Inputs (top right) to configure the block and run it.' },
+    }"
+  />
+</template>

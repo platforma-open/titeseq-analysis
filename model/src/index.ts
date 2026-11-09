@@ -30,6 +30,13 @@ import {
   READ_COVERAGE_DEFAULTS,
 } from "./fitSettings";
 import { deriveTemplateParams } from "./templateParams";
+import type { InputKind, SynonymousSummary } from "./synonymous";
+import {
+  halfMatchedParentInput,
+  inputKindOf,
+  synonymousAaAxis,
+  synonymousMessages,
+} from "./synonymous";
 
 export type {
   BlockParams,
@@ -45,6 +52,10 @@ export {
 export * from "./fitSettings";
 export { deriveTemplateParams };
 export type { PTableKey } from "@platforma-sdk/model";
+export type { InputKind, SynonymousSummary } from "./synonymous";
+export { nounOf } from "./synonymous";
+export type { ChartDefault, ChartPin } from "./variantPanel";
+export { variantCurveDefaults, variantCurvePins } from "./variantPanel";
 import {
   BlockModelV3,
   ColumnsCollection,
@@ -70,6 +81,12 @@ type FitInputs = {
   abundanceRef?: PlRef;
   concentrationColumnRef?: PlRef;
   binColumnRef?: PlRef;
+  /**
+   * The bin column's values, lowest fluorescence first; position is the gate's rank. A value left
+   * out takes no part in the run. Absent reads the column's own integers as the gates, as every
+   * block made before the order existed did.
+   */
+  binOrder?: string[];
   antigenColumnRef?: PlRef;
   sortFractionColumnRef?: PlRef;
   /**
@@ -106,7 +123,13 @@ type BlockLabels = {
 
 /** What every equation's args carry: the inputs except gate fluorescence, replicates, labels and
  *  subset. */
-type ArgsInputs = Omit<FitInputs, "binFluorescenceColumnRef" | "replicateColumnRef">;
+type ArgsInputs = Omit<
+  FitInputs,
+  "binFluorescenceColumnRef" | "replicateColumnRef" | "binOrder"
+> & {
+  /** Each kept bin value's rank, from 1. Present only when the user set an order. */
+  binRanks?: Record<string, number>;
+};
 /**
  * Appended last to every equation's args. Every replicate setting is present only beside a
  * replicate column, so a block that set none projects the args it always projected.
@@ -158,13 +181,47 @@ export type BlockData = FitInputs &
     replicateDrilldownKey?: PTableKey;
     /** Grid state of the drill-down table. UI-only. Optional so no migration is needed. */
     replicateDrilldownTableState?: PlDataTableStateV2;
+    /**
+     * The variant panel's curves. One state for every variant: the open variant is a hidden pin,
+     * never saved here. UI-only; optional so no migration is needed.
+     */
+    graphStateVariantCurves?: GraphMakerState;
     graphStateReplicates: GraphMakerState;
     /** Subset column picked with the abundance in PlDatasetSelector (e.g. a Repertoire Labeling label). */
     filterRef?: PlRef;
     tableState: PlDataTableStateV2;
+    /** The nucleotide variant table, shown in synonymous mode only. */
+    ntTableState: PlDataTableStateV2;
+    /** NT Variants page: list only the copies the synonymous graphs list. UI-only, optional. */
+    ntSynonymousOnly?: boolean;
+    /**
+     * The Explorer page, synonymous mode only. UI-only, never projected to args; optional so no
+     * migration is needed. The amino-acid row opened, then the nt copy opened inside it.
+     */
+    explorerTableState?: PlDataTableStateV2;
+    explorerAaKey?: PTableKey;
+    explorerNtKey?: PTableKey;
+    explorerNtTableState?: PlDataTableStateV2;
+    explorerReplicateTableState?: PlDataTableStateV2;
+    /** The Explorer's combined titration curves, and the affinity classes they show. */
+    graphStateExplorerCurves?: GraphMakerState;
+    graphStateExplorerScatter?: GraphMakerState;
+    explorerCurveClasses?: string[];
     graphStateTitrationCurves: GraphMakerState;
     graphStateKDHistogram: GraphMakerState;
     graphStateAffinityVsFit: GraphMakerState;
+    /** Parent mode only. Optional so no migration is needed; the page supplies the default. */
+    graphStateVsParent?: GraphMakerState;
+    /** Synonymous mode only. Optional so no migration is needed; the page supplies the default. */
+    graphStateSynonymousNoise?: GraphMakerState;
+    /** The summary pages' graphs. Optional so no migration is needed; each page supplies its default. */
+    graphStateReplicateNoise?: GraphMakerState;
+    graphStateTitrationEdges?: GraphMakerState;
+    /** The Replicates page. Optional so no migration is needed; each view supplies its default. */
+    replicateNtTableState?: PlDataTableStateV2;
+    graphStateSynonymousCurves?: GraphMakerState;
+    graphStateSynonymousKd?: GraphMakerState;
+    graphStateReadsByClass?: GraphMakerState;
     settingsOpen: boolean;
   };
 
@@ -177,8 +234,16 @@ export type BlockDataV1 = Omit<BlockDataV2, "equation" | "plateauFloor">;
 /** v2: the equation choice, before the log-fluorescence R² gate. Never released. */
 export type BlockDataV2 = Omit<BlockDataV3, "r2GateEnabled" | "r2GateMin">;
 
+/** v7: before the nucleotide variant table, with the error model's 2.5.0 name still allowed. */
+export type BlockDataV7 = Omit<BlockData, "ntTableState" | "replicateErrorModel"> & {
+  replicateErrorModel: ReplicateErrorModel | LegacyReplicateErrorModel;
+};
+
+/** 2.5.0 stored `pop_sd_over_sqrt_n_plus_1` under this name. */
+type LegacyReplicateErrorModel = "phillips";
+
 /** v6: the label the UI derived from the result pool, before the subtitle had its own field. */
-export type BlockDataV6 = Omit<BlockData, "subtitleLabel"> & { defaultBlockLabel: string };
+export type BlockDataV6 = Omit<BlockDataV7, "subtitleLabel"> & { defaultBlockLabel: string };
 
 /** v4 and v5: a checkbox turned the R² and SE limits on and off. */
 export type BlockDataV5 = BlockDataV6 & { r2GateEnabled: boolean };
@@ -219,6 +284,110 @@ const HILL_PLOT_COL = summaryCol("hillPlotPosition", "Double");
 const HILL_COEF_COL = summaryCol("hillCoefficient", "Double");
 const AFFINITY_CLASS_COL = summaryCol("affinityClass", "String");
 const FIT_FAILURE_REASON_COL = summaryCol("fitFailureReason", "String");
+
+export const PARENT_DELTA_COL = "pl7.app/vdj/kdLog10ParentDelta";
+
+/** The vs Parent histogram of log10 Kd,app vs Parent, on a log count axis. */
+export const VS_PARENT_DEFAULT_STATE: GraphMakerState = {
+  title: "",
+  template: "bins",
+  currentTab: null,
+  layersSettings: { bins: { fillColor: "#99E099" } },
+  axesSettings: { axisY: { scale: "log" }, other: { binsCount: 30 } },
+} as GraphMakerState;
+
+/** The Read Depth box plot: reads in the fit per affinity class, on a log axis. */
+export const READ_DEPTH_DEFAULT_STATE: GraphMakerState = {
+  title: "",
+  template: "box",
+  currentTab: null,
+  layersSettings: { box: {} },
+  axesSettings: { axisY: { scale: "log" } },
+} as GraphMakerState;
+
+/** A histogram on log x and y axes, for the Titration Edges page. */
+export const LOG_HISTOGRAM_DEFAULT_STATE: GraphMakerState = {
+  title: "",
+  template: "bins",
+  currentTab: null,
+  layersSettings: { bins: {} },
+  axesSettings: { axisX: { scale: "log" }, axisY: { scale: "log" }, other: { binsCount: 30 } },
+} as GraphMakerState;
+
+/** The Synonymous Noise and Replicate Noise histograms of a spread in log10 Kd,app. */
+/**
+ * The synonymous curves: each nt copy's fitted curve at every concentration, a line through the
+ * mean over replicates with a standard-error bar.
+ */
+export const SYNONYMOUS_CURVES_DEFAULT_STATE: GraphMakerState = {
+  title: "",
+  template: "line_errorbar",
+  currentTab: null,
+  layersSettings: { errorbar: { pointsValues: "mean", interval: "se" } },
+};
+
+/**
+ * The synonymous Kd,app: each nt copy's -log10 Kd,app as the mean over replicates with a
+ * standard-error bar.
+ */
+export const SYNONYMOUS_KD_DEFAULT_STATE: GraphMakerState = {
+  title: "",
+  template: "errorbar",
+  currentTab: null,
+  layersSettings: { errorbar: { pointsValues: "mean", interval: "se" } },
+};
+
+/**
+ * The Explorer's titration curves: each variant's observed signal and fitted curve at every
+ * concentration as a point at the mean over replicates, with a standard-error bar. No lines: a
+ * category graph draws the same layers for both series.
+ */
+export const EXPLORER_CURVES_DEFAULT_STATE: GraphMakerState = {
+  title: "",
+  template: "errorbar",
+  currentTab: null,
+  // Colour follows the series: observed, fitted.
+  layersSettings: {
+    errorbar: {
+      pointsValues: "mean",
+      interval: "se",
+      lineColor: { type: "secondaryGrouping" },
+      dotFill: { type: "secondaryGrouping" },
+    },
+  },
+};
+
+/**
+ * The Explorer's titration curves on a log concentration axis: each variant's observed mean over
+ * replicates as points and the replicates' mean curve. No error bars: a scatterplot has none.
+ */
+export const EXPLORER_SCATTER_DEFAULT_STATE: GraphMakerState = {
+  title: "",
+  template: "dots",
+  currentTab: null,
+  layersSettings: { dots: {} },
+  axesSettings: { axisX: { scale: "log" } },
+};
+
+/** The variant panel's curves: each replicate's points and fitted curve on a log concentration axis. */
+export const VARIANT_CURVES_DEFAULT_STATE: GraphMakerState = {
+  title: "",
+  template: "dots",
+  currentTab: null,
+  layersSettings: { dots: {} },
+  axesSettings: { axisX: { scale: "log" } },
+};
+
+/** The affinity classes the Explorer's titration curves show until the user picks others. */
+export const EXPLORER_CURVE_CLASSES_DEFAULT = ["Good"];
+
+export const NOISE_HISTOGRAM_DEFAULT_STATE: GraphMakerState = {
+  title: "",
+  template: "bins",
+  currentTab: null,
+  layersSettings: { bins: { fillColor: "#99E099" } },
+  axesSettings: { other: { binsCount: 30 } },
+} as GraphMakerState;
 
 // Pin colours by colorIdx so low_r2 stays green and n_out_of_range stays
 // purple across datasets. The "light" palette would otherwise assign by
@@ -288,6 +457,7 @@ export const initBlockData = (params?: BlockParams): BlockData => ({
   filterRef: params?.filterRef,
   concentrationColumnRef: params?.concentrationColumnRef,
   binColumnRef: params?.binColumnRef,
+  binOrder: params?.binOrder,
   binFluorescenceColumnRef: params?.binFluorescenceColumnRef,
   antigenColumnRef: params?.antigenColumnRef,
   sortFractionColumnRef: params?.sortFractionColumnRef,
@@ -326,6 +496,7 @@ export const initBlockData = (params?: BlockParams): BlockData => ({
   hookEffectMinReads: params?.hookEffectMinReads ?? HILL_GATE_INDEX_DEFAULTS.hookEffectMinReads,
   customBlockLabel: params?.customBlockLabel ?? "",
   tableState: createPlDataTableStateV2(),
+  ntTableState: createPlDataTableStateV2(),
   graphStateTitrationCurves: {
     title: "",
     template: "dots",
@@ -425,9 +596,17 @@ export const migrateV5ToV6 = ({ r2GateEnabled, ...v5 }: BlockDataV5): BlockDataV
  * v6 -> v7. The old label joined the target antigen with the abundance label from the result
  * pool. The antigen part is recomputed from data; the abundance part returns on the next pick.
  */
-export const migrateV6ToV7 = ({ defaultBlockLabel: _, ...v6 }: BlockDataV6): BlockData => ({
+export const migrateV6ToV7 = ({ defaultBlockLabel: _, ...v6 }: BlockDataV6): BlockDataV7 => ({
   ...v6,
   subtitleLabel: "",
+});
+
+/** v7 -> v8. Adds the nucleotide variant table's state, empty, and renames the stored error model. */
+export const migrateV7ToV8 = (v7: BlockDataV7): BlockData => ({
+  ...v7,
+  replicateErrorModel:
+    v7.replicateErrorModel === "phillips" ? "pop_sd_over_sqrt_n_plus_1" : v7.replicateErrorModel,
+  ntTableState: createPlDataTableStateV2(),
 });
 
 /** Settings part of the block label, shared by the trace label and the subtitle. */
@@ -447,7 +626,8 @@ export const dataModel = new DataModelBuilder({ kind })
   .migrate<BlockDataV5>("v4", migrateV3ToV4)
   .migrate<BlockDataV5>("v5", migrateV4ToV5)
   .migrate<BlockDataV6>("v6", migrateV5ToV6)
-  .migrate<BlockData>("v7", migrateV6ToV7)
+  .migrate<BlockDataV7>("v7", migrateV6ToV7)
+  .migrate<BlockData>("v8", migrateV7ToV8)
   .init(({ params }) => initBlockData(params));
 
 type Ctx = RenderCtx<BlockArgs, BlockData>;
@@ -458,6 +638,10 @@ function replicateCols(ctx: Ctx) {
 }
 
 const REPLICATE_AXIS = "pl7.app/vdj/replicate";
+/** Each nt copy's amino-acid variant, on the nt axis: the synonymous graphs tab by it. */
+const AA_VARIANT_ID = "pl7.app/vdj/aaVariantId";
+/** Each nt copy's amino-acid variant key, on the nt axis: the Explorer filters a variant's copies by it. */
+const AA_VARIANT_KEY = "pl7.app/vdj/aaVariantKey";
 
 /**
  * The filter that narrows the per-replicate frame to one variant. The variant axis is whichever
@@ -537,6 +721,22 @@ const DATASET_KEY_AXES: ReadonlySet<string> = new Set([
   "pl7.app/variantKey",
 ]);
 
+/** A stable string key for a ref, for maps keyed by column. */
+export const refKey = (ref: PlRef): string => `${ref.blockId}/${ref.name}`;
+
+/** Each bin value's rank: its position in the order, from 1. */
+export const binRanks = (order: string[]): Record<string, number> =>
+  Object.fromEntries(order.map((value, i) => [value, i + 1]));
+
+/** A column's values in the order a new pick seeds: numerically when all are numbers. */
+export const defaultBinOrder = (values: string[]): string[] => {
+  const unique = [...new Set(values)];
+  const numeric = unique.every((v) => v.trim() !== "" && Number.isFinite(Number(v)));
+  return numeric
+    ? unique.sort((a, b) => Number(a) - Number(b))
+    : unique.sort((a, b) => a.localeCompare(b));
+};
+
 /**
  * The block's workflow input, and the gate on whether it may run at all: a throw here marks the
  * args invalid and disables Run. Named rather than written inline so the staleness contract —
@@ -552,6 +752,8 @@ export const deriveArgs = (data: BlockData): BlockArgs => {
     throw new Error(
       "FACS sort fraction requires a FACS bin column — the correction only applies in bin mode",
     );
+  if (data.binColumnRef !== undefined && data.binOrder !== undefined && data.binOrder.length === 0)
+    throw new Error("Keep at least one FACS bin in the bin order");
 
   // Two halves, so `hill_gate_index` can place its settings between them: its args keep
   // v2.4.0's key order as well as its keys.
@@ -562,21 +764,10 @@ export const deriveArgs = (data: BlockData): BlockArgs => {
     antigenColumnRef: data.antigenColumnRef,
     sortFractionColumnRef: data.sortFractionColumnRef,
     targetAntigen: data.targetAntigen,
+    // Absent without an order, so a block that never set one projects the args it always did.
+    ...(data.binColumnRef !== undefined &&
+      data.binOrder !== undefined && { binRanks: binRanks(data.binOrder) }),
   };
-  if (data.replicateColumnRef !== undefined) {
-    if (data.replicateFitErrorCutoff !== undefined && data.replicateFitErrorCutoff <= 0)
-      throw new Error("Replicate fit-error cutoff must be above 0, or empty to turn it off");
-    if (
-      data.replicateR2Floor !== undefined &&
-      (data.replicateR2Floor < 0 || data.replicateR2Floor > 1)
-    )
-      throw new Error("Replicate R² floor must be between 0 and 1, or empty to turn it off");
-    if (data.replicateCensoredMajority === undefined)
-      throw new Error("Replicate censoring majority is required");
-    if (data.replicateCensoredMajority < 0.5 || data.replicateCensoredMajority > 1)
-      throw new Error("Replicate censoring majority must be between 0.5 and 1");
-  }
-
   const labels: ArgsLabels = {
     traceLabel:
       data.customBlockLabel ||
@@ -589,21 +780,14 @@ export const deriveArgs = (data: BlockData): BlockArgs => {
       inputFilter: createGlobalPObjectId(data.filterRef.blockId, data.filterRef.name),
     }),
     // Every replicate setting rides on the column: without one the block fits one titration and
-    // projects no replicate byte at all.
+    // projects no replicate byte at all. While the Sample replicates section is hidden, every
+    // setting in it is pinned to its default — sample SD / sqrt(n), both filters off, a simple
+    // majority — so a value a block stored before the section went away is not used unseen.
+    // Restore the `data.replicate*` fields, and their checks, when that section comes back.
     ...(data.replicateColumnRef !== undefined && {
       replicateColumnRef: data.replicateColumnRef,
-      // Pinned to the sample SD while the Sample replicates section is hidden, so a block that
-      // stored the other model before the section went away does not keep using it unseen.
-      // Restore `data.replicateErrorModel` when that section comes back.
       replicateErrorModel: DEFAULT_REPLICATE_ERROR_MODEL,
-      // The cutoff reads a replicate's own fit standard error. The mean bin fit reports none, so
-      // the setting is inert there and is not sent — the UI hides it for the same reason.
-      ...(data.equation === "log_fluorescence" &&
-        data.replicateFitErrorCutoff !== undefined && {
-          replicateFitErrorCutoff: data.replicateFitErrorCutoff,
-        }),
-      ...(data.replicateR2Floor !== undefined && { replicateR2Floor: data.replicateR2Floor }),
-      replicateCensoredMajority: data.replicateCensoredMajority,
+      replicateCensoredMajority: DEFAULT_CENSORED_MAJORITY,
     }),
   };
 
@@ -714,12 +898,277 @@ function hillGateIndexArgs(data: BlockData, inputs: ArgsInputs, labels: ArgsLabe
 }
 
 /** The block's pages. Per-replicate values are read by clicking a variant in the main table. */
-export const sectionsFor = () => [
-  { type: "link" as const, href: "/" as const, label: "Table" },
-  { type: "link" as const, href: "/titration-curves" as const, label: "Titration Curves" },
-  { type: "link" as const, href: "/kd-distribution" as const, label: "Kd Distribution" },
-  { type: "link" as const, href: "/affinity-vs-fit" as const, label: "Affinity vs Fit Quality" },
-];
+/** The amino-acid frame of the last run; undefined outside synonymous mode. */
+function variantSummaryCols(ctx: Ctx) {
+  return ctx.outputs
+    ?.resolve({ field: "variantSummaryPf", allowPermanentAbsence: true })
+    ?.getPColumns();
+}
+
+function synonymousSummary(ctx: Ctx): SynonymousSummary | undefined {
+  // A summary from a run on another dataset says nothing about this one.
+  if (!plRefsEqualOrBothAbsent(ctx.activeArgs?.abundanceRef, ctx.data.abundanceRef))
+    return undefined;
+  return ctx.outputs
+    ?.resolve({ field: "synonymousSummary", allowPermanentAbsence: true })
+    ?.getDataAsJson<SynonymousSummary>();
+}
+
+/** What the last run must tell the user. Empty for a run on another dataset, or before any run. */
+function runWarnings(ctx: Ctx): string[] {
+  if (!plRefsEqualOrBothAbsent(ctx.activeArgs?.abundanceRef, ctx.data.abundanceRef)) return [];
+  return (
+    ctx.outputs
+      ?.resolve({ field: "runWarnings", allowPermanentAbsence: true })
+      ?.getDataAsJson<string[]>() ?? []
+  );
+}
+
+function plRefsEqualOrBothAbsent(a: PlRef | undefined, b: PlRef | undefined): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return plRefsEqual(a, b);
+}
+
+/** The picked abundance's amino-acid axis when synonymous mode will turn on, read from the pool. */
+function poolSynonymousAaAxis(ctx: Ctx) {
+  if (ctx.data.abundanceRef === undefined) return undefined;
+  const ntAxis = ctx.resultPool.getPColumnSpecByRef(ctx.data.abundanceRef)?.axesSpec[1];
+  if (ntAxis === undefined) return undefined;
+  const specs = ctx.resultPool.getSpecs().entries.map((e) => e.obj);
+  const aaAxis = synonymousAaAxis(specs, ntAxis);
+  return aaAxis === undefined ? undefined : { specs, aaAxis };
+}
+
+/** Read from the result pool, so the warning shows before the first run. */
+function halfMatchedParent(ctx: Ctx) {
+  const found = poolSynonymousAaAxis(ctx);
+  return found === undefined ? undefined : halfMatchedParentInput(found.specs, found.aaAxis);
+}
+
+/**
+ * The block's pages. The nucleotide variant table exists in synonymous mode only, beside the
+ * amino-acid table. Each entry stays an `as const` literal: the routes are typed from the hrefs.
+ */
+/**
+ * The log-fluorescence fit places each gate at its measured log10 fluorescence. With no gate
+ * fluorescence column it places the gates 0.65 decades apart, and the run gives no other sign of it.
+ */
+export const GATE_FLUORESCENCE_MISSING =
+  "Gate fluorescence is not set. The fit assumes that the gates are 0.65 decades apart. " +
+  "If they are not, Kd,app can be offset. To use the measured gate positions, select a " +
+  "Gate fluorescence column in the settings.";
+
+/** Advice that the settings alone cause, before any run. The settings drawer shows it. */
+export const settingsWarnings = (data: BlockData): string[] =>
+  data.equation === "log_fluorescence" &&
+  data.binColumnRef !== undefined &&
+  data.binFluorescenceColumnRef === undefined
+    ? [GATE_FLUORESCENCE_MISSING]
+    : [];
+
+/**
+ * What a finished run found. Undefined before the first run. `synonymousCopies`: some amino-acid
+ * variant has two or more nucleotide copies.
+ */
+export type RunShape = {
+  synonymous: boolean;
+  synonymousCopies?: boolean;
+  parentMode?: boolean;
+  replicates?: boolean;
+};
+
+/**
+ * The QC page's views, one tab each, in this order. A view that reads data the run did not produce
+ * gets no tab: the replicate spread needs replicates, the parent delta parent mode, the synonymous
+ * spread an amino-acid variant with two or more nucleotide copies.
+ */
+export const qcViewsFor = (run: RunShape) => {
+  const { synonymous, synonymousCopies = false, parentMode = false, replicates = false } = run;
+  return [
+    { value: "read-depth" as const, label: "Read Depth" },
+    { value: "affinity-vs-fit" as const, label: "Affinity vs Fit Quality" },
+    { value: "titration-curves" as const, label: "Titration Curves" },
+    { value: "titration-edges" as const, label: "Titration Edges" },
+    ...(replicates ? [{ value: "replicate-noise" as const, label: "Replicate Noise" }] : []),
+    ...(parentMode ? [{ value: "vs-parent" as const, label: "Kd,app vs Parent" }] : []),
+    ...(synonymous && synonymousCopies
+      ? [{ value: "synonymous-noise" as const, label: "Synonymous Noise" }]
+      : []),
+    { value: "kd-distribution" as const, label: "Kd Distribution" },
+  ];
+};
+
+export type QcView = ReturnType<typeof qcViewsFor>[number]["value"];
+
+/**
+ * The Replicates page's views, one tab each: every variant's value in every replicate, then in
+ * synonymous mode each nt copy's, then the copies' curves where some variant has two.
+ */
+export const replicateViewsFor = (run: RunShape) => {
+  const { synonymous, synonymousCopies = false } = run;
+  return [
+    {
+      value: "variant-replicates" as const,
+      label: synonymous ? "AA by Replicate" : "By Replicate",
+    },
+    ...(synonymous ? [{ value: "nt-replicates" as const, label: "NT by Replicate" }] : []),
+    ...(synonymous && synonymousCopies
+      ? [
+          { value: "synonymous-curves" as const, label: "Synonymous Curves" },
+          { value: "synonymous-kd" as const, label: "Synonymous Kd,app" },
+        ]
+      : []),
+  ];
+};
+
+export type ReplicateView = ReturnType<typeof replicateViewsFor>[number]["value"];
+
+/**
+ * The pages: the two tables, the Replicates page where the run had replicates, then one QC page.
+ * Before the first run only Main shows: every other page reads the run's results.
+ */
+export const sectionsFor = (run: RunShape | undefined) => {
+  const main = { type: "link" as const, href: "/" as const, label: "Main" };
+  if (run === undefined) return [main];
+  return [
+    main,
+    ...(run.synonymous
+      ? [
+          { type: "link" as const, href: "/nt-variants" as const, label: "NT Variants" },
+          { type: "link" as const, href: "/explorer" as const, label: "Explorer" },
+        ]
+      : []),
+    ...(run.replicates
+      ? [{ type: "link" as const, href: "/replicates" as const, label: "Replicates" }]
+      : []),
+    { type: "link" as const, href: "/qc" as const, label: "QC" },
+  ];
+};
+
+/** The shape of the last run, read from its outputs; undefined before the first run. */
+function runShape(ctx: Ctx): RunShape | undefined {
+  if (ctx.outputs?.resolve({ field: "summaryPf", allowPermanentAbsence: true }) === undefined)
+    return undefined;
+  const cols = variantSummaryCols(ctx);
+  // Read unfiltered: the run's shape holds whatever dataset it ran on. Every mapped copy belongs to
+  // one amino-acid variant, so more mapped copies than variants means some variant has two.
+  const summary = ctx.outputs
+    ?.resolve({ field: "synonymousSummary", allowPermanentAbsence: true })
+    ?.getDataAsJson<SynonymousSummary>();
+  return {
+    synonymous: cols !== undefined,
+    synonymousCopies:
+      summary !== undefined &&
+      summary.ntVariants - summary.unmappedNtVariants - summary.ambiguousNtVariants >
+        summary.aaVariants,
+    parentMode: cols?.some((c) => c.spec.name === PARENT_DELTA_COL) ?? false,
+    replicates: replicateCols(ctx) !== undefined,
+  };
+}
+
+type FitColumns = NonNullable<ReturnType<typeof variantSummaryCols>>;
+
+/**
+ * A fit results table: `summaryCols` as primary columns, joined with the result pool's columns on
+ * the Kd,app column's axis.
+ */
+/**
+ * The amino-acid variant's ID beside each nucleotide variant: the amino-acid axis label, reached
+ * through the nt -> aa linker. Shown second, after the nucleotide variant's own ID.
+ */
+function aaVariantIdColumns(ctx: Ctx, kdSpec: PColumnSpec) {
+  return ColumnsCollection(["result_pool"], { ctx: ctx.ctx })
+    .discover({
+      anchors: { main: kdSpec },
+      mode: "enrichment",
+      maxHops: 1,
+      include: {
+        name: [exactly("pl7.app/label")],
+        axes: [
+          {
+            name: [exactly("pl7.app/variantKey")],
+            domain: { "pl7.app/alphabet": [exactly("aminoacid")] },
+          },
+        ],
+      },
+    })
+    .getColumns()
+    .slice(0, 1)
+    .map((c) =>
+      c.withSpecs({
+        annotations: {
+          "pl7.app/label": "AA Variant Id",
+          "pl7.app/table/visibility": "default",
+          "pl7.app/table/orderPriority": "99000",
+        },
+      }),
+    );
+}
+
+function fitTable(
+  ctx: Ctx,
+  summaryCols: FitColumns,
+  tableState: PlDataTableStateV2 | undefined,
+  {
+    linkAaVariant = false,
+    filters,
+  }: { linkAaVariant?: boolean; filters?: PlDataTableFilters } = {},
+) {
+  const kdCol = summaryCols.find((c) => c.spec.name === "pl7.app/vdj/kd");
+  if (!kdCol) return undefined;
+
+  // Include result pool columns keyed by the same clonotype axis as the kd
+  // column — i.e., the same cohort of clonotypes. Each axis is matched by
+  // full spec (name + domain), not just name, so when the upstream is a
+  // redefine-clonotypes run, columns keyed by the original (pre-redefine)
+  // clonotype axis are correctly excluded — those have the same axis name but
+  // a different domain and a disjoint key space, which would otherwise fail
+  // spec integration with "axes sets are disjoint".
+  const resultPoolCols = ColumnsCollection(["result_pool"], { ctx: ctx.ctx })
+    .filter({
+      include: {
+        axes: kdCol.spec.axesSpec.map((axis) => ({
+          name: [exactly(axis.name)],
+          domain: Object.fromEntries(
+            Object.entries(axis.domain ?? {}).map(([key, value]) => [key, [exactly(value)]]),
+          ),
+        })),
+        partialAxesMatch: false,
+      },
+      // The table attaches axis labels itself; a copy re-annotated below
+      // would get its own id and show up as a second label column.
+      exclude: { name: [exactly("pl7.app/label")] },
+    })
+    .getColumns()
+    .filter((c) => {
+      const spec = c.getSpec();
+      return (
+        (spec.valueType as string) !== "File" &&
+        !spec.annotations?.["pl7.app/trace"]?.includes("milaboratories.titeseq-analysis")
+      );
+    })
+    .map((c) => {
+      // Behind the block's own columns (176 and up), in the producer's order.
+      const priority = Number(c.getSpec().annotations?.["pl7.app/table/orderPriority"]);
+      return c.withSpecs({
+        annotations: {
+          "pl7.app/table/visibility": "optional",
+          ...(Number.isFinite(priority) && {
+            "pl7.app/table/orderPriority": String(priority / 10_000),
+          }),
+        },
+      });
+    });
+
+  return createPlDataTableV3(ctx, {
+    primaryColumns: summaryCols.map((c) => DataColumn.fromColumn(c)),
+    columns: linkAaVariant
+      ? [...aaVariantIdColumns(ctx, kdCol.spec), ...resultPoolCols]
+      : resultPoolCols,
+    tableState,
+    filters,
+  });
+}
 
 export const platforma = BlockModelV3.create({ dataModel, kind })
 
@@ -764,7 +1213,7 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
       ctx,
       (spec) =>
         isPColumnSpec(spec) &&
-        isIntegerValueType(spec.valueType) &&
+        (isIntegerValueType(spec.valueType) || spec.valueType === "String") &&
         spec.axesSpec.length === 1 &&
         spec.axesSpec[0].name === "pl7.app/sampleId",
     ),
@@ -833,6 +1282,32 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     ).filter((opt) => !picked.some((ref) => plRefsEqual(opt.ref, ref)));
   })
 
+  // Each bin option's distinct values, keyed by the option's ref, so a pick can seed the order in
+  // the same gesture: an output on the picked column alone would arrive a round trip late.
+  .output("binValuesByRef", (ctx): Record<string, string[]> | undefined => {
+    const options = filterPopulatedOptions(
+      ctx,
+      (spec) =>
+        isPColumnSpec(spec) &&
+        (isIntegerValueType(spec.valueType) || spec.valueType === "String") &&
+        spec.axesSpec.length === 1 &&
+        spec.axesSpec[0].name === "pl7.app/sampleId",
+    );
+    const out: Record<string, string[]> = {};
+    for (const option of options) {
+      const values = ctx.resultPool
+        .getDataByRef(option.ref)
+        ?.data?.getDataAsJson<Record<string, Record<string, string | number | null>>>()?.["data"];
+      if (values === undefined) continue;
+      out[refKey(option.ref)] = defaultBinOrder(
+        Object.values(values)
+          .filter((v): v is string | number => v !== null && v !== "")
+          .map(String),
+      );
+    }
+    return out;
+  })
+
   .output("targetAntigenValues", (ctx): string[] | undefined => {
     if (!ctx.data.antigenColumnRef) return undefined;
     const data = ctx.resultPool.getDataByRef(ctx.data.antigenColumnRef)?.data;
@@ -857,11 +1332,33 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     // appears in server logs while the block silently shows empty panels.
     // CIDConflictError is typically transient — the platform's "zebra"
     // self-recovery retries the write — so we label it as such.
-    // replicatePf exists only on a run that combined replicates, so its absence is no error.
-    const outputKeys = ["summaryPf", "signalPf", "logHandle", "replicatePf"] as const;
+    // replicatePf exists only on a run that combined replicates, the next three in synonymous mode
+    // only, replicateNtPf only in both, and runWarnings and concentrationOrder not on a run made
+    // before they existed, so their absence is no error.
+    const optionalKeys = new Set([
+      "replicatePf",
+      "variantSummaryPf",
+      "synonymousSummary",
+      "ntVariantPf",
+      "replicateNtPf",
+      "runWarnings",
+      "concentrationOrder",
+    ]);
+    const outputKeys = [
+      "summaryPf",
+      "signalPf",
+      "logHandle",
+      "replicatePf",
+      "variantSummaryPf",
+      "synonymousSummary",
+      "ntVariantPf",
+      "replicateNtPf",
+      "runWarnings",
+      "concentrationOrder",
+    ] as const;
     for (const key of outputKeys) {
       const errorAcc = (
-        key === "replicatePf"
+        optionalKeys.has(key)
           ? ctx.outputs?.resolve({ field: key, allowPermanentAbsence: true })
           : ctx.outputs?.resolve(key)
       )?.getError();
@@ -904,59 +1401,119 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     // Numeric-field errors surface on each PlNumberField, from its own `required`,
     // `min-value`, `max-value` and `validate` props. The args() throw above gates Run.
 
+    for (const message of synonymousMessages(halfMatchedParent(ctx), synonymousSummary(ctx)))
+      issues.push({ severity: "warning", message });
+
+    for (const message of runWarnings(ctx)) issues.push({ severity: "warning", message });
+
     return issues;
   })
+
+  // Advice about the settings alone, shown in the settings drawer only, not on the results pages.
+  .output("settingsWarnings", (ctx): string[] => settingsWarnings(ctx.data))
 
   .output("logHandle", (ctx) => ctx.outputs?.resolve("logHandle")?.getLogHandle())
 
   .output("isRunning", (ctx) => ctx.outputs?.getIsReadyOrError() === false)
 
+  .output("inputKind", (ctx): InputKind | undefined => {
+    if (ctx.data.abundanceRef === undefined) return undefined;
+    const axis = ctx.resultPool.getPColumnSpecByRef(ctx.data.abundanceRef)?.axesSpec[1];
+    return axis === undefined ? undefined : inputKindOf(axis);
+  })
+
+  // In synonymous mode the table shows one row per amino-acid variant. Each nucleotide variant's own
+  // fit stays in summaryPf, which the graphs read.
+  .output("synonymous", (ctx) => variantSummaryCols(ctx) !== undefined)
+
   .outputWithStatus("summaryTable", (ctx) => {
     // One row per variant: the summary columns only. The per-concentration signal, keyed by
     // concentration and replicate as well, would repeat each variant once per measured point; it
-    // is plotted on the Titration Curves page and exported in `pf`.
-    const summaryCols = ctx.outputs?.resolve("summaryPf")?.getPColumns();
+    // is plotted on the Titration Curves page and exported in `pf`. In synonymous mode the rows are
+    // amino-acid variants.
+    const summaryCols = variantSummaryCols(ctx) ?? ctx.outputs?.resolve("summaryPf")?.getPColumns();
     if (summaryCols === undefined) return undefined;
 
-    const kdCol = summaryCols.find((c) => c.spec.name === "pl7.app/vdj/kd");
-    if (!kdCol) return undefined;
+    return fitTable(ctx, summaryCols, ctx.data.tableState);
+  })
 
-    // Include result pool columns keyed by the same clonotype axis as the kd
-    // column — i.e., the same cohort of clonotypes. Each axis is matched by
-    // full spec (name + domain), not just name, so when the upstream is a
-    // redefine-clonotypes run, columns keyed by the original (pre-redefine)
-    // clonotype axis are correctly excluded — those have the same axis name but
-    // a different domain and a disjoint key space, which would otherwise fail
-    // spec integration with "axes sets are disjoint".
-    const resultPoolCols = ColumnsCollection(["result_pool"], { ctx: ctx.ctx })
-      .filter({
-        include: {
-          axes: kdCol.spec.axesSpec.map((axis) => ({
-            name: [exactly(axis.name)],
-            domain: Object.fromEntries(
-              Object.entries(axis.domain ?? {}).map(([key, value]) => [key, [exactly(value)]]),
-            ),
-          })),
-          partialAxesMatch: false,
-        },
-        // The table attaches axis labels itself; a copy re-annotated below
-        // would get its own id and show up as a second label column.
-        exclude: { name: [exactly("pl7.app/label")] },
-      })
-      .getColumns()
-      .filter((c) => {
-        const spec = c.getSpec();
-        return (
-          (spec.valueType as string) !== "File" &&
-          !spec.annotations?.["pl7.app/trace"]?.includes("milaboratories.titeseq-analysis")
-        );
-      })
-      .map((c) => c.withSpecs({ annotations: { "pl7.app/table/visibility": "optional" } }));
+  // Synonymous mode only: one row per nucleotide variant, its own fit and its nt-grain columns.
+  .outputWithStatus("ntVariantTable", (ctx) => {
+    if (variantSummaryCols(ctx) === undefined) return undefined;
+    const summaryCols = ctx.outputs?.resolve("summaryPf")?.getPColumns();
+    if (summaryCols === undefined) return undefined;
+    const ntCols =
+      ctx.outputs?.resolve({ field: "ntVariantPf", allowPermanentAbsence: true })?.getPColumns() ??
+      [];
+    const shown = ntCols.find((c) => c.spec.name === AA_VARIANT_ID);
+    return fitTable(ctx, [...summaryCols, ...ntCols], ctx.data.ntTableState, {
+      linkAaVariant: true,
+      filters:
+        ctx.data.ntSynonymousOnly && shown
+          ? {
+              type: "and",
+              filters: [{ type: "isNotNA", column: { type: "column", id: shown.id } }],
+            }
+          : undefined,
+    });
+  })
 
+  // The Explorer page, synonymous mode only: the amino-acid variants, then one variant's nt
+  // copies, then one copy's replicates.
+  .outputWithStatus("explorerTable", (ctx) => {
+    const cols = variantSummaryCols(ctx);
+    if (cols === undefined) return undefined;
+    return fitTable(ctx, cols, ctx.data.explorerTableState);
+  })
+
+  // No table while no amino-acid variant is open: unfiltered it would be every copy.
+  .outputWithStatus("explorerNtTable", (ctx) => {
+    const aa = ctx.data.explorerAaKey?.[0];
+    if (aa === undefined || aa === null) return undefined;
+    const summaryCols = ctx.outputs?.resolve("summaryPf")?.getPColumns();
+    const ntCols = ctx.outputs
+      ?.resolve({ field: "ntVariantPf", allowPermanentAbsence: true })
+      ?.getPColumns();
+    const keyCol = ntCols?.find((c) => c.spec.name === AA_VARIANT_KEY);
+    if (summaryCols === undefined || ntCols === undefined || keyCol === undefined) return undefined;
+    // No linker join: every row is the same amino-acid variant, and the row key stays the nt key.
+    return fitTable(ctx, [...summaryCols, ...ntCols], ctx.data.explorerNtTableState, {
+      filters: {
+        type: "and",
+        filters: [
+          {
+            type: "patternEquals",
+            column: { type: "column", id: keyCol.id },
+            value: String(aa),
+          },
+        ],
+      },
+    });
+  })
+
+  // One nt copy's replicates. No table while no copy is open, or without replicates.
+  .outputWithStatus("explorerReplicateTable", (ctx) => {
+    const cols = ctx.outputs
+      ?.resolve({ field: "replicateNtPf", allowPermanentAbsence: true })
+      ?.getPColumns()
+      ?.filter((c) => c.spec.name !== AA_VARIANT_ID && c.spec.name !== AA_VARIANT_KEY);
+    if (cols === undefined) return undefined;
+    const filters = replicateDrilldownFilter(
+      cols.map((c) => c.spec),
+      ctx.data.explorerNtKey,
+    );
+    if (filters === undefined) return undefined;
     return createPlDataTableV3(ctx, {
-      primaryColumns: summaryCols.map((c) => DataColumn.fromColumn(c)),
-      columns: resultPoolCols,
-      tableState: ctx.data.tableState,
+      primaryColumns: cols.map((c) => DataColumn.fromColumn(c)),
+      columns: undefined,
+      tableState: ctx.data.explorerReplicateTableState,
+      displayOptions: {
+        visibility: [
+          { match: { name: [exactly("pl7.app/label")] }, visibility: "hidden" },
+          { match: { name: cols.map((c) => exactly(c.spec.name)) }, visibility: "default" },
+        ],
+      },
+      filters,
     });
   })
 
@@ -966,6 +1523,14 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     const summaryCols = ctx.outputs?.resolve("summaryPf")?.getPColumns() ?? [];
     return createPFrameForGraphs(ctx, [...signalCols, ...summaryCols]);
   })
+
+  // The non-zero concentrations as the String axis holds them, lowest first: the order the
+  // category graphs show them in. Undefined on a run made before it existed.
+  .output("concentrationOrder", (ctx) =>
+    ctx.outputs
+      ?.resolve({ field: "concentrationOrder", allowPermanentAbsence: true })
+      ?.getDataAsJson<string[]>(),
+  )
 
   .output("titrationCurvesPfCols", (ctx) => {
     const signalCols = ctx.outputs?.resolve("signalPf")?.getPColumns();
@@ -999,20 +1564,27 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
   // Whether the last run combined sample replicates. The per-replicate page is shown only then.
   .output("replicates", (ctx) => replicateCols(ctx) !== undefined)
 
+  // What the last run produced, which decides the QC page's tabs. Undefined before the first run.
+  .output("runShape", (ctx) => runShape(ctx))
+
   // One row per (clonotype, replicate). Its own page: the extra axis would fan out every row of
   // the main table.
   .outputWithStatus("replicateTable", (ctx) => {
     const cols = replicateCols(ctx);
     if (cols === undefined) return undefined;
+    // The frame's AA Variant Id is for the graphs; the table reaches the label through the linker.
+    const tableCols = cols.filter(
+      (c) => c.spec.name !== AA_VARIANT_ID && c.spec.name !== AA_VARIANT_KEY,
+    );
     return createPlDataTableV3(ctx, {
-      primaryColumns: cols.map((c) => DataColumn.fromColumn(c)),
+      primaryColumns: tableCols.map((c) => DataColumn.fromColumn(c)),
       columns: undefined,
       tableState: ctx.data.replicateTableState,
       // The per-replicate columns are hidden so downstream pickers offer the combined answer
       // first. This is the page that exists to show them.
       displayOptions: {
         visibility: [
-          { match: { name: cols.map((c) => exactly(c.spec.name)) }, visibility: "default" },
+          { match: { name: tableCols.map((c) => exactly(c.spec.name)) }, visibility: "default" },
         ],
       },
     });
@@ -1022,7 +1594,8 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
   // displayed column that sits on this axis alone. Both columns carry the same axis, so the id is
   // the same either way.
   .output("summaryKeyAxisId", (ctx) => {
-    const cols = ctx.outputs?.resolve("summaryPf")?.getPColumns();
+    // In synonymous mode the grid's rows are amino-acid variants, and so is the per-replicate frame.
+    const cols = variantSummaryCols(ctx) ?? ctx.outputs?.resolve("summaryPf")?.getPColumns();
     const axis = (
       cols?.find((c) => c.spec.name === "pl7.app/vdj/affinityClass") ??
       cols?.find((c) => c.spec.name === "pl7.app/vdj/kd")
@@ -1067,6 +1640,63 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     return createPFrameForGraphs(ctx, cols);
   })
 
+  // The reported grain alone: amino-acid variants in synonymous mode, the input's variants
+  // otherwise. The summary pages' graphs read it.
+  .outputWithStatus("reportedPfHandle", (ctx): PFrameHandle | undefined => {
+    const cols = variantSummaryCols(ctx) ?? ctx.outputs?.resolve("summaryPf")?.getPColumns();
+    if (cols === undefined) return undefined;
+    return createPFrameForGraphs(ctx, cols);
+  })
+
+  .output("reportedPfCols", (ctx) => {
+    const cols = variantSummaryCols(ctx) ?? ctx.outputs?.resolve("summaryPf")?.getPColumns();
+    if (cols === undefined) return undefined;
+    return cols.map((c) => ({ columnId: c.id, spec: c.spec }) satisfies PColumnIdAndSpec);
+  })
+
+  .output("synonymousSummary", (ctx) => synonymousSummary(ctx))
+
+  // Synonymous mode with replicates: one row per (nt copy, replicate), its own fit, beside the
+  // amino-acid variant it belongs to.
+  .outputWithStatus("replicateNtTable", (ctx) => {
+    const cols = ctx.outputs
+      ?.resolve({ field: "replicateNtPf", allowPermanentAbsence: true })
+      ?.getPColumns();
+    if (cols === undefined) return undefined;
+    const kdCol = cols.find((c) => c.spec.name === "pl7.app/vdj/kd");
+    const ntAxis = kdCol?.spec.axesSpec.find((a) => a.name !== REPLICATE_AXIS);
+    if (kdCol === undefined || ntAxis === undefined) return undefined;
+    return createPlDataTableV3(ctx, {
+      primaryColumns: cols.map((c) => DataColumn.fromColumn(c)),
+      // The linker reaches the amino-acid label from the nt axis alone: an anchor that also
+      // carries the replicate axis finds nothing.
+      columns: aaVariantIdColumns(ctx, { ...kdCol.spec, axesSpec: [ntAxis] }),
+      tableState: ctx.data.replicateNtTableState,
+      displayOptions: {
+        visibility: [
+          { match: { name: cols.map((c) => exactly(c.spec.name)) }, visibility: "default" },
+        ],
+      },
+    });
+  })
+
+  // Synonymous mode with replicates: the per-replicate nt fits and each copy's amino-acid
+  // variant, for the Synonymous Kd,app graph.
+  .outputWithStatus("synonymousKdPf", (ctx): PFrameHandle | undefined => {
+    const cols = ctx.outputs
+      ?.resolve({ field: "replicateNtPf", allowPermanentAbsence: true })
+      ?.getPColumns();
+    if (cols === undefined) return undefined;
+    return createPFrameForGraphs(ctx, cols);
+  })
+
+  .output("synonymousKdPfCols", (ctx) =>
+    ctx.outputs
+      ?.resolve({ field: "replicateNtPf", allowPermanentAbsence: true })
+      ?.getPColumns()
+      ?.map((c) => ({ columnId: c.id, spec: c.spec }) satisfies PColumnIdAndSpec),
+  )
+
   .output("replicatePfCols", (ctx) => {
     const cols = replicateCols(ctx);
     if (cols === undefined) return undefined;
@@ -1077,7 +1707,7 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
 
   .subtitle((ctx) => ctx.data.customBlockLabel || defaultSubtitle(ctx.data))
 
-  .sections(() => sectionsFor())
+  .sections((ctx) => sectionsFor(runShape(ctx)))
 
   .done();
 

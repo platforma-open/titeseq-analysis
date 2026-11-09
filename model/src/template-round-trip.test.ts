@@ -31,6 +31,7 @@ const configured: BlockData = {
   filterRef: ref("filter"),
   concentrationColumnRef: ref("concentration"),
   binColumnRef: ref("bin"),
+  binOrder: ["LOW", "HIGH"],
   binFluorescenceColumnRef: ref("binFluorescence"),
   antigenColumnRef: ref("antigen"),
   sortFractionColumnRef: ref("sortFraction"),
@@ -41,7 +42,7 @@ const configured: BlockData = {
   kdSeGateMax: 1.5,
   requireAllConcentrations: true,
   replicateColumnRef: ref("replicate"),
-  replicateErrorModel: "phillips",
+  replicateErrorModel: "pop_sd_over_sqrt_n_plus_1",
   replicateFitErrorCutoff: 1,
   replicateR2Floor: 0.8,
   replicateCensoredMajority: 0.75,
@@ -136,5 +137,6 @@ describe("the template round trip", () => {
     expect(restored.subtitleLabel).toBeUndefined();
     expect(restored.settingsOpen).toBe(false);
     expect(restored.tableState).toEqual(initBlockData().tableState);
+    expect(restored.ntTableState).toEqual(initBlockData().ntTableState);
   });
 });

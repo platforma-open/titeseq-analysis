@@ -20,8 +20,32 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Literal
 
 from constants import KD_SD_GOOD, AffinityClass, FailureReason, FitParams, KdRangeSide
+
+# A censored value's side of the titration: "below" the lowest concentration or "above" the highest.
+Side = Literal["below", "above"]
+
+# The value's place against the titrated range, as the kdRangeSide column reports it.
+RANGE_SIDE: dict[Side | None, str] = {"below": "Below range", None: "In range", "above": "Above range"}
+
+# Members censored at opposite walls with no side holding the majority.
+REASON_CONFLICTING = "conflicting_censoring"
+
+
+def censored_side(sides: list[Side], majority: float) -> Side | None:
+    """The wall a value with no measured member sits at, or None when its members conflict.
+
+    One side must hold at least `majority` of the members and more than the other side. Averaging
+    opposite walls would land inside the titrated range and mean nothing.
+    """
+    n = len(sides)
+    share = {side: sides.count(side) / n for side in ("below", "above")}
+    for side, other in (("below", "above"), ("above", "below")):
+        if share[side] >= majority and share[side] > share[other]:
+            return side
+    return None
 
 
 def r2_undefined(r2: float | None) -> bool:
@@ -110,3 +134,14 @@ def classify_log_fluorescence(
     if log10_kd_se is None or not math.isfinite(log10_kd_se) or log10_kd_se > KD_SD_GOOD:
         return Classification("Partial", None)
     return Classification("Good", None)
+
+
+def bound_class(side: Side, own_classes: list[str], *, wall_classes: bool) -> str:
+    """The class of a value censored at `side`, combined from fits whose own classes are `own_classes`.
+
+    Under "log_fluorescence" a bound is rated by its wall, as a single fit is. "hill_gate_index"
+    declares no wall class: a bound keeps the class its fits share, or is Partial when they differ.
+    """
+    if wall_classes:
+        return RANGE_SIDE[side]
+    return own_classes[0] if len(set(own_classes)) == 1 else "Partial"

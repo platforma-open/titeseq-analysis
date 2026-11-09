@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-# "Non-binder" is "log_fluorescence" only: a flat, dim curve, its K_D pinned at the weak wall.
 # "Below range" and "Above range" are written by "log_fluorescence" only: they say which wall a
 # bound K_D sits at. "hill_gate_index" keeps the three classes it shipped with.
 AffinityClass = Literal["Good", "Partial", "Below range", "Above range", "Failed"]
@@ -30,16 +29,21 @@ FailureReason = Literal[
 # How the error of a value combined over sample replicates is computed.
 #   "sd_over_sqrt_n"  — sample SD (ddof 1) / sqrt(n); for n = 1 the fit's own SE, where the
 #                       equation reports one, else empty.
-#   "phillips"        — population SD (ddof 0) / sqrt(n + 1). Reproduces the SEM published with
-#                       Phillips 2021 for n >= 2; for n = 1 the fit's own SE, as above, not the
-#                       paper's 0.
-ReplicateErrorModel = Literal["sd_over_sqrt_n", "phillips"]
-REPLICATE_ERROR_MODELS: tuple[ReplicateErrorModel, ...] = ("sd_over_sqrt_n", "phillips")
+#   "pop_sd_over_sqrt_n_plus_1"
+#                     — population SD (ddof 0) / sqrt(n + 1); for n = 1 the fit's own SE, as above.
+ReplicateErrorModel = Literal["sd_over_sqrt_n", "pop_sd_over_sqrt_n_plus_1"]
+REPLICATE_ERROR_MODELS: tuple[ReplicateErrorModel, ...] = ("sd_over_sqrt_n", "pop_sd_over_sqrt_n_plus_1")
 
 # Share of the entered replicates one censoring side must hold, and exceed the other side by, for
 # the combined value to be reported as that side's bound. Below it the sides conflict and the
 # variant fails. The block's own rule: no paper defines one.
 DEFAULT_CENSORED_MAJORITY: float = 0.5
+
+# |z| at or above which a synonymous nucleotide variant is flagged as disagreeing with the others of
+# its amino-acid variant. The block's own rule.
+SYNONYM_OUTLIER_Z: float = 2.5
+# Scales a median absolute deviation to the SD of a normal distribution.
+MAD_TO_SD: float = 1.4826
 
 # The equation fitted to each clonotype.
 #   "log_fluorescence"  — log10(A*c/(c+K) + B) on mean log10 gate fluorescence, exponent fixed at 1,
@@ -131,6 +135,8 @@ COL_CONC_STR = "concentrationStr"
 # only, so no float→string→float roundtrip happens between Python and the
 # Tengo xsv.importFile boundary.
 COL_CONC_VAL = "concentration"
+# The concentration as a category label that sorts as text in numeric order: "01 · 3.16e-10".
+COL_CONC_LABEL = "concentrationLabel"
 COL_BIN = "bin"
 COL_ANTIGEN = "antigen"
 COL_READS = "reads"
