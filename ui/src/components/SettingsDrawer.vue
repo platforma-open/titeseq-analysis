@@ -33,23 +33,8 @@ const abundanceSelection = computed<DatasetSelection | undefined>({
   set: (selection) => {
     app.model.data.abundanceRef = selection?.primary.column;
     app.model.data.filterRef = selection?.primary.filter;
-    app.model.data.subtitleLabel = abundanceLabel(selection);
   },
 });
-
-// The subtitle names the picked abundance as the result pool labels it; the subset's label when
-// one is picked, since it already carries the dataset as a prefix.
-function abundanceLabel(selection: DatasetSelection | undefined): string {
-  if (selection === undefined) return "";
-  const { column, filter } = selection.primary;
-  const option = app.model.outputs.abundanceOptions?.find((o) =>
-    plRefsEqual(o.primary.ref, column, true),
-  );
-  const picked = filter
-    ? option?.filters?.find((f) => plRefsEqual(f.ref, filter, true))
-    : undefined;
-  return (picked ?? option?.primary)?.label ?? "";
-}
 
 // The two pairs each field is bounded by the other half of.
 const r2GoodAtLeastFailed = boundedBy(
