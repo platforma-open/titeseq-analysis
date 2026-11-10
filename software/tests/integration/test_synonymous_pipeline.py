@@ -223,7 +223,7 @@ class TestVariantClassAndStops:
         assert (single["kd"], single["kdLog10Se"], single["kdLog10Sd"]) == (None, None, None)
         assert (single["kdLog10ParentDelta"], single["kdLog10ParentDeltaSe"]) == (None, None)
         assert single["affinityClass"] == "Failed"
-        assert single["variantClass"] == "stop"
+        assert single["variantClass"] == "nonproductive"
         assert single["ntVariants"] == 1
         assert classed["synonymous_summary"]["stopAaVariants"] == 1
 
@@ -239,7 +239,7 @@ class TestVariantClassAndStops:
             "TIGHT": "1 nonsynonymous",
             "DEAD": "1 nonsynonymous",
             "MIXED": "1 nonsynonymous",
-            "SINGLE": "stop",
+            "SINGLE": "nonproductive",
             "LOST": "1 nonsynonymous",
         }
 
@@ -248,7 +248,7 @@ class TestVariantClassAndStops:
         assert per_nt["ntKey"].to_list() == classed["per_clonotype"]["clonotypeKey"].to_list()
         classes = dict(zip(per_nt["ntKey"], per_nt["variantClass"]))
         assert (classes["wt_a"], classes["wt_b"], classes["wt_c"]) == ("wildtype", "synonymous", "synonymous")
-        assert (classes["t_a"], classes["s_a"]) == ("1 nonsynonymous", "stop")
+        assert (classes["t_a"], classes["s_a"]) == ("1 nonsynonymous", "nonproductive")
         assert (classes["amb"], classes["orphan"]) == (None, None)
 
 
@@ -472,7 +472,8 @@ class TestReadDepth:
         assert dict(with_depth["fit_reads"].iter_rows())["l_a"] == 0
         assert _aa(with_depth, "LOST")["fitReads"] == 0
 
-    def test_fit_reads_leave_out_unsorted_samples(self, reads, with_depth):
+    @staticmethod
+    def _with_unsorted(reads):
         unsorted = pl.DataFrame(
             {
                 "clonotypeKey": ["wt_a"],
@@ -484,14 +485,24 @@ class TestReadDepth:
             },
             schema=reads.schema,
         )
+        return pl.concat([reads, unsorted])
+
+    def test_fit_reads_leave_out_unsorted_samples(self, reads, with_depth):
         out = run(
-            pl.concat([reads, unsorted]),
+            self._with_unsorted(reads),
             params=LF,
             synonymous=SynonymousInputs(_links(), **PARENT_INPUTS),
             read_depth=True,
         )
         expected = dict(with_depth["fit_reads"].iter_rows())["wt_a"]
         assert dict(out["fit_reads"].iter_rows())["wt_a"] == expected
+
+    def test_fit_reads_keep_unsorted_samples_under_the_mean_bin_fit(self, reads):
+        # The mean bin fit counts an unsorted sample's reads in its read floor and weights.
+        def fit_reads(frame):
+            return dict(run(frame, params=HILL, read_depth=True)["fit_reads"].iter_rows())["wt_a"]
+
+        assert fit_reads(self._with_unsorted(reads)) == fit_reads(reads) + 500
 
     @pytest.fixture(scope="class")
     def with_extras(self, reads):

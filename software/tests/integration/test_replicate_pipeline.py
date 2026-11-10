@@ -269,17 +269,6 @@ class TestDifferentConcentrationGrids:
             concs = fitted.filter(pl.col("replicate") == replicate)["concentrationStr"].to_list()
             assert sorted(concs) == sorted(str(c) for c in CONCS)
 
-    def test_the_combined_curve_averages_every_replicate_at_every_concentration(self, outputs):
-        from output_build import build_combined_signal_frame
-
-        combined = build_combined_signal_frame(outputs["mean_bin"], outputs["fitted_mean_bin"])
-        curves = outputs["fitted_mean_bin"]
-        for conc in (str(CONCS[0]), str(CONCS[-1])):
-            per_replicate = curves.filter(pl.col("concentrationStr") == conc)["fittedMeanBin"].to_list()
-            assert len(per_replicate) == 2
-            row = combined.filter(pl.col("concentrationStr") == conc).row(0, named=True)
-            assert row["combinedFittedMeanBin"] == pytest.approx(sum(per_replicate) / 2)
-
     def test_each_replicate_fit_reads_only_its_own_points(self, outputs):
         alone = run(
             _frame({"A": {"v1": 1e-8}}).filter(pl.col("concentration") != CONCS[-1]).drop("replicate"), params=LF
@@ -481,9 +470,9 @@ class TestStarrOrdering:
             replicates=REPS,
         )
         x = outputs["per_variant"].filter(pl.col("aaKey") == "X").row(0, named=True)
-        assert (x["kd"], x["affinityClass"], x["fitFailureReason"]) == (None, "Failed", "stop_codon")
+        assert (x["kd"], x["affinityClass"], x["fitFailureReason"]) == (None, "Failed", "not_productive")
         per_replicate = outputs["per_replicate"].filter(pl.col("aaKey") == "X")
-        assert set(per_replicate["fitFailureReason"].to_list()) == {"stop_codon"}
+        assert set(per_replicate["fitFailureReason"].to_list()) == {"not_productive"}
 
     def test_the_per_replicate_frame_is_on_the_amino_acid_grain(self, outputs):
         frame = outputs["per_replicate"]

@@ -27,7 +27,7 @@ The combination is Starr's plain arithmetic mean of the synonymous variants' log
 The class is decided once, on the combined value (`classify.rate_mean`):
 
   Failed       no member in the mean (`all_variants_failed`), a conflict (`conflicting_censoring`),
-               or a stop variant (`stop_codon`); the reason is written beside the class
+               or a variant that is not productive (`not_productive`); the reason is written beside the class
   bound        the wall's class under log fluorescence; under the mean bin fit, the class the members
                at that wall share, else Partial
   Good         SE at or below KD_SD_GOOD, with more than half the members in the mean measured; under
@@ -37,11 +37,12 @@ The class is decided once, on the combined value (`classify.rate_mean`):
   member's own n = 1 and the equation reports no SE: the combined value is that member's fit, rated
                by its equation's own rule
 
-Each variant gets a class, in Starr's strings. An amino-acid variant is `stop` when it is not productive,
-else by its amino-acid mutation count: 0 `wildtype`, 1 `1 nonsynonymous`, more `>1 nonsynonymous`. A
+Each variant gets a class, after Starr's. An amino-acid variant is `nonproductive` when it is not
+productive (a stop codon or a frame shift), else by its amino-acid mutation count: 0 `wildtype`,
+1 `1 nonsynonymous`, more `>1 nonsynonymous`. A
 nucleotide variant takes its amino-acid variant's class, except that under an unmutated amino-acid variant
 it is `wildtype` with no nucleotide mutation and `synonymous` with some. Without the productive column there
-is no `stop` class. A stop amino-acid variant has no K_D, SE or parent delta and is rated Failed; its
+is no `nonproductive` class. A stop amino-acid variant has no K_D, SE or parent delta and is rated Failed; its
 nucleotide variants keep their own fits.
 
 The parent delta is log10 K_D of the variant minus that of its parent, both at amino-acid grain, with
@@ -75,12 +76,12 @@ COL_CLASS = "variantClass"
 
 CLASS_WILDTYPE = "wildtype"
 CLASS_SYNONYMOUS = "synonymous"
-CLASS_STOP = "stop"
+CLASS_STOP = "nonproductive"
 CLASS_ONE = "1 nonsynonymous"
 CLASS_SEVERAL = ">1 nonsynonymous"
 
 REASON_ALL_FAILED = "all_variants_failed"
-REASON_STOP = "stop_codon"
+REASON_STOP = "not_productive"
 
 REASON_NO_UNMUTATED = "no-unmutated-variant"
 REASON_SEVERAL_UNMUTATED = "several-unmutated-variants"
@@ -119,7 +120,7 @@ class SynonymousInputs:
     """The nt -> aa linker and the per-variant columns that resolved.
 
     The amino-acid parent delta needs `aa_mutations` and `aa_parent_links`; the amino-acid class needs
-    `aa_mutations`; the nucleotide class needs `aa_mutations` and `nt_mutations`; `stop` needs
+    `aa_mutations`; the nucleotide class needs `aa_mutations` and `nt_mutations`; `nonproductive` needs
     `aa_productive`.
     """
 
@@ -319,8 +320,11 @@ def parent_deltas(
         delta, se = parent_delta(value, parent, variant == parent_key)
         deltas.append(delta)
         ses.append(se)
+    # A parent none of this run's variants links to is not reported: the link table covers the library.
+    used = {assignment[variant] for variant in values if variant in assignment}
+    unidentifiable = [p for p in unidentifiable if p["parentId"] in used]
     counts = {
-        "parents": len(own) + len(unidentifiable),
+        "parents": sum(1 for parent in own if parent in used) + len(unidentifiable),
         "unidentifiableParents": unidentifiable,
         "multiParentVariants": several,
     }

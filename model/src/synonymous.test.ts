@@ -175,10 +175,10 @@ describe("synonymousMessages", () => {
     ]);
   });
 
-  it("counts the stop variants", () => {
+  it("counts the variants that are not productive", () => {
     expect(synonymousMessages(undefined, { ...summary, stopAaVariants: 3 })).toEqual([
-      "3 amino-acid variants carry a stop codon. They have no Kd,app and are rated Failed; " +
-        "their nucleotide variants keep their own fits.",
+      "3 amino-acid variants are not productive (a stop codon or a frame shift). They have no Kd,app " +
+        "and are rated Failed; their nucleotide variants keep their own fits.",
     ]);
     expect(synonymousMessages(undefined, { ...summary, stopAaVariants: 0 })).toEqual([]);
   });
@@ -193,6 +193,25 @@ describe("synonymousMessages", () => {
       "Parent P1 cannot be identified: no amino-acid variant has zero mutations. " +
         "Its variants have no parent delta.",
       "2 amino-acid variants link to several parents and have no parent delta.",
+    ]);
+  });
+
+  it("gives many unidentifiable parents one message per reason", () => {
+    const messages = synonymousMessages(undefined, {
+      ...summary,
+      unidentifiableParents: [
+        ...["P1", "P2", "P3", "P4", "P5"].map((parentId) => ({
+          parentId,
+          reason: "no-unmutated-variant" as const,
+        })),
+        { parentId: "P6", reason: "several-unmutated-variants" as const },
+      ],
+    });
+    expect(messages).toEqual([
+      "5 parents cannot be identified: no amino-acid variant has zero mutations (P1, P2, P3 and 2 more). " +
+        "Their variants have no parent delta.",
+      "1 parent cannot be identified: several amino-acid variants have zero mutations (P6). " +
+        "Their variants have no parent delta.",
     ]);
   });
 });

@@ -7,7 +7,7 @@ text := import("text")
 
 COUNT_NAME := "pl7.app/vdj/kdNtVariants"
 CLASS_NAME := "pl7.app/vdj/variantClass"
-CLASS_VALUES := ["wildtype", "synonymous", "stop", "1 nonsynonymous", ">1 nonsynonymous"]
+CLASS_VALUES := ["wildtype", "synonymous", "nonproductive", "1 nonsynonymous", ">1 nonsynonymous"]
 COUNT_STATE := "pl7.app/vdj/kdNtVariantState"
 SYNONYM_SD_ALL_NAME := "pl7.app/vdj/kdLog10SynonymSdAll"
 
@@ -32,7 +32,7 @@ classColumn := func(blockId, id, description) {
 				"pl7.app/description": description,
 				"pl7.app/isScore": "false",
 				"pl7.app/isDiscreteFilter": "true",
-				"pl7.app/discreteValues": "[\"wildtype\",\"synonymous\",\"stop\",\"1 nonsynonymous\",\">1 nonsynonymous\"]",
+				"pl7.app/discreteValues": "[\"wildtype\",\"synonymous\",\"nonproductive\",\"1 nonsynonymous\",\">1 nonsynonymous\"]",
 				"pl7.app/table/visibility": "default",
 				"pl7.app/table/orderPriority": "184"
 			}
@@ -65,9 +65,9 @@ SE_DESCRIPTION := "Standard error of the mean log10 Kd,app. With two or more syn
 
 COUNT_SUM_NOTE := "With sample replicates, this is summed over the replicates: a nucleotide variant counts once in each replicate it was fitted in."
 
-FAILURE_DESCRIPTION := "Why the amino-acid variant gets the rating Failed. all_variants_failed: none of its synonymous nucleotide variants has a Kd,app. conflicting_censoring: they sit at opposite edges of the range with no edge holding most of them. stop_codon: the variant is not productive. Empty for other ratings."
+FAILURE_DESCRIPTION := "Why the amino-acid variant gets the rating Failed. all_variants_failed: none of its synonymous nucleotide variants has a Kd,app. conflicting_censoring: they sit at opposite edges of the range with no edge holding most of them. not_productive: the variant has a stop codon or a frame shift. Empty for other ratings."
 
-FAILURE_REPLICATES_DESCRIPTION := "Why the amino-acid variant gets the rating Failed. all_replicates_failed: no replicate has a Kd,app. conflicting_censoring: the replicates sit at opposite edges of the range with no edge holding most of them. stop_codon: the variant is not productive. Empty for other ratings."
+FAILURE_REPLICATES_DESCRIPTION := "Why the amino-acid variant gets the rating Failed. all_replicates_failed: no replicate has a Kd,app. conflicting_censoring: the replicates sit at opposite edges of the range with no edge holding most of them. not_productive: the variant has a stop codon or a frame shift. Empty for other ratings."
 
 SD_DESCRIPTION := "SD of log10 Kd,app across the synonymous nucleotide variants in the mean: their spread alone, with no fit error. Empty with fewer than two variants, for a bound and for a failed variant."
 
@@ -285,7 +285,7 @@ variantColumns := func(blockId, kdAnnotations, opts) {
 		"The reads the fits of this amino-acid variant's synonymous nucleotide variants used, every replicate included: sorted samples only, at the non-zero concentrations that pass the read floor. A nucleotide variant that was not fitted adds none."))
 	if opts.variantClass {
 		cols = append(cols, classColumn(blockId, "aa_variantClass",
-			"stop: the amino-acid variant is not productive, and has no Kd,app. Otherwise by its amino-acid mutation count: wildtype 0, 1 nonsynonymous 1, >1 nonsynonymous more."))
+			"nonproductive: the amino-acid variant has a stop codon or a frame shift, and has no Kd,app. Otherwise by its amino-acid mutation count: wildtype 0, 1 nonsynonymous 1, >1 nonsynonymous more."))
 	}
 	if opts.parentMode {
 		cols = cols + deltaColumns(blockId, "aa_",
@@ -306,7 +306,7 @@ ntVariantColumns := func(blockId, opts) {
 	cols := []
 	if opts.variantClass {
 		cols = append(cols, classColumn(blockId, "nt_variantClass",
-			"The class of the nucleotide variant's amino-acid variant: stop, 1 nonsynonymous or >1 nonsynonymous. Under an unmutated amino-acid variant, wildtype with no nucleotide mutation and synonymous with some. A stop variant keeps its own fit."))
+			"The class of the nucleotide variant's amino-acid variant: nonproductive, 1 nonsynonymous or >1 nonsynonymous. Under an unmutated amino-acid variant, wildtype with no nucleotide mutation and synonymous with some. A variant that is not productive keeps its own fit."))
 	}
 	if opts.parentMode {
 		cols = cols + deltaColumns(blockId, "nt_",

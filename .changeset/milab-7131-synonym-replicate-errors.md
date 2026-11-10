@@ -29,8 +29,8 @@ Synonymous variants:
   range.
 - The amino-acid grain has a "Fit failure reason" column (`pl7.app/vdj/fitFailureReason`, optional
   in the table, exported): `all_variants_failed` when no synonymous variant has a Kd,app,
-  `conflicting_censoring`, or `stop_codon` for a variant that is not productive. With sample
-  replicates it reads `all_replicates_failed`, `conflicting_censoring` or `stop_codon`, and each
+  `conflicting_censoring`, or `not_productive` for a variant that is not productive. With sample
+  replicates it reads `all_replicates_failed`, `conflicting_censoring` or `not_productive`, and each
   amino-acid row of the per-replicate table carries its own reason.
 - The mean is always the plain mean, as Starr combines synonymous variants; there is no
   read-weighted option. Read-weighting let one deep synonymous variant swamp the others: two
@@ -51,14 +51,15 @@ Synonymous variants:
   each value, split by `pl7.app/vdj/kdNtVariantState` (all, measured, censored low, censored
   high, failed). With replicates the counts are summed over the replicates, and their descriptions
   say so.
-- `pl7.app/vdj/variantClass` (String, discrete filter) on both grains, in Starr's strings:
-  `wildtype`, `synonymous`, `stop`, `1 nonsynonymous`, `>1 nonsynonymous`. The amino-acid grain
-  needs the amino-acid `pl7.app/repertoire/mutationCount`; the nucleotide grain needs that and the
-  nucleotide one. `stop` needs the amino-acid `pl7.app/vdj/sequence/productive`; without it there
-  is no stop class. Each input is used only when exactly one column matches it.
-- A stop amino-acid variant has no Kd,app, SE or parent delta and is rated Failed; the run
+- `pl7.app/vdj/variantClass` (String, discrete filter) on both grains, after Starr's classes:
+  `wildtype`, `synonymous`, `nonproductive`, `1 nonsynonymous`, `>1 nonsynonymous`. The amino-acid
+  grain   needs the amino-acid `pl7.app/repertoire/mutationCount`; the nucleotide grain needs that and the
+  nucleotide one. `nonproductive` needs the amino-acid `pl7.app/vdj/sequence/productive`; without it there
+  is no such class. Each input is used only when exactly one column matches it.
+- An amino-acid variant that is not productive (a stop codon or a frame shift) has no Kd,app, SE
+  or parent delta and is rated Failed; the run
   summary, the Fit log and the block's warnings count them. Its nucleotide variants keep their own
-  fits, so the graphs keep their curves, and their class is `stop`.
+  fits, so the graphs keep their curves, and their class is `nonproductive`.
 - Where the amino-acid mutation count and parent link resolve, `pl7.app/vdj/kdLog10ParentDelta`
   and `pl7.app/vdj/kdLog10ParentDeltaSe` give each variant's log10 Kd,app against its parent's
   (labels "Kd,app vs Parent (log10)" and "Kd,app vs Parent SE (log10)"). Where the nucleotide

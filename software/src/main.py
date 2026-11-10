@@ -12,14 +12,11 @@ import polars as pl
 from constants import (
     COL_BIN,
     COL_CLONOTYPE,
-    COL_CONC_STR,
-    COL_CONC_VAL,
     DEFAULT_PARAMS,
     FitParams,
 )
 from io_layer import apply_bin_ranks, read_reads_table
 from log import log
-from output_build import build_combined_signal_frame, build_concentration_label_frame, build_signal_series_frame
 from pipeline import run
 from replicate_combine import ReplicateInputs
 from synonymous import (
@@ -108,26 +105,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out-mean-bin", required=True)
     parser.add_argument("--out-fitted-mean-bin", required=True)
     parser.add_argument("--out-concentration-value", required=True)
-    parser.add_argument(
-        "--out-signal-series",
-        default=None,
-        help="TSV of the observed mean bin and the fitted curve in one value column, keyed by series",
-    )
-    parser.add_argument(
-        "--out-combined-signal",
-        default=None,
-        help="TSV per variant and concentration: observed mean over replicates, its SE, and the mean curve",
-    )
-    parser.add_argument(
-        "--out-concentration-label",
-        default=None,
-        help="TSV [concentrationStr, concentrationLabel]: labels that sort as text in numeric order",
-    )
-    parser.add_argument(
-        "--out-concentration-order",
-        default=None,
-        help="JSON list of the non-zero concentration strings, lowest concentration first",
-    )
     parser.add_argument("--aa-labels", default=None, help="TSV [aaKey, label]: the amino-acid variants' labels")
     parser.add_argument(
         "--out-nt-aa-variant",
@@ -206,18 +183,6 @@ def main(argv: list[str] | None = None) -> int:
     _write_frame(outputs["mean_bin"], args.out_mean_bin)
     _write_frame(outputs["fitted_mean_bin"], args.out_fitted_mean_bin)
     _write_frame(outputs["concentration_value"], args.out_concentration_value)
-    if args.out_signal_series is not None:
-        series = build_signal_series_frame(outputs["mean_bin"], outputs["fitted_mean_bin"])
-        _write_frame(series, args.out_signal_series)
-    if args.out_combined_signal is not None:
-        combined = build_combined_signal_frame(outputs["mean_bin"], outputs["fitted_mean_bin"])
-        _write_frame(combined, args.out_combined_signal)
-    if args.out_concentration_label is not None:
-        _write_frame(build_concentration_label_frame(outputs["concentration_value"]), args.out_concentration_label)
-    if args.out_concentration_order is not None:
-        order = outputs["concentration_value"].sort([COL_CONC_VAL, COL_CONC_STR])[COL_CONC_STR].to_list()
-        with open(args.out_concentration_order, "w") as f:
-            json.dump(order, f)
     if synonymous is not None and args.out_nt_aa_variant is not None:
         labels = _read_keys(args.aa_labels, {COL_AA: pl.Utf8, COL_LABEL: pl.Utf8})
         curved = outputs["fitted_mean_bin"][COL_CLONOTYPE].unique().to_list()

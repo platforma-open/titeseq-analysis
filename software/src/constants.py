@@ -24,7 +24,7 @@ FailureReason = Literal[
     "all_replicates_failed",
     "all_variants_failed",
     "conflicting_censoring",
-    "stop_codon",
+    "not_productive",
 ]
 
 # The equation fitted to each clonotype.
@@ -117,8 +117,6 @@ COL_CONC_STR = "concentrationStr"
 # only, so no float→string→float roundtrip happens between Python and the
 # Tengo xsv.importFile boundary.
 COL_CONC_VAL = "concentration"
-# The concentration as a category label that sorts as text in numeric order: "01 · 3.16e-10".
-COL_CONC_LABEL = "concentrationLabel"
 COL_BIN = "bin"
 COL_ANTIGEN = "antigen"
 COL_READS = "reads"

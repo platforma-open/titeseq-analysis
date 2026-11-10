@@ -31,7 +31,7 @@ from constants import KD_SD_GOOD, AffinityClass, FailureReason, FitParams, KdRan
 Side = Literal["below", "above"]
 
 # The value's place against the titrated range, as the kdRangeSide column reports it.
-RANGE_SIDE: dict[Side | None, str] = {"below": "Below range", None: "In range", "above": "Above range"}
+RANGE_SIDE: dict[Side | None, KdRangeSide] = {"below": "Below range", None: "In range", "above": "Above range"}
 
 # Members censored at opposite walls with no side holding the majority.
 REASON_CONFLICTING = "conflicting_censoring"

@@ -398,6 +398,17 @@ class TestCombineSynonymous:
         assert summary["unidentifiableParents"] == []
         assert summary["multiParentVariants"] == 0
 
+    def test_a_parent_with_no_variant_in_the_run_is_not_reported(self):
+        # The link table covers the whole library: Q has no unmutated variant, and none of its variants ran.
+        inputs = SynonymousInputs(
+            self.LINKS,
+            aa_mutations=pl.DataFrame({"aaKey": ["WT", "M", "X"], "mutationCount": ["0", "1", "1"]}),
+            aa_parent_links=pl.DataFrame({"aaKey": ["WT", "M", "X"], "parentId": ["P", "P", "Q"]}),
+        )
+        _, _, summary = combine_synonymous(self.PER_CLONOTYPE, inputs, log10_lo=LO, log10_hi=HI)
+        assert summary["parents"] == 1
+        assert summary["unidentifiableParents"] == []
+
     CLASS_INPUTS = {
         "aa_mutations": pl.DataFrame({"aaKey": ["WT", "M"], "mutationCount": ["0", "1"]}),
         "aa_parent_links": pl.DataFrame({"aaKey": ["WT", "M"], "parentId": ["P", "P"]}),
@@ -425,7 +436,7 @@ class TestCombineSynonymous:
         assert (m["kd"], m["kdLog10Se"], m["kdOutOfRange"]) == (None, None, None)
         assert (m["kdLog10ParentDelta"], m["kdLog10ParentDeltaSe"]) == (None, None)
         assert m["affinityClass"] == "Failed"
-        assert m["fitFailureReason"] == "stop_codon"
+        assert m["fitFailureReason"] == "not_productive"
         assert m["variantClass"] == CLASS_STOP
         assert (m["ntVariants"], m["ntMeasured"], m["ntFailed"]) == (2, 1, 1)
         assert summary["stopAaVariants"] == 1

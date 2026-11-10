@@ -809,7 +809,7 @@ wf.body(func(args) {
 	replicateImported := undefined
 	if hasReplicate {
 		replicateVariantAxis := { column: "clonotypeKey", spec: clonotypeAxisSpec }
-		replicateColumns := replicateColumnsLib.perReplicateColumns(blockId, "rep_", kdAnnotations, affinityClassValues)
+		replicateColumns := replicateColumnsLib.perReplicateColumns(blockId, "rep_", kdAnnotations, affinityClassValues, syn.synonymous)
 		if syn.synonymous {
 			replicateVariantAxis = { column: "aaKey", spec: syn.aaAxis }
 			// An amino-acid row is a combination, not one fit: it has no R².

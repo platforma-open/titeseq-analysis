@@ -46,7 +46,7 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
-from classify import Classification, Combined, classify, classify_log_fluorescence, failed, r2_undefined
+from classify import RANGE_SIDE, Classification, Combined, classify, classify_log_fluorescence, failed, r2_undefined
 from constants import (
     COL_ANTIGEN,
     COL_BIN,
@@ -61,7 +61,6 @@ from constants import (
     HILL_EXPONENT_FIXED,
     SINGLE_REPLICATE,
     FitParams,
-    KdRangeSide,
 )
 from fit_reads import fit_reads, with_fit_reads
 from hill_fit import fit_one_clonotype
@@ -260,7 +259,6 @@ _PER_CLONOTYPE_FIELDS = (
 
 # A pin's censor, as the range side it reports. "below": the true K_D is at most the lowest
 # concentration, so the value sits below the range.
-_RANGE_SIDE: dict[str | None, KdRangeSide] = {"below": "Below range", None: "In range", "above": "Above range"}
 
 # One titration's fit: the per-clonotype frame, the fitted curves, and the clonotypes that went to a
 # fit (the rest were gated Failed before it).
@@ -494,7 +492,7 @@ def _fit_all_log_fluorescence(
         in_range_r2 = censor is None and fit.r2 is not None and math.isfinite(fit.r2)
         columns["r2"][i] = fit.r2 if in_range_r2 else None
         columns["kdOutOfRange"][i] = censor is not None
-        range_side = _RANGE_SIDE[censor]
+        range_side = RANGE_SIDE[censor]
         columns["kdRangeSide"][i] = range_side
         # A pinned K_D is a bound. The fit's SE describes the unpinned estimate, so a bound gets none.
         se = fit.log10_kd_se
@@ -935,7 +933,10 @@ def _reads_in_fit(
     has_bin: bool,
     fit_keys: pl.DataFrame,
 ) -> pl.DataFrame:
-    """The rows of `reads` the fits used: sorted samples only, at the points a fit read.
+    """The rows of `reads` the fits used, at the points a fit read.
+
+    Under "log_fluorescence" an unsorted sample's reads are left out, as the signal leaves them out.
+    The mean bin fit counts them in its read floor and weights, so they stay.
 
     `fit_keys` holds the clonotypes, with the replicate when there is one, that went to a fit; a
     gated one used no reads. A point a fit read has a non-zero concentration, passes the read floor
@@ -944,8 +945,9 @@ def _reads_in_fit(
     fitted = signal_frame.filter(_fit_point_mask(params)).join(fit_keys, on=fit_keys.columns, how="semi")
     keys = [*fit_keys.columns, COL_CONC_STR]
     points = fitted.select(keys).unique()
-    sorted_reads = reads.filter(pl.col(COL_BIN).is_not_null()) if has_bin else reads
-    return sorted_reads.join(points, on=keys, how="semi")
+    sorted_only = has_bin and params.equation == "log_fluorescence"
+    used = reads.filter(pl.col(COL_BIN).is_not_null()) if sorted_only else reads
+    return used.join(points, on=keys, how="semi")
 
 
 def _add_fit_reads(
@@ -1104,9 +1106,9 @@ def _combine_synonymous(
     else:
         log("Nucleotide parent delta: off (no nucleotide mutation count and parent link)")
     if "stopAaVariants" in summary:
-        log(f"Stop codons: {summary['stopAaVariants']} amino-acid variants not productive; they get no Kd,app")
+        log(f"Not productive: {summary['stopAaVariants']} amino-acid variants not productive; they get no Kd,app")
     else:
-        log("Stop codons: off (no amino-acid productive column)")
+        log("Not productive: off (no amino-acid productive column)")
     outputs = {"per_variant": per_variant, "synonymous_summary": summary}
     if per_nt_variant is not None:
         outputs["per_nt_variant"] = per_nt_variant
