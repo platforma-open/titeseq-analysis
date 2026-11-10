@@ -165,6 +165,9 @@ Fits and inputs:
 - A run whose abundance holds no read count for any selected sample stops with "the abundance
   column has no reads for any selected sample", instead of a polars type error.
 
+- An unsorted sample needs no sort fraction. The sort-fraction check reads sorted samples only;
+  2.5.0 stopped the run when an unsorted sample had none.
+
 Pages and export:
 
 - The pages are Main, NT Variants (synonymous mode), Replicates (with replicates), then the 2.5.0

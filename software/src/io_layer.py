@@ -138,7 +138,8 @@ def validate_sort_fraction(reads: pl.DataFrame, col: str, group_keys: list[str] 
 
     Invariants:
       * Column exists in `reads`.
-      * No nulls (every sample with reads must carry a fraction).
+      * No nulls (every sorted sample with reads must carry a fraction). An unsorted sample, one
+        with no bin, went through no gate: it needs no fraction and stays out of every check.
       * Values in [0, 1].
       * Per group, |Σ_b sort_fraction − 1| < 1e-3 — deduplicated by sample so that repeating a
         per-sample value across clonotypes does not inflate the per-group sum.
@@ -153,9 +154,11 @@ def validate_sort_fraction(reads: pl.DataFrame, col: str, group_keys: list[str] 
     if col not in reads.columns:
         raise InputValidationError(f"Sort-fraction column '{col}' missing from reads")
 
+    if COL_BIN in reads.columns:
+        reads = reads.filter(pl.col(COL_BIN).is_not_null())
     vals = reads[col]
     if vals.is_null().any():
-        raise InputValidationError(f"Sort-fraction column '{col}' has null values")
+        raise InputValidationError(f"Sort-fraction column '{col}' has no value for a sorted sample")
     if (vals < 0).any() or (vals > 1).any():
         raise InputValidationError(f"Sort-fraction values must be in [0, 1]; column '{col}'")
 

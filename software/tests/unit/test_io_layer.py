@@ -678,7 +678,7 @@ class TestValidateSortFraction:
                 },
             ]
         )
-        with pytest.raises(InputValidationError, match="null"):
+        with pytest.raises(InputValidationError, match="no value for a sorted sample"):
             validate_sort_fraction(df, "sort_fraction")
 
 
