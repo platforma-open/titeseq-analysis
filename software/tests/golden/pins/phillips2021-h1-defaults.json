@@ -1,0 +1,59 @@
+{
+  "agreement": {
+    "allClipped": {
+      "medianAbsDiff": 0.0632,
+      "n": 1973,
+      "r": 0.9502,
+      "within0.5": 0.8687
+    },
+    "good": {
+      "medianAbsDiff": 0.0641,
+      "n": 1620,
+      "r": 0.9561,
+      "within0.5": 0.9074
+    }
+  },
+  "classes": {
+    "replicate": {
+      "Above range": 949,
+      "Failed": 514,
+      "Good": 4673,
+      "Partial": 8
+    },
+    "replicateLowR2": 453,
+    "variant": {
+      "Above range": 339,
+      "Failed": 63,
+      "Good": 1632,
+      "Partial": 14
+    }
+  },
+  "clones": {
+    "1,2": {
+      "affinityClass": "Good",
+      "genotype": "11000000000",
+      "isogenic": -9.2149,
+      "log10Kd": -9.226929,
+      "paperTiteSeq": -9.2786
+    },
+    "1,2,6,7": {
+      "affinityClass": "Good",
+      "genotype": "11000110000",
+      "isogenic": -9.1613,
+      "log10Kd": -9.289825,
+      "paperTiteSeq": -9.3435
+    },
+    "som": {
+      "affinityClass": "Good",
+      "genotype": "11111111111",
+      "isogenic": -9.5038,
+      "log10Kd": -9.434747,
+      "paperTiteSeq": -9.5067
+    }
+  },
+  "digest": "08eabba0cdd8eca3",
+  "germline": {
+    "affinityClass": "Above range",
+    "negLog10Kd": 7.0
+  }
+}

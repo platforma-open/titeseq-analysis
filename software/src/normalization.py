@@ -11,6 +11,9 @@ SIGNAL = "signal"  # unified name: mean_bin in bin mode, frequency in no-bin mod
 FREQ = "freq"
 TOTAL_READS_AT_CONC = "total_reads_at_conc"
 CLONOTYPE_READS_AT_CONC = "clonotype_reads_at_conc"
+# The reads behind SIGNAL: the read floor and the fit weight read these. Fewer than
+# CLONOTYPE_READS_AT_CONC only where an unsorted sample's reads are kept out of the signal.
+SIGNAL_READS_AT_CONC = "signal_reads_at_conc"
 
 
 def compute_mean_bin(
@@ -53,7 +56,9 @@ def compute_mean_bin(
         Kwarg-only by design so a future caller cannot silently disable the
         correction via a positional-argument slip.
 
-    Returns long frame: clonotypeKey, concentrationStr, concentration, mean_bin, clonotype_reads_at_conc.
+    Returns long frame: clonotypeKey, concentrationStr, concentration, mean_bin, clonotype_reads_at_conc,
+    signal_reads_at_conc. Where null positions are kept out of the mean, their reads are kept out of
+    signal_reads_at_conc too.
     """
     reps = replicate_keys or []
     with_freq = reads.with_columns(
@@ -62,8 +67,10 @@ def compute_mean_bin(
 
     weight = pl.col(FREQ) * pl.col(sort_fraction_col) if sort_fraction_col is not None else pl.col(FREQ)
     position = pl.col(gate_position_col) if gate_position_col is not None else pl.col(COL_BIN)
+    signal_reads = pl.col(COL_READS)
     if gate_position_col is not None or drop_null_positions:
         weight = pl.when(position.is_not_null()).then(weight).otherwise(0.0)
+        signal_reads = signal_reads.filter(position.is_not_null())
 
     return (
         with_freq.with_columns(weight.alias("w"))
@@ -72,6 +79,7 @@ def compute_mean_bin(
             (position.cast(pl.Float64) * pl.col("w")).sum().alias("num"),
             pl.col("w").sum().alias("den"),
             pl.col(COL_READS).sum().alias(CLONOTYPE_READS_AT_CONC),
+            signal_reads.sum().alias(SIGNAL_READS_AT_CONC),
         )
         .with_columns(pl.when(pl.col("den") > 0).then(pl.col("num") / pl.col("den")).otherwise(None).alias(MEAN_BIN))
         .drop(["num", "den"])
@@ -84,7 +92,8 @@ def compute_frequency_signal(reads: pl.DataFrame, replicate_keys: list[str] | No
     `replicate_keys` names the replicate column when the run has one; the library depth is then
     taken within (replicate, concentration).
 
-    Returns long frame: clonotypeKey, concentrationStr, concentration, signal, clonotype_reads_at_conc.
+    Returns long frame: clonotypeKey, concentrationStr, concentration, signal, clonotype_reads_at_conc,
+    signal_reads_at_conc; every read is behind the frequency, so the two counts are equal.
     """
     reps = replicate_keys or []
     per_clonotype = reads.group_by([COL_CLONOTYPE, *reps, COL_CONC_STR, COL_CONC_VAL], maintain_order=True).agg(
@@ -98,7 +107,8 @@ def compute_frequency_signal(reads: pl.DataFrame, replicate_keys: list[str] | No
             pl.when(pl.col(TOTAL_READS_AT_CONC) > 0)
             .then(pl.col(CLONOTYPE_READS_AT_CONC) / pl.col(TOTAL_READS_AT_CONC))
             .otherwise(None)
-            .alias(SIGNAL)
+            .alias(SIGNAL),
+            pl.col(CLONOTYPE_READS_AT_CONC).alias(SIGNAL_READS_AT_CONC),
         )
         .drop(TOTAL_READS_AT_CONC)
     )

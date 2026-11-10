@@ -6,7 +6,10 @@ import math
 
 import numpy as np
 import polars as pl
+import pytest
+from polars.testing import assert_frame_equal
 
+from constants import FitParams
 from pipeline import run
 
 
@@ -156,6 +159,22 @@ class TestSortFractionIntegration:
             if c is not None and u is not None
         ]
         assert any(d > 0.05 for d in diffs), "sort-fraction correction left mean_bin unchanged — is the kwarg wired?"
+
+    @pytest.mark.parametrize("equation", ["log_fluorescence", "hill_gate_index"])
+    def test_an_unsorted_sample_needs_no_sort_fraction(self, equation):
+        # An unsorted sample has no gate, so it has no share of the sort. A fraction of 0 says the same.
+        _, sorted_reads = self._build_skewed_reads()
+        first = sorted_reads.row(0, named=True)
+
+        def with_unsorted(fraction):
+            unsorted = {**first, "sampleId": "unsorted", "bin": None, "sort_fraction": fraction, "reads": 400}
+            return pl.concat([sorted_reads, pl.DataFrame([unsorted], schema=sorted_reads.schema)])
+
+        params = FitParams(equation=equation)
+        blank = run(with_unsorted(None), params=params, sort_fraction_col="sort_fraction")
+        zero = run(with_unsorted(0.0), params=params, sort_fraction_col="sort_fraction")
+        assert_frame_equal(blank["per_clonotype"], zero["per_clonotype"])
+        assert_frame_equal(blank["mean_bin"], zero["mean_bin"])
 
     def test_sort_fraction_sums_per_target_antigen(self):
         """Each antigen's sorts carry their own fractions, so the sum is 1 per antigen and

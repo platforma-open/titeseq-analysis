@@ -15,9 +15,15 @@ With the log fluorescence fit, the block gives each variant one affinity class:
 - **Above range:** Kd,app is at or above the highest concentration.
 - **Failed:** the block cannot fit the variant. The fit failure reason gives the cause.
 
-The mean bin fit uses only Good, Partial and Failed, and rates them by R².
+The mean bin fit uses only Good, Partial and Failed. It rates a single fit by R².
 
 If you select a sample replicate column, the block fits each replicate separately. It then reports the mean of log10 Kd,app across the replicates and the standard error of that mean.
+
+On a nucleotide variant dataset that has a nucleotide to amino-acid linker, for example from Amplicon Profiling, the block fits each nucleotide variant separately. It then reports one Kd,app for each amino-acid variant: the mean of log10 Kd,app across its synonymous nucleotide variants, with the standard error of that mean. The NT Variants page shows the fit of each nucleotide variant.
+
+A mean across replicates or synonymous variants gets its class from the mean, with both fits. It is Good only if its standard error (log10) is 0.5 or less and more than half of the values in the mean were measured inside the titrated range. A value at an edge of the range enters the mean at that edge.
+
+The FACS bin column can hold numbers or labels. With labels, set the bin order in the settings, from the lowest fluorescence to the highest.
 
 The table shows Kd,app in molar units and as -log10 Kd,app. A larger -log10 Kd,app means tighter binding.
 

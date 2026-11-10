@@ -296,7 +296,9 @@ def _build_bin_mode_table() -> tuple[pl.DataFrame, dict]:
         "hill_range": None,
         "kd_out_of_range": True,
         "hill_plot_position_is_sentinel": False,
-        "notes": "Saturated Hill (true kd=5e-11) below min conc → kdOutOfRange=true; exact class depends on fit stability",
+        "notes": (
+            "Saturated Hill (true kd=5e-11) below min conc → kdOutOfRange=true; exact class depends on fit stability"
+        ),
     }
 
     # K_HIGH (kd above max concentration) is not included in the corpus. The upper half

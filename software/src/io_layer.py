@@ -23,12 +23,17 @@ class InputValidationError(ValueError):
     """Raised when the input table violates R1-R5."""
 
 
-def read_reads_table(path: str | Path) -> pl.DataFrame:
-    """Load reads frame from parquet or tsv; dispatch by extension."""
+def read_reads_table(path: str | Path, text_columns: list[str] | None = None) -> pl.DataFrame:
+    """Load reads frame from parquet or tsv; dispatch by extension. `text_columns` are read as
+    text from a tsv, so a label such as "01" keeps its spelling."""
     p = Path(path)
     if p.suffix in (".parquet", ".pq"):
         return pl.read_parquet(p)
-    return pl.read_csv(p, separator="\t")
+    if not text_columns:
+        return pl.read_csv(p, separator="\t")
+    header = pl.read_csv(p, separator="\t", n_rows=0).columns
+    overrides = {c: pl.Utf8 for c in text_columns if c in header}
+    return pl.read_csv(p, separator="\t", schema_overrides=overrides)
 
 
 def validate_reads_schema(df: pl.DataFrame, has_bin: bool, has_antigen: bool) -> None:
@@ -41,6 +46,19 @@ def validate_reads_schema(df: pl.DataFrame, has_bin: bool, has_antigen: bool) ->
     missing = required - set(df.columns)
     if missing:
         raise InputValidationError(f"missing required columns: {sorted(missing)}")
+
+
+def validate_reads_present(df: pl.DataFrame) -> None:
+    """At least one row carries a read count. A frame without a reads column is left to
+    `validate_reads_schema`."""
+    if COL_READS not in df.columns:
+        return
+    counts = df.get_column(COL_READS).cast(pl.Float64, strict=False)
+    if counts.is_not_null().sum() == 0:
+        raise InputValidationError(
+            "the abundance column has no reads for any selected sample: every read count is empty. "
+            "Check that the selected abundance holds read counts for these samples."
+        )
 
 
 def validate_concentration_column(df: pl.DataFrame, has_bin: bool) -> list[str]:
@@ -120,7 +138,8 @@ def validate_sort_fraction(reads: pl.DataFrame, col: str, group_keys: list[str] 
 
     Invariants:
       * Column exists in `reads`.
-      * No nulls (every sample with reads must carry a fraction).
+      * No nulls (every sorted sample with reads must carry a fraction). An unsorted sample, one
+        with no bin, went through no gate: it needs no fraction and stays out of every check.
       * Values in [0, 1].
       * Per group, |Σ_b sort_fraction − 1| < 1e-3 — deduplicated by sample so that repeating a
         per-sample value across clonotypes does not inflate the per-group sum.
@@ -135,9 +154,11 @@ def validate_sort_fraction(reads: pl.DataFrame, col: str, group_keys: list[str] 
     if col not in reads.columns:
         raise InputValidationError(f"Sort-fraction column '{col}' missing from reads")
 
+    if COL_BIN in reads.columns:
+        reads = reads.filter(pl.col(COL_BIN).is_not_null())
     vals = reads[col]
     if vals.is_null().any():
-        raise InputValidationError(f"Sort-fraction column '{col}' has null values")
+        raise InputValidationError(f"Sort-fraction column '{col}' has no value for a sorted sample")
     if (vals < 0).any() or (vals > 1).any():
         raise InputValidationError(f"Sort-fraction values must be in [0, 1]; column '{col}'")
 
@@ -159,8 +180,9 @@ def validate_sort_fraction(reads: pl.DataFrame, col: str, group_keys: list[str] 
 def validate_bin_column(df: pl.DataFrame) -> None:
     """R3: bin must be a positive integer. Non-consecutive labels are allowed.
 
-    Nulls are permitted at concentration 0 (warned separately); `<=0` on null
-    yields null which is ignored by `.sum()`, so no intermediate filter needed.
+    Nulls are permitted at any concentration: a sample with no bin is unsorted. Its reads give
+    no signal, so its point leaves the log fluorescence fit before the points are counted.
+    `<=0` on null yields null which is ignored by `.sum()`, so no intermediate filter needed.
     """
     # An Integer metadata column whose sample values are all null arrives here as a
     # string column of empty strings (the TSV builder's null encoding). Surface a
@@ -178,6 +200,45 @@ def validate_bin_column(df: pl.DataFrame) -> None:
         raise InputValidationError(f"bin column must be integer type, got {df[COL_BIN].dtype}")
     if df.select((pl.col(COL_BIN) <= 0).sum()).item() > 0:
         raise InputValidationError("bin column must contain positive integers (>= 1)")
+
+
+def apply_bin_ranks(df: pl.DataFrame, ranks: dict[str, int]) -> pl.DataFrame:
+    """Replace each bin value with its rank in the user's order.
+
+    A sample with no bin stays unsorted. Every other bin value must be in the order: a gate left out
+    would drop its cells and bias every mean bin. Values match as text with surrounding whitespace
+    trimmed, so an integer column's 1 matches "1". A rank keeps its position when another gate has no
+    samples, so ranks may skip a number; no two bins may share one.
+    """
+    if not isinstance(ranks, dict):
+        raise InputValidationError(f"bin order must be a JSON object of bin value to rank; got {type(ranks).__name__}")
+    if COL_BIN not in df.columns:
+        return df
+    if not ranks or any(isinstance(r, bool) or not isinstance(r, int) or r < 1 for r in ranks.values()):
+        raise InputValidationError("bin order must rank at least one bin, each with a whole number from 1")
+    trimmed = {str(value).strip(): rank for value, rank in ranks.items()}
+    if len(trimmed) != len(ranks):
+        raise InputValidationError(f"bin order names one bin value twice: {sorted(ranks)}")
+    shared = sorted({r for r in trimmed.values() if list(trimmed.values()).count(r) > 1})
+    if shared:
+        raise InputValidationError(f"bin order gives two bins the same rank: {shared}")
+    ranks = trimmed
+    key = pl.col(COL_BIN).cast(pl.Utf8).str.strip_chars()
+    unsorted = pl.col(COL_BIN).is_null() | (key == "")
+    sorted_values = df.filter(~unsorted).select(key.unique()).to_series().to_list()
+    if not any(v in ranks for v in sorted_values):
+        raise InputValidationError(
+            f"no sample's FACS bin is in the bin order {sorted(ranks)}: check the order matches the bin column"
+        )
+    missing = sorted(v for v in sorted_values if v not in ranks)
+    if missing:
+        raise InputValidationError(
+            f"FACS bin values {missing} are not in the bin order {sorted(ranks)}: every gate must be ranked; "
+            "reset the order to the bin column's values"
+        )
+    return df.with_columns(
+        pl.when(unsorted).then(None).otherwise(key.replace_strict(ranks, default=None)).cast(pl.Int64).alias(COL_BIN)
+    )
 
 
 def validate_bin_fluorescence(df: pl.DataFrame) -> None:
@@ -282,6 +343,9 @@ def validate_bin_concentration_grid(df: pl.DataFrame) -> list[str]:
     if COL_BIN not in df.columns:
         return warnings
 
+    # An unsorted sample (null bin) is no gate of the grid: counted, it would flag every clonotype
+    # that is not in it.
+    df = df.filter(pl.col(COL_BIN).is_not_null())
     ref_grid = df.select([COL_BIN, COL_CONC_STR]).unique()
     n_grid = ref_grid.height
     if n_grid <= 1:

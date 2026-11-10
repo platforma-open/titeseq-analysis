@@ -113,7 +113,14 @@ class TestNullGateLabels:
         # Half the clonotype's reads sit in gate 4; the other half are unsorted (`bin` null).
         return pl.DataFrame(
             [
-                {"clonotypeKey": "A", "sampleId": "s", "concentrationStr": "0", "concentration": 0.0, "bin": b, "reads": r}
+                {
+                    "clonotypeKey": "A",
+                    "sampleId": "s",
+                    "concentrationStr": "0",
+                    "concentration": 0.0,
+                    "bin": b,
+                    "reads": r,
+                }
                 for b, r in ((4, 50), (None, 50))
             ],
             schema_overrides={"bin": pl.Int64},
@@ -127,6 +134,16 @@ class TestNullGateLabels:
     def test_dropping_null_positions_leaves_the_mean_on_the_sorted_gates(self):
         out = compute_mean_bin(self._reads(), drop_null_positions=True)
         assert out["mean_bin"][0] == 4.0
+
+    # The read floor and the fit weight read the reads behind the signal: the sorted ones.
+    def test_dropping_null_positions_leaves_unsorted_reads_out_of_the_signal_reads(self):
+        out = compute_mean_bin(self._reads(), drop_null_positions=True)
+        assert out["signal_reads_at_conc"][0] == 50
+        assert out["clonotype_reads_at_conc"][0] == 100
+
+    def test_by_default_every_read_is_a_signal_read(self):
+        out = compute_mean_bin(self._reads())
+        assert out["signal_reads_at_conc"][0] == 100
 
 
 class TestComputeFrequencySignal:

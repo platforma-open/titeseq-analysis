@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import math
+import statistics
 
 import numpy as np
 import polars as pl
@@ -19,7 +20,8 @@ from constants import FitParams
 from io_layer import InputValidationError
 from main import main
 from pipeline import run
-from replicate_combine import Filters, ReplicateInputs
+from replicate_combine import COUNT_SCHEMA, ReplicateInputs
+from synonymous import SynonymousInputs
 
 CONCS = [1e-10, 3e-10, 1e-9, 3e-9, 1e-8, 3e-8, 1e-7, 3e-7, 1e-6]
 BINS = [1, 2, 3, 4]
@@ -85,7 +87,7 @@ def _kd(frame: pl.DataFrame, key: str, column: str = "kd") -> float | None:
 
 
 class TestNoReplicateColumn:
-    """With no replicate column asked for, every output is the one the block always produced."""
+    """With no replicate column asked for, every output is that of a run without replicates."""
 
     def test_the_output_set_and_schemas_do_not_move(self):
         outputs = run(_frame({"A": {"v1": 1e-8}}), params=LF)
@@ -132,7 +134,7 @@ class TestNoReplicateColumn:
                     "--reads", "r.parquet",
                     "--out-per-clonotype", "a", "--out-mean-bin", "b",
                     "--out-fitted-mean-bin", "c", "--out-concentration-value", "d",
-                    "--replicate-error-model", "phillips",
+                    "--out-per-replicate", "e",
                 ]
             )  # fmt: skip
 
@@ -172,10 +174,14 @@ class TestPerReplicateFitting:
         expected = math.fsum(math.log10(v) for v in per_replicate["kd"].to_list()) / 3
         assert math.log10(_kd(outputs["per_clonotype"], "v1")) == pytest.approx(expected)
 
-    def test_identical_replicates_report_a_zero_spread(self):
+    def test_identical_replicates_report_a_zero_spread_and_their_fit_error_as_the_se(self):
         outputs = run(_frame(IDENTICAL), params=LF, replicates=REPS)
         assert _kd(outputs["per_clonotype"], "v2", "kdLog10Sd") == pytest.approx(0.0, abs=1e-12)
-        assert _kd(outputs["per_clonotype"], "v2", "kdLog10Se") == pytest.approx(0.0, abs=1e-12)
+        # The spread is zero, so the fit-error term sets the SE: RMS of the replicates' fit SEs / sqrt(3).
+        fit_ses = outputs["per_replicate"].filter(pl.col("clonotypeKey") == "v2")["kdLog10Se"].to_list()
+        assert len(fit_ses) == 3 and all(se > 0 for se in fit_ses)
+        expected = math.sqrt(math.fsum(se * se for se in fit_ses) / 3) / math.sqrt(3)
+        assert _kd(outputs["per_clonotype"], "v2", "kdLog10Se") == pytest.approx(expected, rel=1e-9)
 
     def test_a_spread_across_replicates_becomes_the_reported_error(self):
         outputs = run(_frame(THREE), params=LF, replicates=REPS)
@@ -245,8 +251,46 @@ class TestPerReplicateFitting:
         assert _kd(outputs["per_clonotype"], "v1") is not None
 
 
+class TestDifferentConcentrationGrids:
+    """Replicate A titrated without the top concentration, B without the bottom one."""
+
+    @pytest.fixture(scope="class")
+    def outputs(self):
+        reads = _frame({"A": {"v1": 1e-8}, "B": {"v1": 2e-8}})
+        reads = reads.filter(
+            ~((pl.col("replicate") == "A") & (pl.col("concentration") == CONCS[-1]))
+            & ~((pl.col("replicate") == "B") & (pl.col("concentration") == CONCS[0]))
+        )
+        return run(reads, params=LF, replicates=REPS)
+
+    def test_every_replicate_curve_is_written_on_the_union_of_the_grids(self, outputs):
+        fitted = outputs["fitted_mean_bin"]
+        for replicate in ("A", "B"):
+            concs = fitted.filter(pl.col("replicate") == replicate)["concentrationStr"].to_list()
+            assert sorted(concs) == sorted(str(c) for c in CONCS)
+
+    def test_each_replicate_fit_reads_only_its_own_points(self, outputs):
+        alone = run(
+            _frame({"A": {"v1": 1e-8}}).filter(pl.col("concentration") != CONCS[-1]).drop("replicate"), params=LF
+        )
+        a = outputs["per_replicate"].filter(pl.col("replicate") == "A")
+        assert _kd(a, "v1") == pytest.approx(_kd(alone["per_clonotype"], "v1"), rel=1e-9)
+
+
+class TestFitReadsWithReplicates:
+    def test_a_replicate_gated_before_its_fit_adds_no_read(self):
+        # v1 has every concentration in A; in B only two, under the 5-point gate.
+        reads = _frame({"A": {"v1": 1e-8}, "B": {"v1": 1e-8}})
+        reads = reads.filter((pl.col("replicate") == "A") | pl.col("concentration").is_in(CONCS[:2]))
+        outputs = run(reads, params=LF, replicates=REPS, read_depth=True)
+        b = outputs["per_replicate"].filter(pl.col("replicate") == "B").row(0, named=True)
+        assert b["fitFailureReason"] == "insufficient_points"
+        a_reads = reads.filter(pl.col("replicate") == "A")["reads"].sum()
+        assert dict(outputs["fit_reads"].iter_rows())["v1"] == a_reads
+
+
 class TestSortFractionAndDepth:
-    def test_replicates_sharing_a_concentration_no_longer_break_the_sort_fraction_check(self):
+    def test_replicates_sharing_a_concentration_pass_the_sort_fraction_check(self):
         reads = _frame(THREE)
         with pytest.raises(InputValidationError, match="sum to 1.0"):
             run(reads.drop("replicate"), params=LF, sort_fraction_col="sort_fraction")
@@ -261,47 +305,26 @@ class TestSortFractionAndDepth:
         assert_frame_equal(a_only, shallow)
 
 
-class TestFiltersEndToEnd:
-    def _design(self):
-        # "noisy" is a shallow, broad copy in replicate B: a wide fit error and a poor R².
-        return {
-            "A": {"v1": 1e-8},
-            "B": {"v1": 1e-8},
-        }
+class TestReplicateCounts:
+    COUNTS = [
+        "replicateCount",
+        "replicateMeasuredCount",
+        "replicateCensoredBelowCount",
+        "replicateCensoredAboveCount",
+        "replicateFailedCount",
+    ]
 
-    def test_no_filter_keeps_every_replicate(self):
-        outputs = run(_frame(self._design()), params=LF, replicates=REPS)
-        assert outputs["per_clonotype"]["replicateFilteredCount"].to_list() == [0]
-
-    def test_an_unreachable_fit_error_cutoff_filters_every_replicate(self):
-        inputs = ReplicateInputs(column="replicate", filters=Filters(fit_error_cutoff=1e-9))
-        outputs = run(_frame(self._design()), params=LF, replicates=inputs)
+    def test_every_replicate_enters_the_mean(self):
+        outputs = run(_frame({"A": {"v1": 1e-8}, "B": {"v1": 1e-8}}), params=LF, replicates=REPS)
         row = outputs["per_clonotype"].row(0, named=True)
-        assert row["replicateFilteredCount"] == 2
-        assert row["affinityClass"] == "Failed"
-        assert row["fitFailureReason"] == "all_replicates_filtered"
-        assert row["kd"] is None
+        assert [row[c] for c in self.COUNTS] == [2, 2, 0, 0, 0]
 
-    def test_an_unreachable_r_squared_floor_filters_every_replicate(self):
-        inputs = ReplicateInputs(column="replicate", filters=Filters(r2_floor=1.5))
-        outputs = run(_frame(self._design()), params=LF, replicates=inputs)
-        assert outputs["per_clonotype"]["fitFailureReason"].to_list() == ["all_replicates_filtered"]
-        assert outputs["per_replicate"]["kdState"].unique().to_list() == ["Left out by a filter"]
-
-    def test_a_reachable_cutoff_keeps_the_replicates(self):
-        inputs = ReplicateInputs(column="replicate", filters=Filters(fit_error_cutoff=5.0, r2_floor=0.0))
-        outputs = run(_frame(self._design()), params=LF, replicates=inputs)
-        assert outputs["per_clonotype"]["replicateFilteredCount"].to_list() == [0]
-
-    def test_the_mean_bin_fit_ignores_a_cutoff_it_cannot_judge(self):
-        # The mean bin fit writes no per-replicate kdLog10Se. Reading that None as a rejection
-        # rated every variant Failed on any run that merely had the cutoff set.
-        inputs = ReplicateInputs(column="replicate", filters=Filters(fit_error_cutoff=1.0))
-        outputs = run(_frame(self._design()), params=HILL, replicates=inputs)
-        row = outputs["per_clonotype"].row(0, named=True)
-        assert row["replicateFilteredCount"] == 0
-        assert row["replicateCount"] == 2
-        assert row["fitFailureReason"] != "all_replicates_filtered"
+    def test_both_combined_frames_carry_exactly_these_counts(self):
+        assert list(COUNT_SCHEMA) == self.COUNTS
+        outputs = run(UNBALANCED, params=LF, synonymous=SynonymousInputs(nt_to_aa=UNBALANCED_LINKS), replicates=REPS)
+        for name in ("per_clonotype", "per_variant"):
+            counts = {c for c in outputs[name].columns if c.startswith("replicate") and c.endswith("Count")}
+            assert counts == set(self.COUNTS), name
 
 
 # Two clonotypes, each titrated in replicates A and B; "c2" only in A.
@@ -333,7 +356,6 @@ class TestReplicateCli:
                 "--out-fitted-mean-bin", str(out / "fitted_mean_bin.tsv"),
                 "--out-concentration-value", str(out / "concentration_value.tsv"),
                 "--replicate-column", "replicate",
-                "--replicate-error-model", "phillips",
                 "--out-per-replicate", str(out / "per_replicate.tsv"),
             ]
         )  # fmt: skip
@@ -343,7 +365,7 @@ class TestReplicateCli:
         per_clonotype = pl.read_csv(out / "per_clonotype.tsv", separator="\t")
         assert per_clonotype.filter(pl.col("clonotypeKey") == "c1")["replicateCount"].item() == 2
 
-    def test_the_cli_refuses_a_censored_majority_below_a_half(self, tmp_path):
+    def test_the_cli_refuses_the_nucleotide_per_replicate_frame_without_the_linker(self):
         with pytest.raises(SystemExit):
             main(
                 [
@@ -351,7 +373,28 @@ class TestReplicateCli:
                     "--out-per-clonotype", "a", "--out-mean-bin", "b",
                     "--out-fitted-mean-bin", "c", "--out-concentration-value", "d",
                     "--replicate-column", "replicate", "--out-per-replicate", "e",
-                    "--replicate-censored-majority", "0.2",
+                    "--out-per-replicate-nt", "f",
+                ]
+            )  # fmt: skip
+
+    @pytest.mark.parametrize(
+        "option, value",
+        [
+            ("--replicate-error-model", "sd_over_sqrt_n"),
+            ("--replicate-fit-error-cutoff", "1.0"),
+            ("--replicate-r2-floor", "0.8"),
+            ("--replicate-censored-majority", "0.5"),
+        ],
+    )
+    def test_the_cli_has_no_replicate_option_beyond_the_column(self, option, value):
+        with pytest.raises(SystemExit):
+            main(
+                [
+                    "--reads", "r.parquet",
+                    "--out-per-clonotype", "a", "--out-mean-bin", "b",
+                    "--out-fitted-mean-bin", "c", "--out-concentration-value", "d",
+                    "--replicate-column", "replicate", "--out-per-replicate", "e",
+                    option, value,
                 ]
             )  # fmt: skip
 
@@ -380,7 +423,136 @@ class TestReviewClassesAcrossReplicates:
         gated = FitParams(equation="log_fluorescence", r2_gate_min=1.0)
         outputs = run(_frame(self.DESIGN), params=gated, replicates=REPS)
         per_replicate = outputs["per_replicate"].filter(pl.col("clonotypeKey") == "v1")
-        assert per_replicate["kdState"].to_list() == ["Left out, no fit", "Left out, no fit"]
+        assert per_replicate["affinityClass"].to_list() == ["Failed", "Failed"]
         assert per_replicate["fitFailureReason"].to_list() == ["low_r2", "low_r2"]
         assert _kd(outputs["per_clonotype"], "v1", "affinityClass") == "Failed"
         assert _kd(outputs["per_clonotype"], "v1", "fitFailureReason") == "all_replicates_failed"
+
+
+# One amino-acid variant with two synonymous variants in replicate A and one in replicate B. The
+# synonymous variants' K_D differ, so Starr's order (combine them, then the replicates) and a flat mean
+# over all three fits do not agree.
+UNBALANCED = pl.DataFrame(
+    [
+        row
+        for nt, kd, rep in (
+            ("c1", 1e-8, "A"),
+            ("c2", 1e-7, "A"),
+            ("c1", 1e-8, "B"),
+        )
+        for row in _reads(nt, kd, rep)
+    ]
+)
+UNBALANCED_LINKS = pl.DataFrame({"ntKey": ["c1", "c2"], "aaKey": ["X", "X"]})
+
+
+class TestStarrOrdering:
+    @pytest.fixture(scope="class")
+    def outputs(self):
+        return run(UNBALANCED, params=LF, synonymous=SynonymousInputs(nt_to_aa=UNBALANCED_LINKS), replicates=REPS)
+
+    def test_the_synonymous_variants_combine_inside_each_replicate_before_the_replicates_combine(self, outputs):
+        # The nt fits do not depend on the linker, so a run without it gives each nt variant's own value.
+        nt = run(UNBALANCED, params=LF, replicates=REPS)["per_replicate"]
+        log10 = {(r["clonotypeKey"], r["replicate"]): math.log10(r["kd"]) for r in nt.iter_rows(named=True)}
+        starr = ((log10[("c1", "A")] + log10[("c2", "A")]) / 2 + log10[("c1", "B")]) / 2
+        flat = (log10[("c1", "A")] + log10[("c2", "A")] + log10[("c1", "B")]) / 3
+        got = math.log10(outputs["per_variant"].filter(pl.col("aaKey") == "X")["kd"].item())
+        assert got == pytest.approx(starr)
+        assert got != pytest.approx(flat)
+
+    def test_a_stop_variant_fails_for_its_stop_codon_not_for_its_replicates(self):
+        productive = pl.DataFrame({"aaKey": ["X"], "productive": ["false"]})
+        outputs = run(
+            UNBALANCED,
+            params=LF,
+            synonymous=SynonymousInputs(nt_to_aa=UNBALANCED_LINKS, aa_productive=productive),
+            replicates=REPS,
+        )
+        x = outputs["per_variant"].filter(pl.col("aaKey") == "X").row(0, named=True)
+        assert (x["kd"], x["affinityClass"], x["fitFailureReason"]) == (None, "Failed", "not_productive")
+        per_replicate = outputs["per_replicate"].filter(pl.col("aaKey") == "X")
+        assert set(per_replicate["fitFailureReason"].to_list()) == {"not_productive"}
+
+    def test_the_per_replicate_frame_is_on_the_amino_acid_grain(self, outputs):
+        frame = outputs["per_replicate"]
+        assert frame.columns[:2] == ["aaKey", "replicate"]
+        assert sorted(frame["replicate"].to_list()) == ["A", "B"]
+        # Replicate A's reads are both synonymous variants'.
+        reads = dict(zip(frame["replicate"].to_list(), frame["replicateReads"].to_list()))
+        assert reads["A"] > reads["B"]
+
+    def test_the_per_replicate_frame_carries_the_synonymous_variants_inside_each_replicate(self, outputs):
+        nt = run(UNBALANCED, params=LF, replicates=REPS)["per_replicate"]
+        log10 = {(r["clonotypeKey"], r["replicate"]): math.log10(r["kd"]) for r in nt.iter_rows(named=True)}
+        rows = {r["replicate"]: r for r in outputs["per_replicate"].iter_rows(named=True)}
+        assert rows["A"]["kdLog10SynonymSd"] == pytest.approx(
+            statistics.stdev([log10[("c1", "A")], log10[("c2", "A")]])
+        )
+        assert (rows["A"]["ntVariants"], rows["A"]["ntMeasured"]) == (2, 2)
+        # One synonymous variant has no spread.
+        assert rows["B"]["kdLog10SynonymSd"] is None
+        assert (rows["B"]["ntVariants"], rows["B"]["ntMeasured"]) == (1, 1)
+
+    def test_the_nucleotide_per_replicate_frame_holds_every_nt_variant_in_every_replicate(self, outputs):
+        nt = run(UNBALANCED, params=LF, replicates=REPS)["per_replicate"]
+        frame = outputs["per_replicate_nt"]
+        assert frame.columns[:2] == ["clonotypeKey", "replicate"]
+        assert (
+            frame.sort("clonotypeKey", "replicate")
+            .select("clonotypeKey", "replicate", "kd")
+            .equals(nt.sort("clonotypeKey", "replicate").select("clonotypeKey", "replicate", "kd"))
+        )
+
+    def test_each_replicate_s_synonymous_se_is_the_fit_se_the_replicates_combine(self, outputs):
+        per_replicate = {r["replicate"]: r for r in outputs["per_replicate"].iter_rows(named=True)}
+        values = [math.log10(per_replicate[r]["kd"]) for r in ("A", "B")]
+        ses = [per_replicate[r]["kdLog10Se"] for r in ("A", "B")]
+        spread = statistics.stdev(values) / math.sqrt(2)
+        fit_term = math.sqrt((ses[0] ** 2 + ses[1] ** 2) / 2) / math.sqrt(2)
+        combined = outputs["per_variant"].filter(pl.col("aaKey") == "X")["kdLog10Se"].item()
+        assert combined == pytest.approx(max(spread, fit_term), rel=1e-9)
+
+    def test_a_variant_counts_once_and_its_states_add_up_over_the_replicates(self, outputs):
+        # c1 and c2 in replicate A, c1 alone in B: two synonymous variants, three fits in range.
+        row = outputs["per_variant"].row(0, named=True)
+        assert row["ntVariants"] == 2
+        assert row["ntMeasured"] == 3
+        assert row["replicateCount"] == 2
+
+    def test_the_summary_names_the_replicates_and_the_error_model(self, outputs):
+        summary = outputs["synonymous_summary"]
+        assert summary["replicates"] == 2
+        assert summary["errorModel"] == "sd_over_sqrt_n"
+        assert summary["aaVariants"] == 1
+        assert summary["ntVariants"] == 2
+
+
+# Two replicates, each with two synonymous variants of close K_D.
+AGREEING = pl.DataFrame(
+    [row for rep in ("A", "B") for nt, kd in (("c1", 1e-8), ("c2", 1.1e-8)) for row in _reads(nt, kd, rep)]
+)
+AGREEING_LINKS = pl.DataFrame({"ntKey": ["c1", "c2"], "aaKey": ["X", "X"]})
+
+
+class TestGoodMajorityUnderTheMeanBinFit:
+    """Under "hill_gate_index" each replicate's amino-acid value carries the spread of its synonymous
+    variants as its SE. That SE is no fit SE, so the replicates' mean still needs a Good majority."""
+
+    # No R² reaches 1, so every in-range fit is Partial.
+    PARTIAL_FITS = FitParams(equation="hill_gate_index", r2_threshold_good=1.0)
+
+    def _outputs(self):
+        return run(
+            AGREEING, params=self.PARTIAL_FITS, synonymous=SynonymousInputs(nt_to_aa=AGREEING_LINKS), replicates=REPS
+        )
+
+    def test_agreeing_partial_fits_combine_into_a_partial_amino_acid_value(self):
+        outputs = self._outputs()
+        assert set(outputs["per_replicate_nt"]["affinityClass"].to_list()) == {"Partial"}
+        per_replicate = outputs["per_replicate"]
+        assert per_replicate["affinityClass"].to_list() == ["Partial", "Partial"]
+        assert all(se is not None for se in per_replicate["kdLog10Se"].to_list())
+        row = outputs["per_variant"].row(0, named=True)
+        assert row["kdLog10Se"] <= 0.5
+        assert row["affinityClass"] == "Partial"

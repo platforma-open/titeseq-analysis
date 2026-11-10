@@ -7,15 +7,18 @@ import pytest
 
 from io_layer import (
     InputValidationError,
+    apply_bin_ranks,
     canonicalize_concentration,
     max_bin_label,
     validate_antigen_filter,
     validate_bin_column,
     validate_concentration_column,
+    validate_reads_present,
     validate_reads_schema,
     validate_sample_metadata_uniqueness,
     validate_sort_fraction,
 )
+from io_layer import validate_bin_concentration_grid as _validate_grid
 
 
 def _mk(rows, has_bin=True, has_antigen=False):
@@ -40,6 +43,28 @@ class TestSchema:
         )
         with pytest.raises(InputValidationError, match="sampleId"):
             validate_reads_schema(df, has_bin=True, has_antigen=False)
+
+
+class TestReadsPresent:
+    def test_every_read_count_empty_raises(self):
+        df = pl.DataFrame(
+            {"clonotypeKey": ["A", "A"], "sampleId": ["s1", "s2"], "reads": [None, None]},
+            schema={"clonotypeKey": pl.Utf8, "sampleId": pl.Utf8, "reads": pl.Utf8},
+        )
+        with pytest.raises(InputValidationError, match="no reads for any selected sample"):
+            validate_reads_present(df)
+
+    def test_no_rows_raises(self):
+        df = pl.DataFrame(schema={"clonotypeKey": pl.Utf8, "sampleId": pl.Utf8, "reads": pl.Utf8})
+        with pytest.raises(InputValidationError, match="no reads for any selected sample"):
+            validate_reads_present(df)
+
+    def test_one_read_count_passes(self):
+        df = pl.DataFrame({"clonotypeKey": ["A", "B"], "sampleId": ["s1", "s1"], "reads": [None, 0]})
+        validate_reads_present(df)
+
+    def test_missing_reads_column_is_left_to_schema_check(self):
+        validate_reads_present(pl.DataFrame({"clonotypeKey": ["A"], "sampleId": ["s1"]}))
 
 
 class TestConcentrationValidation:
@@ -434,9 +459,6 @@ class TestNarrowConcentrationRangeWarning:
         )
 
 
-from io_layer import validate_bin_concentration_grid as _validate_grid
-
-
 class TestBinConcentrationGrid:
     """R5 sub-clause: warn when (bin, concentration) combos are non-uniformly populated.
 
@@ -462,6 +484,33 @@ class TestBinConcentrationGrid:
                     )
         warnings = _validate_grid(_mk(rows))
         assert warnings == []
+
+    def test_an_unsorted_sample_is_no_gate_of_the_grid(self):
+        # B alone sits in an unsorted sample at conc 1. Counted as a gate, it would flag A.
+        rows = [
+            {
+                "clonotypeKey": clone,
+                "sampleId": f"s-{conc}-{b}",
+                "concentrationStr": conc,
+                "concentration": float(conc),
+                "bin": b,
+                "reads": 5,
+            }
+            for clone in ["A", "B"]
+            for conc in ["1", "10"]
+            for b in [1, 2]
+        ]
+        rows.append(
+            {
+                "clonotypeKey": "B",
+                "sampleId": "s-1-unsorted",
+                "concentrationStr": "1",
+                "concentration": 1.0,
+                "bin": None,
+                "reads": 5,
+            }
+        )
+        assert _validate_grid(_mk(rows)) == []
 
     def test_missing_combo_emits_warning(self):
         # A has (bin=1, conc=10); B is missing that combo → warn on B.
@@ -629,5 +678,65 @@ class TestValidateSortFraction:
                 },
             ]
         )
-        with pytest.raises(InputValidationError, match="null"):
+        with pytest.raises(InputValidationError, match="no value for a sorted sample"):
             validate_sort_fraction(df, "sort_fraction")
+
+
+class TestApplyBinRanks:
+    def _frame(self, bins):
+        return pl.DataFrame({"sampleId": [f"s{i}" for i in range(len(bins))], "bin": bins})
+
+    def test_labels_become_their_rank(self):
+        out = apply_bin_ranks(self._frame(["LOW", "HIGH", "MID"]), {"LOW": 1, "MID": 2, "HIGH": 3})
+        assert out["bin"].to_list() == [1, 3, 2]
+        assert out["bin"].dtype == pl.Int64
+
+    def test_an_integer_column_matches_as_text(self):
+        out = apply_bin_ranks(self._frame([4, 1, 2]), {"4": 1, "2": 2, "1": 3})
+        assert out["bin"].to_list() == [1, 3, 2]
+
+    def test_an_unsorted_sample_stays_unsorted(self):
+        out = apply_bin_ranks(self._frame(["LOW", None, ""]), {"LOW": 1})
+        assert out["sampleId"].to_list() == ["s0", "s1", "s2"]
+        assert out["bin"].to_list() == [1, None, None]
+
+    def test_a_value_outside_the_order_is_refused_by_name(self):
+        # Dropping a gate's samples would bias every mean bin; a stale order or a template from
+        # another dataset must fail instead.
+        with pytest.raises(InputValidationError, match="'presort'"):
+            apply_bin_ranks(self._frame(["LOW", "presort"]), {"LOW": 1})
+
+    def test_whitespace_around_a_value_does_not_split_it_from_the_order(self):
+        out = apply_bin_ranks(self._frame(["LOW ", " HIGH"]), {" LOW": 1, "HIGH ": 2})
+        assert out["bin"].to_list() == [1, 2]
+
+    def test_a_gate_missing_from_the_data_keeps_the_positions_of_the_others(self):
+        # Gate 3 sorted no cells: gate 4 stays at position 4, not 3.
+        out = apply_bin_ranks(self._frame(["1", "2", "4"]), {"1": 1, "2": 2, "3": 3, "4": 4})
+        assert out["bin"].to_list() == [1, 2, 4]
+
+    def test_an_order_matching_no_sample_is_refused(self):
+        with pytest.raises(InputValidationError, match="no sample's FACS bin"):
+            apply_bin_ranks(self._frame(["LOW"]), {"HIGH": 1})
+
+    def test_ranks_with_a_gap_are_valid(self):
+        out = apply_bin_ranks(self._frame(["1", "2", "4"]), {"1": 1, "2": 2, "4": 4})
+        assert out["bin"].to_list() == [1, 2, 4]
+
+    def test_two_bins_sharing_a_rank_are_refused(self):
+        with pytest.raises(InputValidationError, match="same rank"):
+            apply_bin_ranks(self._frame(["LOW", "HIGH"]), {"LOW": 1, "HIGH": 1})
+
+    def test_one_bin_value_named_twice_is_refused(self):
+        with pytest.raises(InputValidationError, match="twice"):
+            apply_bin_ranks(self._frame(["LOW"]), {"LOW": 1, " LOW": 2})
+
+    @pytest.mark.parametrize("rank", [True, False, 1.0, "1", 0, -1, None])
+    def test_a_rank_that_is_not_a_whole_number_from_1_is_refused(self, rank):
+        with pytest.raises(InputValidationError, match="whole number"):
+            apply_bin_ranks(self._frame(["LOW"]), {"LOW": rank})
+
+    @pytest.mark.parametrize("ranks", [[1, 2], "LOW", 3, None])
+    def test_an_order_that_is_not_an_object_is_refused(self, ranks):
+        with pytest.raises(InputValidationError, match="JSON object"):
+            apply_bin_ranks(self._frame(["LOW"]), ranks)

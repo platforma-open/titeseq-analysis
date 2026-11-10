@@ -7,7 +7,9 @@ import type {
   BlockDataV3,
   BlockDataV5,
   BlockDataV6,
+  RunShape,
 } from "./index";
+import { kind } from "@platforma-open/platforma-open.titeseq-analysis.kind";
 import {
   HILL_GATE_INDEX_DEFAULTS,
   dataModel,
@@ -19,7 +21,8 @@ import {
   migrateV4ToV5,
   migrateV5ToV6,
   migrateV6ToV7,
-  sectionsFor,
+  replicateViewsFor,
+  SECTIONS,
 } from "./index";
 
 const ref = (name: string): PlRef => ({ __isRef: true, blockId: "b1", name });
@@ -58,7 +61,7 @@ const v240Project: BlockDataV1 = {
 /** The project as the block will hold it after the upgrade, through the real version chain. */
 const upgraded = (): BlockData => {
   const migrated = dataModel.migrate({ version: "v1", data: v240Project });
-  expect(migrated.version).toBe("v7");
+  expect(migrated.version).toBe("v8");
   return migrated.data;
 };
 
@@ -114,7 +117,7 @@ describe("a project created on a v2 development build", () => {
       version: "v2",
       data: { ...v2Project, equation: "log_fluorescence" },
     });
-    expect(migrated.version).toBe("v7");
+    expect(migrated.version).toBe("v8");
     expect(migrated.data.r2GateMin).toBeUndefined();
   });
 
@@ -239,6 +242,83 @@ describe("the R² and SE limits", () => {
   });
 });
 
+describe("a project stored on the v7 data model", () => {
+  const { ntTableState: _n, ...v7Project }: BlockData = {
+    ...initBlockData(),
+    abundanceRef: ref("abundance"),
+    concentrationColumnRef: ref("concentration"),
+    binColumnRef: ref("bin"),
+    customBlockLabel: "CD19 titration",
+    settingsOpen: true,
+  };
+  // A v7 project 2.5.2 wrote with a current error-model name.
+  const stored = v7Project;
+  const migrated = () => dataModel.migrate({ version: "v7", data: stored });
+
+  it("drops the stored replicate settings", () => {
+    const tuned = dataModel.migrate({
+      version: "v7",
+      data: {
+        ...stored,
+        replicateErrorModel: "phillips",
+        replicateFitErrorCutoff: 1,
+        replicateR2Floor: 0.8,
+        replicateCensoredMajority: 0.9,
+      },
+    });
+    for (const key of [
+      "replicateErrorModel",
+      "replicateFitErrorCutoff",
+      "replicateR2Floor",
+      "replicateCensoredMajority",
+    ])
+      expect(Object.hasOwn(tuned.data, key)).toBe(false);
+  });
+
+  it("creates a block from a 2.5.x template that carries replicate settings, and ignores them", () => {
+    const params = kind.parseInitializationParams({
+      replicateErrorModel: "phillips",
+      replicateFitErrorCutoff: 1,
+      replicateR2Floor: 0.8,
+      replicateCensoredMajority: 0.9,
+    });
+    expect(initBlockData(params)).toEqual(initBlockData());
+  });
+
+  it("gains an empty nucleotide variant table state", () => {
+    expect(migrated().version).toBe("v8");
+    expect(migrated().data.ntTableState).toEqual(initBlockData().ntTableState);
+  });
+
+  it("keeps everything it stored", () => {
+    const { ntTableState: _added, ...rest } = migrated().data;
+    expect(rest).toEqual(stored);
+  });
+
+  it("projects the args it projected", () => {
+    expect(JSON.stringify(argsOf(migrated().data))).toBe(
+      JSON.stringify(argsOf({ ...stored, ntTableState: initBlockData().ntTableState })),
+    );
+  });
+});
+
+describe("the pages", () => {
+  const GRAPHS = ["/titration-curves", "/kd-distribution", "/affinity-vs-fit"];
+
+  it("are the main table, then the three graph pages", () => {
+    expect(SECTIONS.map((s) => s.href)).toEqual(["/", ...GRAPHS]);
+  });
+
+  it("give the Replicates page the nt table in synonymous mode", () => {
+    const views = (run: RunShape) => replicateViewsFor(run).map((v) => v.value);
+    expect(views({ synonymous: false, replicates: true })).toEqual(["variant-replicates"]);
+    expect(views({ synonymous: true, replicates: true })).toEqual([
+      "variant-replicates",
+      "nt-replicates",
+    ]);
+  });
+});
+
 describe("the migration function on its own", () => {
   it("writes the equation into the data, not only into the args", () => {
     expect(migrateV1ToV2(v240Project).equation).toBe("hill_gate_index");
@@ -255,14 +335,14 @@ describe("a project stored on the v3 data model", () => {
   const migrated = () => dataModel.migrate({ version: "v3", data: stored });
 
   it("gains unset replicates and the per-replicate view state", () => {
-    expect(migrated().version).toBe("v7");
-    expect(migrated().data).toMatchObject({
-      replicateErrorModel: "sd_over_sqrt_n",
-      replicateCensoredMajority: 0.5,
-    });
+    expect(migrated().version).toBe("v8");
     expect(migrated().data.replicateColumnRef).toBeUndefined();
     expect(migrated().data.replicateTableState).toEqual(initBlockData().replicateTableState);
-    expect(migrated().data.graphStateReplicates).toEqual(initBlockData().graphStateReplicates);
+  });
+
+  it("ends without the per-replicate chart state v4 added", () => {
+    expect(migrateV3ToV4(stored)).toHaveProperty("graphStateReplicates");
+    expect(migrated().data).not.toHaveProperty("graphStateReplicates");
   });
 
   it("moves nothing else", () => {
@@ -290,7 +370,7 @@ describe("a project stored on the v4 data model", () => {
   const migrated = (n: number | undefined) => dataModel.migrate({ version: "v4", data: stored(n) });
 
   it.each([3, 4])("raises a point count of %i to 5", (n) => {
-    expect(migrated(n).version).toBe("v7");
+    expect(migrated(n).version).toBe("v8");
     expect(migrated(n).data.minConcentrationPoints).toBe(5);
   });
 
@@ -309,18 +389,6 @@ describe("a project stored on the v4 data model", () => {
   });
 });
 
-describe("the sections", () => {
-  it("are the same whether or not replicates were combined", () => {
-    // Per-replicate values are read by clicking a variant in the main table, not on a page.
-    expect(sectionsFor().map((s) => s.href)).toEqual([
-      "/",
-      "/titration-curves",
-      "/kd-distribution",
-      "/affinity-vs-fit",
-    ]);
-  });
-});
-
 describe("the sample replicates", () => {
   const configured: BlockData = {
     ...initBlockData(),
@@ -336,57 +404,10 @@ describe("the sample replicates", () => {
     expect(replicateKeys({ ...configured, equation })).toEqual([]);
   });
 
-  it("a stored setting alone changes nothing: the column is what turns the mode on", () => {
-    const tuned = {
-      ...configured,
-      replicateErrorModel: "phillips" as const,
-      replicateFitErrorCutoff: 1,
-      replicateR2Floor: 0.8,
-      replicateCensoredMajority: 0.9,
-    };
-    expect(JSON.stringify(argsOf(tuned))).toBe(JSON.stringify(argsOf(configured)));
-  });
-
-  it("the column brings the error model and the censoring majority with it", () => {
-    const args = argsOf({ ...configured, replicateColumnRef: ref("replicate") });
-    expect(args).toMatchObject({
-      replicateColumnRef: ref("replicate"),
-      replicateErrorModel: "sd_over_sqrt_n",
-      replicateCensoredMajority: 0.5,
-    });
-  });
-
-  it("leaves both filters out of the args until they are set", () => {
-    const args = argsOf({ ...configured, replicateColumnRef: ref("replicate") });
-    expect(Object.hasOwn(args, "replicateFitErrorCutoff")).toBe(false);
-    expect(Object.hasOwn(args, "replicateR2Floor")).toBe(false);
-  });
-
-  it("sends each filter once it is set", () => {
-    const args = argsOf({
-      ...configured,
-      replicateColumnRef: ref("replicate"),
-      replicateFitErrorCutoff: 1,
-      replicateR2Floor: 0.8,
-    });
-    expect(args).toMatchObject({ replicateFitErrorCutoff: 1, replicateR2Floor: 0.8 });
-  });
-
-  it("refuses a filter or a majority the software would reject", () => {
-    const withColumn = { ...configured, replicateColumnRef: ref("replicate") };
-    expect(() => argsOf({ ...withColumn, replicateFitErrorCutoff: 0 })).toThrow();
-    expect(() => argsOf({ ...withColumn, replicateR2Floor: 1.5 })).toThrow();
-    expect(() => argsOf({ ...withColumn, replicateCensoredMajority: 0.4 })).toThrow();
-  });
-
-  it("disables Run while the column is set and the majority is cleared", () => {
-    expect(() =>
-      argsOf({
-        ...configured,
-        replicateColumnRef: ref("replicate"),
-        replicateCensoredMajority: undefined,
-      }),
-    ).toThrow("Replicate censoring majority is required");
+  it("the column is the only replicate byte", () => {
+    expect(replicateKeys({ ...configured, replicateColumnRef: ref("replicate") })).toEqual([
+      "replicateColumnRef",
+    ]);
   });
 
   it("is unset on a new block and on an upgraded project", () => {
@@ -406,7 +427,7 @@ describe("a project stored on the v5 data model", () => {
   const migrated = (r2GateEnabled: boolean) =>
     dataModel.migrate({ version: "v5", data: { ...base(), r2GateEnabled } });
   it("with the checkbox off, clears both limits", () => {
-    expect(migrated(false).version).toBe("v7");
+    expect(migrated(false).version).toBe("v8");
     expect(migrated(false).data.r2GateMin).toBeUndefined();
     expect(migrated(false).data.kdSeGateMax).toBeUndefined();
   });
