@@ -1,12 +1,6 @@
 import type { PlRef } from "@platforma-sdk/model";
 import { describe, expect, it } from "vitest";
-import {
-  DEFAULT_CENSORED_MAJORITY,
-  DEFAULT_REPLICATE_ERROR_MODEL,
-  EQUATIONS,
-  REPLICATE_ERROR_MODELS,
-  kind,
-} from "./index";
+import { EQUATIONS, kind } from "./index";
 
 const parse = (v: unknown) => kind.parseInitializationParams(v);
 
@@ -218,9 +212,12 @@ describe("the replicate settings", () => {
     });
   });
 
-  it.each(REPLICATE_ERROR_MODELS)("accepts the %s error model", (model) => {
-    expect(parse({ replicateErrorModel: model })).toEqual({ replicateErrorModel: model });
-  });
+  it.each(["sd_over_sqrt_n", "pop_sd_over_sqrt_n_plus_1", "phillips"])(
+    "accepts the %s error model a 2.5.x template names",
+    (model) => {
+      expect(parse({ replicateErrorModel: model })).toEqual({ replicateErrorModel: model });
+    },
+  );
 
   it.each(["sd", "SD_OVER_SQRT_N", 1, null])("refuses %o as an error model", (v) => {
     expect(() => parse({ replicateErrorModel: v })).toThrow("'replicateErrorModel' must be");
@@ -253,9 +250,16 @@ describe("the replicate settings", () => {
       "'replicateCensoredMajority' must be",
     );
   });
+});
 
-  it("names the default error model and the default censoring majority", () => {
-    expect(REPLICATE_ERROR_MODELS).toContain(DEFAULT_REPLICATE_ERROR_MODEL);
-    expect(DEFAULT_CENSORED_MAJORITY).toBe(0.5);
+describe("the bin order", () => {
+  it("accepts a list of distinct labels", () => {
+    expect(parse({ binOrder: ["LOW", "MID", "HIGH"] })).toEqual({
+      binOrder: ["LOW", "MID", "HIGH"],
+    });
+  });
+
+  it.each([[[]], [["a", "a"]], [["a", 1]], ["a"]])("refuses %o", (v) => {
+    expect(() => parse({ binOrder: v })).toThrow("'binOrder' must be");
   });
 });

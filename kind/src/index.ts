@@ -17,25 +17,14 @@ export const EQUATIONS = ["log_fluorescence", "hill_gate_index"] as const;
 export type Equation = (typeof EQUATIONS)[number];
 
 /**
- * How the error of a value combined over sample replicates is computed.
- *
- * `sd_over_sqrt_n` is the sample SD over the square root of the replicate count, falling back to
- * the single fit's own standard error for one replicate. `phillips` is the population SD over the
- * square root of the count plus one, which is 0 for one replicate; it reproduces the SEM published
- * with Phillips 2021.
+ * The replicate error models 2.5.x templates and scripts name. Accepted as an init param and
+ * ignored: the block has one error rule.
  */
-export const REPLICATE_ERROR_MODELS = ["sd_over_sqrt_n", "phillips"] as const;
-
-export type ReplicateErrorModel = (typeof REPLICATE_ERROR_MODELS)[number];
-
-export const DEFAULT_REPLICATE_ERROR_MODEL: ReplicateErrorModel = "sd_over_sqrt_n";
-
-/**
- * Share of the entered replicates one censoring side must hold, and exceed the other side by, for
- * the combined value to be reported as that side's bound. The block's own rule: no published
- * method defines one, and opposite bounds cannot be averaged into anything meaningful.
- */
-export const DEFAULT_CENSORED_MAJORITY = 0.5;
+const ACCEPTED_REPLICATE_ERROR_MODELS: readonly string[] = [
+  "sd_over_sqrt_n",
+  "pop_sd_over_sqrt_n_plus_1",
+  "phillips",
+];
 
 /**
  * This block's init-params contract — what a creator or a project template supplies to seed a
@@ -59,6 +48,8 @@ export type BlockParams = {
   filterRef?: PlRef;
   concentrationColumnRef?: PlRef;
   binColumnRef?: PlRef;
+  /** The FACS bin column's values, lowest fluorescence first. The run refuses a value left out. */
+  binOrder?: string[];
   antigenColumnRef?: PlRef;
   sortFractionColumnRef?: PlRef;
   /** The gate's measured mean log10 fluorescence. Read by the log-fluorescence fit only. */
@@ -88,13 +79,14 @@ export type BlockParams = {
   hookEffectMinReads?: number;
   /** Which replicate each sample belongs to. Absent fits one titration. */
   replicateColumnRef?: PlRef;
-  /** Read only beside a replicate column. Absent reads as `sd_over_sqrt_n`. */
-  replicateErrorModel?: ReplicateErrorModel;
-  /** Decades. Absent leaves the fit-error filter off. */
+  /**
+   * The four replicate settings 2.5.x carried. Accepted, so a template or script made for 2.5.x
+   * keeps creating the block, and ignored: the block has one error rule, no pre-combine filter
+   * and a simple censoring majority.
+   */
+  replicateErrorModel?: string;
   replicateFitErrorCutoff?: number;
-  /** Absent leaves the R² filter off. */
   replicateR2Floor?: number;
-  /** Absent reads as 0.5. */
   replicateCensoredMajority?: number;
   customBlockLabel?: string;
 };
@@ -150,6 +142,10 @@ function check<T>(is: Guard<T>, must: string): Check<T> {
 /** A real number. `isNumber` alone admits `NaN` and the infinities, which no setting means. */
 const isFiniteNumber: Guard<number> = (v): v is number => isNumber(v) && Number.isFinite(v);
 
+/** A list of distinct strings with at least one. */
+const isNonEmptyStringList: Guard<string[]> = (v): v is string[] =>
+  Array.isArray(v) && v.length > 0 && v.every(isString) && new Set(v).size === v.length;
+
 /** A number at or above `min`, the way the args lambda words the same bound. */
 function isNumberFrom(min: number): Guard<number> {
   return (v): v is number => isFiniteNumber(v) && v >= min;
@@ -163,8 +159,8 @@ const isPositiveFraction: Guard<number> = (v): v is number => isFiniteNumber(v) 
 const isEquation: Guard<Equation> = (v): v is Equation =>
   isString(v) && (EQUATIONS as readonly string[]).includes(v);
 
-const isReplicateErrorModel: Guard<ReplicateErrorModel> = (v): v is ReplicateErrorModel =>
-  isString(v) && (REPLICATE_ERROR_MODELS as readonly string[]).includes(v);
+const isReplicateErrorModel: Guard<string> = (v): v is string =>
+  isString(v) && ACCEPTED_REPLICATE_ERROR_MODELS.includes(v);
 
 /** A positive number: a cutoff of 0 decades rejects every fit. */
 const isPositiveNumber: Guard<number> = (v): v is number => isFiniteNumber(v) && v > 0;
@@ -187,6 +183,7 @@ const CONTRACT = {
   filterRef: check(isPlRef, "a reference to a subset column"),
   concentrationColumnRef: check(isPlRef, "a reference to a concentration column"),
   binColumnRef: check(isPlRef, "a reference to a FACS bin column"),
+  binOrder: check(isNonEmptyStringList, "a non-empty list of distinct strings"),
   antigenColumnRef: check(isPlRef, "a reference to an antigen column"),
   sortFractionColumnRef: check(isPlRef, "a reference to a FACS sort fraction column"),
   binFluorescenceColumnRef: check(isPlRef, "a reference to a gate fluorescence column"),
@@ -208,7 +205,7 @@ const CONTRACT = {
   replicateColumnRef: check(isPlRef, "a reference to a replicate column"),
   replicateErrorModel: check(
     isReplicateErrorModel,
-    `one of ${REPLICATE_ERROR_MODELS.map((m) => `"${m}"`).join(" or ")}`,
+    `one of ${ACCEPTED_REPLICATE_ERROR_MODELS.map((m) => `"${m}"`).join(" or ")}`,
   ),
   replicateFitErrorCutoff: check(isPositiveNumber, "a number above 0"),
   replicateR2Floor: check(isFraction, "a number between 0 and 1"),
@@ -216,9 +213,21 @@ const CONTRACT = {
   customBlockLabel: check(isString, "a string"),
 } satisfies { [K in keyof Required<BlockParams>]: Check<NonNullable<BlockParams[K]>> };
 
+/** Init params the contract accepts and the block ignores. No template carries them. */
+const IGNORED_KEYS = [
+  "replicateErrorModel",
+  "replicateFitErrorCutoff",
+  "replicateR2Floor",
+  "replicateCensoredMajority",
+] as const;
+
+type CarriedKey = Exclude<keyof BlockParams, (typeof IGNORED_KEYS)[number]>;
+
 /**
  * Every field a template carries, as a list. The model reads it so `initBlockData`,
  * `deriveTemplateParams` and this contract cannot drift apart unnoticed: a field added here but
  * forgotten in either of those is silently dropped from every template exported afterwards.
  */
-export const CONTRACT_KEYS = Object.keys(CONTRACT) as (keyof BlockParams)[];
+export const CONTRACT_KEYS = Object.keys(CONTRACT).filter(
+  (key) => !(IGNORED_KEYS as readonly string[]).includes(key),
+) as CarriedKey[];

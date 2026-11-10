@@ -3,6 +3,7 @@ import type {
   BlockOutputs,
   platforma,
 } from "@platforma-open/platforma-open.titeseq-analysis.model";
+import { GATE_FLUORESCENCE_MISSING } from "@platforma-open/platforma-open.titeseq-analysis.model";
 import type { InferBlockState, PlRef } from "@platforma-sdk/model";
 import { createPlDataTableStateV2, uniquePlId, wrapOutputs } from "@platforma-sdk/model";
 import type {
@@ -160,6 +161,7 @@ blockTest(
       hookEffectMinReads: 20,
       customBlockLabel: "",
       tableState: createPlDataTableStateV2(),
+      ntTableState: createPlDataTableStateV2(),
       graphStateTitrationCurves: {
         title: "Titration Curves",
         template: "dots",
@@ -186,16 +188,7 @@ blockTest(
       // behaviour it has always asserted rather than following the new default.
       equation: "hill_gate_index",
       plateauFloor: 2 / 3,
-      replicateErrorModel: "sd_over_sqrt_n",
-      replicateCensoredMajority: 0.5,
       replicateTableState: createPlDataTableStateV2(),
-      graphStateReplicates: {
-        title: "",
-        template: "dots",
-        currentTab: null,
-        layersSettings: { dots: {} },
-        axesSettings: { axisY: { scale: "log" } },
-      },
     } satisfies BlockData;
     await project.mutateBlockStorage(titeseqBlockId, {
       operation: "update-block-data",
@@ -331,6 +324,10 @@ blockTest(
     const lfOutputs = wrapOutputs<BlockOutputs>(lfState.outputs as unknown as BlockOutputs);
 
     expect(lfOutputs.validationWarnings, "log_fluorescence validation").toEqual([]);
+    // The fixture has no gate fluorescence column, so the settings drawer advises setting one.
+    expect(lfOutputs.settingsWarnings, "log_fluorescence settings advice").toEqual([
+      GATE_FLUORESCENCE_MISSING,
+    ]);
     expect(lfOutputs.isEmpty, "log_fluorescence produced rows").toBe(false);
 
     // Data extraction goes through the PTable handle — PFrame handles have no
@@ -479,6 +476,7 @@ blockTest(
         hookEffectMinReads: 20,
         customBlockLabel: "",
         tableState: createPlDataTableStateV2(),
+        ntTableState: createPlDataTableStateV2(),
         graphStateTitrationCurves: {
           title: "Titration Curves",
           template: "dots",
@@ -505,16 +503,7 @@ blockTest(
         // behaviour it has always asserted rather than following the new default.
         equation: "hill_gate_index",
         plateauFloor: 2 / 3,
-        replicateErrorModel: "sd_over_sqrt_n",
-        replicateCensoredMajority: 0.5,
         replicateTableState: createPlDataTableStateV2(),
-        graphStateReplicates: {
-          title: "",
-          template: "dots",
-          currentTab: null,
-          layersSettings: { dots: {} },
-          axesSettings: { axisY: { scale: "log" } },
-        },
       } satisfies BlockData,
     });
 
