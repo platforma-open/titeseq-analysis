@@ -110,21 +110,34 @@ def _clip(x: float) -> float:
 
 
 def published() -> tuple[dict[str, float], dict[str, float]]:
-    """The authors' values, combined as their code does: each replicate's fit_KD clipped to the limits,
-    then the mean log10 K_D. Per nucleotide variant (over replicates) and per amino-acid variant (over
-    replicates and synonymous variants)."""
-    nt, aa = {}, {}
+    """The authors' per-replicate fits, combined into one value per variant.
+
+    Per nucleotide variant, as their code does: each replicate's fit_KD clipped to the limits, then
+    the mean log10 K_D over the three replicates.
+
+    Per amino-acid variant the authors published no value: their Table I is not averaged over
+    synonymous variants. This key is the test's own construction from their fits, in the order the
+    block combines: the mean over a replicate's synonymous variants, then the mean over the
+    replicates that have one. A difference from the block's amino-acid value therefore comes from
+    the fits, not from the order of averaging.
+    """
     acc_nt: dict[str, list[float]] = {}
-    acc_aa: dict[str, list[float]] = {}
+    per_replicate_aa: list[dict[str, list[float]]] = []
     for table in _tables().values():
+        acc_aa: dict[str, list[float]] = {}
         for key, akey, kd in table.select("ntKey", "aaKey", "fit_KD").iter_rows():
             if kd is None or not kd > 0 or not math.isfinite(kd):
                 continue
             v = _clip(math.log10(kd))
             acc_nt.setdefault(key, []).append(v)
             acc_aa.setdefault(akey, []).append(v)
+        per_replicate_aa.append(acc_aa)
     nt = {k: statistics.fmean(v) for k, v in acc_nt.items() if len(v) == 3}
-    aa = {k: statistics.fmean(v) for k, v in acc_aa.items()}
+    replicate_means: dict[str, list[float]] = {}
+    for acc_aa in per_replicate_aa:
+        for akey, values in acc_aa.items():
+            replicate_means.setdefault(akey, []).append(statistics.fmean(values))
+    aa = {k: statistics.fmean(v) for k, v in replicate_means.items()}
     return nt, aa
 
 

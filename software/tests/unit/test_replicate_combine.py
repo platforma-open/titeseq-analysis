@@ -349,6 +349,17 @@ class TestSynonymousMajority:
         rows = [_aa_row(x, 0.2, measured=2, below=1) for x in (-8.65, -8.70, -8.60)]
         assert self._merged(rows).classification.affinity_class == "Good"
 
+    def test_one_replicate_with_many_measured_variants_does_not_carry_the_others(self):
+        # 7 of the 11 fits are measured, but in two of the three replicates most sit at a wall.
+        rows = [
+            _aa_row(-8.65, 0.2, measured=5),
+            _aa_row(-8.70, 0.2, measured=1, below=2),
+            _aa_row(-8.60, 0.2, measured=1, below=2),
+        ]
+        m = self._merged(rows)
+        assert m.log10_kd_se <= 0.5
+        assert m.classification.affinity_class == "Partial"
+
     def test_half_the_synonymous_variants_measured_is_not_a_majority(self):
         rows = [_aa_row(-9.0, 0.2, measured=1, below=1), _aa_row(-9.05, 0.2, measured=1, above=1)]
         assert self._merged(rows).classification.affinity_class == "Partial"

@@ -93,7 +93,9 @@ Sample replicates:
   deltas are decided once, on the final values. The amino-acid class and `kdOutOfRange`
   descriptions then state the rule across replicates.
 - A value combined from replicates, or from synonymous variants, rates Good only when more than
-  half of them were measured inside the range. One at an edge of the titration enters the mean at
+  half of them were measured inside the range. With both, the synonymous variants are counted
+  inside each replicate: more than half of the replicates must each have more than half of their
+  synonymous variants measured. One at an edge of the titration enters the mean at
   that edge, so two of them agree exactly and shrink the SE without measuring anything. A value
   with half or more at an edge rates Partial; its Kd,app is the one 2.5.0 reported. Under the mean
   bin fit, which reports no fit SE, the spread is the only evidence, so more than half of them
@@ -110,6 +112,9 @@ Sample replicates:
   Double-clicking a Main row still opens that variant's replicates.
 - The replicate settings that had no control in the UI are removed: the error model choice
   (`sd_over_sqrt_n`, `phillips`), the fit-error cutoff, the R² floor and the censoring majority.
+  The `phillips` model reproduced that study's published SEM, which takes the standard error
+  over the replicates and their own mean together: the population SD / sqrt(n + 1), 0.71 of the
+  standard error of the mean for three replicates.
   The block runs one rule for each: sample SD / sqrt(n) floored by the fit error, no pre-combine
   filter, and a simple majority for an edge. A v7 -> v8 migration drops the stored values and
   the state of a per-replicate chart that no page shows (`graphStateReplicates`), the args carry the replicate column alone, the software loses the four `--replicate-*` option

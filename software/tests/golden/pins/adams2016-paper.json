@@ -4,14 +4,14 @@
       "allClipped": {
         "medianAbsDiff": 0.0,
         "n": 2776,
-        "r": 0.9435,
+        "r": 0.9436,
         "within0.5": 0.8534
       },
       "good": {
-        "medianAbsDiff": 0.1803,
-        "n": 516,
-        "r": 0.9362,
-        "within0.5": 0.7888
+        "medianAbsDiff": 0.1795,
+        "n": 512,
+        "r": 0.9347,
+        "within0.5": 0.7871
       }
     },
     "nt": {
@@ -34,8 +34,8 @@
       "Above range": 1589,
       "Below range": 8,
       "Failed": 31,
-      "Good": 520,
-      "Partial": 659
+      "Good": 516,
+      "Partial": 663
     },
     "nt": {
       "Above range": 1939,
@@ -155,5 +155,5 @@
       "paperTiteSeq": -8.92
     }
   },
-  "digest": "78347b711395f63d"
+  "digest": "37f47e8b5844d201"
 }

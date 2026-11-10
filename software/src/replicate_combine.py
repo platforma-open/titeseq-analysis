@@ -224,23 +224,29 @@ _NT_STATE_COUNT_FIELDS = ("ntMeasured", "ntCensoredBelow", "ntCensoredAbove", "n
 COMBINED_VARIANT_SCHEMA: dict[str, pl.DataType] = {**PER_VARIANT_SCHEMA, **COUNT_SCHEMA}
 
 
+def _has_measured_majority(row: dict) -> bool:
+    """True when more than half of one replicate's synonymous variants in its mean were measured."""
+    measured = int(row["ntMeasured"] or 0)
+    at_a_wall = int(row["ntCensoredBelow"] or 0) + int(row["ntCensoredAbove"] or 0)
+    return measured > at_a_wall
+
+
 def require_synonymous_majority(collected: Collected, merged: dict[str, Combined]) -> dict[str, Combined]:
-    """Good amino-acid values downgraded to Partial unless more than half of their synonymous
-    variants' fits were measured, counted over the replicates that entered the mean.
+    """Good amino-acid values downgraded to Partial unless, in more than half of the replicates that
+    entered the mean, more than half of the synonymous variants' fits were measured.
 
     A replicate's amino-acid value with a measured synonymous variant enters the replicates' mean as
     measured, however many of its synonymous variants sat at a wall. Two such replicates agree on the
-    walls and shrink the SE, so the majority rule is applied again on the synonymous variants. A bound
-    is left as it is: it has no SE
-    for the rule to guard, and it keeps the class it has without replicates.
+    walls and shrink the SE, so the majority rule is applied again on the synonymous variants. It is
+    counted inside each replicate: pooled over the replicates, one with many measured synonymous
+    variants would carry the others. A bound is left as it is: it has no SE for the rule to guard,
+    and it keeps the class it has without replicates.
     """
     out: dict[str, Combined] = {}
     for key, m in merged.items():
         if m.classification.affinity_class == "Good" and not m.out_of_range:
             rows = [row for value, row in collected[key] if value.state in ENTERED]
-            measured = sum(int(row["ntMeasured"] or 0) for row in rows)
-            entered = measured + sum(int(row[f] or 0) for row in rows for f in ("ntCensoredBelow", "ntCensoredAbove"))
-            if 2 * measured <= entered:
+            if 2 * sum(_has_measured_majority(row) for row in rows) <= len(rows):
                 m = replace(m, classification=Classification("Partial", None))
         out[key] = m
     return out

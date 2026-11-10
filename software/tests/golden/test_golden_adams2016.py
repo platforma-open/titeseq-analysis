@@ -109,8 +109,9 @@ def test_class_counts_match_their_pin(case):
 
 @pytest.mark.parametrize("grain", ["nt", "aa"])
 @pytest.mark.parametrize("subset", ["allClipped", "good"])
-def test_agreement_with_the_paper_does_not_fall(case, grain, subset):
-    # The accuracy guard: a change may move numbers, but not further from the paper.
+def test_agreement_with_the_authors_fits_does_not_fall(case, grain, subset):
+    # The accuracy guard: a change may move numbers, but not further from the authors' fits. The
+    # nucleotide key is their published average; the amino-acid key is built from their fits here.
     name, current, _, pins = case
     now, pinned = current["agreement"][grain][subset], pins["agreement"][grain][subset]
     assert now["r"] >= pinned["r"] - R_DROP, f"{name} {grain} {subset}: r {pinned['r']} -> {now['r']}"

@@ -159,7 +159,7 @@ variantColumns := func(blockId, kdAnnotations, opts) {
 	// replicates the members here are the synonymous variants.
 	boundRule := replicates ? opts.boundRule : text.replace(opts.boundRule, "its replicates", "its synonymous variants", -1)
 	classDescription := replicates ?
-		"The class of the value combined over the replicates, after the synonymous nucleotide variants are combined inside each replicate. Good: the standard error across the replicates is 0.5 or less, more than half the replicates were measured inside the range, and more than half the synonymous variant fits that entered, counted over the replicates, were measured inside the range. Under the mean bin fit, which reports no fit SE, more than half the replicates must also be rated Good on their own. Partial: the standard error is more than 0.5, or a majority is missing. " +
+		"The class of the value combined over the replicates, after the synonymous nucleotide variants are combined inside each replicate. Good: the standard error across the replicates is 0.5 or less, more than half the replicates were measured inside the range, and in more than half the replicates, more than half the synonymous variants in the mean were measured inside the range. Under the mean bin fit, which reports no fit SE, more than half the replicates must also be rated Good on their own. Partial: the standard error is more than 0.5, or a majority is missing. " +
 			boundRule + " Failed: no replicate has a Kd,app, or the replicates sit at opposite edges with neither edge holding most of them. With one replicate and no standard error, the value keeps that replicate's class." :
 		"The class of the value combined over the synonymous nucleotide variants. Good: the standard error is 0.5 or less, and more than half the variants were measured inside the range. Under the mean bin fit, which reports no fit SE, more than half the variants must also be rated Good on their own. Partial: the standard error is more than 0.5, or a majority is missing. " +
 			boundRule + " Failed: no nucleotide variant has a Kd,app, or the variants sit at opposite edges with neither edge holding most of them. A single variant with no standard error keeps its own class."
@@ -293,7 +293,7 @@ variantColumns := func(blockId, kdAnnotations, opts) {
 	}
 	if opts.parentMode {
 		cols = cols + deltaColumns(blockId, "aa_",
-			"log10 Kd,app of this amino-acid variant minus that of its parent. A variant censored at the edge of the titration reads from that edge, so its delta is a bound and its error is empty. Negative binds tighter than the parent. The parent's own row is 0.")
+			"log10 Kd,app of this amino-acid variant minus that of its parent. A variant censored at the edge of the titration reads from that edge, so its delta is a bound and its error is empty. Negative binds tighter than the parent, the opposite sign to a delta of log10 K_A. The parent's own row is 0.")
 	}
 	return cols
 }
@@ -314,7 +314,7 @@ ntVariantColumns := func(blockId, opts) {
 	}
 	if opts.parentMode {
 		cols = cols + deltaColumns(blockId, "nt_",
-			"log10 Kd,app of this nucleotide variant minus that of its parent's unmutated nucleotide variant. A variant censored at the edge of the titration reads from that edge. Negative binds tighter than the parent. The parent's own row is 0.")
+			"log10 Kd,app of this nucleotide variant minus that of its parent's unmutated nucleotide variant. A variant censored at the edge of the titration reads from that edge. Negative binds tighter than the parent, the opposite sign to a delta of log10 K_A. The parent's own row is 0.")
 	}
 	return cols
 }
