@@ -15,19 +15,19 @@ from __future__ import annotations
 import polars as pl
 
 from constants import COL_CLONOTYPE, COL_CONC_STR, COL_CONC_VAL, FitParams
-from normalization import CLONOTYPE_READS_AT_CONC, SIGNAL
+from normalization import CLONOTYPE_READS_AT_CONC, SIGNAL, SIGNAL_READS_AT_CONC
 
 WEIGHT = "weight"
 
 
 def apply_floor_and_weights(signal_frame: pl.DataFrame, params: FitParams) -> pl.DataFrame:
-    """Apply R8 weights (w_j = clonotype_reads_at_conc) and R9 read floor.
+    """Apply R8 weights (w_j = signal_reads_at_conc) and R9 read floor.
 
-    Rows with `clonotype_reads_at_conc < min_reads_per_concentration` are dropped;
-    remaining rows get a `weight` column equal to the per-(clonotype, conc) read sum.
+    Rows with `signal_reads_at_conc < min_reads_per_concentration` are dropped;
+    remaining rows get a `weight` column equal to the reads behind the point's signal.
     """
-    kept = signal_frame.filter(pl.col(CLONOTYPE_READS_AT_CONC) >= params.min_reads_per_concentration).with_columns(
-        pl.col(CLONOTYPE_READS_AT_CONC).cast(pl.Float64).alias(WEIGHT)
+    kept = signal_frame.filter(pl.col(SIGNAL_READS_AT_CONC) >= params.min_reads_per_concentration).with_columns(
+        pl.col(SIGNAL_READS_AT_CONC).cast(pl.Float64).alias(WEIGHT)
     )
     return kept
 

@@ -46,7 +46,7 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
-from classify import Classification, classify, classify_log_fluorescence, r2_undefined
+from classify import Classification, Combined, classify, classify_log_fluorescence, failed, r2_undefined
 from constants import (
     COL_ANTIGEN,
     COL_BIN,
@@ -54,6 +54,7 @@ from constants import (
     COL_CLONOTYPE,
     COL_CONC_STR,
     COL_CONC_VAL,
+    COL_READS,
     COL_REPLICATE,
     DEFAULT_PARAMS,
     GATE_WIDTH_DECADES,
@@ -62,7 +63,9 @@ from constants import (
     FitParams,
     KdRangeSide,
 )
+from fit_reads import fit_reads, with_fit_reads
 from hill_fit import fit_one_clonotype
+from hill_fit import predict as hill_predict
 from io_layer import (
     apply_antigen_filter,
     canonicalize_concentration,
@@ -72,6 +75,7 @@ from io_layer import (
     validate_bin_concentration_grid,
     validate_bin_fluorescence,
     validate_concentration_column,
+    validate_reads_present,
     validate_reads_schema,
     validate_replicate_column,
     validate_sample_metadata_uniqueness,
@@ -88,7 +92,8 @@ from log_fluorescence import (
     gate_index_to_decades,
     pin_kd,
 )
-from normalization import CLONOTYPE_READS_AT_CONC, SIGNAL, normalize
+from log_fluorescence import predict as log_fluorescence_predict
+from normalization import CLONOTYPE_READS_AT_CONC, SIGNAL, SIGNAL_READS_AT_CONC, normalize
 from output_build import (
     FITTED_MEAN_BIN_SCHEMA,
     PER_CLONOTYPE_SCHEMA,
@@ -108,12 +113,25 @@ from pre_fit import (
     split_c0,
 )
 from replicate_combine import (
+    ERROR_MODEL,
     Collected,
     ReplicateInputs,
     build_combined_clonotype_frame,
+    build_combined_variant_frame,
     build_per_replicate_frame,
     collect_values,
     merge_all,
+    require_synonymous_majority,
+)
+from synonymous import (
+    COL_AA,
+    PER_REPLICATE_SYNONYMOUS_COLUMNS,
+    REASON_STOP,
+    SynonymousInputs,
+    annotate_variants,
+    combine_synonymous,
+    resolve_nt_to_aa,
+    stop_variants,
 )
 
 
@@ -244,6 +262,24 @@ _PER_CLONOTYPE_FIELDS = (
 # concentration, so the value sits below the range.
 _RANGE_SIDE: dict[str | None, KdRangeSide] = {"below": "Below range", None: "In range", "above": "Above range"}
 
+# One titration's fit: the per-clonotype frame, the fitted curves, and the clonotypes that went to a
+# fit (the rest were gated Failed before it).
+FitResult = tuple[pl.DataFrame, pl.DataFrame, list[str]]
+
+
+def _curve_grid(points: pl.DataFrame) -> pl.DataFrame:
+    """[concentrationStr, concentration] of `points`, one row per string, in numeric then text order."""
+    return points.select(COL_CONC_STR, COL_CONC_VAL).unique(subset=[COL_CONC_STR]).sort([COL_CONC_VAL, COL_CONC_STR])
+
+
+def _fit_point_mask(params: FitParams) -> pl.Expr:
+    """The signal-frame rows a fit reads: non-zero concentration, past the read floor, with a signal."""
+    return (
+        (pl.col(COL_CONC_VAL) != 0)
+        & (pl.col(SIGNAL_READS_AT_CONC) >= params.min_reads_per_concentration)
+        & pl.col(SIGNAL).is_not_null()
+    )
+
 
 class _FitBatch:
     """One equation's pass over every clonotype: gate, fit the survivors, collect both frames.
@@ -261,8 +297,17 @@ class _FitBatch:
         fit_points: pl.DataFrame,
         all_clonotypes: list[str],
         gate_reason: Callable[[str], str | None],
+        grid: pl.DataFrame | None = None,
     ) -> None:
-        partitions = fit_points.sort([COL_CLONOTYPE, COL_CONC_VAL]).partition_by(COL_CLONOTYPE, as_dict=True)
+        partitions = fit_points.sort([COL_CLONOTYPE, COL_CONC_VAL, COL_CONC_STR]).partition_by(
+            COL_CLONOTYPE, as_dict=True
+        )
+        # Each curve is written across `grid`, by default every concentration any clonotype here was
+        # fitted on. With replicates the caller passes the union over them, so a mean over replicates
+        # reads every replicate at every concentration.
+        grid = _curve_grid(fit_points) if grid is None else grid
+        self.grid_strs: np.ndarray = grid[COL_CONC_STR].to_numpy()
+        self.grid_vals: np.ndarray = grid[COL_CONC_VAL].to_numpy()
         self.clonotypes = sorted(all_clonotypes)
         n_clon = len(self.clonotypes)
         self.columns: dict[str, list] = {name: [None] * n_clon for name in _PER_CLONOTYPE_FIELDS}
@@ -274,6 +319,8 @@ class _FitBatch:
         # Per-task integration context: output index, clonotype key, concentration strings. Kept
         # apart from the task inputs so nothing beyond (x, y, w) is shipped over the pool.
         self._contexts: list[tuple[int, str, np.ndarray]] = []
+        # The clonotypes that passed the gates and went to a fit.
+        self.fit_keys: list[str] = []
         self._fitted_keys: list[np.ndarray] = []
         self._fitted_conc_strs: list[np.ndarray] = []
         self._fitted_curves: list[np.ndarray] = []
@@ -289,6 +336,7 @@ class _FitBatch:
             self._ys.append(sub[SIGNAL].to_numpy())
             self._ws.append(sub[WEIGHT].to_numpy())
             self._contexts.append((i, clonotype, sub[COL_CONC_STR].to_numpy()))
+            self.fit_keys.append(clonotype)
 
     def fit(self, worker) -> list[tuple[int, str, np.ndarray, object]]:
         """Run `worker` over the survivors; returns (index, clonotype, concentration strings, fit)."""
@@ -312,10 +360,11 @@ class _FitBatch:
         self._fitted_conc_strs.append(conc_strs)
         self._fitted_curves.append(curve)
 
-    def frames(self) -> tuple[pl.DataFrame, pl.DataFrame]:
+    def frames(self) -> FitResult:
         per_clonotype = pl.DataFrame({COL_CLONOTYPE: self.clonotypes, **self.columns}, schema=PER_CLONOTYPE_SCHEMA)
         if not self._fitted_keys:
-            return per_clonotype, pl.DataFrame({k: [] for k in FITTED_MEAN_BIN_SCHEMA}, schema=FITTED_MEAN_BIN_SCHEMA)
+            empty = pl.DataFrame({k: [] for k in FITTED_MEAN_BIN_SCHEMA}, schema=FITTED_MEAN_BIN_SCHEMA)
+            return per_clonotype, empty, self.fit_keys
         fitted = pl.DataFrame(
             {
                 COL_CLONOTYPE: np.concatenate(self._fitted_keys),
@@ -324,7 +373,7 @@ class _FitBatch:
             },
             schema=FITTED_MEAN_BIN_SCHEMA,
         )
-        return per_clonotype, fitted
+        return per_clonotype, fitted, self.fit_keys
 
 
 def _fit_all_clonotypes(
@@ -337,7 +386,8 @@ def _fit_all_clonotypes(
     bin_mode: bool,
     max_bin: int | None,
     params: FitParams,
-) -> tuple[pl.DataFrame, pl.DataFrame]:
+    grid: pl.DataFrame | None = None,
+) -> FitResult:
     """ "hill_gate_index": gate, fit and classify every clonotype.
 
     The gates mark Failed without fitting: insufficient reads or points first, then the hook effect.
@@ -349,10 +399,10 @@ def _fit_all_clonotypes(
             return "non_monotonic_signal"
         return reason
 
-    batch = _FitBatch(fit_points, all_clonotypes, gate_reason)
+    batch = _FitBatch(fit_points, all_clonotypes, gate_reason, grid)
     worker = partial(fit_one_clonotype, baseline_fixed=global_baseline, bin_mode=bin_mode, max_bin_label=max_bin)
     columns = batch.columns
-    for i, clonotype, conc_strs, fit in batch.fit(worker):
+    for i, clonotype, _conc_strs, fit in batch.fit(worker):
         cls = classify(fit.r2_w, fit.n, fit.converged, params)
         # An undefined R² rates Failed, and its fitted numbers are an artefact; see r2_undefined.
         if not r2_undefined(fit.r2_w):
@@ -361,7 +411,8 @@ def _fit_all_clonotypes(
             columns["r2"][i] = fit.r2_w
         batch.rate(i, cls)
         if cls.affinity_class != "Failed":
-            batch.add_curve(clonotype, conc_strs, fit.y_hat)
+            curve = hill_predict(batch.grid_vals, fit.kd, fit.n, fit.top, fit.baseline)
+            batch.add_curve(clonotype, batch.grid_strs, curve)
     return batch.frames()
 
 
@@ -412,7 +463,8 @@ def _fit_all_log_fluorescence(
     gates_measured: bool,
     r2_gate_min: float | None,
     kd_se_gate_max: float | None,
-) -> tuple[pl.DataFrame, pl.DataFrame]:
+    grid: pl.DataFrame | None = None,
+) -> FitResult:
     """ "log_fluorescence": fit every clonotype, then pin, rate and integrate.
 
     `log10_conc_lo` and `log10_conc_hi` are log10 of the lowest and highest non-zero
@@ -422,10 +474,10 @@ def _fit_all_log_fluorescence(
     log10 fluorescence. With assumed gates the observed signal is the mean gate index, so the curve
     is mapped back to it.
     """
-    batch = _FitBatch(fit_points, all_clonotypes, insufficient_map.get)
+    batch = _FitBatch(fit_points, all_clonotypes, insufficient_map.get, grid)
     worker = partial(fit_one, scale=scale, plateau_floor=plateau_floor, baseline=baseline)
     columns = batch.columns
-    for i, clonotype, conc_strs, fit in batch.fit(worker):
+    for i, clonotype, _conc_strs, fit in batch.fit(worker):
         if not fit.converged:
             batch.fail(i, "convergence_failure")
             continue
@@ -447,17 +499,18 @@ def _fit_all_log_fluorescence(
         # A pinned K_D is a bound. The fit's SE describes the unpinned estimate, so a bound gets none.
         se = fit.log10_kd_se
         columns["kdLog10Se"][i] = se if censor is None and se is not None and math.isfinite(se) else None
-        batch.rate(
-            i,
-            classify_log_fluorescence(
-                range_side=range_side,
-                log10_kd_se=se,
-                r2=fit.r2,
-                r2_gate_min=r2_gate_min,
-                kd_se_gate_max=kd_se_gate_max,
-            ),
+        cls = classify_log_fluorescence(
+            range_side=range_side,
+            log10_kd_se=se,
+            r2=fit.r2,
+            r2_gate_min=r2_gate_min,
+            kd_se_gate_max=kd_se_gate_max,
         )
-        batch.add_curve(clonotype, conc_strs, fit.y_hat if gates_measured else decades_to_gate_index(fit.y_hat))
+        batch.rate(i, cls)
+        # A Failed fit draws no curve, as under the mean bin fit.
+        if cls.affinity_class != "Failed":
+            curve = log_fluorescence_predict(batch.grid_vals, fit.log10_kd, fit.log10_top, fit.log10_baseline)
+            batch.add_curve(clonotype, batch.grid_strs, curve if gates_measured else decades_to_gate_index(curve))
     return batch.frames()
 
 
@@ -467,7 +520,8 @@ def _run_hill_gate_index(
     params: FitParams,
     has_bin: bool,
     max_bin: int | None,
-) -> tuple[pl.DataFrame, pl.DataFrame]:
+    grid: pl.DataFrame | None = None,
+) -> FitResult:
     """The "hill_gate_index" branch, from the signal frame to the per-clonotype and fitted frames."""
     log("Applying floor and weights")
     floor_frame = apply_floor_and_weights(signal_frame, params)
@@ -497,6 +551,7 @@ def _run_hill_gate_index(
         bin_mode=has_bin,
         max_bin=max_bin,
         params=params,
+        grid=grid,
     )
 
 
@@ -522,6 +577,20 @@ def _gate_incomplete_titrations(signal_frame: pl.DataFrame, insufficient_map: di
     log(f"Complete titrations required: {gated} clonotypes lack reads at one of {n_conc} concentrations")
 
 
+NO_C0_SAMPLES = "no 0 M samples"
+
+
+def _no_baseline_cause(lf_frame: pl.DataFrame) -> str:
+    """Why no shared baseline could be computed, in the words the warning uses. Read before the read
+    floor, so 0 M samples that are unsorted are named as such whatever their depth."""
+    c0 = lf_frame.filter(pl.col(COL_CONC_VAL) == 0)
+    if c0.height == 0:
+        return NO_C0_SAMPLES
+    if c0.filter(pl.col(SIGNAL).is_not_null()).height == 0:
+        return "the 0 M samples carry no FACS bin (they are unsorted), so they have no signal"
+    return "no variant has enough reads at 0 M to pass the read floor"
+
+
 def _run_log_fluorescence(
     signal_frame: pl.DataFrame,
     reads: pl.DataFrame,
@@ -531,8 +600,12 @@ def _run_log_fluorescence(
     max_bin: int | None,
     conc_bounds: tuple[float | None, float | None],
     gates_measured: bool,
-) -> tuple[pl.DataFrame, pl.DataFrame]:
+    notices: list[str],
+    grid: pl.DataFrame | None = None,
+) -> FitResult:
     """The "log_fluorescence" branch, from the signal frame to the per-clonotype and fitted frames.
+
+    `notices` collects what the run must tell the user: a cause that changes the numbers.
 
     `gates_measured` says the signal frame already carries mean log10 fluorescence, because the
     caller passed measured gate positions to `normalize`. The affine conversion below is then
@@ -563,6 +636,13 @@ def _run_log_fluorescence(
 
     log("Applying floor and weights")
     floor_frame = apply_floor_and_weights(lf_frame, params)
+    # A point whose reads all sit in an unsorted sample has no signal. It leaves before the points
+    # are counted, so the point count and the fit see the same points.
+    no_signal = pl.col(SIGNAL).is_null()
+    dropped = floor_frame.filter(no_signal & (pl.col(COL_CONC_VAL) != 0)).height
+    if dropped:
+        log(f"Left out {dropped} points with no FACS bin signal (unsorted samples)")
+    floor_frame = floor_frame.filter(~no_signal)
 
     all_clonotypes = signal_frame[COL_CLONOTYPE].unique().to_list()
     log(f"Classifying {len(all_clonotypes)} clonotypes for sufficiency")
@@ -577,7 +657,13 @@ def _run_log_fluorescence(
     c0_points, fit_points = split_c0(floor_frame)
     baseline = compute_read_weighted_baseline(c0_points)
     if baseline is None:
-        log("Baseline: fitted per clonotype (no 0 M samples)")
+        cause = _no_baseline_cause(lf_frame)
+        log(f"Baseline: fitted per clonotype ({cause})")
+        if cause != NO_C0_SAMPLES:
+            notices.append(
+                f"No shared baseline: {cause}. Each variant fits its own baseline, which widens the "
+                "error of its Kd,app."
+            )
     else:
         log(f"Baseline: {baseline:.4f} log10, the read-weighted mean 0 M signal of {c0_points.height} clonotypes")
 
@@ -594,6 +680,7 @@ def _run_log_fluorescence(
         log10_conc_hi=math.log10(conc_hi),
         baseline=baseline,
         gates_measured=gates_measured,
+        grid=grid,
     )
 
 
@@ -633,7 +720,7 @@ def _resolve_replicates(reads: pl.DataFrame, inputs: ReplicateInputs | None) -> 
     """Label every row with its replicate; return the frame and the replicate key columns.
 
     With no replicate column asked for, the key list is empty, and every grouping, output and
-    command line is the one a run had before the column existed. A column that was asked for but
+    command line is that of a run without replicates. A column that was asked for but
     cannot be used is a warning, never an error: the whole run becomes one replicate, so every
     output the caller was promised still exists and carries one replicate each.
     """
@@ -669,8 +756,12 @@ def _fit(
     max_bin: int | None,
     conc_bounds: tuple[float | None, float | None],
     gates_measured: bool,
-) -> tuple[pl.DataFrame, pl.DataFrame]:
-    """One titration's fit: the equation's branch, from the signal frame to the two fit frames."""
+    notices: list[str],
+    grid: pl.DataFrame | None = None,
+) -> FitResult:
+    """One titration's fit: the equation's branch, from the signal frame to the two fit frames and
+    the clonotypes fitted. `grid` is the concentrations every curve is written on; None takes the
+    titration's own."""
     if params.equation == "log_fluorescence":
         return _run_log_fluorescence(
             signal_frame,
@@ -680,8 +771,10 @@ def _fit(
             max_bin=max_bin,
             conc_bounds=conc_bounds,
             gates_measured=gates_measured,
+            notices=notices,
+            grid=grid,
         )
-    return _run_hill_gate_index(signal_frame, params=params, has_bin=has_bin, max_bin=max_bin)
+    return _run_hill_gate_index(signal_frame, params=params, has_bin=has_bin, max_bin=max_bin, grid=grid)
 
 
 def run(
@@ -692,8 +785,12 @@ def run(
     antigen_column_ref: str | None = None,
     sort_fraction_col: str | None = None,
     replicates: ReplicateInputs | None = None,
-) -> dict[str, pl.DataFrame]:
+    synonymous: SynonymousInputs | None = None,
+    read_depth: bool = False,
+) -> dict:
     """Execute the full pipeline on an in-memory reads frame.
+
+    `read_depth` adds `fit_reads` and per_variant's fitReads; unset, neither is in the outputs.
 
     `sort_fraction_col`, when set, activates the Adams, Mora, Walczak, Kinney 2016
     eq. A3 correction inside `compute_mean_bin`. The column must be present in
@@ -702,10 +799,14 @@ def run(
 
     `replicates`, when set and usable, fits each replicate's titration on its own and combines the
     per-replicate values. It adds `per_replicate` to the outputs and puts the replicate on the
-    signal frames' key. Unset, every output, every grouping and every command line is the one the
-    block had before replicates existed.
+    signal frames' key. Unset, no output, grouping or command line carries a replicate.
+
+    `synonymous`, when set, adds `per_variant` (one row per amino-acid variant) and
+    `synonymous_summary` (a JSON-ready dict) to the outputs. Every other output is unchanged.
     """
     log(f"Pipeline start: {reads.height} reads rows")
+    # Precedes canonicalization, which reports an empty frame as a missing concentration.
+    validate_reads_present(reads)
     reads = canonicalize_concentration(reads)
     has_bin = COL_BIN in reads.columns
     has_antigen = COL_ANTIGEN in reads.columns
@@ -770,6 +871,7 @@ def run(
     )
 
     conc_bounds = _concentration_bounds(reads)
+    notices: list[str] = []
     log(f"Equation: {params.equation}")
     fit_args = {
         "params": params,
@@ -777,14 +879,16 @@ def run(
         "max_bin": mbl,
         "conc_bounds": conc_bounds,
         "gates_measured": measured_gates is not None,
+        "notices": notices,
     }
     replicate_outputs: dict[str, pl.DataFrame] = {}
     if replicates is not None:
-        per_clonotype, fitted, replicate_outputs = _fit_replicates(
-            signal_frame, reads, replicates=replicates, **fit_args
+        per_clonotype, fitted, fit_keys, replicate_outputs = _fit_replicates(
+            signal_frame, reads, synonymous=synonymous, **fit_args
         )
     else:
-        per_clonotype, fitted = _fit(signal_frame, reads, **fit_args)
+        per_clonotype, fitted, fitted_clonotypes = _fit(signal_frame, reads, **fit_args)
+        fit_keys = pl.DataFrame({COL_CLONOTYPE: pl.Series(fitted_clonotypes, dtype=signal_frame.schema[COL_CLONOTYPE])})
 
     log("Assembling output frames")
     outputs = _build_outputs(
@@ -803,39 +907,107 @@ def run(
         f"fitted_mean_bin={outputs['fitted_mean_bin'].height}"
     )
     outputs.update(replicate_outputs)
+    # Present only when there is one, so a clean run's outputs do not move. Each replicate can
+    # raise the same notice; the user needs it once.
+    if notices:
+        outputs["run_warnings"] = list(dict.fromkeys(notices))
+    # With replicates the synonymous combination already ran inside each replicate.
+    if synonymous is not None and replicates is None:
+        outputs.update(
+            _combine_synonymous(
+                outputs["per_clonotype"],
+                synonymous,
+                conc_bounds,
+                wall_classes=params.equation == "log_fluorescence",
+                fits_report_se=params.equation == "log_fluorescence",
+            )
+        )
+    if read_depth:
+        in_fit = _reads_in_fit(reads, signal_frame, params, has_bin, fit_keys)
+        _add_fit_reads(outputs, reads, in_fit, synonymous)
     return outputs
+
+
+def _reads_in_fit(
+    reads: pl.DataFrame,
+    signal_frame: pl.DataFrame,
+    params: FitParams,
+    has_bin: bool,
+    fit_keys: pl.DataFrame,
+) -> pl.DataFrame:
+    """The rows of `reads` the fits used: sorted samples only, at the points a fit read.
+
+    `fit_keys` holds the clonotypes, with the replicate when there is one, that went to a fit; a
+    gated one used no reads. A point a fit read has a non-zero concentration, passes the read floor
+    and carries a signal: the 0 M points set the shared baseline, not the clonotype's own fit.
+    """
+    fitted = signal_frame.filter(_fit_point_mask(params)).join(fit_keys, on=fit_keys.columns, how="semi")
+    keys = [*fit_keys.columns, COL_CONC_STR]
+    points = fitted.select(keys).unique()
+    sorted_reads = reads.filter(pl.col(COL_BIN).is_not_null()) if has_bin else reads
+    return sorted_reads.join(points, on=keys, how="semi")
+
+
+def _add_fit_reads(
+    outputs: dict,
+    reads: pl.DataFrame,
+    reads_in_fit: pl.DataFrame,
+    synonymous: SynonymousInputs | None,
+) -> None:
+    """Add `fit_reads` ([clonotypeKey, fitReads]) to the outputs, and fitReads to `per_variant`.
+    per_clonotype keeps its schema, so a run's existing outputs do not move."""
+    nt_totals = dict(fit_reads(reads_in_fit, COL_CLONOTYPE, COL_READS).iter_rows())
+    # Every variant gets a row, 0 where no fit used a read of it.
+    all_keys = sorted(reads[COL_CLONOTYPE].cast(pl.Utf8).unique().to_list())
+    outputs["fit_reads"] = with_fit_reads(pl.DataFrame({COL_CLONOTYPE: all_keys}), COL_CLONOTYPE, nt_totals)
+    if "per_variant" in outputs and synonymous is not None:
+        mapping, _, _ = resolve_nt_to_aa(synonymous.nt_to_aa, sorted(nt_totals))
+        aa_totals: dict[str, int] = {}
+        for nt, n in nt_totals.items():
+            aa = mapping.get(nt)
+            if aa is not None:
+                aa_totals[aa] = aa_totals.get(aa, 0) + n
+        outputs["per_variant"] = with_fit_reads(outputs["per_variant"], COL_AA, aa_totals)
 
 
 def _fit_replicates(
     signal_frame: pl.DataFrame,
     reads: pl.DataFrame,
     *,
-    replicates: ReplicateInputs,
+    synonymous: SynonymousInputs | None,
     params: FitParams,
     has_bin: bool,
     max_bin: int | None,
     conc_bounds: tuple[float | None, float | None],
     gates_measured: bool,
-) -> tuple[pl.DataFrame, pl.DataFrame, dict[str, pl.DataFrame]]:
+    notices: list[str],
+) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, dict]:
     """Fit each replicate's titration on its own, then combine the per-replicate values.
 
-    Returns the combined per-clonotype frame, the fitted curves keyed by replicate as well, and
-    the outputs only a replicate run has. The R² gate, when on, runs inside each replicate's fit.
+    Returns the combined per-clonotype frame, the fitted curves keyed by replicate as well, the
+    (clonotype, replicate) pairs that went to a fit, and the outputs only a replicate run has. The R²
+    gate, when on, runs inside each replicate's fit.
+
+    Every replicate's curve is written on the union of the replicates' fit concentrations: a curve is
+    a function of concentration, so it reads exactly where its own replicate has no point, and the
+    mean over replicates then averages the same replicates at every concentration.
     """
     lo, hi = conc_bounds
     log10_lo = math.log10(lo) if lo is not None else None
     log10_hi = math.log10(hi) if hi is not None else None
     labels = sorted(signal_frame[COL_REPLICATE].unique().to_list())
     log(f"Fitting {len(labels)} replicates on their own: {', '.join(labels)}")
+    grid = _curve_grid(signal_frame.filter(_fit_point_mask(params)))
 
     frames: list[tuple[str, pl.DataFrame]] = []
     curves: list[pl.DataFrame] = []
+    fit_keys: list[pl.DataFrame] = []
     for label in labels:
         log(f"Replicate '{label}'")
         part = signal_frame.filter(pl.col(COL_REPLICATE) == label)
         # Each replicate was gated on its own, so its gate scale reads its own reads only.
         part_reads = reads.filter(pl.col(COL_REPLICATE) == label)
-        per_clonotype, fitted = _fit(
+        per_clonotype, fitted, fitted_clonotypes = _fit(
             part,
             part_reads,
             params=params,
@@ -843,6 +1015,8 @@ def _fit_replicates(
             max_bin=max_bin,
             conc_bounds=conc_bounds,
             gates_measured=gates_measured,
+            notices=notices,
+            grid=grid,
         )
         # Each replicate's own censoring state, against the titration they share. "log_fluorescence"
         # pins and flags inside the fit; "hill_gate_index" reports the raw K_D and is flagged here.
@@ -850,6 +1024,14 @@ def _fit_replicates(
             per_clonotype = flag_kd_out_of_range(per_clonotype, lo, hi)
         frames.append((label, per_clonotype))
         curves.append(fitted.with_columns(pl.lit(label, dtype=pl.Utf8).alias(COL_REPLICATE)))
+        fit_keys.append(
+            pl.DataFrame(
+                {
+                    COL_CLONOTYPE: pl.Series(fitted_clonotypes, dtype=signal_frame.schema[COL_CLONOTYPE]),
+                    COL_REPLICATE: pl.Series([label] * len(fitted_clonotypes), dtype=pl.Utf8),
+                }
+            )
+        )
 
     # Reads behind each replicate's fit, summed over its concentrations.
     per_replicate_reads = {
@@ -858,24 +1040,156 @@ def _fit_replicates(
         .agg(pl.col(CLONOTYPE_READS_AT_CONC).sum().alias("reads"))
         .iter_rows(named=True)
     }
-    collected = collect_values(frames, COL_CLONOTYPE, log10_lo=log10_lo, log10_hi=log10_hi, filters=replicates.filters)
-    merged = merge_all(collected, error_model=replicates.error_model, censored_majority=replicates.censored_majority)
-    _log_filters(replicates, collected)
+    collected = collect_values(frames, COL_CLONOTYPE, log10_lo=log10_lo, log10_hi=log10_hi)
+    wall_classes = params.equation == "log_fluorescence"
+    fits_report_se = params.equation == "log_fluorescence"
+    merged = merge_all(collected, wall_classes=wall_classes, fits_report_se=fits_report_se)
     combined = build_combined_clonotype_frame(collected, merged)
     fitted_curves = pl.concat(curves).select([COL_CLONOTYPE, COL_REPLICATE, COL_CONC_STR, "fittedMeanBin"])
-    per_replicate = build_per_replicate_frame(collected, COL_CLONOTYPE, per_replicate_reads)
-    return combined, fitted_curves, {"per_replicate": per_replicate}
+    fitted_pairs = pl.concat(fit_keys)
+    if synonymous is None:
+        per_replicate = build_per_replicate_frame(collected, COL_CLONOTYPE, per_replicate_reads)
+        return combined, fitted_curves, fitted_pairs, {"per_replicate": per_replicate}
+    outputs = _combine_replicate_synonymous(
+        frames,
+        synonymous=synonymous,
+        collected=collected,
+        merged=merged,
+        per_replicate_reads=per_replicate_reads,
+        log10_lo=log10_lo,
+        log10_hi=log10_hi,
+        wall_classes=wall_classes,
+        fits_report_se=fits_report_se,
+    )
+    return combined, fitted_curves, fitted_pairs, outputs
 
 
-def _log_filters(replicates: ReplicateInputs, collected: Collected) -> None:
-    filters = replicates.filters
-    if not filters.active:
-        log("Replicate filters: off")
-        return
-    named = []
-    if filters.fit_error_cutoff is not None:
-        named.append(f"fit error above {filters.fit_error_cutoff} decades")
-    if filters.r2_floor is not None:
-        named.append(f"R² below {filters.r2_floor}")
-    dropped = sum(1 for values in collected.values() for v, _ in values if v.state == "filtered")
-    log(f"Replicate filters: {', '.join(named)}; {dropped} replicate fits left out of the means")
+def _combine_synonymous(
+    per_clonotype: pl.DataFrame,
+    synonymous: SynonymousInputs,
+    conc_bounds: tuple[float | None, float | None],
+    *,
+    wall_classes: bool,
+    fits_report_se: bool,
+) -> dict:
+    """The amino-acid outputs: each nt variant's own fit, combined per amino-acid variant."""
+    lo, hi = conc_bounds
+    per_variant, per_nt_variant, summary = combine_synonymous(
+        per_clonotype,
+        synonymous,
+        log10_lo=math.log10(lo) if lo is not None else None,
+        log10_hi=math.log10(hi) if hi is not None else None,
+        wall_classes=wall_classes,
+        fits_report_se=fits_report_se,
+    )
+    log("Synonymous combination: plain mean of log10 Kd,app")
+    log(
+        f"Synonymous variants: {summary['ntVariants']} nucleotide variants -> {summary['aaVariants']} "
+        f"amino-acid variants; left out: {summary['unmappedNtVariants']} with no amino-acid variant, "
+        f"{summary['ambiguousNtVariants']} with several"
+    )
+    if summary["parentMode"]:
+        log(
+            f"Parent delta: {summary['parents']} parents, {len(summary['unidentifiableParents'])} not identifiable; "
+            f"{summary['multiParentVariants']} variants with several parents get no delta"
+        )
+    else:
+        log("Parent delta: off (no amino-acid mutation count and parent link)")
+    if summary.get("ntParentMode"):
+        log(
+            f"Nucleotide parent delta: {summary['ntParents']} parents, "
+            f"{len(summary['ntUnidentifiableParents'])} not identifiable; "
+            f"{summary['ntMultiParentVariants']} nucleotide variants with several parents get no delta"
+        )
+    else:
+        log("Nucleotide parent delta: off (no nucleotide mutation count and parent link)")
+    if "stopAaVariants" in summary:
+        log(f"Stop codons: {summary['stopAaVariants']} amino-acid variants not productive; they get no Kd,app")
+    else:
+        log("Stop codons: off (no amino-acid productive column)")
+    outputs = {"per_variant": per_variant, "synonymous_summary": summary}
+    if per_nt_variant is not None:
+        outputs["per_nt_variant"] = per_nt_variant
+    return outputs
+
+
+def _combine_replicate_synonymous(
+    frames: list[tuple[str, pl.DataFrame]],
+    *,
+    synonymous: SynonymousInputs,
+    collected: Collected,
+    merged: dict[str, Combined],
+    per_replicate_reads: dict[tuple[str, str], int],
+    log10_lo: float | None,
+    log10_hi: float | None,
+    wall_classes: bool,
+    fits_report_se: bool,
+) -> dict:
+    """Starr's order: synonymous variants combine inside each replicate, then the replicates combine.
+
+    The class, the stop rule and both parent deltas are decided once, on the combined values. The
+    per-replicate pass therefore reads the linker and the productive flag only. The
+    per-replicate output is the amino-acid one: the main table's rows are amino-acid variants.
+
+    Each replicate's amino-acid value carries the SE of its synonymous combination as its fit SE,
+    so the replicates' fit-error term reads it.
+    """
+    linker_only = SynonymousInputs(nt_to_aa=synonymous.nt_to_aa, aa_productive=synonymous.aa_productive)
+    aa_frames: list[tuple[str, pl.DataFrame]] = []
+    for label, per_clonotype in frames:
+        per_variant, _nt, _summary = combine_synonymous(
+            per_clonotype,
+            linker_only,
+            log10_lo=log10_lo,
+            log10_hi=log10_hi,
+            wall_classes=wall_classes,
+            fits_report_se=fits_report_se,
+        )
+        aa_frames.append((label, per_variant))
+
+    aa_collected = collect_values(aa_frames, COL_AA, log10_lo=log10_lo, log10_hi=log10_hi)
+    aa_merged = require_synonymous_majority(
+        aa_collected, merge_all(aa_collected, wall_classes=wall_classes, fits_report_se=fits_report_se)
+    )
+
+    fitted_nt = sorted(merged)
+    mapping, unmapped, ambiguous = resolve_nt_to_aa(synonymous.nt_to_aa, fitted_nt)
+    stops = stop_variants(synonymous.aa_productive) if synonymous.aa_productive is not None else set()
+    # A stop variant failed in every replicate for one cause: name it, not the replicates.
+    aa_merged = {aa: failed(REASON_STOP, m.counts) if aa in stops else m for aa, m in aa_merged.items()}
+    summary: dict = {
+        "ntVariants": len(fitted_nt),
+        "aaVariants": len(aa_merged),
+        "unmappedNtVariants": unmapped,
+        "ambiguousNtVariants": ambiguous,
+        "parentMode": synonymous.aa_parent_links is not None,
+        "replicates": len(frames),
+        "errorModel": ERROR_MODEL,
+    }
+    if synonymous.aa_productive is not None:
+        summary["stopAaVariants"] = sum(1 for aa in aa_merged if aa in stops)
+    per_variant, per_nt_variant = annotate_variants(
+        build_combined_variant_frame(aa_collected, aa_merged), aa_merged, merged, mapping, stops, synonymous, summary
+    )
+
+    aa_reads: dict[tuple[str, str], int] = {}
+    for (nt, label), n in per_replicate_reads.items():
+        aa = mapping.get(nt)
+        if aa is not None:
+            aa_reads[(aa, label)] = aa_reads.get((aa, label), 0) + n
+    log(
+        f"Replicate combination: Starr order, {len(frames)} replicates, error '{ERROR_MODEL}'; "
+        f"{summary['ntVariants']} nucleotide variants -> {summary['aaVariants']} amino-acid variants"
+    )
+    outputs: dict = {
+        "per_replicate": build_per_replicate_frame(
+            aa_collected, COL_AA, aa_reads, extra=PER_REPLICATE_SYNONYMOUS_COLUMNS
+        ),
+        # Every nt variant's own fit in every replicate: what the amino-acid rows above combine.
+        "per_replicate_nt": build_per_replicate_frame(collected, COL_CLONOTYPE, per_replicate_reads),
+        "per_variant": per_variant,
+        "synonymous_summary": summary,
+    }
+    if per_nt_variant is not None:
+        outputs["per_nt_variant"] = per_nt_variant
+    return outputs

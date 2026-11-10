@@ -55,12 +55,12 @@ class TestGlobalBaseline:
 
 
 def _sig_frame(rows):
-    """Signal-frame shape: clonotypeKey, concentrationStr, concentration, signal, clonotype_reads_at_conc."""
+    """Signal-frame shape: clonotypeKey, concentrationStr, concentration, signal, signal_reads_at_conc."""
     return pl.DataFrame(rows)
 
 
 class TestApplyFloorAndWeights:
-    # R8: weight w_j = clonotype_reads_at_conc at concentration j.
+    # R8: weight w_j = signal_reads_at_conc at concentration j.
     def test_weight_equals_reads_sum(self):
         df = _sig_frame(
             [
@@ -69,7 +69,7 @@ class TestApplyFloorAndWeights:
                     "concentrationStr": "1",
                     "concentration": 1.0,
                     "signal": 2.5,
-                    "clonotype_reads_at_conc": 10,
+                    "signal_reads_at_conc": 10,
                 },
             ]
         )
@@ -91,12 +91,26 @@ class TestApplyFloorAndWeights:
                     "concentrationStr": "1",
                     "concentration": 1.0,
                     "signal": 2.5,
-                    "clonotype_reads_at_conc": reads_at_conc,
+                    "signal_reads_at_conc": reads_at_conc,
                 },
             ]
         )
         result = apply_floor_and_weights(df, params)
         assert (result.height == 1) is kept
+
+    # Unsorted reads give no signal, so they neither lift a point over the floor nor weigh it.
+    def test_floor_and_weight_read_the_signal_reads_only(self):
+        params = FitParams(min_reads_per_concentration=3)
+        row = {"clonotypeKey": "A", "concentrationStr": "1", "concentration": 1.0, "signal": 2.5}
+        df = _sig_frame(
+            [
+                {**row, "clonotype_reads_at_conc": 51, "signal_reads_at_conc": 1},
+                {**row, "concentrationStr": "2", "clonotype_reads_at_conc": 51, "signal_reads_at_conc": 5},
+            ]
+        )
+        result = apply_floor_and_weights(df, params)
+        assert result["concentrationStr"].to_list() == ["2"]
+        assert result[WEIGHT].to_list() == [5.0]
 
 
 class TestClassifyInsufficient:

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import polars as pl
 
-from constants import COL_CLONOTYPE, COL_CONC_STR, COL_CONC_VAL
+from constants import COL_CLONOTYPE, COL_CONC_LABEL, COL_CONC_STR, COL_CONC_VAL, COL_REPLICATE
 
 PER_CLONOTYPE_SCHEMA: dict[str, pl.DataType] = {
     COL_CLONOTYPE: pl.Utf8,
@@ -139,3 +139,78 @@ CONCENTRATION_VALUE_SCHEMA: dict[str, pl.DataType] = {
     COL_CONC_STR: pl.Utf8,
     COL_CONC_VAL: pl.Float64,
 }
+
+
+CONCENTRATION_LABEL_SCHEMA: dict[str, pl.DataType] = {
+    COL_CONC_STR: pl.Utf8,
+    COL_CONC_LABEL: pl.Utf8,
+}
+
+
+def build_concentration_label_frame(concentration_value: pl.DataFrame) -> pl.DataFrame:
+    """Each non-zero concentration as a category label that sorts as text in numeric order.
+
+    The rank, zero-padded, then the concentration: "01 · 3.16e-10". The category graphs group by
+    it, since they sort a String axis as text and ignore a stored order once they facet. Two strings
+    of one value rank in text order.
+    """
+    width = len(str(concentration_value.height))
+    rank = pl.int_range(1, pl.len() + 1).cast(pl.Utf8).str.zfill(width)
+    return (
+        concentration_value.sort([COL_CONC_VAL, COL_CONC_STR])
+        .select(COL_CONC_STR, (rank + pl.lit(" · ") + pl.col(COL_CONC_STR)).alias(COL_CONC_LABEL))
+        .sort(COL_CONC_STR)
+    )
+
+
+COL_SERIES = "series"
+SERIES_OBSERVED = "Observed"
+SERIES_FITTED = "Fitted"
+
+
+def _curved_signal(mean_bin: pl.DataFrame, fitted: pl.DataFrame) -> tuple[pl.DataFrame, list[str]]:
+    """The observed signal of the fits that drew a curve, and the key columns the two frames share.
+
+    Only fits with a curve count, so a mean over replicates reads the same replicates for the points
+    and for the curve.
+    """
+    keys = [c for c in mean_bin.columns if c != "meanBin" and c in fitted.columns]
+    curved = fitted.select([c for c in keys if c != COL_CONC_STR]).unique()
+    return mean_bin.join(curved, on=curved.columns, how="semi"), keys
+
+
+def build_signal_series_frame(mean_bin: pl.DataFrame, fitted: pl.DataFrame) -> pl.DataFrame:
+    """The observed signal and the fitted curve stacked in one value column, told apart by series.
+
+    A category graph takes one value column: stacked, the two draw as two lines in each panel.
+    Keeps every key column the two frames share (clonotype, replicate where present, concentration).
+    """
+    observed, keys = _curved_signal(mean_bin, fitted)
+    points = observed.select(*keys, pl.lit(SERIES_OBSERVED).alias(COL_SERIES), pl.col("meanBin").alias("value"))
+    curve = fitted.select(*keys, pl.lit(SERIES_FITTED).alias(COL_SERIES), pl.col("fittedMeanBin").alias("value"))
+    return pl.concat([points, curve]).sort([*keys, COL_SERIES])
+
+
+def build_combined_signal_frame(mean_bin: pl.DataFrame, fitted: pl.DataFrame) -> pl.DataFrame:
+    """Per variant and concentration: the observed mean over replicates, its standard error, and the mean curve.
+
+    The standard error is the sample SD over sqrt(n), null below two replicates. Every concentration
+    of the curve is kept; the observed columns are null where nothing was measured. The observed mean
+    reads the replicates measured at that concentration; the curve mean reads every replicate with a
+    curve, since the pipeline writes each curve on the union of the replicates' concentrations. The
+    column names differ from the per-replicate frames': the workflow keys each imported column by its
+    name.
+    """
+    observed, keys = _curved_signal(mean_bin, fitted)
+    by = [c for c in keys if c != COL_REPLICATE]
+    points = observed.group_by(by).agg(
+        pl.col("meanBin").mean().alias("combinedMeanBin"),
+        (pl.col("meanBin").std(ddof=1) / pl.col("meanBin").count().sqrt()).alias("combinedMeanBinSe"),
+    )
+    return (
+        fitted.group_by(by)
+        .agg(pl.col("fittedMeanBin").mean().alias("combinedFittedMeanBin"))
+        .join(points, on=by, how="full", coalesce=True)
+        .select(*by, "combinedMeanBin", "combinedMeanBinSe", "combinedFittedMeanBin")
+        .sort(by)
+    )

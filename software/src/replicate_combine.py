@@ -9,252 +9,84 @@ per-replicate results and reduces them to one.
   below/above  K_D ran past a wall; the replicate enters at that wall, as Adams's and Phillips's
                code both do
   failed       the replicate produced no K_D
-  filtered     the replicate measured a K_D that a pre-combine filter rejected; left out of the
-               mean and counted. Every filter is off by default
   value        the plain mean of the entered replicates' log10 K_D
-  SE           by `error_model`:
-                 sd_over_sqrt_n  sample SD (ddof 1) / sqrt(n); for n = 1 the replicate's own fit
-                                 SE, where the equation reports one, else empty
-                 phillips        population SD (ddof 0) / sqrt(n + 1). Reproduces the SEM
-                                 published with Phillips 2021 for n >= 2. For n = 1 the paper's
-                                 form is 0, which would rate any single replicate Good; the
-                                 replicate's own fit SE stands in, as under sd_over_sqrt_n
-  SD           sample SD (ddof 1) of the entered replicates, whatever the error model; empty for
-               n = 1
-  bound        no entered replicate measured a K_D. One censoring side must hold at least
-               `censored_majority` of them and more than the other side; the value is that side's
-               wall. Otherwise the sides conflict and the variant fails
+  SE           for n >= 2, max(spread, fit-error term), as for synonymous variants
+               (`classify.rate_mean`). The spread is the sample SD (ddof 1) / sqrt(n). The
+               fit-error term is the RMS of the SEs the replicates carry, over sqrt(n), n counting
+               every entered replicate; with no SE the SE is the spread. For n = 1, the replicate's
+               own SE where it carries one, else empty
+  SD           sample SD (ddof 1) of the entered replicates; empty for n = 1
+  bound        no entered replicate measured a K_D. One censoring side must hold at least half of
+               them and more than the other side; the value is that side's wall. Otherwise the
+               sides conflict and the variant fails
 
 The class is decided once, on the combined value: Failed with no entered replicate; for a bound,
-Non-binder when every replicate on the winning high wall is a Non-binder, else Partial; Good for an
-SE at or below KD_SD_GOOD, Partial above it; and the single replicate's own class when n = 1 and
-there is no SE.
+the wall it sits at under "log_fluorescence", and under "hill_gate_index" the class its replicates
+share, else Partial (`classify.bound_class`); Good for an SE at or below KD_SD_GOOD with more than
+half the entered replicates measured and, under "hill_gate_index" or when no replicate carries an
+SE, more than half of them rated Good; Partial otherwise; and the single replicate's own class when
+n = 1 and there is no SE.
 
-Two rules that both read R² are distinct. The R² gate (`FitParams.r2_gate_min`) runs inside each
-replicate's own fit and rates the fit Failed, so the replicate enters as "failed". The R² floor
-here is a pre-combine filter on a fit that passed: the replicate enters as "filtered".
+The R² gate (`FitParams.r2_gate_min`) runs inside each replicate's own fit and rates the fit
+Failed, so the replicate enters as "failed".
 """
 
 from __future__ import annotations
 
 import math
-import statistics
-from dataclasses import dataclass, field
-from typing import Literal
+from collections.abc import Mapping
+from dataclasses import dataclass, replace
+from functools import partial
 
 import polars as pl
 
-from classify import Classification
-from constants import (
-    COL_CLONOTYPE,
-    COL_REPLICATE,
-    DEFAULT_CENSORED_MAJORITY,
-    KD_SD_GOOD,
-    ReplicateErrorModel,
-)
+from classify import Classification, Combined, Member, MemberState, combine_members, member_from_fit
+from constants import COL_CLONOTYPE, COL_REPLICATE
 from output_build import PER_CLONOTYPE_SCHEMA
+from synonymous import COL_AA, PER_VARIANT_SCHEMA
 
-ReplicateState = Literal["measured", "below", "above", "failed", "filtered"]
-STATES: tuple[ReplicateState, ...] = ("measured", "below", "above", "failed", "filtered")
-ENTERED: tuple[ReplicateState, ...] = ("measured", "below", "above")
+ENTERED: tuple[MemberState, ...] = ("measured", "below", "above")
 
-REASON_ALL_FILTERED = "all_replicates_filtered"
 REASON_ALL_FAILED = "all_replicates_failed"
-REASON_CONFLICTING = "conflicting_censoring"
 
-# A censored value's side of the titration: "below" the lowest concentration or "above" the highest.
-Side = Literal["below", "above"]
-
-# The combined value's place against the titrated range, as the kdRangeSide column reports it.
-RANGE_SIDE: dict[Side | None, str] = {"below": "Below range", None: "In range", "above": "Above range"}
+# The spread the SE reads, as the run summary names it.
+ERROR_MODEL = "sd_over_sqrt_n"
 
 
-@dataclass(frozen=True)
-class _Fit:
-    """One fit row as it enters a mean: its state, its value at the wall or its own, its SE."""
-
-    state: Literal["measured", "below", "above", "failed"]
-    log10_kd: float | None
-    log10_kd_se: float | None
-    affinity_class: str
-
-
-def _from_fit(row: dict, log10_lo: float | None, log10_hi: float | None) -> _Fit:
-    """A per-clonotype fit row as it enters the mean.
-
-    A K_D flagged out of range enters at the nearer wall. "log_fluorescence" pins its K_D at the
-    wall already; "hill_gate_index" reports the raw value, so the midpoint of the range decides
-    which wall it passed.
-    """
-    kd = row["kd"]
-    cls = row["affinityClass"]
-    if cls == "Failed" or kd is None or not math.isfinite(kd) or kd <= 0:
-        return _Fit("failed", None, None, cls)
-    value = math.log10(kd)
-    if row["kdOutOfRange"] and log10_lo is not None and log10_hi is not None:
-        if value <= (log10_lo + log10_hi) / 2:
-            return _Fit("below", log10_lo, None, cls)
-        return _Fit("above", log10_hi, None, cls)
-    se = row["kdLog10Se"]
-    return _Fit("measured", value, se if se is not None and math.isfinite(se) else None, cls)
-
-
-@dataclass(frozen=True)
-class Filters:
-    """The pre-combine filters, each off when None. Both read a fit, so both apply to a measured
-    replicate only: a censored value is set by the wall, not by the fit."""
-
-    fit_error_cutoff: float | None = None
-    r2_floor: float | None = None
-
-    @property
-    def active(self) -> bool:
-        return self.fit_error_cutoff is not None or self.r2_floor is not None
-
-    def rejects(self, log10_kd_se: float | None, r2: float | None) -> bool:
-        # A None SE is not a wide one: the mean bin fit reports no standard error at all, so this
-        # filter has nothing to judge and the replicate passes it. `_from_fit` has already turned
-        # a non-finite SE into None.
-        if self.fit_error_cutoff is not None and log10_kd_se is not None:
-            if log10_kd_se > self.fit_error_cutoff:
-                return True
-        if self.r2_floor is not None:
-            if r2 is None or not math.isfinite(r2) or r2 < self.r2_floor:
-                return True
-        return False
-
-
-NO_FILTERS = Filters()
-
-
-@dataclass(frozen=True)
-class ReplicateValue:
+@dataclass(frozen=True, kw_only=True)
+class ReplicateValue(Member):
     """One replicate's reported K_D for one variant, as it enters the mean."""
 
     replicate: str
-    state: ReplicateState
-    log10_kd: float | None
-    log10_kd_se: float | None
-    affinity_class: str
     r2: float | None = None
     # The replicate's own fit failure reason; None unless its fit rated Failed.
     failure_reason: str | None = None
 
 
-@dataclass(frozen=True)
-class Merged:
-    log10_kd: float | None
-    log10_kd_se: float | None
-    log10_kd_sd: float | None
-    classification: Classification
-    out_of_range: bool | None
-    counts: dict[ReplicateState, int]
-    # The wall a bound sits at; None for a mean of measured values or for no value.
-    side: Side | None = None
-
-    @property
-    def range_side(self) -> str | None:
-        return None if self.log10_kd is None else RANGE_SIDE[self.side]
-
-
-def replicate_value(
-    replicate: str,
-    row: dict,
-    *,
-    log10_lo: float | None,
-    log10_hi: float | None,
-    filters: Filters = NO_FILTERS,
-) -> ReplicateValue:
+def replicate_value(replicate: str, row: dict, *, log10_lo: float | None, log10_hi: float | None) -> ReplicateValue:
     """One replicate's fit row as it enters the mean. `row` is a per-clonotype row."""
-    fit = _from_fit(row, log10_lo, log10_hi)
-    r2 = row.get("r2")
-    state: ReplicateState = fit.state
-    if state == "measured" and filters.rejects(fit.log10_kd_se, r2):
-        state = "filtered"
+    fit = member_from_fit(row, log10_lo, log10_hi)
     return ReplicateValue(
-        replicate, state, fit.log10_kd, fit.log10_kd_se, fit.affinity_class, r2, row.get("fitFailureReason")
+        fit.state,
+        fit.log10_kd,
+        fit.log10_kd_se,
+        fit.affinity_class,
+        replicate=replicate,
+        r2=row.get("r2"),
+        failure_reason=row.get("fitFailureReason"),
     )
 
 
-def _spread_se(values: list[float], error_model: ReplicateErrorModel) -> float:
-    n = len(values)
-    if error_model == "phillips":
-        return statistics.pstdev(values) / math.sqrt(n + 1)
-    return statistics.stdev(values) / math.sqrt(n)
-
-
-def _bound(entered: list[ReplicateValue], counts: dict[ReplicateState, int], majority: float) -> Merged:
-    """No entered replicate measured a K_D: the value is a wall, or the sides conflict.
-
-    Averaging opposite walls would land inside the titrated range and mean nothing, so one side
-    must hold the majority. The threshold is the block's own rule; no paper defines one.
-
-    A bound's class is the wall it sits at, as it is for a single fit.
-    """
-    n = len(entered)
-    sides: tuple[Side, Side] = ("below", "above")
-    share = {side: sum(1 for v in entered if v.state == side) / n for side in sides}
-    for side, other in (sides, sides[::-1]):
-        if share[side] >= majority and share[side] > share[other]:
-            on_side = [v for v in entered if v.state == side]
-            cls = RANGE_SIDE[side]
-            return Merged(on_side[0].log10_kd, None, None, Classification(cls, None), True, counts, side)
-    return Merged(None, None, None, Classification("Failed", REASON_CONFLICTING), None, counts)
-
-
-def combine_replicates(
-    values: list[ReplicateValue],
-    *,
-    error_model: ReplicateErrorModel = "sd_over_sqrt_n",
-    censored_majority: float = DEFAULT_CENSORED_MAJORITY,
-) -> Merged:
-    """One variant's value over its replicates, and its class."""
-    counts: dict[ReplicateState, int] = dict.fromkeys(STATES, 0)
-    for v in values:
-        counts[v.state] += 1
-    entered = [v for v in values if v.state in ENTERED and v.log10_kd is not None]
-    n = len(entered)
-    if n == 0:
-        # A filter dropping a replicate is the more specific cause, so it names the failure.
-        reason = REASON_ALL_FILTERED if counts["filtered"] > 0 else REASON_ALL_FAILED
-        return Merged(None, None, None, Classification("Failed", reason), None, counts)
-
-    if not any(v.state == "measured" for v in entered):
-        return _bound(entered, counts, censored_majority)
-
-    points = [v.log10_kd for v in entered]
-    mean = math.fsum(points) / n
-    if n == 1:
-        se = entered[0].log10_kd_se
-        sd = None
-    else:
-        se = _spread_se(points, error_model)
-        sd = statistics.stdev(points)
-    if se is not None:
-        cls = "Good" if math.isfinite(se) and se <= KD_SD_GOOD else "Partial"
-        return Merged(mean, se, sd, Classification(cls, None), False, counts)
-    return Merged(mean, None, sd, Classification(entered[0].affinity_class, None), False, counts)
+# One variant's value over its replicates, and its class (`classify.combine_members`).
+combine_replicates = partial(combine_members, all_failed_reason=REASON_ALL_FAILED)
 
 
 @dataclass(frozen=True)
 class ReplicateInputs:
-    """The replicate column and every setting the combination reads."""
+    """The column that names each sample's replicate."""
 
     column: str = COL_REPLICATE
-    error_model: ReplicateErrorModel = "sd_over_sqrt_n"
-    filters: Filters = field(default_factory=Filters)
-    censored_majority: float = DEFAULT_CENSORED_MAJORITY
 
-
-# How each replicate's state reads in the per-replicate output: what it contributed to the mean,
-# in the words the panel shows.
-STATE_LABELS: dict[ReplicateState, str] = {
-    "measured": "In the mean",
-    "below": "In the mean, at the lowest concentration",
-    "above": "In the mean, at the highest concentration",
-    "failed": "Left out, no fit",
-    "filtered": "Left out by a filter",
-}
 
 PER_REPLICATE_COLUMNS: dict[str, pl.DataType] = {
     COL_REPLICATE: pl.Utf8,
@@ -265,7 +97,6 @@ PER_REPLICATE_COLUMNS: dict[str, pl.DataType] = {
     "r2": pl.Float64,
     "affinityClass": pl.Utf8,
     "fitFailureReason": pl.Utf8,
-    "kdState": pl.Utf8,
 }
 
 # Counted per variant: how many replicates reached each state. `replicateCount` is the number that
@@ -276,7 +107,6 @@ COUNT_SCHEMA: dict[str, pl.DataType] = {
     "replicateCensoredBelowCount": pl.Int64,
     "replicateCensoredAboveCount": pl.Int64,
     "replicateFailedCount": pl.Int64,
-    "replicateFilteredCount": pl.Int64,
 }
 
 Collected = dict[str, list[tuple[ReplicateValue, dict]]]
@@ -288,47 +118,46 @@ def collect_values(
     *,
     log10_lo: float | None,
     log10_hi: float | None,
-    filters: Filters = NO_FILTERS,
 ) -> Collected:
     """Each variant's per-replicate values, paired with the fit row each came from."""
     collected: Collected = {}
     for label, frame in frames:
         for row in frame.with_columns(pl.col(key_col).cast(pl.Utf8)).iter_rows(named=True):
-            value = replicate_value(label, row, log10_lo=log10_lo, log10_hi=log10_hi, filters=filters)
+            value = replicate_value(label, row, log10_lo=log10_lo, log10_hi=log10_hi)
             collected.setdefault(row[key_col], []).append((value, row))
     return collected
 
 
-def merge_all(
-    collected: Collected,
-    *,
-    error_model: ReplicateErrorModel = "sd_over_sqrt_n",
-    censored_majority: float = DEFAULT_CENSORED_MAJORITY,
-) -> dict[str, Merged]:
-    """One `Merged` per variant, keys in sorted order."""
+def merge_all(collected: Collected, *, wall_classes: bool = True, fits_report_se: bool = True) -> dict[str, Combined]:
+    """One combined value per variant, keys in sorted order."""
     return {
         key: combine_replicates(
-            [v for v, _ in collected[key]],
-            error_model=error_model,
-            censored_majority=censored_majority,
+            [v for v, _ in collected[key]], wall_classes=wall_classes, fits_report_se=fits_report_se
         )
         for key in sorted(collected)
     }
 
 
 def build_per_replicate_frame(
-    collected: Collected, key_col: str, reads: dict[tuple[str, str], int] | None = None
+    collected: Collected,
+    key_col: str,
+    reads: dict[tuple[str, str], int] | None = None,
+    extra: Mapping[str, pl.DataType] | None = None,
 ) -> pl.DataFrame:
     """One row per (variant, replicate): the value that replicate contributed, and its state.
 
-    `kd` is the value as it enters the mean, so a censored replicate reports the wall it passed
-    and a filtered one reports the K_D the filter rejected. `reads` maps (variant, replicate) to
-    the reads that replicate's fit saw, which is what separates a wide value from a wrong one.
+    `kd` is the value as it enters the mean, so a censored replicate reports the wall it passed.
+    `reads` maps (variant, replicate) to every read of the variant in that replicate, which is what
+    separates a wide value from a wrong one.
+    `extra` names further columns copied as they are from each value's source row.
     """
-    schema: dict[str, pl.DataType] = {key_col: pl.Utf8, **PER_REPLICATE_COLUMNS}
+    extra = extra or {}
+    schema: dict[str, pl.DataType] = {key_col: pl.Utf8, **PER_REPLICATE_COLUMNS, **extra}
     cols: dict[str, list] = {name: [] for name in schema}
     for key in sorted(collected):
-        for value, _row in collected[key]:
+        for value, row in collected[key]:
+            for name in extra:
+                cols[name].append(row[name])
             cols[key_col].append(key)
             cols[COL_REPLICATE].append(value.replicate)
             cols["replicateReads"].append(None if reads is None else reads.get((key, value.replicate)))
@@ -339,14 +168,13 @@ def build_per_replicate_frame(
             cols["r2"].append(value.r2)
             cols["affinityClass"].append(value.affinity_class)
             cols["fitFailureReason"].append(value.failure_reason)
-            cols["kdState"].append(STATE_LABELS[value.state])
     return pl.DataFrame(cols, schema=schema)
 
 
-def _counts_of(merged: Merged) -> list[int]:
+def _counts_of(merged: Combined) -> list[int]:
     c = merged.counts
     entered = c["measured"] + c["below"] + c["above"]
-    return [entered, c["measured"], c["below"], c["above"], c["failed"], c["filtered"]]
+    return [entered, c["measured"], c["below"], c["above"], c["failed"]]
 
 
 def _mean_over_entered(rows: list[tuple[ReplicateValue, dict]], field_name: str) -> float | None:
@@ -366,7 +194,7 @@ COMBINED_CLONOTYPE_SCHEMA: dict[str, pl.DataType] = {
 }
 
 
-def build_combined_clonotype_frame(collected: Collected, merged: dict[str, Merged]) -> pl.DataFrame:
+def build_combined_clonotype_frame(collected: Collected, merged: dict[str, Combined]) -> pl.DataFrame:
     """The per-clonotype frame the rest of the pipeline reads, combined over the replicates.
 
     `hillCoefficient` and `r2` are the mean over the replicates that entered: no equation defines
@@ -388,3 +216,55 @@ def build_combined_clonotype_frame(collected: Collected, merged: dict[str, Merge
         for name, count in zip(COUNT_SCHEMA, _counts_of(m)):
             cols[name].append(count)
     return pl.DataFrame(cols, schema=COMBINED_CLONOTYPE_SCHEMA)
+
+
+# The counts the synonymous combination produced inside each replicate, summed over them.
+_NT_COUNT_FIELDS = ("ntVariants", "ntMeasured", "ntCensoredBelow", "ntCensoredAbove", "ntFailed")
+
+COMBINED_VARIANT_SCHEMA: dict[str, pl.DataType] = {**PER_VARIANT_SCHEMA, **COUNT_SCHEMA}
+
+
+def require_synonymous_majority(collected: Collected, merged: dict[str, Combined]) -> dict[str, Combined]:
+    """Good amino-acid values downgraded to Partial unless more than half of their synonymous
+    variants' fits were measured, counted over the replicates that entered the mean.
+
+    A replicate's amino-acid value with a measured synonymous variant enters the replicates' mean as
+    measured, however many of its synonymous variants sat at a wall. Two such replicates agree on the
+    walls and shrink the SE, so the majority rule is applied again on the synonymous variants. A bound
+    is left as it is: it has no SE
+    for the rule to guard, and it keeps the class it has without replicates.
+    """
+    out: dict[str, Combined] = {}
+    for key, m in merged.items():
+        if m.classification.affinity_class == "Good" and not m.out_of_range:
+            rows = [row for value, row in collected[key] if value.state in ENTERED]
+            measured = sum(int(row["ntMeasured"] or 0) for row in rows)
+            entered = measured + sum(int(row[f] or 0) for row in rows for f in ("ntCensoredBelow", "ntCensoredAbove"))
+            if 2 * measured <= entered:
+                m = replace(m, classification=Classification("Partial", None))
+        out[key] = m
+    return out
+
+
+def build_combined_variant_frame(collected: Collected, merged: dict[str, Combined]) -> pl.DataFrame:
+    """The amino-acid frame, combined over the replicates after the synonymous combination.
+
+    The nucleotide counts are the sum over the replicates: each replicate fitted its own synonymous
+    variants.
+    """
+    cols: dict[str, list] = {name: [] for name in COMBINED_VARIANT_SCHEMA}
+    for key, m in merged.items():
+        rows = collected[key]
+        cols[COL_AA].append(key)
+        cols["kd"].append(None if m.log10_kd is None else 10.0**m.log10_kd)
+        cols["kdNegLog10"].append(None if m.log10_kd is None else -m.log10_kd)
+        cols["kdLog10Se"].append(m.log10_kd_se)
+        cols["kdLog10Sd"].append(m.log10_kd_sd)
+        cols["affinityClass"].append(m.classification.affinity_class)
+        cols["fitFailureReason"].append(m.classification.failure_reason)
+        cols["kdOutOfRange"].append(m.out_of_range)
+        for name in _NT_COUNT_FIELDS:
+            cols[name].append(sum(int(row[name] or 0) for _, row in rows))
+        for name, count in zip(COUNT_SCHEMA, _counts_of(m)):
+            cols[name].append(count)
+    return pl.DataFrame(cols, schema=COMBINED_VARIANT_SCHEMA)

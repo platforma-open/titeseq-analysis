@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from classify import classify
+from classify import Member, censored_side, classify, rate_mean
 from constants import DEFAULT_PARAMS, FitParams
 
 
@@ -85,3 +85,49 @@ def test_infinite_r2_fails(r2):
     result = classify(r2, 1.0, True, DEFAULT_PARAMS)
     assert result.affinity_class == "Failed"
     assert result.failure_reason == "low_r2"
+
+
+class TestRateMean:
+    """The Good-majority rule follows the equation, not the SEs the members happen to carry."""
+
+    @staticmethod
+    def _members(*classes: str) -> list[Member]:
+        # Close values, each with a small SE: the SE alone would say Good.
+        return [Member("measured", -8.0 - 0.01 * i, 0.05, cls) for i, cls in enumerate(classes)]
+
+    def test_members_with_an_se_under_fits_without_one_need_a_good_majority(self):
+        *_, classification = rate_mean(self._members("Partial", "Partial", "Good"), fits_report_se=False)
+        assert classification.affinity_class == "Partial"
+
+    def test_a_good_majority_under_fits_without_an_se_rates_good(self):
+        *_, classification = rate_mean(self._members("Good", "Good", "Partial"), fits_report_se=False)
+        assert classification.affinity_class == "Good"
+
+    def test_one_member_with_a_spread_se_keeps_its_own_class_under_fits_without_one(self):
+        _, se, _, classification = rate_mean(self._members("Partial"), fits_report_se=False)
+        assert se == 0.05
+        assert classification.affinity_class == "Partial"
+
+    def test_members_with_a_fit_se_rate_on_the_se_alone(self):
+        *_, classification = rate_mean(self._members("Partial", "Partial", "Good"), fits_report_se=True)
+        assert classification.affinity_class == "Good"
+
+    def test_members_with_no_se_need_a_good_majority_under_either_equation(self):
+        members = [Member("measured", -8.0 - 0.01 * i, None, "Partial") for i in range(3)]
+        for fits_report_se in (True, False):
+            *_, classification = rate_mean(members, fits_report_se=fits_report_se)
+            assert classification.affinity_class == "Partial"
+
+
+@pytest.mark.parametrize(
+    "sides, expected",
+    [
+        (["below", "below", "above"], "below"),
+        (["above", "above", "below"], "above"),
+        (["above"], "above"),
+        (["below", "above"], None),
+        (["below", "below", "above", "above"], None),
+    ],
+)
+def test_censored_side_needs_half_the_members_and_more_than_the_other_side(sides, expected):
+    assert censored_side(sides) == expected
