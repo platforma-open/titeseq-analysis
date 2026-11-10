@@ -254,7 +254,7 @@ variantColumns := func(blockId, kdAnnotations, opts) {
 			}
 		}),
 		countColumn("ntVariants", blockId, undefined, "NT variants",
-			"Synonymous nucleotide variants of this amino-acid variant that were fitted." + (replicates ? " A variant fitted in several replicates counts once." : ""), "optional", "181"),
+			"Synonymous nucleotide variants of this amino-acid variant that were fitted." + (replicates ? " A variant fitted in several replicates counts once." : ""), "default", "181"),
 		countColumn("ntMeasured", blockId, "measured", "NT variants measured",
 			countDescription("Nucleotide variants whose Kd,app lies inside the titrated range."), "optional", "180"),
 		countColumn("ntCensoredBelow", blockId, "censoredBelow", "NT variants censored low",

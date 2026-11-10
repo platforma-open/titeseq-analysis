@@ -177,8 +177,8 @@ Pages and export:
   per amino-acid variant, per replicate and per nucleotide variant and replicate, the nt -> aa
   variant link, the reads each fit used, the observed signal and the fitted curves. Rows are keyed
   by the variant keys.
-- The Main table shows the upstream Mutations and mutation count columns by default, and the
-  variant class on request. Page titles and help text name the input: clonotype, variant or
+- The Main table shows the upstream Mutations and mutation count columns and the count of
+  synonymous nucleotide variants by default, and the variant class on request. Page titles and help text name the input: clonotype, variant or
   peptide. The tables list the Kd,app columns first, then the variant class, parent delta and
   counts, then the columns of other blocks.
 - The export carries R², the fit failure reason and `kdOutOfRange`, and under the mean bin
