@@ -6,8 +6,10 @@ import { PlAlert } from "@platforma-sdk/ui-vue";
 import { computed } from "vue";
 import { useApp } from "../app";
 import TiteseqPage from "../components/TiteseqPage.vue";
+import { useNoun } from "../composables/useNoun";
 
 const app = useApp();
+const { noun } = useNoun();
 
 const REPLICATE_AXIS = "pl7.app/vdj/replicate";
 
@@ -79,12 +81,12 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
 <template>
   <TiteseqPage title="Titration Curves" mode="graph">
     <PlAlert v-if="hasResults && !binMode" type="warn">
-      No-bin mode: Kd,app values reflect clonotype frequency shifts, not fluorescence. They are not
+      No-bin mode: Kd,app values reflect {{ noun }} frequency shifts, not fluorescence. They are not
       comparable to bin-derived results — do not mix in the same Lead Selection ranking.
     </PlAlert>
     <PlAlert v-if="isEmpty" type="warn">
-      All clonotypes failed to fit. On the Clonotype Fit Results page, loosen the limits in Settings
-      or read the fit log in Logs.
+      All {{ noun }}s failed to fit. On the Main page, loosen the limits in Settings or read the fit
+      log in Logs.
     </PlAlert>
 
     <GraphMaker
@@ -95,7 +97,7 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
       :default-options="defaultOptions"
       default-palette="bright"
       :status-text="{
-        noPframe: { title: 'Open Inputs (top right) to configure the block and run it.' },
+        noPframe: { title: 'Configure the block in Settings on the Main page and run it.' },
       }"
     />
   </TiteseqPage>

@@ -83,7 +83,7 @@ const defaultOptions = computed((): PredefinedGraphOption<"scatterplot">[] | und
       :p-frame="app.model.outputs.summaryPfHandle"
       :default-options="defaultOptions"
       :status-text="{
-        noPframe: { title: 'Open Inputs (top right) to configure the block and run it.' },
+        noPframe: { title: 'Configure the block in Settings on the Main page and run it.' },
       }"
     />
   </TiteseqPage>
