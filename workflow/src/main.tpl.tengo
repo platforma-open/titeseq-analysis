@@ -926,8 +926,8 @@ wf.body(func(args) {
 	// behind it (the reads its fits used, and the counts of replicates and of synonymous variants),
 	// and in synonymous mode each variant's class and its change against its parent. The
 	// per-concentration signal, the per-replicate values and the plot positions stay in this block's
-	// own table and graphs. A column an equation or a run does not write is simply absent. The kdLog10Sd header is the replicates'
-	// spread with replicates, on every grain; without them it exists on the amino-acid grain only,
+	// own table and graphs. A column an equation or a run does not write is simply absent. The
+	// kdLog10Sd header is the replicates' spread with replicates, on every grain; without them it exists on the amino-acid grain only,
 	// as the synonymous variants' spread under a name of its own. kdLog10SynonymSd is on the
 	// amino-acid grain only.
 	exportAllowed := {

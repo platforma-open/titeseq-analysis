@@ -45,7 +45,9 @@ Test_values_reuse_the_nt_grain_names := func() {
 
 Test_counts_share_one_name_and_differ_by_state := func() {
 	cols := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: false, affinityClassValues: VALUES, affinityClassCutoff: CUTOFF, boundRule: "", variantClass: false }))
-	states := { ntVariants: "all", ntMeasured: "measured", ntCensoredBelow: "censoredBelow",
+	test.isEqual({ "pl7.app/block": "blk" }, cols.ntVariants.spec.domain, "the total has the Kd,app columns' domain")
+	test.isEqual(variantColumns.COUNT_NAME, cols.ntVariants.spec.name, "name of the total")
+	states := { ntMeasured: "measured", ntCensoredBelow: "censoredBelow",
 		ntCensoredAbove: "censoredAbove", ntFailed: "failed" }
 	for h, state in states {
 		test.isEqual(variantColumns.COUNT_NAME, cols[h].spec.name, "name of " + h)
@@ -124,7 +126,9 @@ Test_with_replicates_the_counts_say_they_are_summed := func() {
 	opts := { parentMode: false, affinityClassValues: VALUES, affinityClassCutoff: CUTOFF, boundRule: "", variantClass: false }
 	without := byHeader(variantColumns.variantColumns("blk", KD, opts))
 	with := byHeader(variantColumns.variantColumns("blk", KD, maps.merge(opts, { replicateColumns: [] })))
-	for h in ["ntVariants", "ntMeasured", "ntCensoredBelow", "ntCensoredAbove", "ntFailed"] {
+	test.isTrue(text.contains(with.ntVariants.spec.annotations["pl7.app/description"], "counts once"), "the total with replicates")
+	test.isFalse(text.contains(without.ntVariants.spec.annotations["pl7.app/description"], "counts once"), "the total without replicates")
+	for h in ["ntMeasured", "ntCensoredBelow", "ntCensoredAbove", "ntFailed"] {
 		test.isFalse(text.contains(without[h].spec.annotations["pl7.app/description"], "summed over the replicates"), h + " without replicates")
 		test.isTrue(text.contains(with[h].spec.annotations["pl7.app/description"], "summed over the replicates"), h + " with replicates")
 	}

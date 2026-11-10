@@ -219,7 +219,7 @@ def build_combined_clonotype_frame(collected: Collected, merged: dict[str, Combi
 
 
 # The counts the synonymous combination produced inside each replicate, summed over them.
-_NT_COUNT_FIELDS = ("ntVariants", "ntMeasured", "ntCensoredBelow", "ntCensoredAbove", "ntFailed")
+_NT_STATE_COUNT_FIELDS = ("ntMeasured", "ntCensoredBelow", "ntCensoredAbove", "ntFailed")
 
 COMBINED_VARIANT_SCHEMA: dict[str, pl.DataType] = {**PER_VARIANT_SCHEMA, **COUNT_SCHEMA}
 
@@ -246,11 +246,14 @@ def require_synonymous_majority(collected: Collected, merged: dict[str, Combined
     return out
 
 
-def build_combined_variant_frame(collected: Collected, merged: dict[str, Combined]) -> pl.DataFrame:
+def build_combined_variant_frame(
+    collected: Collected, merged: dict[str, Combined], nt_variants: dict[str, int]
+) -> pl.DataFrame:
     """The amino-acid frame, combined over the replicates after the synonymous combination.
 
-    The nucleotide counts are the sum over the replicates: each replicate fitted its own synonymous
-    variants.
+    `nt_variants` is each amino-acid variant's count of distinct synonymous variants fitted in any
+    replicate. The counts by state are the sum over the replicates: each replicate fitted its own
+    synonymous variants.
     """
     cols: dict[str, list] = {name: [] for name in COMBINED_VARIANT_SCHEMA}
     for key, m in merged.items():
@@ -263,7 +266,8 @@ def build_combined_variant_frame(collected: Collected, merged: dict[str, Combine
         cols["affinityClass"].append(m.classification.affinity_class)
         cols["fitFailureReason"].append(m.classification.failure_reason)
         cols["kdOutOfRange"].append(m.out_of_range)
-        for name in _NT_COUNT_FIELDS:
+        cols["ntVariants"].append(nt_variants.get(key, 0))
+        for name in _NT_STATE_COUNT_FIELDS:
             cols[name].append(sum(int(row[name] or 0) for _, row in rows))
         for name, count in zip(COUNT_SCHEMA, _counts_of(m)):
             cols[name].append(count)

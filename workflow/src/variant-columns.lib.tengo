@@ -42,7 +42,11 @@ classColumn := func(blockId, id, description) {
 
 countColumn := func(header, blockId, state, label, description, visibility, priority) {
 	domain := { "pl7.app/block": blockId }
-	domain[COUNT_STATE] = state
+	// The total carries no state, so its domain is the Kd,app columns' and a downstream block can
+	// pair the two.
+	if !is_undefined(state) {
+		domain[COUNT_STATE] = state
+	}
 	return column(header, {
 		name: COUNT_NAME,
 		valueType: "Int",
@@ -63,7 +67,7 @@ KD_REPLICATES_DESCRIPTION := "Kd,app of the amino-acid variant: 10 to the mean l
 
 SE_DESCRIPTION := "Standard error of the mean log10 Kd,app. With two or more synonymous nucleotide variants, the larger of two terms: their spread, the SD over the square root of their number; and their fit error. The fit error is the root mean square of their own fit SEs over the square root of their number, where the equation reports a fit SE; one with no fit SE, such as one at an edge of the range, counts at the typical error of the others. With one variant, its own fit SE where the equation reports one. Empty for a bound and for a failed variant. At or below 0.5, Kd,app is rated Good."
 
-COUNT_SUM_NOTE := "With sample replicates, this is summed over the replicates: a nucleotide variant counts once in each replicate it was fitted in."
+COUNT_SUM_NOTE := "With sample replicates, this is summed over the replicates: a nucleotide variant counts once in each replicate it was fitted in, so the states can add up to more than the NT variants column."
 
 FAILURE_DESCRIPTION := "Why the amino-acid variant gets the rating Failed. all_variants_failed: none of its synonymous nucleotide variants has a Kd,app. conflicting_censoring: they sit at opposite edges of the range with no edge holding most of them. not_productive: the variant has a stop codon or a frame shift. Empty for other ratings."
 
@@ -142,8 +146,8 @@ deltaColumns := func(blockId, idPrefix, description) {
  */
 variantColumns := func(blockId, kdAnnotations, opts) {
 	domain := { "pl7.app/block": blockId }
-	// With replicates the caller passes the replicate error columns, and every count is summed over
-	// the replicates: the synonymous variants are fitted again in each one.
+	// With replicates the caller passes the replicate error columns, and every count by state is
+	// summed over the replicates: the synonymous variants are fitted again in each one.
 	replicates := !is_undefined(opts.replicateColumns)
 	countDescription := func(description) {
 		if !replicates {
@@ -249,8 +253,8 @@ variantColumns := func(blockId, kdAnnotations, opts) {
 				"pl7.app/table/orderPriority": "196"
 			}
 		}),
-		countColumn("ntVariants", blockId, "all", "NT variants",
-			countDescription("Synonymous nucleotide variants of this amino-acid variant that were fitted."), "optional", "181"),
+		countColumn("ntVariants", blockId, undefined, "NT variants",
+			"Synonymous nucleotide variants of this amino-acid variant that were fitted." + (replicates ? " A variant fitted in several replicates counts once." : ""), "optional", "181"),
 		countColumn("ntMeasured", blockId, "measured", "NT variants measured",
 			countDescription("Nucleotide variants whose Kd,app lies inside the titrated range."), "optional", "180"),
 		countColumn("ntCensoredBelow", blockId, "censoredBelow", "NT variants censored low",

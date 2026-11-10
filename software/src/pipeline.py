@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import math
 import os
+from collections import Counter
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor
 from functools import partial
@@ -1170,8 +1171,16 @@ def _combine_replicate_synonymous(
     }
     if synonymous.aa_productive is not None:
         summary["stopAaVariants"] = sum(1 for aa in aa_merged if aa in stops)
+    # A synonymous variant fitted in several replicates is one variant.
+    nt_variants = Counter(mapping[nt] for nt in fitted_nt if nt in mapping)
     per_variant, per_nt_variant = annotate_variants(
-        build_combined_variant_frame(aa_collected, aa_merged), aa_merged, merged, mapping, stops, synonymous, summary
+        build_combined_variant_frame(aa_collected, aa_merged, nt_variants),
+        aa_merged,
+        merged,
+        mapping,
+        stops,
+        synonymous,
+        summary,
     )
 
     aa_reads: dict[tuple[str, str], int] = {}

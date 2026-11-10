@@ -48,9 +48,10 @@ Synonymous variants:
   `pl7.app/vdj/kd`, `pl7.app/vdj/kdNegLog10`, `pl7.app/vdj/kdLog10Se`, `pl7.app/vdj/affinityClass`,
   `pl7.app/vdj/kdOutOfRange`. The affinity class takes the equation's declared values and cutoff,
   as on the nucleotide grain. `pl7.app/vdj/kdNtVariants` counts the nucleotide variants behind
-  each value, split by `pl7.app/vdj/kdNtVariantState` (all, measured, censored low, censored
-  high, failed). With replicates the counts are summed over the replicates, and their descriptions
-  say so.
+  each value. The total carries the Kd,app columns' domain; the counts by state add
+  `pl7.app/vdj/kdNtVariantState` (measured, censored low, censored high, failed). With replicates
+  the total counts a variant fitted in several replicates once, the counts by state are summed
+  over the replicates, and their descriptions say so.
 - `pl7.app/vdj/variantClass` (String, discrete filter) on both grains, after Starr's classes:
   `wildtype`, `synonymous`, `nonproductive`, `1 nonsynonymous`, `>1 nonsynonymous`. The amino-acid
   grain   needs the amino-acid `pl7.app/repertoire/mutationCount`; the nucleotide grain needs that and the

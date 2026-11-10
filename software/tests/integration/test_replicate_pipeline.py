@@ -513,9 +513,10 @@ class TestStarrOrdering:
         combined = outputs["per_variant"].filter(pl.col("aaKey") == "X")["kdLog10Se"].item()
         assert combined == pytest.approx(max(spread, fit_term), rel=1e-9)
 
-    def test_the_nucleotide_counts_add_up_over_the_replicates(self, outputs):
+    def test_a_variant_counts_once_and_its_states_add_up_over_the_replicates(self, outputs):
+        # c1 and c2 in replicate A, c1 alone in B: two synonymous variants, three fits in range.
         row = outputs["per_variant"].row(0, named=True)
-        assert row["ntVariants"] == 3
+        assert row["ntVariants"] == 2
         assert row["ntMeasured"] == 3
         assert row["replicateCount"] == 2
 
