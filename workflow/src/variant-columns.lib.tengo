@@ -33,7 +33,7 @@ classColumn := func(blockId, id, description) {
 				"pl7.app/isScore": "false",
 				"pl7.app/isDiscreteFilter": "true",
 				"pl7.app/discreteValues": "[\"wildtype\",\"synonymous\",\"nonproductive\",\"1 nonsynonymous\",\">1 nonsynonymous\"]",
-				"pl7.app/table/visibility": "default",
+				"pl7.app/table/visibility": "optional",
 				"pl7.app/table/orderPriority": "184"
 			}
 		}

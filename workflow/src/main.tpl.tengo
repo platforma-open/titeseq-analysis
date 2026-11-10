@@ -8,6 +8,7 @@ exec := import("@platforma-sdk/workflow-tengo:exec")
 assets := import("@platforma-sdk/workflow-tengo:assets")
 xsv := import("@platforma-sdk/workflow-tengo:pframes.xsv")
 pframes := import("@platforma-sdk/workflow-tengo:pframes")
+fileLib := import("@platforma-sdk/workflow-tengo:file")
 pSpec := import("@platforma-sdk/workflow-tengo:pframes.spec")
 canonical := import("@platforma-sdk/workflow-tengo:canonical")
 maps := import("@platforma-sdk/workflow-tengo:maps")
@@ -978,19 +979,28 @@ wf.body(func(args) {
 		signalPf: pframes.exportFrame(signalPf),
 		logHandle: fit.getStdoutStream(),
 		// What the run must tell the user, as a JSON list of sentences; [] when nothing.
-		runWarnings: fit.getFileContent("run_warnings.json")
+		runWarnings: fit.getFileContent("run_warnings.json"),
+		// The software's own tables, for download as they were written.
+		rawVariantFits: fileLib.exportFile(fit.getFile("per_clonotype.tsv")),
+		rawFitReads: fileLib.exportFile(fit.getFile("fit_reads.tsv")),
+		rawSignal: fileLib.exportFile(fit.getFile("mean_bin.tsv")),
+		rawFittedCurves: fileLib.exportFile(fit.getFile("fitted_mean_bin.tsv"))
 	}
 	// The per-replicate values stay out of exportPf and out of the main table: their extra axis
 	// would fan every row out by the replicate count.
 	if hasReplicate {
 		outputs.replicatePf = pframes.exportFrame(buildTracedPf([replicateImported], []))
+		outputs.rawReplicateFits = fileLib.exportFile(fit.getFile("per_replicate.tsv"))
 	}
 	if !is_undefined(replicateNtImported) {
 		outputs.replicateNtPf = pframes.exportFrame(buildTracedPf([replicateNtImported], []))
+		outputs.rawNtReplicateFits = fileLib.exportFile(fit.getFile("per_replicate_nt.tsv"))
 	}
 	if syn.synonymous {
 		outputs.variantSummaryPf = pframes.exportFrame(buildTracedPf(variantSources, []))
 		outputs.synonymousSummary = fit.getFileContent("synonymous_summary.json")
+		outputs.rawAaVariantFits = fileLib.exportFile(fit.getFile("per_variant.tsv"))
+		outputs.rawNtToAaVariant = fileLib.exportFile(fit.getFile("nt_aa_variant.tsv"))
 		// The nt grain's class and parent delta where they resolve, and always each synonymous
 		// variant's amino-acid variant label: the NT Variants page filters by it, with or without the
 		// optional columns.

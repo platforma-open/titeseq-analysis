@@ -170,10 +170,15 @@ Fits and inputs:
 
 Pages and export:
 
-- The pages are Main, NT Variants (synonymous mode), Replicates (with replicates), then the 2.5.0
-  graph pages unchanged: Titration Curves, Kd Distribution and Affinity vs Fit Quality. The graph
-  pages always show. NT Variants and Replicates follow the last run, and before a run or during
-  one, what the inputs predict. Page titles and help text name the input: clonotype, variant or
+- The pages are Main, then the 2.5.0 graph pages unchanged: Titration Curves, Kd Distribution and
+  Affinity vs Fit Quality. The NT Variants and Replicates tables have no page link; their values
+  leave the block through Export raw data.
+- Export raw data on the Main page saves a ZIP of the tables the run wrote: the fits per variant,
+  per amino-acid variant, per replicate and per nucleotide variant and replicate, the nt -> aa
+  variant link, the reads each fit used, the observed signal and the fitted curves. Rows are keyed
+  by the variant keys.
+- The Main table shows the upstream Mutations and mutation count columns by default, and the
+  variant class on request. Page titles and help text name the input: clonotype, variant or
   peptide. The tables list the Kd,app columns first, then the variant class, parent delta and
   counts, then the columns of other blocks.
 - The export carries R², the fit failure reason and `kdOutOfRange`, and under the mean bin

@@ -22,7 +22,7 @@ import {
   migrateV5ToV6,
   migrateV6ToV7,
   replicateViewsFor,
-  sectionsFor,
+  SECTIONS,
 } from "./index";
 
 const ref = (name: string): PlRef => ({ __isRef: true, blockId: "b1", name });
@@ -305,27 +305,8 @@ describe("a project stored on the v7 data model", () => {
 describe("the pages", () => {
   const GRAPHS = ["/titration-curves", "/kd-distribution", "/affinity-vs-fit"];
 
-  it("are the tables, then the three graph pages", () => {
-    expect(sectionsFor({ synonymous: true }).map((s) => s.href)).toEqual([
-      "/",
-      "/nt-variants",
-      ...GRAPHS,
-    ]);
-    expect(sectionsFor({ synonymous: false }).map((s) => s.href)).toEqual(["/", ...GRAPHS]);
-  });
-
-  it("add the Replicates page where the run had replicates", () => {
-    expect(sectionsFor({ synonymous: true, replicates: true }).map((s) => s.href)).toEqual([
-      "/",
-      "/nt-variants",
-      "/replicates",
-      ...GRAPHS,
-    ]);
-    expect(sectionsFor({ synonymous: false, replicates: true }).map((s) => s.href)).toEqual([
-      "/",
-      "/replicates",
-      ...GRAPHS,
-    ]);
+  it("are the main table, then the three graph pages", () => {
+    expect(SECTIONS.map((s) => s.href)).toEqual(["/", ...GRAPHS]);
   });
 
   it("give the Replicates page the nt table in synonymous mode", () => {

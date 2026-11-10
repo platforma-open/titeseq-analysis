@@ -895,24 +895,35 @@ export const replicateViewsFor = (run: RunShape) => {
 export type ReplicateView = ReturnType<typeof replicateViewsFor>[number]["value"];
 
 /**
- * The block's pages: the tables, then the three graph pages, which always show. The nucleotide
- * variant table exists in synonymous mode only, the Replicates page where the run has replicates.
- * Each entry stays an `as const` literal: the routes are typed from the hrefs.
+ * The block's pages: the main table, then the three graph pages. The nucleotide variant table and
+ * the Replicates page keep their routes but are not listed; their values leave the block through
+ * the raw data download. Each entry stays an `as const` literal: the routes are typed from the
+ * hrefs.
  */
-export const sectionsFor = (run: RunShape) => {
-  return [
-    { type: "link" as const, href: "/" as const, label: "Main" },
-    ...(run.synonymous
-      ? [{ type: "link" as const, href: "/nt-variants" as const, label: "NT Variants" }]
-      : []),
-    ...(run.replicates
-      ? [{ type: "link" as const, href: "/replicates" as const, label: "Replicates" }]
-      : []),
-    { type: "link" as const, href: "/titration-curves" as const, label: "Titration Curves" },
-    { type: "link" as const, href: "/kd-distribution" as const, label: "Kd Distribution" },
-    { type: "link" as const, href: "/affinity-vs-fit" as const, label: "Affinity vs Fit Quality" },
-  ];
-};
+export const SECTIONS = [
+  { type: "link" as const, href: "/" as const, label: "Main" },
+  { type: "link" as const, href: "/titration-curves" as const, label: "Titration Curves" },
+  { type: "link" as const, href: "/kd-distribution" as const, label: "Kd Distribution" },
+  { type: "link" as const, href: "/affinity-vs-fit" as const, label: "Affinity vs Fit Quality" },
+];
+
+/** The software's own tables offered for download, by output field, with their file names. */
+const RAW_FILES = [
+  { field: "rawVariantFits", fileName: "variant_fits.tsv" },
+  { field: "rawAaVariantFits", fileName: "aa_variant_fits.tsv" },
+  { field: "rawNtToAaVariant", fileName: "nt_to_aa_variant.tsv" },
+  { field: "rawReplicateFits", fileName: "replicate_fits.tsv" },
+  { field: "rawNtReplicateFits", fileName: "nt_replicate_fits.tsv" },
+  { field: "rawFitReads", fileName: "fit_reads.tsv" },
+  { field: "rawSignal", fileName: "signal.tsv" },
+  { field: "rawFittedCurves", fileName: "fitted_curves.tsv" },
+];
+
+/** The upstream columns the tables show without being asked: what each variant changed. */
+const UPSTREAM_SHOWN_BY_DEFAULT = new Set([
+  "pl7.app/repertoire/mutations",
+  "pl7.app/repertoire/mutationCount",
+]);
 
 /**
  * The shape of the last run, read from its outputs. With no outputs to read, before the first run
@@ -1019,7 +1030,9 @@ function fitTable(
       const priority = Number(c.getSpec().annotations?.["pl7.app/table/orderPriority"]);
       return c.withSpecs({
         annotations: {
-          "pl7.app/table/visibility": "optional",
+          "pl7.app/table/visibility": UPSTREAM_SHOWN_BY_DEFAULT.has(c.getSpec().name)
+            ? "default"
+            : "optional",
           ...(Number.isFinite(priority) && {
             "pl7.app/table/orderPriority": String(priority / 10_000),
           }),
@@ -1266,6 +1279,16 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
 
   .output("logHandle", (ctx) => ctx.outputs?.resolve("logHandle")?.getLogHandle())
 
+  // The tables a run wrote, as files. A table the run did not write is left out.
+  .output("rawFiles", (ctx) =>
+    RAW_FILES.flatMap(({ field, fileName }) => {
+      const handle = ctx.outputs
+        ?.resolve({ field, allowPermanentAbsence: true })
+        ?.getRemoteFileHandle();
+      return handle === undefined ? [] : [{ fileName, handle }];
+    }),
+  )
+
   .output("isRunning", (ctx) => ctx.outputs?.getIsReadyOrError() === false)
 
   .output("inputKind", (ctx): InputKind | undefined => {
@@ -1440,7 +1463,7 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
 
   .subtitle((ctx) => ctx.data.customBlockLabel || defaultSubtitle(ctx.data))
 
-  .sections((ctx) => sectionsFor(runShape(ctx)))
+  .sections(() => SECTIONS)
 
   .done();
 
