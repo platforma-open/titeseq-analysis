@@ -922,10 +922,11 @@ wf.body(func(args) {
 	// fittedMeanBin (curve overlay), concentrationValue (numeric X).
 	signalPf := buildTracedPf([meanBinImported, fittedMeanBinImported, concValueImported], [])
 	// exportPf is what downstream blocks see. Reuses the same pcolumn resources — no re-import.
-	// An allowlist: the affinity answer, its error and spread, the fit quality behind it, and in
-	// synonymous mode each variant's change against its parent. The per-concentration signal, the
-	// replicate counts and the plot positions stay in this block's own table and graphs. A column an
-	// equation or a run does not write is simply absent. The kdLog10Sd header is the replicates'
+	// An allowlist: the affinity answer, its error and spread, the fit quality behind it, the support
+	// behind it (the reads its fits used, and the counts of replicates and of synonymous variants),
+	// and in synonymous mode each variant's class and its change against its parent. The
+	// per-concentration signal, the per-replicate values and the plot positions stay in this block's
+	// own table and graphs. A column an equation or a run does not write is simply absent. The kdLog10Sd header is the replicates'
 	// spread with replicates, on every grain; without them it exists on the amino-acid grain only,
 	// as the synonymous variants' spread under a name of its own. kdLog10SynonymSd is on the
 	// amino-acid grain only.
@@ -941,15 +942,27 @@ wf.body(func(args) {
 		hillCoefficient: true,
 		fitFailureReason: true,
 		kdLog10ParentDelta: true,
-		kdLog10ParentDeltaSe: true
+		kdLog10ParentDeltaSe: true,
+		variantClass: true,
+		fitReads: true,
+		replicateCount: true,
+		replicateMeasuredCount: true,
+		replicateCensoredBelowCount: true,
+		replicateCensoredAboveCount: true,
+		replicateFailedCount: true,
+		ntVariants: true,
+		ntMeasured: true,
+		ntCensoredBelow: true,
+		ntCensoredAbove: true,
+		ntFailed: true
 	}
 	// The log fluorescence fit fixes the exponent at 1, so its column carries no information.
 	if args.equation == "log_fluorescence" {
 		exportAllowed.hillCoefficient = false
 	}
 	// In synonymous mode the amino-acid grain exports under its "aa_" ids, and the nucleotide
-	// grain's parent delta under its "nt_" ids. The variant class is not exported on either grain.
-	exportSources := [summaryImported] + variantSources + ntVariantSources
+	// grain's class and parent delta under their "nt_" ids.
+	exportSources := [summaryImported, fitReadsImported] + variantSources + ntVariantSources
 	exportExcluded := []
 	for src in exportSources {
 		for k in maps.getKeys(src) {

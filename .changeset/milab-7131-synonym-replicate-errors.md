@@ -172,7 +172,9 @@ Pages and export:
   parent delta and its SE where they resolve. 2.5.0 exported only the first four. The export
   also carries the spread: with replicates `kdLog10Sd` on every grain, without them
   `kdLog10SynonymSdAll` on the amino-acid grain, and `kdLog10SynonymSd` on the amino-acid grain
-  either way. The counts stay in the block's tables.
+  either way. It carries the support behind a value too: `fitReads`, the replicate counts with
+  replicates, and on the amino-acid grain the synonymous-variant counts. In synonymous mode it
+  carries `variantClass` on both grains. The per-replicate values stay in the block's tables.
   The export does not carry the per-concentration signal (mean bin, fitted mean bin,
   concentration), which 2.4.0 exported.
 - The block builds on SDK model and ui-vue 1.88 and workflow-tengo 6.22.
