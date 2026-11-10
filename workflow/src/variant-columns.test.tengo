@@ -1,0 +1,145 @@
+test := import("@platforma-sdk/workflow-tengo:test")
+variantColumns := import(":variant-columns")
+text := import("text")
+json := import("json")
+maps := import("@platforma-sdk/workflow-tengo:maps")
+
+KD := { "pl7.app/label": "Kd,app", "pl7.app/unit": "nM" }
+VALUES := "[\"Good\",\"Partial\",\"Below range\",\"Above range\",\"Failed\"]"
+CUTOFF := "[\"Good\",\"Partial\",\"Below range\"]"
+NEG_LOG10 := { name: "pl7.app/vdj/kdNegLog10", valueType: "Double", domain: { "pl7.app/block": "blk" }, annotations: {} }
+
+byHeader := func(cols) {
+	res := {}
+	for c in cols {
+		res[c.column] = c
+	}
+	return res
+}
+
+Test_headers_match_the_software_and_ids_stay_apart_from_the_nt_grain := func() {
+	// The production call: the workflow always passes the -log10 spec.
+	cols := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: true, affinityClassValues: VALUES, affinityClassCutoff: CUTOFF, boundRule: "", variantClass: true, kdNegLog10Spec: NEG_LOG10 }))
+	headers := ["kd", "kdNegLog10", "kdLog10Se", "kdLog10Sd", "affinityClass", "fitFailureReason", "kdOutOfRange", "ntVariants", "ntMeasured",
+		"ntCensoredBelow", "ntCensoredAbove", "ntFailed", "kdLog10SynonymSd", "fitReads", "kdLog10ParentDelta",
+		"kdLog10ParentDeltaSe", "variantClass"]
+	test.isEqual(len(headers), len(cols), "one column per per_variant.tsv value header")
+	for h in headers {
+		test.isFalse(is_undefined(cols[h]), "header " + h)
+		test.isEqual("aa_" + h, cols[h].id, "id of " + h)
+	}
+}
+
+Test_values_reuse_the_nt_grain_names := func() {
+	cols := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: false, affinityClassValues: VALUES, affinityClassCutoff: CUTOFF, boundRule: "", variantClass: false }))
+	test.isEqual("pl7.app/vdj/kd", cols.kd.spec.name, "Kd,app")
+	test.isEqual("pl7.app/vdj/kdLog10Se", cols.kdLog10Se.spec.name, "its error")
+	test.isEqual(variantColumns.SYNONYM_SD_ALL_NAME, cols.kdLog10Sd.spec.name, "the synonymous variants' spread, not the replicates' name")
+	test.isFalse(text.contains(cols.kd.spec.annotations["pl7.app/description"], "replicate"), "Kd,app without replicates")
+	test.isEqual("false", cols.kdLog10Sd.spec.annotations["pl7.app/isScore"], "not a ranking score")
+	test.isEqual("pl7.app/vdj/affinityClass", cols.affinityClass.spec.name, "class")
+	test.isEqual("pl7.app/vdj/kdOutOfRange", cols.kdOutOfRange.spec.name, "bound flag")
+	test.isEqual("nM", cols.kd.spec.annotations["pl7.app/unit"], "unit carried over")
+	test.isEqual({ "pl7.app/block": "blk" }, cols.kd.spec.domain, "the nt grain's domain")
+}
+
+Test_counts_share_one_name_and_differ_by_state := func() {
+	cols := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: false, affinityClassValues: VALUES, affinityClassCutoff: CUTOFF, boundRule: "", variantClass: false }))
+	states := { ntVariants: "all", ntMeasured: "measured", ntCensoredBelow: "censoredBelow",
+		ntCensoredAbove: "censoredAbove", ntFailed: "failed" }
+	for h, state in states {
+		test.isEqual(variantColumns.COUNT_NAME, cols[h].spec.name, "name of " + h)
+		test.isEqual(state, cols[h].spec.domain[variantColumns.COUNT_STATE], "state of " + h)
+		test.isEqual("blk", cols[h].spec.domain["pl7.app/block"], "block of " + h)
+		test.isEqual("Int", cols[h].spec.valueType, "count of " + h)
+	}
+}
+
+Test_the_parent_delta_only_in_parent_mode := func() {
+	test.isEqual(13, len(variantColumns.variantColumns("blk", KD, { parentMode: false, affinityClassValues: VALUES, affinityClassCutoff: CUTOFF, boundRule: "", variantClass: false })), "no delta columns")
+	cols := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: true, affinityClassValues: VALUES, affinityClassCutoff: CUTOFF, boundRule: "", variantClass: true }))
+	test.isEqual("pl7.app/vdj/kdLog10ParentDelta", cols.kdLog10ParentDelta.spec.name, "delta")
+	test.isEqual("pl7.app/vdj/kdLog10ParentDeltaSe", cols.kdLog10ParentDeltaSe.spec.name, "its error")
+	test.isEqual("Kd,app vs Parent (log10)", cols.kdLog10ParentDelta.spec.annotations["pl7.app/label"], "label case")
+}
+
+Test_the_class_column_on_each_grain := func() {
+	aaCols := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: false, affinityClassValues: VALUES, affinityClassCutoff: CUTOFF, boundRule: "", variantClass: true }))
+	ntCols := byHeader(variantColumns.ntVariantColumns("blk", { variantClass: true, parentMode: false }))
+	for c in [aaCols.variantClass, ntCols.variantClass] {
+		test.isEqual(variantColumns.CLASS_NAME, c.spec.name, "one name on both grains")
+		test.isEqual("String", c.spec.valueType, "a string")
+		test.isEqual({ "pl7.app/block": "blk" }, c.spec.domain, "the block domain")
+		test.isEqual("true", c.spec.annotations["pl7.app/isDiscreteFilter"], "a discrete filter")
+		test.isEqual(variantColumns.CLASS_VALUES, json.decode(c.spec.annotations["pl7.app/discreteValues"]), "the five class strings")
+		test.isTrue(c.allowNA, "unknown class is empty")
+	}
+	test.isEqual("aa_variantClass", aaCols.variantClass.id, "aa id")
+	test.isEqual("nt_variantClass", ntCols.variantClass.id, "nt id")
+	test.isEqual(0, len(variantColumns.ntVariantColumns("blk", { variantClass: false, parentMode: false })), "no nt columns without the class")
+	test.isTrue(is_undefined(byHeader(variantColumns.variantColumns("blk", KD, { parentMode: false, affinityClassValues: VALUES, affinityClassCutoff: CUTOFF, boundRule: "", variantClass: false })).variantClass), "no aa class without the mutation count")
+}
+
+Test_the_nt_parent_delta_reuses_the_aa_specs := func() {
+	aaCols := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: true, affinityClassValues: VALUES, affinityClassCutoff: CUTOFF, boundRule: "", variantClass: false }))
+	ntCols := byHeader(variantColumns.ntVariantColumns("blk", { variantClass: false, parentMode: true }))
+	test.isEqual(2, len(ntCols), "the delta and its error")
+	for h in ["kdLog10ParentDelta", "kdLog10ParentDeltaSe"] {
+		test.isEqual("nt_" + h, ntCols[h].id, "nt id of " + h)
+		test.isEqual("aa_" + h, aaCols[h].id, "aa id of " + h)
+		test.isEqual(aaCols[h].spec.name, ntCols[h].spec.name, "one name on both grains: " + h)
+		test.isEqual(aaCols[h].spec.domain, ntCols[h].spec.domain, "one domain on both grains: " + h)
+	}
+	test.isTrue(text.contains(ntCols.kdLog10ParentDelta.spec.annotations["pl7.app/description"], "nucleotide variant"), "nt wording")
+	test.isEqual(3, len(variantColumns.ntVariantColumns("blk", { variantClass: true, parentMode: true })), "class and delta")
+}
+
+Test_with_replicates_the_replicate_error_columns_replace_the_synonymous_ones := func() {
+	se := { column: "kdLog10Se", id: "aa_kdLog10Se", spec: { name: "pl7.app/vdj/kdLog10Se", annotations: { "pl7.app/description": "replicate SE" } } }
+	sd := { column: "kdLog10Sd", id: "aa_kdLog10Sd", spec: { name: "pl7.app/vdj/kdLog10Sd", annotations: { "pl7.app/description": "replicate SD" } } }
+	count := { column: "replicateCount", id: "aa_replicateCount", spec: { name: "pl7.app/vdj/replicateCount" } }
+	all := variantColumns.variantColumns("blk", KD, { parentMode: false, affinityClassValues: VALUES, affinityClassCutoff: CUTOFF, boundRule: "", variantClass: false, replicateColumns: [se, sd, count] })
+	cols := byHeader(all)
+	n := 0
+	for c in all {
+		if c.column == "kdLog10Se" { n += 1 }
+	}
+	test.isEqual(1, n, "one SE column")
+	test.isEqual("replicate SE", cols.kdLog10Se.spec.annotations["pl7.app/description"], "the replicates' SE")
+	test.isEqual("replicate SD", cols.kdLog10Sd.spec.annotations["pl7.app/description"], "the replicates' SD")
+	test.isEqual("aa_replicateCount", cols.replicateCount.id, "the counts come along")
+	test.isEqual("pl7.app/vdj/kdLog10Sd", cols.kdLog10Sd.spec.name, "the replicates' name")
+	test.isEqual("aa_kdLog10SynonymSd", cols.kdLog10SynonymSd.id, "the synonymous variants' own spread stays")
+	test.isTrue(text.contains(cols.kd.spec.annotations["pl7.app/description"], "across the replicates"), "Kd,app with replicates")
+}
+
+Test_the_class_takes_the_equations_declared_values := func() {
+	cols := byHeader(variantColumns.variantColumns("blk", KD, { parentMode: false, affinityClassValues: VALUES, affinityClassCutoff: CUTOFF, boundRule: "EDGE RULE.", variantClass: false }))
+	test.isEqual(VALUES, cols.affinityClass.spec.annotations["pl7.app/discreteValues"], "values")
+	test.isEqual(CUTOFF, cols.affinityClass.spec.annotations["pl7.app/score/defaultCutoff"], "cutoff")
+	test.isTrue(text.contains(cols.affinityClass.spec.annotations["pl7.app/description"], "EDGE RULE."), "the bound rule")
+}
+
+Test_with_replicates_the_counts_say_they_are_summed := func() {
+	opts := { parentMode: false, affinityClassValues: VALUES, affinityClassCutoff: CUTOFF, boundRule: "", variantClass: false }
+	without := byHeader(variantColumns.variantColumns("blk", KD, opts))
+	with := byHeader(variantColumns.variantColumns("blk", KD, maps.merge(opts, { replicateColumns: [] })))
+	for h in ["ntVariants", "ntMeasured", "ntCensoredBelow", "ntCensoredAbove", "ntFailed"] {
+		test.isFalse(text.contains(without[h].spec.annotations["pl7.app/description"], "summed over the replicates"), h + " without replicates")
+		test.isTrue(text.contains(with[h].spec.annotations["pl7.app/description"], "summed over the replicates"), h + " with replicates")
+	}
+}
+
+Test_with_replicates_the_class_and_bound_describe_the_replicates := func() {
+	rule := "A value at an edge of the range keeps the class of its replicates if they all have the same class."
+	opts := { parentMode: false, affinityClassValues: VALUES, affinityClassCutoff: CUTOFF, boundRule: rule, variantClass: false }
+	without := byHeader(variantColumns.variantColumns("blk", KD, opts))
+	with := byHeader(variantColumns.variantColumns("blk", KD, maps.merge(opts, { replicateColumns: [] })))
+	desc := func(cols, h) { return cols[h].spec.annotations["pl7.app/description"] }
+	test.isTrue(text.contains(desc(with, "affinityClass"), "standard error across the replicates"), "class with replicates")
+	test.isTrue(text.contains(desc(with, "affinityClass"), "of its replicates"), "bound rule with replicates")
+	test.isTrue(text.contains(desc(with, "kdOutOfRange"), "no replicate measured"), "bound with replicates")
+	test.isFalse(text.contains(desc(without, "affinityClass"), "replicate"), "class without replicates")
+	test.isTrue(text.contains(desc(without, "affinityClass"), "of its synonymous variants"), "bound rule without replicates")
+	test.isFalse(text.contains(desc(without, "kdOutOfRange"), "replicate"), "bound without replicates")
+}
