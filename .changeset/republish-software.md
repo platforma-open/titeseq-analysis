@@ -1,7 +1,11 @@
 ---
-"@platforma-open/platforma-open.titeseq-analysis.software": patch
-"@platforma-open/platforma-open.titeseq-analysis.workflow": patch
-"@platforma-open/platforma-open.titeseq-analysis": patch
+"@platforma-open/platforma-open.titeseq-analysis": major
+"@platforma-open/platforma-open.titeseq-analysis.model": major
+"@platforma-open/platforma-open.titeseq-analysis.ui": major
+"@platforma-open/platforma-open.titeseq-analysis.workflow": major
+"@platforma-open/platforma-open.titeseq-analysis.kind": major
+"@platforma-open/platforma-open.titeseq-analysis.software": major
+"@platforma-open/platforma-open.titeseq-analysis.test": major
 ---
 
 Publish the fit software again under a new version. The 2.3.0 archive in the software registry
