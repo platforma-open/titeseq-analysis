@@ -46,7 +46,7 @@
     "meta": {
       "title": "Tite-Seq Analysis",
       "logo": "file:../logos/block-logo.png",
-      "url": "https://github.com/platforma-open/platforma-open.titeseq-analysis",
+      "url": "https://github.com/platforma-open/titeseq-analysis",
       "support": "mailto:support@milaboratories.com",
       "description": "Estimates the apparent binding affinity (Kd,app) of antibody variants from Tite-Seq reads. Fits a Hill curve to the signal of each variant across antigen concentrations.",
       "longDescription": "file:../docs/description.md",
