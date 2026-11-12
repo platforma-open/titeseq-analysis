@@ -1,5 +1,11 @@
 # @platforma-open/platforma-open.titeseq-analysis
 
+## 3.0.1
+
+### Patch Changes
+
+- 82be802: Point the block's repository link to the current GitHub repository.
+
 ## 3.0.0
 
 ### Major Changes
