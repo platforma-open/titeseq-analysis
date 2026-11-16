@@ -140,11 +140,19 @@ def r2_with_zero_point(
     w: np.ndarray,
     zero_points: Sequence[tuple[float, float]],
     log10_base: float,
+    *,
+    shared_baseline: float | None = None,
 ) -> float:
     """Weighted R² over the fit points and the variant's own 0 M points, each (signal, read weight).
 
-    Without a 0 M point, the R² of the fit points alone. A 0 M point is read against the curve at
-    c = 0, which is its baseline `log10_base`.
+    A 0 M point is read against the curve at c = 0, which is its baseline `log10_base`. A variant
+    with no 0 M point of its own past the read floor takes `shared_baseline`, the run's 0 M signal,
+    as its 0 M point at the weight of its heaviest fit point: the form of its R² does not depend on
+    its reads at 0 M. With neither, the R² of the fit points alone.
+
+    The R² screens out a curve that does not rise from the baseline. It says little about how the
+    curve follows the titrated points of a variant far above the baseline; the SE of log10 K_D
+    rates that.
 
     Why the 0 M point counts: Phillips 2021, whose R² >= 0.8 filter the R² gate follows, counts it
     (placed at 1e-14 M). Without it a tight binder has no in-range point below its plateau, so the
@@ -164,7 +172,9 @@ def r2_with_zero_point(
     0 M samples.
     """
     if not zero_points:
-        return weighted_r2(y, y_hat, w)
+        if shared_baseline is None:
+            return weighted_r2(y, y_hat, w)
+        zero_points = [(shared_baseline, float(w.max()))]
     signals, weights = (np.array(values, dtype=float) for values in zip(*zero_points))
     total, cap = weights.sum(), w.max()
     if total > cap:

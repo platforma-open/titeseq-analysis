@@ -285,20 +285,18 @@ def replicate_parent_delta(
 ) -> tuple[float, float | None] | None:
     """The parent delta taken inside each replicate, then combined; None when no replicate has both.
 
-    None as well when a replicate holds either of them at a wall: that replicate is in the combined
-    value and cannot be in the delta, so the two would disagree. The caller then compares the
-    combined values. A shift a replicate gives every value cancels in its own delta. Combined as
+    None as well when a replicate that has both holds either of them at a wall: that replicate is in
+    both combined values and cannot be in the delta, so the two would disagree. The caller then
+    compares the combined values. A replicate with a value for only one of them is left out, at a
+    wall or not. A shift a replicate gives every value cancels in its own delta. Combined as
     replicate values are (`classify.mean_se`), each replicate's fit error being its two SEs in
     quadrature.
     """
-    if any(r.state in ("below", "above") for r in (*variant, *parent)):
+    parents = {p.replicate: p for p in parent if p.state != "failed"}
+    pairs = [(v, p) for v in variant if v.state != "failed" and (p := parents.get(v.replicate)) is not None]
+    if any(r.state != "measured" for pair in pairs for r in pair):
         return None
-    parents = {p.replicate: p for p in parent if p.state == "measured"}
-    deltas = [
-        _Value(v.log10_kd - p.log10_kd, _quadrature(v.log10_kd_se, p.log10_kd_se))
-        for v in variant
-        if v.state == "measured" and (p := parents.get(v.replicate)) is not None
-    ]
+    deltas = [_Value(v.log10_kd - p.log10_kd, _quadrature(v.log10_kd_se, p.log10_kd_se)) for v, p in pairs]
     if not deltas:
         return None
     if len(deltas) == 1:

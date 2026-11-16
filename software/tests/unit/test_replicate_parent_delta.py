@@ -75,6 +75,15 @@ def test_a_replicate_at_a_range_limit_sends_the_delta_to_the_combined_values(par
     assert (counts["replicateDeltas"], counts["combinedValueDeltas"]) == (0, 1)
 
 
+@pytest.mark.parametrize("missing", [failed("r3"), None], ids=["variant failed there", "variant absent there"])
+def test_a_range_limit_in_a_replicate_without_the_other_value_is_left_out_like_a_failed_one(missing):
+    variant = [VARIANT[0], VARIANT[1], *([missing] if missing is not None else [])]
+    _, (delta, se), counts = deltas([PARENT[0], PARENT[1], above("r3")], variant)
+    assert delta == pytest.approx(1.0)
+    assert se == pytest.approx(math.hypot(0.1, 0.1) / math.sqrt(2))
+    assert (counts["replicateDeltas"], counts["combinedValueDeltas"]) == (1, 0)
+
+
 def test_a_variant_tighter_than_its_parent_on_the_combined_values_has_a_negative_delta():
     # One replicate measures it a decade weaker; the other two put it under the lower limit.
     parent = [measured(r, -8.0) for r in REPLICATES]

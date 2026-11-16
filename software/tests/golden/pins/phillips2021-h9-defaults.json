@@ -3,29 +3,29 @@
     "allClipped": {
       "medianAbsDiff": 0.0493,
       "n": 1872,
-      "r": 0.9042,
-      "within0.5": 0.7644
+      "r": 0.9043,
+      "within0.5": 0.765
     },
     "good": {
       "medianAbsDiff": 0.0455,
-      "n": 1119,
-      "r": 0.8894,
-      "within0.5": 0.882
+      "n": 1118,
+      "r": 0.8913,
+      "within0.5": 0.8828
     }
   },
   "classes": {
     "replicate": {
       "Above range": 2117,
-      "Failed": 810,
-      "Good": 3207,
-      "Partial": 10
+      "Failed": 796,
+      "Good": 3219,
+      "Partial": 12
     },
-    "replicateLowR2": 737,
+    "replicateLowR2": 723,
     "variant": {
       "Above range": 743,
-      "Failed": 162,
+      "Failed": 161,
       "Good": 1129,
-      "Partial": 14
+      "Partial": 15
     }
   },
   "clones": {
@@ -65,7 +65,7 @@
       "paperTiteSeq": -10.0947
     }
   },
-  "digest": "fc6b3b37e7855fcb",
+  "digest": "7fee8ba4bcddb6b9",
   "germline": {
     "affinityClass": "Above range",
     "negLog10Kd": 7.0

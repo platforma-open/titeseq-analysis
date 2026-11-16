@@ -3,9 +3,9 @@
     "aa": {
       "allClipped": {
         "medianAbsDiff": 0.0,
-        "n": 2577,
-        "r": 0.9438,
-        "within0.5": 0.8882
+        "n": 2578,
+        "r": 0.9436,
+        "within0.5": 0.8883
       },
       "good": {
         "medianAbsDiff": 0.1838,
@@ -17,8 +17,8 @@
     "nt": {
       "allClipped": {
         "medianAbsDiff": 0.0,
-        "n": 3287,
-        "r": 0.9554,
+        "n": 3288,
+        "r": 0.9553,
         "within0.5": 0.8832
       },
       "good": {
@@ -31,18 +31,18 @@
   },
   "classes": {
     "aa": {
-      "Above range": 2144,
+      "Above range": 2143,
       "Below range": 28,
-      "Failed": 230,
+      "Failed": 229,
       "Good": 302,
-      "Partial": 103
+      "Partial": 105
     },
     "nt": {
-      "Above range": 2586,
+      "Above range": 2585,
       "Below range": 47,
-      "Failed": 395,
+      "Failed": 394,
       "Good": 553,
-      "Partial": 101
+      "Partial": 103
     }
   },
   "clones": {
@@ -155,5 +155,5 @@
       "paperTiteSeq": -8.92
     }
   },
-  "digest": "84cd52edd4c0b93a"
+  "digest": "8b319c6f7c58bcfa"
 }

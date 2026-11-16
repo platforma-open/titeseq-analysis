@@ -88,7 +88,13 @@ def compute_mean_bin(
     )
     mean = pl.when(pl.col("den") > 0).then(pl.col("num") / pl.col("den")).otherwise(None)
     if bimodal_share is not None:
-        out = out.join(_bimodal_points(weighted, point, bimodal_share), on=point, how="left", nulls_equal=True)
+        out = out.join(
+            _bimodal_points(weighted, point, bimodal_share),
+            on=point,
+            how="left",
+            nulls_equal=True,
+            maintain_order="left",
+        )
         mean = pl.when(pl.col("bimodal").fill_null(False)).then(None).otherwise(mean)
     return out.with_columns(mean.alias(MEAN_BIN)).drop([c for c in ("num", "den", "bimodal") if c in out.columns])
 

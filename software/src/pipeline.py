@@ -264,9 +264,7 @@ _PER_CLONOTYPE_FIELDS = (
 # A pin's censor, as the range side it reports. "below": the true K_D is at most the lowest
 # concentration, so the value sits below the range.
 
-# One titration's fit: the per-clonotype frame, the fitted curves, and the clonotypes that went to a
-# fit (the rest were gated Failed before it).
-# The per-clonotype frame, the fitted curves, and the points the fits read.
+# One titration's fit: the per-clonotype frame, the fitted curves, and the points the fits read.
 FitResult = tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]
 
 
@@ -324,8 +322,8 @@ class _FitBatch:
         self._contexts: list[tuple[int, str, np.ndarray]] = []
         # Each fitted clonotype's (signal, weight) at its fit points, for a statistic over them.
         self.observed: dict[str, tuple[np.ndarray, np.ndarray]] = {}
-        # [clonotypeKey, concentrationStr] of every point handed to a fit.
-        self._points: list[pl.DataFrame] = [fit_points.select(COL_CLONOTYPE, COL_CONC_STR).clear()]
+        # [clonotypeKey, concentrationStr] of every point; `frames` keeps those handed to a fit.
+        self._points: pl.DataFrame = fit_points.select(COL_CLONOTYPE, COL_CONC_STR)
         self._fitted_keys: list[np.ndarray] = []
         self._fitted_conc_strs: list[np.ndarray] = []
         self._fitted_curves: list[np.ndarray] = []
@@ -342,7 +340,6 @@ class _FitBatch:
             self._ws.append(sub[WEIGHT].to_numpy())
             self._contexts.append((i, clonotype, sub[COL_CONC_STR].to_numpy()))
             self.observed[clonotype] = (self._ys[-1], self._ws[-1])
-            self._points.append(sub.select(COL_CLONOTYPE, COL_CONC_STR))
 
     def fit(self, worker) -> list[tuple[int, str, np.ndarray, object]]:
         """Run `worker` over the survivors; returns (index, clonotype, concentration strings, fit)."""
@@ -368,9 +365,11 @@ class _FitBatch:
 
     def frames(self) -> FitResult:
         per_clonotype = pl.DataFrame({COL_CLONOTYPE: self.clonotypes, **self.columns}, schema=PER_CLONOTYPE_SCHEMA)
+        went_to_fit = pl.Series(list(self.observed), dtype=self._points.schema[COL_CLONOTYPE])
+        points = self._points.filter(pl.col(COL_CLONOTYPE).is_in(went_to_fit.implode()))
         if not self._fitted_keys:
             empty = pl.DataFrame({k: [] for k in FITTED_MEAN_BIN_SCHEMA}, schema=FITTED_MEAN_BIN_SCHEMA)
-            return per_clonotype, empty, pl.concat(self._points)
+            return per_clonotype, empty, points
         fitted = pl.DataFrame(
             {
                 COL_CLONOTYPE: np.concatenate(self._fitted_keys),
@@ -379,7 +378,7 @@ class _FitBatch:
             },
             schema=FITTED_MEAN_BIN_SCHEMA,
         )
-        return per_clonotype, fitted, pl.concat(self._points)
+        return per_clonotype, fitted, points
 
 
 def _fit_all_clonotypes(
@@ -493,7 +492,9 @@ def _fit_all_log_fluorescence(
             continue
 
         y, w = batch.observed[clonotype]
-        r2 = r2_with_zero_point(y, fit.y_hat, w, zero_points.get(clonotype, []), fit.log10_baseline)
+        r2 = r2_with_zero_point(
+            y, fit.y_hat, w, zero_points.get(clonotype, []), fit.log10_baseline, shared_baseline=baseline
+        )
         rise, plateau_height = stats_map[clonotype]
         curve_class = classify_curve(rise_decades=rise, plateau_height=plateau_height, plateau_floor=plateau_floor)
         log10_kd, censor = pin_kd(fit.log10_kd, curve_class=curve_class, lo=log10_conc_lo, hi=log10_conc_hi)
@@ -562,7 +563,9 @@ def _run_hill_gate_index(
     if params.require_all_concentrations:
         _gate_incomplete_titrations(signal_frame, insufficient_map)
 
-    c0_points, fit_points = split_c0(floor_frame)
+    c0_points, _ = split_c0(floor_frame)
+    # The mask also sets the grid the replicates' curves are written on.
+    fit_points = floor_frame.filter(_fit_point_mask(params))
     global_b = compute_global_baseline(c0_points)
     b_str = f"{global_b:.4f}" if global_b is not None else "none"
     log(f"Global baseline B = {b_str} (c=0 points: {c0_points.height})")
@@ -684,7 +687,9 @@ def _run_log_fluorescence(
     stats_map = _observed_statistics(floor_frame, scale)
     # One baseline for every clonotype: the read-weighted mean 0 M signal. Without 0 M samples,
     # each clonotype fits its own.
-    c0_points, fit_points = split_c0(floor_frame)
+    c0_points, _ = split_c0(floor_frame)
+    # The mask also sets the grid the replicates' curves are written on.
+    fit_points = floor_frame.filter(_fit_point_mask(params))
     baseline = compute_read_weighted_baseline(c0_points)
     if baseline is None:
         cause = _no_baseline_cause(lf_frame)

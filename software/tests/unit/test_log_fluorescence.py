@@ -336,6 +336,19 @@ class TestR2WithTheZeroPoint:
         y, y_hat, w = self._curve()
         assert r2_with_zero_point(y, y_hat, w, [], self.BASE) == pytest.approx(weighted_r2(y, y_hat, w))
 
+    def test_without_its_own_zero_point_it_reads_the_shared_baseline_at_the_cap(self):
+        y, y_hat, w = self._curve()
+        shared = r2_with_zero_point(y, y_hat, w, [], self.BASE, shared_baseline=self.BASE)
+        assert shared == pytest.approx(r2_with_zero_point(y, y_hat, w, [(self.BASE, 100.0)], self.BASE))
+        assert weighted_r2(y, y_hat, w) < 0.8 < shared
+
+    def test_its_own_zero_point_stands_before_the_shared_baseline(self):
+        y, y_hat, w = self._curve()
+        own = [(self.BASE + 0.02, 100.0)]
+        assert r2_with_zero_point(y, y_hat, w, own, self.BASE, shared_baseline=self.BASE) == pytest.approx(
+            r2_with_zero_point(y, y_hat, w, own, self.BASE)
+        )
+
     def test_a_tight_binder_at_its_plateau_passes_once_its_zero_point_counts(self):
         y, y_hat, w = self._curve()
         assert weighted_r2(y, y_hat, w) < 0.8
