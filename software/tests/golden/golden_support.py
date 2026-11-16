@@ -103,21 +103,31 @@ def _code_key(inputs: Iterable[str | Path], *parts: object) -> str:
     return h.hexdigest()[:24]
 
 
+# Bumped when the cached layout changes, so older cache folders are not read.
+CACHE_LAYOUT = 2
+
+
 def cached_run(
     case: str,
-    run: Callable[[], dict[str, pl.DataFrame]],
+    run: Callable[[], dict],
     *key_parts: object,
     inputs: Iterable[str | Path] = (),
-) -> dict[str, pl.DataFrame]:
-    """`run()`'s frame outputs, cached on disk until the source, a loader, a library, `key_parts` or
-    an `inputs` file change. `TITESEQ_GOLDEN_NO_CACHE=1` runs it again regardless."""
-    folder = cache_root() / "runs" / f"{case}-{_code_key(inputs, case, *key_parts)}"
+) -> dict:
+    """`run()`'s frame and dict outputs, cached on disk until the source, a loader, a library, `key_parts`
+    or an `inputs` file change. Frames are kept as parquet, dicts as JSON; every other output is dropped.
+    `TITESEQ_GOLDEN_NO_CACHE=1` runs it again regardless."""
+    folder = cache_root() / "runs" / f"{case}-{_code_key(inputs, case, CACHE_LAYOUT, *key_parts)}"
     if not NO_CACHE and folder.is_dir() and (folder / "_done").exists():
-        return {p.stem: pl.read_parquet(p) for p in folder.glob("*.parquet")}
-    outputs = {k: v for k, v in run().items() if isinstance(v, pl.DataFrame)}
+        outputs: dict = {p.stem: pl.read_parquet(p) for p in folder.glob("*.parquet")}
+        outputs.update({p.stem: json.loads(p.read_text()) for p in folder.glob("*.json")})
+        return outputs
+    outputs = {k: v for k, v in run().items() if isinstance(v, (pl.DataFrame, dict))}
     folder.mkdir(parents=True, exist_ok=True)
-    for name, frame in outputs.items():
-        frame.write_parquet(folder / f"{name}.parquet")
+    for name, value in outputs.items():
+        if isinstance(value, pl.DataFrame):
+            value.write_parquet(folder / f"{name}.parquet")
+        else:
+            (folder / f"{name}.json").write_text(json.dumps(value, sort_keys=True))
     (folder / "_done").write_text("")
     return outputs
 
@@ -165,6 +175,10 @@ def diff_report(before: pl.DataFrame, after: pl.DataFrame, limit: int = 12) -> s
     kd_moved = delta.filter(pl.col("dKd").abs() > 1e-6)
     se_moved = delta.filter(pl.col("dSe").abs() > 1e-6)
     lines.append(f"Kd,app changed on {kd_moved.height} variants; SE changed on {se_moved.height}")
+    for col in (c for c in before.columns if c in after.columns and c not in SNAPSHOT_SCHEMA):
+        changed = joined.filter(~pl.col(col).eq_missing(pl.col(f"{col}_new"))).height
+        if changed:
+            lines.append(f"{col} changed on {changed} rows")
     if kd_moved.height:
         lines.append(f"  |dlog10Kd| median {kd_moved['dKd'].abs().median():.3f}, max {kd_moved['dKd'].abs().max():.3f}")
     top = delta.with_columns(pl.col("dKd").abs().fill_null(0).alias("_a")).sort("_a", descending=True).head(limit)

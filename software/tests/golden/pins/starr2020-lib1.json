@@ -1,0 +1,25 @@
+{
+  "agreement": {
+    "allClipped": {
+      "medianAbsDiff": 0.0262,
+      "n": 10197,
+      "r": 0.9165,
+      "within0.5": 0.8721
+    },
+    "good": {
+      "medianAbsDiff": 0.0204,
+      "n": 6973,
+      "r": 0.9869,
+      "within0.5": 0.9892
+    }
+  },
+  "classes": {
+    "splitPoints": 1302,
+    "variant": {
+      "Failed": 7592,
+      "Good": 7303,
+      "Partial": 1966
+    }
+  },
+  "digest": "28e7b5b48a09634c"
+}

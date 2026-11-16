@@ -1,6 +1,7 @@
 """Adams 2016 through the block, against the paper, pinned.
 
-The authors' read counts, 3 replicates, sort fractions, synonymous mode, in two cases:
+The authors' read counts, 3 replicates, sort fractions, each replicate's measured gate fluorescence,
+synonymous mode, in two cases:
   paper     the settings closest to the paper: the block's defaults with both fit-quality gates off,
             as the authors filter no fit
   defaults  the settings a new block ships with (R² >= 0.8 and SE <= 1 gates on, plateau floor 0.667),
@@ -46,6 +47,18 @@ def _clip(x: float) -> float:
     return min(max(x, LOG10_KD_LOWER), LOG10_KD_UPPER)
 
 
+def _snapshot(out: dict) -> pl.DataFrame:
+    """Both grains' values and the per-nucleotide-variant table."""
+    per_nt = out["per_nt_variant"].with_columns(pl.col("ntKey").cast(pl.Utf8).alias("key")).drop("ntKey")
+    per_nt = per_nt.with_columns(pl.col(c).round(6) for c, t in per_nt.schema.items() if t == pl.Float64)
+    nt = snapshot(out["per_clonotype"], "clonotypeKey").join(per_nt, on="key", how="left")
+    aa = snapshot(out["per_variant"], "aaKey")
+    return pl.concat(
+        [nt.with_columns(("nt:" + pl.col("key")).alias("key")), aa.with_columns(("aa:" + pl.col("key")).alias("key"))],
+        how="diagonal",
+    ).sort("key")
+
+
 def _current(case: str) -> tuple[dict, pl.DataFrame]:
     out = study.run_block(CASES[case])
     nt = _log10(out["per_clonotype"], "clonotypeKey")
@@ -72,12 +85,7 @@ def _current(case: str) -> tuple[dict, pl.DataFrame]:
             "paperTiteSeq": c.tite_seq_log10_kd,
             "paperFlow": c.flow_log10_kd,
         }
-    snap = pl.concat(
-        [
-            snapshot(out["per_clonotype"], "clonotypeKey").with_columns(("nt:" + pl.col("key")).alias("key")),
-            snapshot(out["per_variant"], "aaKey").with_columns(("aa:" + pl.col("key")).alias("key")),
-        ]
-    ).sort("key")
+    snap = _snapshot(out)
     current = {
         "digest": digest(snap),
         "classes": {
@@ -134,13 +142,10 @@ def test_table_i_clones_match_their_pin(case):
 
 
 @pytest.mark.skipif(UPDATE, reason="pins are being rewritten")
-def test_the_wild_type_lands_near_the_paper(case, request):
-    # pJK36 is the wild type: Adams reports -8.92 by Tite-Seq, -8.61 by flow cytometry.
+def test_the_wild_type_lands_near_the_paper(case):
+    # pJK36 is the wild type: Adams reports -8.92 by Tite-Seq, -8.61 by flow cytometry. Under the shipped
+    # R² gate it passes because R² counts its 0 M point (`log_fluorescence.r2_with_zero_point`).
     name, current, _, _ = case
-    if name == "adams2016-defaults":
-        request.applymarker(
-            pytest.mark.xfail(strict=True, reason="the shipped R² >= 0.8 gate fails the wild type on Adams' counts")
-        )
     wt = current["clones"]["pJK36"]
     assert wt["log10Kd"] is not None, f"{name}: the wild type has no Kd,app"
     assert abs(wt["log10Kd"] - wt["paperTiteSeq"]) < 0.5

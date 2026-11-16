@@ -1,5 +1,13 @@
 """Adams 2016 as the block sees it: the authors' read counts per nucleotide variant, three replicates,
-four gates with their sort fractions, run through `pipeline.run` with the block's default settings.
+four gates with their sort fractions and measured log10 fluorescence, run through `pipeline.run` with
+the block's default settings.
+
+The gates were set anew on each sort day, so each replicate's gates sit at their own fluorescence:
+gate 3 at 3.35, 3.10 and 3.17 log10 in replicates 1, 2 and 3. The authors' fit reads each replicate's
+gate fluorescence; with evenly spaced gates assumed instead, every variant's K_D shifts by replicate
+(+0.29, -0.12, -0.23 decades), which their fits do not show. The gate fluorescence is the mean log10
+PE-A of the recorded cells inside each gate, under the authors' own gating, the definition of Phillips
+2021's `fluor_mean_std_*.csv`.
 
 Synonymous mode is on: each nucleotide variant (CDR1H + CDR3H nucleotides) is fitted on its own in each
 replicate, and the synonymous variants of one amino-acid variant combine inside each replicate before the replicates
@@ -11,20 +19,26 @@ from __future__ import annotations
 import csv
 import math
 import statistics
+import urllib.parse
 from functools import cache
 
+import numpy as np
 import polars as pl
 from golden_support import cached_run, study_file
 from paper_adams2016 import (
     CONCENTRATION_LABELS,
     CONCENTRATIONS_M,
+    FSC_SSC_POLYGON,
     LOG10_KD_LOWER,
     LOG10_KD_UPPER,
+    LOG10_PE_GATES,
     N_BINS,
+    PRE_SORT_POLYGON,
     RAW_URL,
     SORT_COUNT_FILES,
     STUDY,
     TABLE_I,
+    fcs_name,
 )
 
 from constants import FitParams
@@ -52,6 +66,61 @@ def _sort_fractions(rep: int) -> list[list[float]]:
     return out
 
 
+def _fcs_file(rep: int, concentration_index: int) -> str:
+    name = fcs_name(rep, concentration_index)
+    local = f"extra/fcs/rep{rep}_sort{concentration_index + 2}.fcs"
+    return str(study_file(STUDY, local, RAW_URL.format(name=urllib.parse.quote(name))))
+
+
+def _read_fcs(path: str) -> dict[str, np.ndarray]:
+    """Channel name -> its value per recorded cell, from an FCS 3.0 file of 32-bit floats."""
+    raw = open(path, "rb").read()
+    text = raw[int(raw[10:18]) : int(raw[18:26]) + 1].decode("latin-1")
+    fields = text[1:].split(text[0])
+    meta = {k: v.strip() for k, v in zip(fields[::2], fields[1::2])}
+    assert meta["$DATATYPE"] == "F" and meta["$MODE"] == "L", path
+    n_par, n_cells = int(meta["$PAR"]), int(meta["$TOT"])
+    assert all(meta[f"$P{i}B"] == "32" for i in range(1, n_par + 1)), path
+    order = {"1,2,3,4": "<", "4,3,2,1": ">"}[meta["$BYTEORD"]]
+    cells = np.frombuffer(raw, dtype=f"{order}f4", count=n_cells * n_par, offset=int(meta["$BEGINDATA"]))
+    cells = cells.reshape(n_cells, n_par).astype(np.float64)
+    return {meta[f"$P{i}N"]: cells[:, i - 1] for i in range(1, n_par + 1)}
+
+
+def _inside(x: np.ndarray, y: np.ndarray, polygon: list[tuple[float, float]]) -> np.ndarray:
+    """Which points lie inside a closed polygon: a ray to the right crosses its edges an odd number of times."""
+    inside = np.zeros(x.shape, dtype=bool)
+    for (x0, y0), (x1, y1) in zip(polygon, polygon[1:]):
+        crosses = (y0 > y) != (y1 > y)
+        at = np.where(crosses, x0 + (y - y0) * (x1 - x0) / (y1 - y0 if y1 != y0 else 1.0), -np.inf)
+        inside ^= crosses & (x < at)
+    return inside
+
+
+@cache
+def _gate_fluorescence(rep: int) -> list[list[float]]:
+    """Each gate's mean log10 PE-A at each concentration, rows in CONCENTRATION_LABELS order.
+
+    A gate that recorded no cell (gate 4 at 0 M in replicates 1 and 2) takes the replicate's mean
+    position for that gate over the other concentrations: the block needs a position for every gate.
+    """
+    log10 = lambda v: np.log10(np.maximum(v, 1e-10))  # noqa: E731
+    out: list[list[float | None]] = []
+    for ci in range(len(CONCENTRATION_LABELS)):
+        cells = _read_fcs(_fcs_file(rep, ci))
+        keep = _inside(log10(cells["FSC-A"]), log10(cells["SSC-A"]), FSC_SSC_POLYGON)
+        keep &= _inside(log10(cells["FITC-A"]), log10(cells["PE-A"]), PRE_SORT_POLYGON)
+        pe = log10(cells["PE-A"][keep])
+        gates = [pe[(pe > lo) & (pe < hi)] for lo, hi in LOG10_PE_GATES[rep]]
+        out.append([float(g.mean()) if g.size else None for g in gates])
+    for b in range(N_BINS):
+        seen = [row[b] for row in out if row[b] is not None]
+        for row in out:
+            if row[b] is None:
+                row[b] = statistics.fmean(seen)
+    return out
+
+
 @cache
 def _tables() -> dict[int, pl.DataFrame]:
     return {
@@ -67,6 +136,7 @@ def reads() -> pl.DataFrame:
     parts = []
     for rep, table in _tables().items():
         fractions = _sort_fractions(rep)
+        positions = _gate_fluorescence(rep)
         for ci, (label, conc) in enumerate(zip(CONCENTRATION_LABELS, CONCENTRATIONS_M)):
             for b in range(N_BINS):
                 parts.append(
@@ -78,6 +148,7 @@ def reads() -> pl.DataFrame:
                         pl.lit(b + 1, dtype=pl.Int64).alias("bin"),
                         pl.col(f"fluorescein{label}bin{b}").fill_null(0).round(0).cast(pl.Int64).alias("reads"),
                         pl.lit(fractions[ci][b], dtype=pl.Float64).alias("sort_fraction"),
+                        pl.lit(positions[ci][b], dtype=pl.Float64).alias("bin_fluorescence"),
                         pl.lit(str(rep)).alias("replicate"),
                     ).filter(pl.col("reads") > 0)
                 )
@@ -102,6 +173,7 @@ def run_block(params: FitParams = PARAMS) -> dict[str, pl.DataFrame]:
 
     inputs = [_file(f"replicate_{r}.csv", "answer-key") for r in (1, 2, 3)]
     inputs += [_file(name, "extra") for name in SORT_COUNT_FILES.values()]
+    inputs += [_fcs_file(r, ci) for r in (1, 2, 3) for ci in range(len(CONCENTRATION_LABELS))]
     return cached_run("adams2016", go, params, REPLICATES, inputs=inputs)
 
 
