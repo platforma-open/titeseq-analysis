@@ -548,11 +548,13 @@ def _run_hill_gate_index(
     floor_frame = apply_floor_and_weights(signal_frame, params)
     # A point with no mean bin, a split one (`BIMODAL_SHARE`), is not a point of the fit.
     no_mean_bin = floor_frame.filter(pl.col(SIGNAL).is_null())
-    if no_mean_bin.height:
+    dropped = no_mean_bin.filter(pl.col(COL_CONC_VAL) != 0).height
+    if dropped:
         log(
-            f"Left out {no_mean_bin.height} points with no mean bin "
+            f"Left out {dropped} points with no mean bin "
             "(split across non-neighbouring gates, or no read in a sorted gate)"
         )
+    if no_mean_bin.height:
         floor_frame = floor_frame.filter(pl.col(SIGNAL).is_not_null())
 
     all_clonotypes = signal_frame[COL_CLONOTYPE].unique().to_list()
@@ -563,9 +565,9 @@ def _run_hill_gate_index(
     if params.require_all_concentrations:
         _gate_incomplete_titrations(signal_frame, insufficient_map)
 
-    c0_points, _ = split_c0(floor_frame)
-    # The mask also sets the grid the replicates' curves are written on.
-    fit_points = floor_frame.filter(_fit_point_mask(params))
+    # `floor_frame` holds the floor-passed points with a signal, so its non-zero rows are the fit
+    # points (`_fit_point_mask`).
+    c0_points, fit_points = split_c0(floor_frame)
     global_b = compute_global_baseline(c0_points)
     b_str = f"{global_b:.4f}" if global_b is not None else "none"
     log(f"Global baseline B = {b_str} (c=0 points: {c0_points.height})")
@@ -687,9 +689,9 @@ def _run_log_fluorescence(
     stats_map = _observed_statistics(floor_frame, scale)
     # One baseline for every clonotype: the read-weighted mean 0 M signal. Without 0 M samples,
     # each clonotype fits its own.
-    c0_points, _ = split_c0(floor_frame)
-    # The mask also sets the grid the replicates' curves are written on.
-    fit_points = floor_frame.filter(_fit_point_mask(params))
+    # `floor_frame` holds the floor-passed points with a signal, so its non-zero rows are the fit
+    # points (`_fit_point_mask`).
+    c0_points, fit_points = split_c0(floor_frame)
     baseline = compute_read_weighted_baseline(c0_points)
     if baseline is None:
         cause = _no_baseline_cause(lf_frame)

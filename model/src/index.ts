@@ -548,29 +548,38 @@ const hasNoValue = (values: Record<string, unknown>): boolean =>
 //   - optionally apply `valuePredicate` to the finite values (e.g. [0, 1] range).
 // Generic S/O so TS infers the spec type from `ctx.resultPool.getOptions` (normally
 // PObjectSpec) without this helper taking a hard dependency on SDK internals.
-function filterPopulatedOptions<O extends { ref: PlRef }, S>(
-  ctx: {
-    resultPool: {
-      getOptions: (pred: (spec: S) => boolean) => O[];
-      getDataByRef: (
-        ref: PlRef,
-      ) => { data?: { getDataAsJson: <T>() => T | undefined } } | undefined;
-    };
-  },
+type PopulatedOptionsCtx<O, S> = {
+  resultPool: {
+    getOptions: (pred: (spec: S) => boolean) => O[];
+    getDataByRef: (ref: PlRef) => { data?: { getDataAsJson: <T>() => T | undefined } } | undefined;
+  };
+};
+type PopulatedOptionsOpts = { excludeRef?: PlRef; valuePredicate?: (finite: number[]) => boolean };
+
+/** The options that pass, each with its per-sample values; undefined while they are not readable. */
+function populatedOptions<O extends { ref: PlRef }, S>(
+  ctx: PopulatedOptionsCtx<O, S>,
   specPred: (spec: S) => boolean,
-  opts: { excludeRef?: PlRef; valuePredicate?: (finite: number[]) => boolean } = {},
-): O[] {
-  return ctx.resultPool.getOptions(specPred).filter((opt) => {
-    if (opts.excludeRef && plRefsEqual(opt.ref, opts.excludeRef)) return false;
-    const data = ctx.resultPool.getDataByRef(opt.ref)?.data;
-    if (!data) return true;
-    const values = data.getDataAsJson<Record<string, Record<string, number | null>>>()?.["data"];
-    if (!values) return true;
-    if (hasNoValue(values)) return false;
-    const finite = Object.values(values).filter((v): v is number => v !== null && v !== undefined);
-    return opts.valuePredicate ? opts.valuePredicate(finite) : true;
+  opts: PopulatedOptionsOpts = {},
+): { option: O; values: SampleValues | undefined }[] {
+  type Populated = { option: O; values: SampleValues | undefined };
+  return ctx.resultPool.getOptions(specPred).flatMap((option): Populated[] => {
+    if (opts.excludeRef && plRefsEqual(option.ref, opts.excludeRef)) return [];
+    const values = ctx.resultPool
+      .getDataByRef(option.ref)
+      ?.data?.getDataAsJson<Record<string, SampleValues>>()?.["data"];
+    if (values === undefined) return [{ option, values }];
+    if (hasNoValue(values)) return [];
+    const finite = Object.values(values).filter((v): v is number => typeof v === "number");
+    return !opts.valuePredicate || opts.valuePredicate(finite) ? [{ option, values }] : [];
   });
 }
+
+const filterPopulatedOptions = <O extends { ref: PlRef }, S>(
+  ctx: PopulatedOptionsCtx<O, S>,
+  specPred: (spec: S) => boolean,
+  opts: PopulatedOptionsOpts = {},
+): O[] => populatedOptions(ctx, specPred, opts).map(({ option }) => option);
 
 /** A per-sample column that can name the FACS bin: whole numbers or labels. */
 const isBinColumn = (spec: PObjectSpec): boolean =>
@@ -1150,10 +1159,7 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
   // An option whose values are not readable yet still reports its type.
   .output("binFactsByRef", (ctx): Record<string, BinColumnFacts> => {
     const out: Record<string, BinColumnFacts> = {};
-    // The same options as `binOptions`, with each column's data read once.
-    for (const option of ctx.resultPool.getOptions(isBinColumn)) {
-      const values = sampleValuesOf(ctx, option.ref);
-      if (values !== undefined && hasNoValue(values)) continue;
+    for (const { option, values } of populatedOptions(ctx, isBinColumn)) {
       const isText = ctx.resultPool.getPColumnSpecByRef(option.ref)?.valueType === "String";
       out[refKey(option.ref)] = {
         isText,
@@ -1219,15 +1225,6 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     // Empty targetAntigen surfaces inline: the dropdown's `:error-status` prop
     // shows a red border and `required` shows the asterisk. `deriveArgsIssues`
     // keeps Run disabled until it's set.
-
-    if (data.sortFractionColumnRef !== undefined && data.binColumnRef === undefined) {
-      issues.push({
-        severity: "error",
-        message:
-          "FACS sort fraction requires a FACS bin column — " +
-          "the correction only applies in bin mode. Select a FACS bin or clear the sort fraction.",
-      });
-    }
 
     const unranked = unrankedBinsOf(ctx);
     if (unranked.length > 0) {

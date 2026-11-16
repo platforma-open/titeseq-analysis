@@ -14,7 +14,7 @@
     }
   },
   "classes": {
-    "splitPoints": 1302,
+    "noMeanBinPoints": 1302,
     "variant": {
       "Failed": 7592,
       "Good": 7303,

@@ -15,13 +15,15 @@ With the log fluorescence fit, the block gives each variant one affinity class:
 - **Above range:** Kd,app is at or above the highest concentration.
 - **Failed:** the block cannot fit the variant. The fit failure reason gives the cause.
 
-The mean bin fit uses only Good, Partial and Failed. It rates a single fit by R².
+The mean bin fit uses only Good, Partial and Failed. It rates a single fit by R². With a FACS sort fraction column, the mean bin fit leaves out a concentration where two gates at least two apart each hold more than 40% of the variant's cells (Starr et al. 2022). A variant with no concentration left fails with the reason insufficient_points.
 
-If you select a sample replicate column, the block fits each replicate separately. It then reports the mean of log10 Kd,app across the replicates and the standard error of that mean. The class of the mean comes from that standard error, with both fits.
+If you select a sample replicate column, the block fits each replicate separately. It then reports the mean of log10 Kd,app across the replicates and the standard error of that mean.
 
 On a nucleotide variant dataset that has a nucleotide to amino-acid linker, for example from Amplicon Profiling, the block fits each nucleotide variant separately. It then reports one Kd,app for each amino-acid variant: the mean of log10 Kd,app across its synonymous nucleotide variants, with the standard error of that mean. Each nucleotide variant's own fit is in the raw data download.
 
 A mean across replicates or synonymous variants gets its class from the mean, with both fits. It is Good only if its standard error (log10) is 0.5 or less and more than half of the values in the mean were measured inside the titrated range. A value at an edge of the range enters the mean at that edge.
+
+With sample replicates, the difference from the parent (Kd,app vs Parent) is taken inside each replicate that measured both the variant and its parent inside the titrated range. The block then combines these differences as it combines replicate values.
 
 The FACS bin column can hold numbers or labels. With labels, set the bin order in the settings, from the lowest fluorescence to the highest.
 

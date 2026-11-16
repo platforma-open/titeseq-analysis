@@ -11,7 +11,8 @@ on the barcodes both report.
 
 Each case pins in pins/<case>.json:
   - the whole output, as a digest; a move fails with a diff of what changed
-  - class counts, and how many points the split rule took out of the fit
+  - class counts, and how many non-zero points have no mean bin: split ones, and ones with no read in
+    a sorted gate
   - agreement with the authors' log10 Ka: every barcode both report (both sides clipped to the titrated
     range), and the Good barcodes whose published value is inside it
 """
@@ -41,13 +42,13 @@ def _current(case: str) -> tuple[dict, pl.DataFrame]:
         ).iter_rows()
     }
     pub = study.published(case)
-    split = out["mean_bin"].filter(pl.col("meanBin").is_null() & (pl.col("concentrationStr") != "0.0")).height
+    no_mean_bin = out["mean_bin"].filter(pl.col("meanBin").is_null() & (pl.col("concentrationStr") != "0.0")).height
     snap = snapshot(pc, "clonotypeKey")
     current = {
         "digest": digest(snap),
         "classes": {
             "variant": dict(sorted(pc["affinityClass"].value_counts().iter_rows())),
-            "splitPoints": split,
+            "noMeanBinPoints": no_mean_bin,
         },
         "agreement": {
             "allClipped": agreement(

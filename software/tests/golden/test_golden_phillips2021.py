@@ -16,8 +16,8 @@ it. Gates on vs off, otherwise the paper settings:
 Median |d| differs by at most 0.0004 between the two in each pair. The concentration shift moves every
 log10 K_D by exactly 0.05; under the default settings it brings H1's median |d| from 0.070 to 0.023.
 
-Unlike Adams, the default R² >= 0.8 gate fails a minority of in-range replicate fits: 368 of 5,137 for
-H1 and 736 of 3,954 for H9, with R² counting each fit's 0 M point. The paper settings bring this down to 75 and 149.
+Unlike Adams, the default R² >= 0.8 gate fails a minority of in-range replicate fits: 369 for H1 and 723
+for H9, with R² counting each fit's 0 M point (`replicateLowR2` in the pins).
 
 Known gap, H9: 185 variants the authors fit at -log10 K_D 7.6 to 8.7 (replicate mean) are Above range
 here. Their largest observed rise is 0.67 decades or less, below the block's 0.70-decade rise threshold

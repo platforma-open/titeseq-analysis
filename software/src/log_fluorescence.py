@@ -148,23 +148,23 @@ def r2_with_zero_point(
     A 0 M point is read against the curve at c = 0, which is its baseline `log10_base`. A variant
     with no 0 M point of its own past the read floor takes `shared_baseline`, the run's 0 M signal,
     as its 0 M point at the weight of its heaviest fit point: the form of its R² does not depend on
-    its reads at 0 M. With neither, the R² of the fit points alone.
+    its reads at 0 M. That point sits on the curve, which starts at the same baseline, so it adds
+    explained variance and no residual: such a variant's R² is at least that of a variant whose
+    own 0 M point lies off the baseline. With neither, the R² of the fit points alone.
 
     The R² screens out a curve that does not rise from the baseline. It says little about how the
     curve follows the titrated points of a variant far above the baseline; the SE of log10 K_D
     rates that.
 
-    Why the 0 M point counts: Phillips 2021, whose R² >= 0.8 filter the R² gate follows, counts it
-    (placed at 1e-14 M). Without it a tight binder has no in-range point below its plateau, so the
+    Why the 0 M point counts: Phillips 2021, whose R² >= 0.8 filter the R² gate follows, counts it.
+    Without it a tight binder has no in-range point below its plateau, so the
     curve explains little of what variance is left and the gate fails it: Adams 2016's wild type
     failed this way.
 
     Why read-weighted, where Phillips' r² is unweighted: the fit weights each point by its reads,
     and the R² that judges the fit weights them the same, so a low-read point counts as little in
-    both. On Adams 2016 with the shipped gates and each replicate's measured gate fluorescence this
-    rates 302 amino-acid variants Good at r 0.892 against the authors' fits; Phillips' unweighted
-    form rates 221 at r 0.874. On Phillips' own CR6261 data the two forms rate within 25 variants
-    of each other per campaign.
+    both. The golden cases pin what this form rates Good on Adams 2016 and Phillips 2021
+    (`tests/golden/pins`).
 
     The 0 M points together weigh at most the heaviest fit point; above that they are scaled down
     in proportion. The baseline is the read-weighted 0 M mean, so a 0 M point sits near the curve

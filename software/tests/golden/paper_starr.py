@@ -5,12 +5,14 @@ variant, Kd fitted per barcode from the mean bin (`compute_binding_Kd.Rmd` in ea
 The block's mean bin fit (`hill_gate_index`) is the matching method.
 
 Their method, as the block reads it:
-  - mean bin per barcode and concentration from cell-normalized counts, the sort fraction's role here;
+  - mean bin per barcode and concentration from cell-normalized counts, the sort fraction's role here.
+    A gate with fewer reads than sorted cells keeps its raw counts; the block normalizes every gate;
   - Hill exponent fixed at 1, response in [2, 3] (2022) or [1.5, 3] (2020), baseline in [1, 1.5];
   - Kd bounded below at the lowest non-zero concentration / 100, above at the highest * 10 (2022) or
     * 100 (2020);
   - 2022 only: a mean bin is dropped when two non-neighbouring gates each hold > 40% of the cells
     (`calc.meanbin`), the rule the block applies as `constants.BIMODAL_SHARE`;
+  - a point needs more than 2 cells; the block's floor is 3 reads;
   - a barcode needs enough cells at 80% (2022) or 60% (2020) of its concentrations, and 2022 drops
     fits with a normalized mean square residual far above the median. The block has neither filter.
 
