@@ -26,8 +26,9 @@ Statistics and review fixes:
   leaves the fit when two gates at least two apart each hold more than 40% of the variant's cells.
   Without a sort fraction the rule is off, because shares of reads over gate depth split a single
   peak when the gates are sequenced unevenly.
-- Mean bin fit: a variant fails as `insufficient_points`, not `insufficient_reads`, when it has
-  reads at a concentration but the split rule leaves out every point.
+- Both fits: a variant fails as `insufficient_points`, not `insufficient_reads`, when it has
+  reads past the read floor at a concentration but no point is left. A point is left out by the
+  split rule, or when no gate that holds its reads carries weight.
 - `argsIssues` disables Run and names every problem at once. The args no longer throw. Valid
   settings send the same args as before.
 - Model outputs read each bin column once. They skip the result pool scan for a dataset whose

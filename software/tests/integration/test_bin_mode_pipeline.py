@@ -284,6 +284,16 @@ class TestBimodalSplitUnderTheMeanBinFit:
         row = out["per_clonotype"].filter(pl.col("clonotypeKey").cast(pl.Utf8) == "A").row(0, named=True)
         assert (row["affinityClass"], row["fitFailureReason"]) == ("Failed", "insufficient_points")
 
+    @pytest.mark.parametrize("equation", ["hill_gate_index", "log_fluorescence"])
+    def test_reads_with_no_signal_fail_for_their_points_under_both_fits(self, equation):
+        # Every read of A sits in gate 1, whose sort fraction is 0: reads past the floor, no signal.
+        only_gate_1 = {str(c): {1: 400, 2: 0, 3: 0, 4: 0} for c in self.CONCS}
+        gate_1_empty = pl.when(pl.col("bin") == 1).then(0.0).otherwise(1 / 3)
+        reads = self._reads(only_gate_1).with_columns(gate_1_empty.alias("sort_fraction"))
+        out = run(reads, params=FitParams(equation=equation), **self.SORTED)
+        row = out["per_clonotype"].filter(pl.col("clonotypeKey").cast(pl.Utf8) == "A").row(0, named=True)
+        assert (row["affinityClass"], row["fitFailureReason"]) == ("Failed", "insufficient_points")
+
     def test_without_a_sort_fraction_every_point_stays(self):
         out = run(self._reads().drop("sort_fraction"), params=FitParams(equation="hill_gate_index"))
         assert all(v is not None for v in self._mean_bins(out).values())

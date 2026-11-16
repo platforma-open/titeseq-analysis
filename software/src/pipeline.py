@@ -526,6 +526,14 @@ def _fit_all_log_fluorescence(
     return batch.frames()
 
 
+def _name_lost_points(insufficient_map: dict[str, str | None], no_signal: pl.DataFrame) -> None:
+    """A clonotype with reads past the floor at a concentration, but no point left, has too few
+    points, not too few reads. `no_signal` holds the floor-passed points that carry no signal."""
+    for clonotype in set(no_signal.filter(pl.col(COL_CONC_VAL) != 0)[COL_CLONOTYPE].to_list()):
+        if insufficient_map.get(clonotype) == "insufficient_reads":
+            insufficient_map[clonotype] = "insufficient_points"
+
+
 def _run_hill_gate_index(
     signal_frame: pl.DataFrame,
     *,
@@ -550,11 +558,7 @@ def _run_hill_gate_index(
     log(f"Classifying {len(all_clonotypes)} clonotypes for sufficiency")
     insufficient = classify_insufficient(floor_frame, all_clonotypes, params)
     insufficient_map = dict(zip(insufficient[COL_CLONOTYPE].to_list(), insufficient["insufficient_reason"].to_list()))
-    # Reads past the floor at a concentration, but no point left: too few points, not too few reads.
-    had_points = set(no_mean_bin.filter(pl.col(COL_CONC_VAL) != 0)[COL_CLONOTYPE].to_list())
-    for clonotype in had_points:
-        if insufficient_map.get(clonotype) == "insufficient_reads":
-            insufficient_map[clonotype] = "insufficient_points"
+    _name_lost_points(insufficient_map, no_mean_bin)
     if params.require_all_concentrations:
         _gate_incomplete_titrations(signal_frame, insufficient_map)
 
@@ -663,16 +667,17 @@ def _run_log_fluorescence(
     floor_frame = apply_floor_and_weights(lf_frame, params)
     # A point whose reads all sit in an unsorted sample has no signal. It leaves before the points
     # are counted, so the point count and the fit see the same points.
-    no_signal = pl.col(SIGNAL).is_null()
-    dropped = floor_frame.filter(no_signal & (pl.col(COL_CONC_VAL) != 0)).height
+    no_signal = floor_frame.filter(pl.col(SIGNAL).is_null())
+    dropped = no_signal.filter(pl.col(COL_CONC_VAL) != 0).height
     if dropped:
         log(f"Left out {dropped} points with no FACS bin signal (unsorted samples)")
-    floor_frame = floor_frame.filter(~no_signal)
+    floor_frame = floor_frame.filter(pl.col(SIGNAL).is_not_null())
 
     all_clonotypes = signal_frame[COL_CLONOTYPE].unique().to_list()
     log(f"Classifying {len(all_clonotypes)} clonotypes for sufficiency")
     insufficient = classify_insufficient(floor_frame, all_clonotypes, params)
     insufficient_map = dict(zip(insufficient[COL_CLONOTYPE].to_list(), insufficient["insufficient_reason"].to_list()))
+    _name_lost_points(insufficient_map, no_signal)
     if params.require_all_concentrations:
         _gate_incomplete_titrations(signal_frame, insufficient_map)
 
