@@ -11,7 +11,6 @@ import polars as pl
 
 from constants import (
     COL_BIN,
-    COL_CLONOTYPE,
     DEFAULT_PARAMS,
     FitParams,
 )
@@ -21,7 +20,6 @@ from pipeline import run
 from replicate_combine import ReplicateInputs
 from synonymous import (
     COL_AA,
-    COL_LABEL,
     COL_MUTATIONS,
     COL_NT,
     COL_PARENT,
@@ -64,7 +62,6 @@ _SYNONYMOUS_ONLY = (
     "out_per_nt_variant",
     "out_per_replicate_nt",
     "out_nt_aa_variant",
-    "aa_labels",
     "aa_mutations",
     "aa_parent_links",
     "aa_productive",
@@ -86,8 +83,6 @@ def _synonymous_inputs(args: argparse.Namespace, parser: argparse.ArgumentParser
         parser.error("--nt-mutations and --out-per-nt-variant come together")
     if args.nt_parent_links is not None and args.nt_mutations is None:
         parser.error("--nt-parent-links needs --nt-mutations")
-    if args.aa_labels is not None and args.out_nt_aa_variant is None:
-        parser.error("--aa-labels needs --out-nt-aa-variant")
     return SynonymousInputs(
         nt_to_aa=_read_keys(args.nt_to_aa, {COL_NT: pl.Utf8, COL_AA: pl.Utf8}),
         aa_mutations=_read_keys(args.aa_mutations, {COL_AA: pl.Utf8, COL_MUTATIONS: pl.Utf8}),
@@ -105,11 +100,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out-mean-bin", required=True)
     parser.add_argument("--out-fitted-mean-bin", required=True)
     parser.add_argument("--out-concentration-value", required=True)
-    parser.add_argument("--aa-labels", default=None, help="TSV [aaKey, label]: the amino-acid variants' labels")
     parser.add_argument(
         "--out-nt-aa-variant",
         default=None,
-        help="synonymous mode: TSV [clonotypeKey, aaVariant], each nt variant's amino-acid variant",
+        help="synonymous mode: TSV [clonotypeKey, aaKey], each nt variant's amino-acid variant",
     )
     parser.add_argument("--params", default=None, help="path to params JSON (optional)")
     parser.add_argument("--target-antigen", default=None)
@@ -184,9 +178,7 @@ def main(argv: list[str] | None = None) -> int:
     _write_frame(outputs["fitted_mean_bin"], args.out_fitted_mean_bin)
     _write_frame(outputs["concentration_value"], args.out_concentration_value)
     if synonymous is not None and args.out_nt_aa_variant is not None:
-        labels = _read_keys(args.aa_labels, {COL_AA: pl.Utf8, COL_LABEL: pl.Utf8})
-        curved = outputs["fitted_mean_bin"][COL_CLONOTYPE].unique().to_list()
-        _write_frame(nt_aa_variants(synonymous.nt_to_aa, labels, curved), args.out_nt_aa_variant)
+        _write_frame(nt_aa_variants(synonymous.nt_to_aa), args.out_nt_aa_variant)
     if args.out_per_replicate is not None:
         _write_frame(outputs["per_replicate"], args.out_per_replicate)
     if args.out_per_replicate_nt is not None:

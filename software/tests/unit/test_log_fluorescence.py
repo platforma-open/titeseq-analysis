@@ -102,7 +102,7 @@ class TestFit:
         y = np.log10(8.0 * CONCS**2 / (CONCS**2 + (1e-8) ** 2) + 2.0)
         fit = _fit(y)
         assert fit.converged
-        assert fit.r2 is not None and fit.r2 < 1.0
+        assert fit.y_hat is not None and weighted_r2(y, fit.y_hat, np.ones_like(y)) < 1.0
 
     def test_the_fitted_curve_reproduces_the_points(self):
         y = _curve(1e-8)
@@ -111,7 +111,6 @@ class TestFit:
         assert fit.log10_kd is not None and fit.log10_top is not None and fit.log10_baseline is not None
         assert np.allclose(fit.y_hat, y, atol=0.02)
         assert np.allclose(predict(CONCS, fit.log10_kd, fit.log10_top, fit.log10_baseline), fit.y_hat)
-        assert fit.r2 == pytest.approx(1.0, abs=1e-3)
 
     def test_a_saturated_curve_is_reported_below_the_titration_not_as_a_failure(self):
         # Saturated everywhere: K_D is below the titration. The fit still converges — the bound is
@@ -158,7 +157,7 @@ class TestFit:
         fit = fit_one(np.zeros(4), np.zeros(4), np.ones(4), scale=SCALE, plateau_floor=FLOOR)
         assert not fit.converged
         assert fit.reason == "convergence_failure"
-        assert fit.log10_kd is None and fit.r2 is None
+        assert fit.log10_kd is None
 
     def test_a_non_finite_signal_is_a_failure_not_a_crash(self):
         y = _curve(1e-8)

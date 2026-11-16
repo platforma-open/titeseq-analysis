@@ -44,5 +44,8 @@ Pages removed:
 - Every nucleotide variant's and replicate's values stay in the raw data download. The nucleotide
   grain's class and parent delta join it as `nt_variant_annotations.tsv`.
 - The table states of the removed pages stay in the block data, unread. No migration is needed.
+- `nt_to_aa_variant.tsv` in the raw data download holds each nucleotide variant's amino-acid
+  variant key only. Its `aaVariant` label column fed the NT Variants page alone and is removed,
+  so the block no longer reads the amino-acid label column.
 - With sample replicates, the synonymous combination inside each replicate no longer runs the
   class and parent delta annotation. The combined values decide both. Results are unchanged.

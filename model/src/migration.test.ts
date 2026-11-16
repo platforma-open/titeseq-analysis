@@ -1,5 +1,6 @@
 import type { PlRef } from "@platforma-sdk/model";
 import { describe, expect, it } from "vitest";
+import { runErrors } from "./run-errors.testutil";
 import type {
   BlockArgs,
   BlockData,
@@ -13,7 +14,6 @@ import {
   HILL_GATE_INDEX_DEFAULTS,
   dataModel,
   deriveArgs,
-  deriveArgsIssues,
   initBlockData,
   migrateV1ToV2,
   migrateV2ToV3,
@@ -66,12 +66,6 @@ const upgraded = (): BlockData => {
 
 /** The args the model projects from a given state — what the staleness gate compares. */
 const argsOf = (data: BlockData): BlockArgs => deriveArgs(data);
-/** The reasons Run is disabled, one per line; empty when the block may run. */
-const runErrors = (data: BlockData): string =>
-  deriveArgsIssues(data)
-    .map((i) => i.message)
-    .join("\n");
-
 describe("a project created on v2.4.0 or earlier", () => {
   it("is pinned to the equation it ran, by name", () => {
     const data = upgraded();

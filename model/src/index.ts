@@ -538,6 +538,10 @@ function exactly(value: string) {
   return { type: "exact" as const, value };
 }
 
+/** A column with no value at all is no option: its upstream produced nothing to pick. */
+const hasNoValue = (values: Record<string, unknown>): boolean =>
+  Object.values(values).every((v) => v === null || v === undefined);
+
 // Filter per-sample numeric option lists:
 //   - drop candidates matching `excludeRef` (cross-exclusion between pickers);
 //   - drop all-null columns (they arrive in Python as empty-String and fail validation);
@@ -560,10 +564,10 @@ function filterPopulatedOptions<O extends { ref: PlRef }, S>(
     if (opts.excludeRef && plRefsEqual(opt.ref, opts.excludeRef)) return false;
     const data = ctx.resultPool.getDataByRef(opt.ref)?.data;
     if (!data) return true;
-    const values = data.getDataAsJson<Record<string, number | null>>()?.["data"];
+    const values = data.getDataAsJson<Record<string, Record<string, number | null>>>()?.["data"];
     if (!values) return true;
+    if (hasNoValue(values)) return false;
     const finite = Object.values(values).filter((v): v is number => v !== null && v !== undefined);
-    if (finite.length === 0) return false;
     return opts.valuePredicate ? opts.valuePredicate(finite) : true;
   });
 }
@@ -1149,9 +1153,7 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     // The same options as `binOptions`, with each column's data read once.
     for (const option of ctx.resultPool.getOptions(isBinColumn)) {
       const values = sampleValuesOf(ctx, option.ref);
-      // A column with no value at all is no option; see filterPopulatedOptions.
-      if (values !== undefined && Object.values(values).every((v) => v === null || v === undefined))
-        continue;
+      if (values !== undefined && hasNoValue(values)) continue;
       const isText = ctx.resultPool.getPColumnSpecByRef(option.ref)?.valueType === "String";
       out[refKey(option.ref)] = {
         isText,

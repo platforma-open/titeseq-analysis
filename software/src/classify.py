@@ -23,7 +23,7 @@ import math
 import statistics
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, Protocol
 
 from constants import KD_SD_GOOD, AffinityClass, FailureReason, FitParams, KdRangeSide
 
@@ -189,7 +189,18 @@ def member_from_fit(row: dict, log10_lo: float | None, log10_hi: float | None) -
     return Member("measured", value, se if se is not None and math.isfinite(se) else None, cls)
 
 
-def fit_error_term(entered: Sequence[Member]) -> float | None:
+class HasKd(Protocol):
+    """A log10 K_D and its SE: one nt variant's fit, a synonymous combination, a replicate mean, or
+    a delta between two of them."""
+
+    @property
+    def log10_kd(self) -> float | None: ...
+
+    @property
+    def log10_kd_se(self) -> float | None: ...
+
+
+def fit_error_term(entered: Sequence[HasKd]) -> float | None:
     """RMS of the fit SEs the members report, over sqrt(n); n counts every member in the mean.
 
     A member with no fit SE, a bound included, counts at the typical error of the others. None when
@@ -201,7 +212,7 @@ def fit_error_term(entered: Sequence[Member]) -> float | None:
     return math.sqrt(math.fsum(se * se for se in ses) / len(ses)) / math.sqrt(len(entered))
 
 
-def mean_se(entered: Sequence[Member]) -> float:
+def mean_se(entered: Sequence[HasKd]) -> float:
     """The SE of the mean over n >= 2 members: the larger of sample SD / sqrt(n) and the fit-error
     term, the spread alone when no member carries an SE."""
     spread = statistics.stdev([m.log10_kd for m in entered]) / math.sqrt(len(entered))

@@ -1,20 +1,8 @@
 import type { PlRef } from "@platforma-sdk/model";
 import { describe, expect, it } from "vitest";
+import { runErrors } from "./run-errors.testutil";
 import type { BlockData } from "./index";
-import {
-  binRanks,
-  defaultBinOrder,
-  deriveArgs,
-  deriveArgsIssues,
-  initBlockData,
-  unrankedBins,
-} from "./index";
-
-/** The reasons Run is disabled, one per line; empty when the block may run. */
-const runErrors = (data: BlockData): string =>
-  deriveArgsIssues(data)
-    .map((i) => i.message)
-    .join("\n");
+import { binRanks, defaultBinOrder, deriveArgs, initBlockData, unrankedBins } from "./index";
 
 const ref = (name: string): PlRef => ({ __isRef: true, blockId: "b1", name });
 

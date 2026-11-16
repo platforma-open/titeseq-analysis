@@ -121,7 +121,6 @@ class FitResult:
     y_hat: np.ndarray | None  # in decades; convert with decades_to_gate_index before output
     converged: bool
     reason: str | None  # "convergence_failure" on failure; None on success
-    r2: float | None = None  # weighted R² on the points the fit saw, in decades; 0 M excluded
 
 
 def _failure(reason: str = "convergence_failure") -> FitResult:
@@ -306,7 +305,6 @@ def fit_one(
         y_hat=y_hat,
         converged=True,
         reason=None,
-        r2=weighted_r2(y, y_hat, w),
     )
 
 

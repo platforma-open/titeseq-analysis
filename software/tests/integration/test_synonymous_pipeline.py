@@ -432,20 +432,6 @@ def test_the_cli_refuses_an_nt_mutation_count_without_its_output(tmp_path):
         )  # fmt: skip
 
 
-def test_the_cli_refuses_labels_without_the_nt_aa_variant_output(capsys):
-    with pytest.raises(SystemExit):
-        main(
-            [
-                "--reads", "r.parquet",
-                "--out-per-clonotype", "a", "--out-mean-bin", "b",
-                "--out-fitted-mean-bin", "c", "--out-concentration-value", "d",
-                "--nt-to-aa", "links.tsv", "--out-per-variant", "e", "--out-synonymous-summary", "f",
-                "--aa-labels", "labels.tsv",
-            ]
-        )  # fmt: skip
-    assert "--aa-labels needs --out-nt-aa-variant" in capsys.readouterr().err
-
-
 def test_the_cli_refuses_a_linker_without_its_outputs(tmp_path):
     with pytest.raises(SystemExit):
         main(

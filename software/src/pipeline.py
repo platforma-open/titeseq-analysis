@@ -132,8 +132,9 @@ from synonymous import (
     annotate_variants,
     combine_amino_acid,
     combine_synonymous,
+    fail_stops,
     resolve_nt_to_aa,
-    settle_stops,
+    run_summary,
 )
 
 
@@ -1171,12 +1172,9 @@ def _combine_replicate_synonymous(
 
     fitted_nt = sorted(merged)
     mapping, unmapped, ambiguous = resolve_nt_to_aa(synonymous.nt_to_aa, fitted_nt)
-    aa_merged, stops, summary = settle_stops(
-        aa_merged,
-        synonymous,
-        nt_variants=len(fitted_nt),
-        unmapped=unmapped,
-        ambiguous=ambiguous,
+    aa_merged, stops = fail_stops(aa_merged, synonymous)
+    summary = run_summary(
+        aa_merged, synonymous, stops, nt_variants=len(fitted_nt), unmapped=unmapped, ambiguous=ambiguous
     )
     summary.update({"replicates": len(frames), "errorModel": ERROR_MODEL})
     # A synonymous variant fitted in several replicates is one variant.
@@ -1192,6 +1190,11 @@ def _combine_replicate_synonymous(
         aa_replicates={aa: [value for value, _ in rows] for aa, rows in aa_collected.items()},
         nt_replicates={nt: [value for value, _ in rows] for nt, rows in collected.items()},
     )
+    if "replicateDeltas" in summary:
+        log(
+            f"Parent delta: {summary['replicateDeltas']} taken inside the replicates, "
+            f"{summary['combinedValueDeltas']} from the combined values"
+        )
 
     aa_reads: dict[tuple[str, str], int] = {}
     for (nt, label), n in per_replicate_reads.items():

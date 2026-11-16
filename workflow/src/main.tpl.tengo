@@ -80,11 +80,6 @@ wf.prepare(func(args) {
 		axes: [{ anchor: "abundance", idx: 1 }],
 		name: "pl7.app/repertoire/mutationCount"
 	}, "ntMutationCounts")
-	// The amino-acid variants' labels: the graphs name each synonymous group by them.
-	bb.addMulti({
-		axes: [{ name: "pl7.app/variantKey", type: "String", domain: { "pl7.app/alphabet": "aminoacid" } }],
-		name: "pl7.app/label"
-	}, "aaLabels")
 
 	return { columns: bb.build() }
 })
@@ -118,8 +113,7 @@ wf.body(func(args) {
 			aaMutationCounts: columns.getColumns("aaMutationCounts"),
 			parentLinks: columns.getColumns("parentLinks"),
 			aaProductive: columns.getColumns("aaProductive"),
-			ntMutationCounts: columns.getColumns("ntMutationCounts"),
-			aaLabels: columns.getColumns("aaLabels")
+			ntMutationCounts: columns.getColumns("ntMutationCounts")
 		}
 	}
 	syn := synonymousInputs.resolve(synCandidates, abundanceSpec.axesSpec[1])
@@ -323,14 +317,6 @@ wf.body(func(args) {
 		execBuilder.
 			arg("--out-nt-aa-variant").arg("nt_aa_variant.tsv").
 			saveFile("nt_aa_variant.tsv")
-		if !is_undefined(syn.aaLabel) {
-			execBuilder.
-				addFile("aa_labels.tsv", keyTable(func(b) {
-					b.add(syn.aaLabel, { header: "label" })
-					b.setAxisHeader(syn.aaAxis, "aaKey")
-				})).
-				arg("--aa-labels").arg("aa_labels.tsv")
-		}
 		if syn.aaClass {
 			execBuilder.
 				addFile("aa_mutations.tsv", keyTable(func(b) {
