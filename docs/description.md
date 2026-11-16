@@ -17,7 +17,7 @@ With the log fluorescence fit, the block gives each variant one affinity class:
 
 The mean bin fit uses only Good, Partial and Failed. It rates a single fit by R².
 
-If you select a sample replicate column, the block fits each replicate separately. It then reports the mean of log10 Kd,app across the replicates and the standard error of that mean.
+If you select a sample replicate column, the block fits each replicate separately. It then reports the mean of log10 Kd,app across the replicates and the standard error of that mean. The class of the mean comes from that standard error, with both fits.
 
 On a nucleotide variant dataset that has a nucleotide to amino-acid linker, for example from Amplicon Profiling, the block fits each nucleotide variant separately. It then reports one Kd,app for each amino-acid variant: the mean of log10 Kd,app across its synonymous nucleotide variants, with the standard error of that mean. The NT Variants page shows the fit of each nucleotide variant.
 
