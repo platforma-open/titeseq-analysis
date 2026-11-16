@@ -414,9 +414,9 @@ function resetBinOrder(): void {
           The lowest R² that a fit can have. A fit with a lower R², or with no R², gets the rating
           Failed, with the reason low_r2. The block checks only a fit whose Kd,app is inside the
           titrated range. With sample replicates, the block checks the fit of each replicate. R²
-          counts the 0 M signal, so it removes a curve that does not rise from the baseline. It
-          does not rate how well the curve follows the points of a strong binder: the standard
-          error of Kd,app does. The default is 0.8. Leave this field empty to set no R² limit.
+          counts the 0 M signal, so it removes a curve that does not rise from the baseline. It does
+          not rate how well the curve follows the points of a strong binder: the standard error of
+          Kd,app does. The default is 0.8. Leave this field empty to set no R² limit.
         </template>
       </PlNumberField>
       <PlNumberField
