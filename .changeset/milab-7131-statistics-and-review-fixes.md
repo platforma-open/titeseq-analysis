@@ -12,10 +12,11 @@ Statistics and review fixes:
 
 - Parent delta with sample replicates. The block takes the delta inside each replicate that
   measured both the variant and its parent inside the range. It then combines the deltas as it
-  combines replicate values. A shift that a replicate gives every value cancels. Where a replicate
+  combines replicate values. A shift that a replicate gives every value cancels. A replicate that
+  measured only one of the two is left out of the delta, so the delta can differ from the
+  difference of the two Kd,app values beside it by a shift between replicates. Where a replicate
   holds the variant or the parent at an edge of the range, or no replicate measured both, the delta
-  compares the combined values and has no SE. It then never contradicts the two Kd,app values
-  beside it.
+  compares the combined values and has no SE.
 - New columns `pl7.app/vdj/kdParent` and `pl7.app/vdj/kdLog10ParentSe` hold the parent's own Kd,app
   and SE. They are optional table columns.
 - Log fluorescence fit: R² counts the variant's own 0 M points, from every 0 M sample. Each point
