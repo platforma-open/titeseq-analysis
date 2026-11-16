@@ -364,8 +364,8 @@ function resetBinOrder(): void {
         Optional. A per-sample column naming the replicate each sample belongs to. Each replicate is
         a titration of its own: it is fitted alone, and the per-{{ noun }} values are then combined.
         The table then shows the combined Kd,app with its standard error and the SD across the
-        replicates, and the Replicates page shows each replicate's own Kd,app. Leave empty to fit
-        one titration.
+        replicates, and a {{ noun }}'s row opens each replicate's own Kd,app. Leave empty to fit one
+        titration.
       </template>
     </PlDropdownRef>
 
