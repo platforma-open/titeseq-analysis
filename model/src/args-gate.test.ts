@@ -1,11 +1,23 @@
 import type { PlRef } from "@platforma-sdk/model";
 import { describe, expect, it } from "vitest";
 import type { BlockData } from "./index";
-import { GATE_FLUORESCENCE_MISSING, deriveArgs, initBlockData, settingsWarnings } from "./index";
+import {
+  GATE_FLUORESCENCE_MISSING,
+  deriveArgs,
+  deriveArgsIssues,
+  initBlockData,
+  settingsWarnings,
+} from "./index";
+
+/** The reasons Run is disabled, one per line; empty when the block may run. */
+const runErrors = (data: BlockData): string =>
+  deriveArgsIssues(data)
+    .map((i) => i.message)
+    .join("\n");
 
 const ref = (name: string): PlRef => ({ __isRef: true, blockId: "b1", name });
 
-/** Every input the drawer offers, filled in, so only a setting can be the reason a throw happens. */
+/** Every input the drawer offers, filled in, so only a setting can be the reason Run is disabled. */
 const configured: BlockData = {
   ...initBlockData(),
   abundanceRef: ref("abundance"),
@@ -33,8 +45,8 @@ const HILL_GATE_INDEX_ARGS_JSON =
   '{"abundanceRef":{"__isRef":true,"blockId":"b1","name":"abundance"},"concentrationColumnRef":{"__isRef":true,"blockId":"b1","name":"concentration"},"binColumnRef":{"__isRef":true,"blockId":"b1","name":"bin"},"antigenColumnRef":{"__isRef":true,"blockId":"b1","name":"antigen"},"sortFractionColumnRef":{"__isRef":true,"blockId":"b1","name":"sortFraction"},"targetAntigen":"CD19","minReadsPerConcentration":3,"minConcentrationPoints":5,"r2ThresholdGood":0.8,"r2ThresholdFailed":0.5,"nMin":0.5,"nMax":2,"hookEffectThresholdBin":0.2,"hookEffectThresholdNoBin":0.02,"hookEffectMinReads":20,"traceLabel":"CD19 titration","inputFilter":"{\\"__isRef\\":true,\\"blockId\\":\\"b1\\",\\"name\\":\\"filter\\"}"}';
 
 describe("a required numeric setting the scientist cleared disables Run", () => {
-  // One row per setting the selected equation reads. A throw out of `deriveArgs` is what the
-  // platform reads as "args invalid", which is what greys the Run button out.
+  // One row per setting the selected equation reads. An error out of `deriveArgsIssues` is what
+  // greys the Run button out.
   const cases: { setting: keyof BlockData; data: BlockData; message: string }[] = [
     { setting: "plateauFloor", data: configured, message: "Plateau floor is required" },
     {
@@ -72,18 +84,18 @@ describe("a required numeric setting the scientist cleared disables Run", () => 
   ];
 
   it.each(cases)("$setting", ({ setting, data, message }) => {
-    expect(() => deriveArgs({ ...data, [setting]: undefined })).toThrow(message);
+    expect(runErrors({ ...data, [setting]: undefined })).toContain(message);
   });
 
   it("hookEffectThresholdNoBin, in the frequency mode that reads it", () => {
-    expect(() =>
-      deriveArgs({
+    expect(
+      runErrors({
         ...hillConfigured,
         binColumnRef: undefined,
         sortFractionColumnRef: undefined,
         hookEffectThresholdNoBin: undefined,
       }),
-    ).toThrow("Hook effect signal-drop threshold (frequency mode) is required");
+    ).toContain("Hook effect signal-drop threshold (frequency mode) is required");
   });
 });
 
@@ -111,9 +123,7 @@ describe("a setting the selected equation never reads cannot disable Run", () =>
   it("hill_gate_index runs with the inactive mode's hook threshold cleared", () => {
     // Bin mode, so the frequency-mode threshold is hidden in the drawer. The args still carry it,
     // at its default, because the workflow's schema has the field.
-    expect(() =>
-      deriveArgs({ ...hillConfigured, hookEffectThresholdNoBin: undefined }),
-    ).not.toThrow();
+    expect(runErrors({ ...hillConfigured, hookEffectThresholdNoBin: undefined })).toBe("");
   });
 });
 
@@ -131,13 +141,13 @@ describe("the plateau floor's own range", () => {
   // 0 is the one value `min-value="0"` lets through that the fit cannot use: a floor of 0 asks
   // the curve to rise by nothing.
   it.each([0, -0.1, 1.5])("rejects %s", (plateauFloor) => {
-    expect(() => deriveArgs({ ...configured, plateauFloor })).toThrow(
+    expect(runErrors({ ...configured, plateauFloor })).toContain(
       "Plateau floor must be above 0 and at most 1",
     );
   });
 
   it.each([Number.MIN_VALUE, 0.4, 1])("accepts %s", (plateauFloor) => {
-    expect(() => deriveArgs({ ...configured, plateauFloor })).not.toThrow();
+    expect(runErrors({ ...configured, plateauFloor })).toBe("");
   });
 });
 
@@ -180,5 +190,27 @@ describe("the trace label", () => {
   it("does not depend on the subtitle's pool-derived part", () => {
     const data = { ...configured, customBlockLabel: "" };
     expect(deriveArgs({ ...data, subtitleLabel: "Abundance" })).toEqual(deriveArgs(data));
+  });
+});
+
+describe("an unconfigured block still projects args", () => {
+  it("builds args with no input picked, and names every missing input", () => {
+    const args = deriveArgs(initBlockData());
+    expect(args.abundanceRef).toBeUndefined();
+    expect(runErrors(initBlockData())).toContain("Abundance column is required");
+    expect(runErrors(initBlockData())).toContain("Concentration column is required");
+  });
+
+  it("reports every cleared setting at once", () => {
+    const cleared = { ...hillConfigured, nMin: undefined, nMax: undefined };
+    expect(deriveArgsIssues(cleared)).toEqual([
+      { severity: "error", message: "Hill coefficient nMin is required" },
+      { severity: "error", message: "Hill coefficient nMax is required" },
+    ]);
+  });
+
+  it("a configured block has no issue", () => {
+    expect(deriveArgsIssues(configured)).toEqual([]);
+    expect(deriveArgsIssues(hillConfigured)).toEqual([]);
   });
 });

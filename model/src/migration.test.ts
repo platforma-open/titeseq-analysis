@@ -7,13 +7,13 @@ import type {
   BlockDataV3,
   BlockDataV5,
   BlockDataV6,
-  RunShape,
 } from "./index";
 import { kind } from "@platforma-open/platforma-open.titeseq-analysis.kind";
 import {
   HILL_GATE_INDEX_DEFAULTS,
   dataModel,
   deriveArgs,
+  deriveArgsIssues,
   initBlockData,
   migrateV1ToV2,
   migrateV2ToV3,
@@ -21,7 +21,6 @@ import {
   migrateV4ToV5,
   migrateV5ToV6,
   migrateV6ToV7,
-  replicateViewsFor,
   SECTIONS,
 } from "./index";
 
@@ -67,6 +66,11 @@ const upgraded = (): BlockData => {
 
 /** The args the model projects from a given state — what the staleness gate compares. */
 const argsOf = (data: BlockData): BlockArgs => deriveArgs(data);
+/** The reasons Run is disabled, one per line; empty when the block may run. */
+const runErrors = (data: BlockData): string =>
+  deriveArgsIssues(data)
+    .map((i) => i.message)
+    .join("\n");
 
 describe("a project created on v2.4.0 or earlier", () => {
   it("is pinned to the equation it ran, by name", () => {
@@ -147,26 +151,26 @@ describe("a block created on the v2 data model", () => {
   it("cannot run the default equation on frequency-only data", () => {
     // No-bin mode survives only on v2.4.0's equation. Run stays disabled with a reason
     // rather than the job failing in Python after submission.
-    expect(() =>
-      argsOf({
+    expect(
+      runErrors({
         ...initBlockData(),
         abundanceRef: ref("abundance"),
         concentrationColumnRef: ref("concentration"),
         binColumnRef: undefined,
       }),
-    ).toThrow("requires a FACS bin column");
+    ).toContain("requires a FACS bin column");
   });
 
   it("runs v2.4.0's equation on frequency-only data, as it always did", () => {
-    expect(() =>
-      argsOf({
+    expect(
+      runErrors({
         ...initBlockData(),
         equation: "hill_gate_index",
         abundanceRef: ref("abundance"),
         concentrationColumnRef: ref("concentration"),
         binColumnRef: undefined,
       }),
-    ).not.toThrow();
+    ).toBe("");
   });
 });
 
@@ -188,7 +192,7 @@ describe("the args carry only the settings the selected equation reads", () => {
   });
 
   it("log fluorescence runs with an invalid hill_gate_index setting the drawer hides", () => {
-    expect(() => argsOf({ ...configured, nMin: 3, nMax: 2 })).not.toThrow();
+    expect(runErrors({ ...configured, nMin: 3, nMax: 2 })).toBe("");
   });
 
   it("a hidden hill_gate_index setting does not change log fluorescence args", () => {
@@ -227,9 +231,9 @@ describe("the R² and SE limits", () => {
   });
 
   it("disable Run on a limit out of range", () => {
-    expect(() => argsOf({ ...configured, r2GateMin: 1.2 })).toThrow("between 0 and 1");
-    expect(() => argsOf({ ...configured, r2GateMin: -0.1 })).toThrow("between 0 and 1");
-    expect(() => argsOf({ ...configured, kdSeGateMax: 0 })).toThrow(
+    expect(runErrors({ ...configured, r2GateMin: 1.2 })).toContain("between 0 and 1");
+    expect(runErrors({ ...configured, r2GateMin: -0.1 })).toContain("between 0 and 1");
+    expect(runErrors({ ...configured, kdSeGateMax: 0 })).toContain(
       "Maximum Kd,app SE must be above 0",
     );
   });
@@ -307,15 +311,6 @@ describe("the pages", () => {
 
   it("are the main table, then the three graph pages", () => {
     expect(SECTIONS.map((s) => s.href)).toEqual(["/", ...GRAPHS]);
-  });
-
-  it("give the Replicates page the nt table in synonymous mode", () => {
-    const views = (run: RunShape) => replicateViewsFor(run).map((v) => v.value);
-    expect(views({ synonymous: false, replicates: true })).toEqual(["variant-replicates"]);
-    expect(views({ synonymous: true, replicates: true })).toEqual([
-      "variant-replicates",
-      "nt-replicates",
-    ]);
   });
 });
 

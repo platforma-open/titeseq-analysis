@@ -1,7 +1,20 @@
 import type { PlRef } from "@platforma-sdk/model";
 import { describe, expect, it } from "vitest";
 import type { BlockData } from "./index";
-import { binRanks, defaultBinOrder, deriveArgs, initBlockData, unrankedBins } from "./index";
+import {
+  binRanks,
+  defaultBinOrder,
+  deriveArgs,
+  deriveArgsIssues,
+  initBlockData,
+  unrankedBins,
+} from "./index";
+
+/** The reasons Run is disabled, one per line; empty when the block may run. */
+const runErrors = (data: BlockData): string =>
+  deriveArgsIssues(data)
+    .map((i) => i.message)
+    .join("\n");
 
 const ref = (name: string): PlRef => ({ __isRef: true, blockId: "b1", name });
 
@@ -34,7 +47,7 @@ describe("the FACS bin order", () => {
   });
 
   it("disables Run when every bin was removed", () => {
-    expect(() => deriveArgs({ ...configured, binOrder: [] })).toThrow("Keep at least one FACS bin");
+    expect(runErrors({ ...configured, binOrder: [] })).toContain("Keep at least one FACS bin");
   });
 
   it("keeps a skipped gate number's gap under the default order", () => {
@@ -50,9 +63,7 @@ describe("the FACS bin order", () => {
   });
 
   it("disables Run on a label column with no order", () => {
-    expect(() => deriveArgs({ ...configured, binColumnIsText: true })).toThrow(
-      "Set the FACS bin order",
-    );
+    expect(runErrors({ ...configured, binColumnIsText: true })).toContain("Set the FACS bin order");
     expect(
       deriveArgs({ ...configured, binColumnIsText: true, binOrder: ["LOW", "HIGH"] }),
     ).toHaveProperty("binRanks", { LOW: 1, HIGH: 2 });
