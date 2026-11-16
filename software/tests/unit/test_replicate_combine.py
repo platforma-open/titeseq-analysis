@@ -267,13 +267,13 @@ class TestBoundClassAndRangeSide:
         # "hill_gate_index" declares Good, Partial and Failed only: a wall class would fall outside
         # the column's declared values and a downstream filter would drop the variant unseen.
         values = [_value(r, HI, state="above", cls="Good") for r in ("A", "B")]
-        merged = combine_replicates(values, wall_classes=False)
+        merged = combine_replicates(values, fits_report_se=False)
         assert merged.classification.affinity_class == "Good"
         assert merged.range_side == "Above range"
 
     def test_under_the_mean_bin_fit_replicates_that_disagree_give_partial(self):
         values = [_value("A", HI, state="above", cls="Good"), _value("B", HI, state="above", cls="Partial")]
-        assert combine_replicates(values, wall_classes=False).classification.affinity_class == "Partial"
+        assert combine_replicates(values, fits_report_se=False).classification.affinity_class == "Partial"
 
 
 class TestPartlyCensored:
@@ -371,16 +371,14 @@ class TestSynonymousMajority:
         rows = [{**_aa_row(HI, None, measured=0, above=2, cls="Good"), "kdOutOfRange": True} for _ in range(3)]
         frames = [(f"rep{i}", pl.DataFrame([{"aaKey": "A", **row}])) for i, row in enumerate(rows)]
         collected = collect_values(frames, "aaKey", log10_lo=LO, log10_hi=HI)
-        m = require_synonymous_majority(collected, merge_all(collected, wall_classes=False))["A"]
+        m = require_synonymous_majority(collected, merge_all(collected, fits_report_se=False))["A"]
         assert m.out_of_range
         assert m.classification.affinity_class == "Good"
 
     def _merged_spread_only(self, rows):
         frames = [(f"rep{i}", pl.DataFrame([{"aaKey": "A", **row}])) for i, row in enumerate(rows)]
         collected = collect_values(frames, "aaKey", log10_lo=LO, log10_hi=HI)
-        return require_synonymous_majority(collected, merge_all(collected, wall_classes=False, fits_report_se=False))[
-            "A"
-        ]
+        return require_synonymous_majority(collected, merge_all(collected, fits_report_se=False))["A"]
 
     def test_under_the_mean_bin_fit_partial_replicates_stay_partial(self):
         # Each replicate's synonymous variants are Partial fits that agree, so its amino-acid value is

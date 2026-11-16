@@ -56,14 +56,14 @@ from __future__ import annotations
 
 import math
 import statistics
-from collections.abc import Collection, Mapping
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from functools import partial
 from typing import Protocol
 
 import polars as pl
 
-from classify import Member, combine_members, failed, member_from_fit
+from classify import Combined, Member, combine_members, failed, mean_se, member_from_fit
 from constants import COL_CLONOTYPE
 
 COL_NT = "ntKey"
@@ -112,6 +112,10 @@ CLASS_SCHEMA: dict[str, pl.DataType] = {COL_CLASS: pl.Utf8}
 DELTA_SCHEMA: dict[str, pl.DataType] = {
     "kdLog10ParentDelta": pl.Float64,
     "kdLog10ParentDeltaSe": pl.Float64,
+    # The parent's own K_D and SE, beside the delta: with sample replicates the delta is not the
+    # difference of the two combined values.
+    "kdParent": pl.Float64,
+    "kdLog10ParentSe": pl.Float64,
 }
 
 
@@ -280,10 +284,7 @@ def parent_delta(variant: HasKd | None, parent: HasKd | None, is_parent: bool) -
         return None, None
     if is_parent:
         return 0.0, 0.0
-    se = None
-    if variant.log10_kd_se is not None and parent.log10_kd_se is not None:
-        se = math.hypot(variant.log10_kd_se, parent.log10_kd_se)
-    return variant.log10_kd - parent.log10_kd, se
+    return variant.log10_kd - parent.log10_kd, _quadrature(variant.log10_kd_se, parent.log10_kd_se)
 
 
 def _is_bound(value: HasKd) -> bool:
@@ -305,21 +306,93 @@ def synonymous_spread(
     return [statistics.stdev(measured[aa]) if len(measured.get(aa, [])) >= 2 else None for aa in aa_keys]
 
 
+class ReplicateKd(HasKd, Protocol):
+    """One replicate's value for one variant: its replicate and its state as well."""
+
+    @property
+    def replicate(self) -> str: ...
+
+    @property
+    def state(self) -> str: ...
+
+
+def replicate_parent_delta(
+    variant: Sequence[ReplicateKd], parent: Sequence[ReplicateKd]
+) -> tuple[float, float | None] | None:
+    """The parent delta taken inside each replicate, then combined; None when no replicate has both.
+
+    None as well when a replicate holds either of them at a wall: that replicate is in the combined
+    value and cannot be in the delta, so the two would disagree. The caller then compares the
+    combined values. A shift a replicate gives every value cancels in its own delta. Combined as
+    replicate values are (`classify.mean_se`), each replicate's fit error being its two SEs in
+    quadrature.
+    """
+    if any(r.state in ("below", "above") for r in (*variant, *parent)):
+        return None
+    parents = {p.replicate: p for p in parent if p.state == "measured"}
+    deltas = [
+        _Value(v.log10_kd - p.log10_kd, _quadrature(v.log10_kd_se, p.log10_kd_se))
+        for v in variant
+        if v.state == "measured" and (p := parents.get(v.replicate)) is not None
+    ]
+    if not deltas:
+        return None
+    if len(deltas) == 1:
+        return deltas[0].log10_kd, deltas[0].log10_kd_se
+    return math.fsum(d.log10_kd for d in deltas) / len(deltas), mean_se(deltas)
+
+
+@dataclass(frozen=True)
+class _Value:
+    """A log10 K_D and its SE, shaped as a value entering a mean."""
+
+    log10_kd: float
+    log10_kd_se: float | None
+
+
+def _quadrature(a: float | None, b: float | None) -> float | None:
+    return None if a is None or b is None else math.hypot(a, b)
+
+
 def parent_deltas(
-    values: Mapping[str, HasKd], links: pl.DataFrame, mutations: pl.DataFrame, key: str
-) -> tuple[list[float | None], list[float | None], dict]:
-    """The parent delta and its error for each variant of `values`, in its order, and the summary
-    counts."""
+    values: Mapping[str, HasKd],
+    links: pl.DataFrame,
+    mutations: pl.DataFrame,
+    key: str,
+    *,
+    replicates: Mapping[str, Sequence[ReplicateKd]] | None = None,
+) -> tuple[dict[str, list[float | None]], dict]:
+    """The `DELTA_SCHEMA` columns for the variants of `values`, in its order, and the summary counts:
+    the parent delta and its error, and the parent's own K_D and SE.
+
+    `replicates` holds each variant's per-replicate values in a run with sample replicates. The
+    delta is then taken inside each replicate (`replicate_parent_delta`). Where that gives none, it
+    is the difference of the combined values, with no error: the two were not measured together.
+    """
     assignment, own, unidentifiable, several = resolve_parents(links, mutations, key)
     deltas: list[float | None] = []
     ses: list[float | None] = []
+    parent_kds: list[float | None] = []
+    parent_ses: list[float | None] = []
+    from_replicates = from_combined = 0
     for variant, value in values.items():
         parent_id = assignment.get(variant)
         parent_key = own.get(parent_id) if parent_id is not None else None
         parent = values.get(parent_key) if parent_key is not None else None
         delta, se = parent_delta(value, parent, variant == parent_key)
+        if replicates is not None and delta is not None and variant != parent_key:
+            inside = replicate_parent_delta(replicates.get(variant, ()), replicates.get(parent_key, ()))
+            if inside is None:
+                se = None
+                from_combined += 1
+            else:
+                delta, se = inside
+                from_replicates += 1
         deltas.append(delta)
         ses.append(se)
+        has_parent = parent is not None and parent.log10_kd is not None
+        parent_kds.append(10.0**parent.log10_kd if has_parent else None)
+        parent_ses.append(parent.log10_kd_se if has_parent else None)
     # A parent none of this run's variants links to is not reported: the link table covers the library.
     used = {assignment[variant] for variant in values if variant in assignment}
     unidentifiable = [p for p in unidentifiable if p["parentId"] in used]
@@ -328,22 +401,70 @@ def parent_deltas(
         "unidentifiableParents": unidentifiable,
         "multiParentVariants": several,
     }
-    return deltas, ses, counts
+    if replicates is not None:
+        counts["replicateDeltas"] = from_replicates
+        counts["combinedValueDeltas"] = from_combined
+    columns = {
+        "kdLog10ParentDelta": deltas,
+        "kdLog10ParentDeltaSe": ses,
+        "kdParent": parent_kds,
+        "kdLog10ParentSe": parent_ses,
+    }
+    return columns, counts
 
 
-def combine_synonymous(
+def settle_stops(
+    combined: dict[str, Combined],
+    inputs: SynonymousInputs,
+    *,
+    nt_variants: int,
+    unmapped: int,
+    ambiguous: int,
+) -> tuple[dict[str, Combined], set[str], dict]:
+    """The combined values with every stop variant failed, the stop variants, and the run summary.
+
+    A stop variant has no value: its counts stay, every value goes.
+    """
+    stops = stop_variants(inputs.aa_productive) if inputs.aa_productive is not None else set()
+    combined = {aa: failed(REASON_STOP, c.counts) if aa in stops else c for aa, c in combined.items()}
+    summary: dict = {
+        "ntVariants": nt_variants,
+        "aaVariants": len(combined),
+        "unmappedNtVariants": unmapped,
+        "ambiguousNtVariants": ambiguous,
+        "parentMode": inputs.aa_parent_links is not None,
+    }
+    if inputs.aa_productive is not None:
+        summary["stopAaVariants"] = sum(1 for aa in combined if aa in stops)
+    return combined, stops, summary
+
+
+@dataclass(frozen=True)
+class AminoAcidValues:
+    """One fit frame's nucleotide variants combined per amino-acid variant, before any annotation."""
+
+    frame: pl.DataFrame
+    combined: dict[str, Combined]
+    nt_members: dict[str, Member]
+    mapping: dict[str, str]
+    stops: set[str]
+    summary: dict
+
+    def with_spread(self) -> pl.DataFrame:
+        """`frame` with the synonymous spread, the one annotation a per-replicate row carries."""
+        spread = synonymous_spread(list(self.combined), self.nt_members, self.mapping, self.stops)
+        return self.frame.with_columns(pl.Series("kdLog10SynonymSd", spread, dtype=pl.Float64))
+
+
+def combine_amino_acid(
     per_clonotype: pl.DataFrame,
     inputs: SynonymousInputs,
     *,
     log10_lo: float | None,
     log10_hi: float | None,
-    wall_classes: bool = True,
     fits_report_se: bool = True,
-) -> tuple[pl.DataFrame, pl.DataFrame | None, dict]:
-    """The amino-acid frame, the nucleotide frame, and the run summary, from the per-nt-variant fits.
-
-    The nucleotide frame, one row per fitted nt variant, exists when `nt_mutations` comes; it holds
-    the nt-grain columns that resolved.
+) -> AminoAcidValues:
+    """The mean over each amino-acid variant's synonymous variants, from the per-nt-variant fits.
 
     `log10_lo` and `log10_hi` are log10 of the lowest and highest non-zero concentrations: the walls
     a censored synonymous variant enters at.
@@ -358,22 +479,10 @@ def combine_synonymous(
         aa = mapping.get(nt)
         if aa is not None:
             members.setdefault(aa, []).append(member)
-    combined = {
-        aa: combine(members[aa], wall_classes=wall_classes, fits_report_se=fits_report_se) for aa in sorted(members)
-    }
-    stops = stop_variants(inputs.aa_productive) if inputs.aa_productive is not None else set()
-    # A stop variant has no value: its counts stay, every value goes.
-    combined = {aa: failed(REASON_STOP, c.counts) if aa in stops else c for aa, c in combined.items()}
-
-    summary: dict = {
-        "ntVariants": len(fitted),
-        "aaVariants": len(combined),
-        "unmappedNtVariants": unmapped,
-        "ambiguousNtVariants": ambiguous,
-        "parentMode": inputs.aa_parent_links is not None,
-    }
-    if inputs.aa_productive is not None:
-        summary["stopAaVariants"] = sum(1 for aa in combined if aa in stops)
+    combined = {aa: combine(members[aa], fits_report_se=fits_report_se) for aa in sorted(members)}
+    combined, stops, summary = settle_stops(
+        combined, inputs, nt_variants=len(fitted), unmapped=unmapped, ambiguous=ambiguous
+    )
     columns: dict[str, list] = {name: [] for name in PER_VARIANT_SCHEMA}
     for aa, c in combined.items():
         columns[COL_AA].append(aa)
@@ -389,10 +498,29 @@ def combine_synonymous(
         columns["ntCensoredBelow"].append(c.counts["below"])
         columns["ntCensoredAbove"].append(c.counts["above"])
         columns["ntFailed"].append(c.counts["failed"])
-    per_variant, per_nt = annotate_variants(
-        pl.DataFrame(columns, schema=PER_VARIANT_SCHEMA), combined, nt_members, mapping, stops, inputs, summary
+    return AminoAcidValues(
+        pl.DataFrame(columns, schema=PER_VARIANT_SCHEMA), combined, nt_members, mapping, stops, summary
     )
-    return per_variant, per_nt, summary
+
+
+def combine_synonymous(
+    per_clonotype: pl.DataFrame,
+    inputs: SynonymousInputs,
+    *,
+    log10_lo: float | None,
+    log10_hi: float | None,
+    fits_report_se: bool = True,
+) -> tuple[pl.DataFrame, pl.DataFrame, dict]:
+    """The amino-acid frame, the nucleotide frame, and the run summary, from the per-nt-variant fits.
+
+    The nucleotide frame holds one row per fitted nt variant: the nt-grain class and parent delta
+    where their inputs came.
+    """
+    aa = combine_amino_acid(per_clonotype, inputs, log10_lo=log10_lo, log10_hi=log10_hi, fits_report_se=fits_report_se)
+    per_variant, per_nt = annotate_variants(
+        aa.frame, aa.combined, aa.nt_members, aa.mapping, aa.stops, inputs, aa.summary
+    )
+    return per_variant, per_nt, aa.summary
 
 
 def annotate_variants(
@@ -403,11 +531,16 @@ def annotate_variants(
     stops: set[str],
     inputs: SynonymousInputs,
     summary: dict,
-) -> tuple[pl.DataFrame, pl.DataFrame | None]:
-    """The class and parent-delta columns of the amino-acid frame, and the nucleotide frame.
+    *,
+    aa_replicates: Mapping[str, Sequence[ReplicateKd]] | None = None,
+    nt_replicates: Mapping[str, Sequence[ReplicateKd]] | None = None,
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """The class, parent-delta and spread columns of the amino-acid frame, and the nucleotide frame.
 
     Decided once, on the final values: `aa_values` in the order of `per_variant`'s rows, `nt_values`
     one per fitted nt variant. Adds the parent counts to `summary`.
+    `aa_replicates` and `nt_replicates` hold each variant's per-replicate values in a run with sample
+    replicates; the parent deltas are then taken inside each replicate.
     """
     aa_mutations = mutation_counts(inputs.aa_mutations, COL_AA) if inputs.aa_mutations is not None else None
     if aa_mutations is not None:
@@ -416,22 +549,21 @@ def annotate_variants(
         )
 
     if inputs.aa_parent_links is not None and inputs.aa_mutations is not None:
-        deltas, delta_ses, counts = parent_deltas(aa_values, inputs.aa_parent_links, inputs.aa_mutations, COL_AA)
+        delta_columns, counts = parent_deltas(
+            aa_values, inputs.aa_parent_links, inputs.aa_mutations, COL_AA, replicates=aa_replicates
+        )
         per_variant = per_variant.with_columns(
-            pl.Series("kdLog10ParentDelta", deltas, dtype=pl.Float64),
-            pl.Series("kdLog10ParentDeltaSe", delta_ses, dtype=pl.Float64),
+            pl.Series(name, delta_columns[name], dtype=dtype) for name, dtype in DELTA_SCHEMA.items()
         )
         summary.update(counts)
 
     spread = synonymous_spread(list(aa_values), nt_values, mapping, stops)
     per_variant = per_variant.with_columns(pl.Series("kdLog10SynonymSd", spread, dtype=pl.Float64))
 
-    if inputs.nt_mutations is None:
-        return per_variant, None
     fitted = list(nt_values)
     nt_columns: dict[str, list] = {COL_NT: fitted}
     nt_schema: dict[str, pl.DataType] = {COL_NT: pl.Utf8}
-    if aa_mutations is not None:
+    if aa_mutations is not None and inputs.nt_mutations is not None:
         nt_mutations = mutation_counts(inputs.nt_mutations, COL_NT)
         nt_columns[COL_CLASS] = [
             None
@@ -442,9 +574,10 @@ def annotate_variants(
         nt_schema.update(CLASS_SCHEMA)
     summary["ntParentMode"] = inputs.nt_parent_links is not None
     if inputs.nt_parent_links is not None:
-        deltas, delta_ses, counts = parent_deltas(nt_values, inputs.nt_parent_links, inputs.nt_mutations, COL_NT)
-        nt_columns["kdLog10ParentDelta"] = deltas
-        nt_columns["kdLog10ParentDeltaSe"] = delta_ses
+        delta_columns, counts = parent_deltas(
+            nt_values, inputs.nt_parent_links, inputs.nt_mutations, COL_NT, replicates=nt_replicates
+        )
+        nt_columns.update(delta_columns)
         nt_schema.update(DELTA_SCHEMA)
         summary.update({"nt" + k[0].upper() + k[1:]: v for k, v in counts.items()})
     return per_variant, pl.DataFrame(nt_columns, schema=nt_schema)

@@ -154,9 +154,9 @@ class TestCombine:
 
     def test_under_the_mean_bin_fit_a_bound_keeps_the_class_its_members_share(self):
         # The mean bin fit declares no wall class; its synonymous variants are rated by R².
-        same = combine([Member("above", HI, None, "Good"), Member("above", HI, None, "Good")], wall_classes=False)
+        same = combine([Member("above", HI, None, "Good"), Member("above", HI, None, "Good")], fits_report_se=False)
         assert same.classification.affinity_class == "Good"
-        mixed = combine([Member("above", HI, None, "Good"), Member("above", HI, None, "Partial")], wall_classes=False)
+        mixed = combine([Member("above", HI, None, "Good"), Member("above", HI, None, "Partial")], fits_report_se=False)
         assert mixed.classification.affinity_class == "Partial"
 
     def test_members_at_opposite_walls_with_no_measured_member_fail(self):
@@ -175,7 +175,7 @@ class TestCombine:
 
     def test_under_the_mean_bin_fit_a_majority_bound_reads_the_class_of_its_own_wall(self):
         members = [Member("above", HI, None, "Good")] * 2 + [Member("below", LO, None, "Partial")]
-        c = combine(members, wall_classes=False)
+        c = combine(members, fits_report_se=False)
         assert (c.log10_kd, c.classification.affinity_class) == (HI, "Good")
 
     def test_a_censored_member_beside_a_measured_one_enters_at_the_wall(self):
@@ -369,6 +369,7 @@ class TestCombineSynonymous:
             "unmappedNtVariants": 1,
             "ambiguousNtVariants": 1,
             "parentMode": False,
+            "ntParentMode": False,
         }
         # WT's two measured synonymous variants agree; M has one measured synonymous variant, so no spread.
         assert frame["kdLog10SynonymSd"].to_list() == [None, 0.0]
@@ -483,7 +484,7 @@ class TestCombineSynonymous:
         frame, per_nt, summary = combine_synonymous(self.PER_CLONOTYPE, inputs, log10_lo=LO, log10_hi=HI)
         assert "variantClass" in frame.columns
         assert "kdLog10ParentDelta" not in frame.columns
-        assert per_nt is None
+        assert per_nt.columns == ["ntKey"]
         assert summary["parentMode"] is False
 
     NT_PARENT_LINKS = pl.DataFrame({"ntKey": ["wt1", "wt2", "m1", "m2"], "parentId": ["P", "P", "P", "P"]})

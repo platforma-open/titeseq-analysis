@@ -233,3 +233,61 @@ class TestValidatorWarnings:
         captured = capsys.readouterr()
         assert "ambiguous" in captured.out
         assert "ambiguous" not in captured.err
+
+
+class TestBimodalSplitUnderTheMeanBinFit:
+    """Starr 2022's split rule runs with the mean bin fit, whose method it belongs to, and only with a
+    sort fraction: its shares are of cells."""
+
+    CONCS = [0.0, 1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5]
+    SORTED = {"sort_fraction_col": "sort_fraction"}
+
+    # Two of the six non-zero concentrations split their reads between gates 1 and 4.
+    TWO_SPLIT = {"1e-09": {1: 200, 2: 0, 3: 0, 4: 200}, "1e-07": {1: 190, 2: 10, 3: 10, 4: 190}}
+
+    def _reads(self, split: dict[str, dict[int, int]] = TWO_SPLIT) -> pl.DataFrame:
+        rows = _build_bin_reads_for_hill("A", 1e-8, 1.0, 1.2, 0.9, self.CONCS, None, [1, 2, 3, 4], 400)
+        for row in rows:
+            if row["concentrationStr"] in split:
+                row["reads"] = split[row["concentrationStr"]][row["bin"]]
+        # Filler so every gate at every concentration has depth.
+        for i, c in enumerate(self.CONCS):
+            for b in (1, 2, 3, 4):
+                rows.append(
+                    {
+                        "clonotypeKey": "F",
+                        "sampleId": f"s_c{i}_b{b}",
+                        "concentrationStr": str(c),
+                        "concentration": float(c),
+                        "bin": b,
+                        "reads": 1000,
+                    }
+                )
+        # Every gate sorted a quarter of the cells.
+        return pl.DataFrame(rows).with_columns(pl.lit(0.25).alias("sort_fraction"))
+
+    def _mean_bins(self, out: dict) -> dict[str, float | None]:
+        frame = out["mean_bin"].filter(pl.col("clonotypeKey").cast(pl.Utf8) == "A")
+        return dict(frame.select("concentrationStr", "meanBin").iter_rows())
+
+    def test_a_split_point_has_no_mean_bin_and_leaves_the_fit(self):
+        out = run(self._reads(), params=FitParams(equation="hill_gate_index"), **self.SORTED)
+        mean_bins = self._mean_bins(out)
+        assert mean_bins["1e-09"] is None and mean_bins["1e-07"] is None
+        row = out["per_clonotype"].filter(pl.col("clonotypeKey").cast(pl.Utf8) == "A").row(0, named=True)
+        # Four non-zero points left, under the five the fit requires.
+        assert (row["affinityClass"], row["fitFailureReason"]) == ("Failed", "insufficient_points")
+
+    def test_a_variant_split_at_every_concentration_fails_for_its_points_not_its_reads(self):
+        every = {str(c): {1: 200, 2: 0, 3: 0, 4: 200} for c in self.CONCS if c != 0}
+        out = run(self._reads(every), params=FitParams(equation="hill_gate_index"), **self.SORTED)
+        row = out["per_clonotype"].filter(pl.col("clonotypeKey").cast(pl.Utf8) == "A").row(0, named=True)
+        assert (row["affinityClass"], row["fitFailureReason"]) == ("Failed", "insufficient_points")
+
+    def test_without_a_sort_fraction_every_point_stays(self):
+        out = run(self._reads().drop("sort_fraction"), params=FitParams(equation="hill_gate_index"))
+        assert all(v is not None for v in self._mean_bins(out).values())
+
+    def test_the_log_fluorescence_fit_keeps_every_point(self):
+        out = run(self._reads(), params=FitParams(equation="log_fluorescence"), **self.SORTED)
+        assert all(v is not None for v in self._mean_bins(out).values())

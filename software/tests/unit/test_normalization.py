@@ -350,3 +350,42 @@ class TestComputeMeanBinGatePositions:
         # Counting its weight in the denominator only would read (0 + 0.65 + 1.30) / 4 = 0.4875.
         out = compute_mean_bin(self._reads([0.0, 0.65, 1.30, None]), gate_position_col="bin_fluorescence")
         assert out[MEAN_BIN][0] == pytest.approx(0.65)
+
+
+class TestBimodalSplit:
+    """Starr 2022's `calc.meanbin`: no mean bin where two non-neighbouring bins each hold more than
+    40% of the variant's cells at that concentration."""
+
+    DEPTH = [1000, 1000, 1000, 1000]
+
+    def _mean_bin(self, reads_per_bin, share=0.4, sort_fraction_per_bin=None, depth=DEPTH):
+        frame = _build_single_clonotype(reads_per_bin, depth, sort_fraction_per_bin)
+        out = compute_mean_bin(
+            frame,
+            sort_fraction_col="sort_fraction" if sort_fraction_per_bin else None,
+            bimodal_share=share,
+        )
+        return out.filter(pl.col("clonotypeKey") == "A")[MEAN_BIN][0]
+
+    @pytest.mark.parametrize("split", [[45, 10, 45, 0], [0, 45, 10, 45], [45, 5, 5, 45]])
+    def test_a_split_across_non_neighbouring_bins_has_no_mean_bin(self, split):
+        assert self._mean_bin(split) is None
+
+    def test_a_split_across_neighbouring_bins_keeps_its_mean_bin(self):
+        assert self._mean_bin([45, 45, 10, 0]) == pytest.approx((45 + 90 + 30) / 100)
+
+    def test_a_share_of_exactly_the_limit_is_not_a_split(self):
+        # A depth that is a power of two keeps 40 / 100 exact: at 1000 the share is 0.39999999999999997.
+        assert self._mean_bin([40, 20, 40, 0], depth=[1024] * 4) == pytest.approx(2.0)
+
+    def test_without_the_rule_a_split_keeps_its_mean_bin(self):
+        assert self._mean_bin([45, 10, 45, 0], share=None) == pytest.approx(2.0)
+
+    def test_the_shares_read_the_sort_fraction_as_the_mean_bin_does(self):
+        # Equal reads in bins 1 and 3, but bin 3 sorted a quarter as many cells: not a split.
+        assert self._mean_bin([45, 10, 45, 0], sort_fraction_per_bin=[0.4, 0.4, 0.1, 0.1]) is not None
+
+    def test_the_reads_stay_reported(self):
+        frame = _build_single_clonotype([45, 10, 45, 0], self.DEPTH)
+        row = compute_mean_bin(frame, bimodal_share=0.4).filter(pl.col("clonotypeKey") == "A").row(0, named=True)
+        assert row["clonotype_reads_at_conc"] == 100

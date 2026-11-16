@@ -27,6 +27,7 @@ FailureReason = Literal[
     "not_productive",
 ]
 
+
 # The equation fitted to each clonotype.
 #   "log_fluorescence"  — log10(A*c/(c+K) + B) on mean log10 gate fluorescence, exponent fixed at 1,
 #                         weighted least squares. Requires gates (bin mode).
@@ -48,6 +49,9 @@ DELTA_NO_BIN: float = 0.05
 LF_RISE_THRESHOLD_DECADES: float = 0.70
 # Standard error of log10 K_D at or below which an in-range fit is rated Good.
 KD_SD_GOOD: float = 0.5
+# Starr 2022 (`calc.meanbin`): above this share of a variant's cells in each of two gates at least two
+# apart, its mean bin at that concentration is dropped. The mean bin fit applies it.
+BIMODAL_SHARE: float = 0.4
 # Width of one FACS gate in decades of fluorescence. Gate label g sits at (g − 1) * this.
 GATE_WIDTH_DECADES: float = 0.65
 # Gate range assumed when the gate labels do not define one (a single gate label).

@@ -116,7 +116,7 @@ class TestEachNtVariantIsFittedOnItsOwn:
         combined = run(reads, params=params, synonymous=SynonymousInputs(_links(), **PARENT_INPUTS))
         for name in ("per_clonotype", "mean_bin", "fitted_mean_bin", "concentration_value"):
             assert_frame_equal(combined[name], plain[name])
-        assert set(combined) - set(plain) == {"per_variant", "synonymous_summary"}
+        assert set(combined) - set(plain) == {"per_variant", "per_nt_variant", "synonymous_summary"}
 
     def test_the_aa_value_is_the_mean_of_its_synonymous_variants_fits_not_a_fit_of_pooled_reads(self, lf):
         per_nt = lf["per_clonotype"].filter(pl.col("clonotypeKey").is_in(["wt_a", "wt_b", "wt_c"]))
@@ -377,7 +377,14 @@ def test_the_cli_writes_the_nucleotide_frame_with_the_nt_mutation_count(tmp_path
     )  # fmt: skip
     assert rc == 0
     per_nt = pl.read_csv(out["pnv"], separator="\t")
-    assert per_nt.columns == ["ntKey", "variantClass", "kdLog10ParentDelta", "kdLog10ParentDeltaSe"]
+    assert per_nt.columns == [
+        "ntKey",
+        "variantClass",
+        "kdLog10ParentDelta",
+        "kdLog10ParentDeltaSe",
+        "kdParent",
+        "kdLog10ParentSe",
+    ]
     assert per_nt.height == 13
     per_variant = pl.read_csv(out["pv"], separator="\t")
     assert "variantClass" in per_variant.columns

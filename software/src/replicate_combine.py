@@ -128,12 +128,10 @@ def collect_values(
     return collected
 
 
-def merge_all(collected: Collected, *, wall_classes: bool = True, fits_report_se: bool = True) -> dict[str, Combined]:
+def merge_all(collected: Collected, *, fits_report_se: bool = True) -> dict[str, Combined]:
     """One combined value per variant, keys in sorted order."""
     return {
-        key: combine_replicates(
-            [v for v, _ in collected[key]], wall_classes=wall_classes, fits_report_se=fits_report_se
-        )
+        key: combine_replicates([v for v, _ in collected[key]], fits_report_se=fits_report_se)
         for key in sorted(collected)
     }
 
