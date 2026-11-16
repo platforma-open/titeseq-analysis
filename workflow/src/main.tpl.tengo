@@ -828,39 +828,6 @@ wf.body(func(args) {
 		], replicateColumns)
 	}
 
-	// Synonymous mode: each nt variant's amino-acid variant, by its label or, with no label
-	// column, its key. Only on nucleotide variants with a fitted curve where at least 2 of them
-	// share it: the NT Variants page filters to these synonymous variants. An empty value is left
-	// out, not NA.
-	ntAaVariantImported := undefined
-	if syn.synonymous {
-		ntAaVariantImported = importSplit(fit.getFile("nt_aa_variant.tsv"), [{ column: "clonotypeKey", spec: clonotypeAxisSpec }], [{
-				column: "aaVariant",
-				filterOutRegex: "^$",
-				spec: {
-					name: "pl7.app/vdj/aaVariantId",
-					valueType: "String",
-					domain: { "pl7.app/block": blockId },
-					annotations: {
-						"pl7.app/label": "AA Variant Id",
-						"pl7.app/description": "The amino-acid variant this nucleotide variant encodes: its label, or its key where the input has no amino-acid label. Empty unless two or more fitted nucleotide variants share the amino-acid variant.",
-						"pl7.app/isScore": "false",
-						"pl7.app/table/visibility": "hidden"
-					}
-				}
-			}])
-	}
-
-	// Synonymous mode with replicates: every synonymous variant's own fit in every replicate, the values the
-	// amino-acid per-replicate rows combine.
-	replicateNtImported := undefined
-	if hasReplicate && syn.synonymous {
-		replicateNtImported = importSplit(fit.getFile("per_replicate_nt.tsv"), [
-			{ column: "clonotypeKey", spec: clonotypeAxisSpec },
-			{ column: "replicate", spec: replicateAxisSpec }
-		], replicateColumnsLib.perReplicateColumns(blockId, "repnt_", kdAnnotations, affinityClassValues))
-	}
-
 	// Trace injection. `makeTrace` bundles the upstream abundance provenance
 	// with a self-descriptor; `trace.inject` rewrites only the small spec resources
 	// (data resources are untouched thanks to splitDataAndSpec).
@@ -992,8 +959,9 @@ wf.body(func(args) {
 		outputs.replicatePf = pframes.exportFrame(buildTracedPf([replicateImported], []))
 		outputs.rawReplicateFits = fileLib.exportFile(fit.getFile("per_replicate.tsv"))
 	}
-	if !is_undefined(replicateNtImported) {
-		outputs.replicateNtPf = pframes.exportFrame(buildTracedPf([replicateNtImported], []))
+	// Synonymous mode with replicates: every synonymous variant's own fit in every replicate, the
+	// values the amino-acid per-replicate rows combine. A download only.
+	if hasReplicate && syn.synonymous {
 		outputs.rawNtReplicateFits = fileLib.exportFile(fit.getFile("per_replicate_nt.tsv"))
 	}
 	if syn.synonymous {
@@ -1001,10 +969,10 @@ wf.body(func(args) {
 		outputs.synonymousSummary = fit.getFileContent("synonymous_summary.json")
 		outputs.rawAaVariantFits = fileLib.exportFile(fit.getFile("per_variant.tsv"))
 		outputs.rawNtToAaVariant = fileLib.exportFile(fit.getFile("nt_aa_variant.tsv"))
-		// The nt grain's class and parent delta where they resolve, and always each synonymous
-		// variant's amino-acid variant label: the NT Variants page filters by it, with or without the
-		// optional columns.
-		outputs.ntVariantPf = pframes.exportFrame(buildTracedPf(ntVariantSources + [ntAaVariantImported], []))
+	}
+	// The nt grain's class and parent delta. A download only.
+	if hasNtVariantColumns {
+		outputs.rawNtVariantAnnotations = fileLib.exportFile(fit.getFile("per_nt_variant.tsv"))
 	}
 
 	return {

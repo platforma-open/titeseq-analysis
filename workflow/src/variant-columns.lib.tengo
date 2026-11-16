@@ -95,7 +95,8 @@ fitReadsColumn := func(blockId, idPrefix, description) {
 	}
 }
 
-// The parent delta and its error, on the grain whose ids start with `idPrefix`.
+// The parent delta and its error, and the parent's own Kd,app and SE, on the grain whose ids start
+// with `idPrefix`.
 deltaColumns := func(blockId, idPrefix, description) {
 	domain := { "pl7.app/block": blockId }
 	return [{
@@ -115,7 +116,41 @@ deltaColumns := func(blockId, idPrefix, description) {
 			}
 		}
 	}, {
-		// Error of the value above, on the same axes.
+		// The parent's own value: with sample replicates the delta is not the difference of the two
+		// combined values, so the parent cannot be read back from it.
+		column: "kdParent",
+		id: idPrefix + "kdParent",
+		spec: {
+			name: "pl7.app/vdj/kdParent",
+			valueType: "Double",
+			domain: domain,
+			annotations: {
+				"pl7.app/label": "Parent Kd,app",
+				"pl7.app/description": "Kd,app of the variant's parent, as its own row reports it. Empty where the variant has no parent or the parent has no Kd,app.",
+				"pl7.app/isScore": "false",
+				"pl7.app/format": ".2e",
+				"pl7.app/table/visibility": "optional",
+				"pl7.app/table/orderPriority": "170"
+			}
+		}
+	}, {
+		column: "kdLog10ParentSe",
+		id: idPrefix + "kdLog10ParentSe",
+		spec: {
+			name: "pl7.app/vdj/kdLog10ParentSe",
+			valueType: "Double",
+			domain: domain,
+			annotations: {
+				"pl7.app/label": "Parent Kd,app SE (log10)",
+				"pl7.app/description": "Standard error of the parent's log10 Kd,app, as its own row reports it. Empty where the parent has none.",
+				"pl7.app/isScore": "false",
+				"pl7.app/format": ".2f",
+				"pl7.app/table/visibility": "optional",
+				"pl7.app/table/orderPriority": "169"
+			}
+		}
+	}, {
+		// Error of the delta, on the same axes.
 		column: "kdLog10ParentDeltaSe",
 		id: idPrefix + "kdLog10ParentDeltaSe",
 		spec: {
@@ -124,7 +159,7 @@ deltaColumns := func(blockId, idPrefix, description) {
 			domain: domain,
 			annotations: {
 				"pl7.app/label": "Kd,app vs Parent SE (log10)",
-				"pl7.app/description": "The variant's and the parent's SE added in quadrature. Empty where either has none. The parent's own row is 0.",
+				"pl7.app/description": "Without sample replicates: the variant's and the parent's SE added in quadrature, empty where either has none. With sample replicates: the delta is taken inside each replicate that measured both inside the range, and the deltas are combined as replicate values are. Where a replicate holds the variant or the parent at an edge of the range, or no replicate measured both, the delta compares the combined values and this error is empty. The parent's own row is 0.",
 				"pl7.app/isScore": "false",
 				"pl7.app/format": ".2f",
 				"pl7.app/table/visibility": "default",
@@ -141,8 +176,8 @@ deltaColumns := func(blockId, idPrefix, description) {
  *   kdNegLog10Spec, replicateColumns}; parentMode emits the parent delta and its error,
  *   variantClass emits the class column, kdNegLog10Spec the -log10 column, and replicateColumns
  *   replaces the synonymous SE and SD with the replicates' error columns
- * @return xsv column descriptors. Table order: the Kd,app columns (orderPriority 185 to 202), then
- *   the DMS columns (176 to 184).
+ * @return xsv column descriptors. Table order: the Kd,app columns (orderPriority 189 to 202), then
+ *   the DMS columns (169 to 184).
  */
 variantColumns := func(blockId, kdAnnotations, opts) {
 	domain := { "pl7.app/block": blockId }
