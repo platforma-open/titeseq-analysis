@@ -179,6 +179,7 @@ def parent_delta():
         "digest": digest(snap),
         "replicateDeltas": summary["replicateDeltas"],
         "combinedValueDeltas": summary["combinedValueDeltas"],
+        "combinedValueDeltasInRange": summary["combinedValueDeltasInRange"],
         "deltas": snap["log10Kd"].count(),
         "deltasWithSe": snap["log10KdSe"].count(),
     }

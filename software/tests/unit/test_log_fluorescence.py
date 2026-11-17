@@ -13,7 +13,6 @@ from hill_fit import weighted_r2
 from log_fluorescence import (
     GateScale,
     _model,
-    bright_at_zero,
     build_gate_scale,
     classify_curve,
     decades_to_gate_index,
@@ -391,21 +390,3 @@ class TestR2WithTheZeroPoint:
         # 0 M points 1.5 and 0.5 at weight 1 each, 0.5 each under the cap of 1: mean 7/3,
         # total 2 * (2/3)^2 + 0.5 * (5/6)^2 + 0.5 * (11/6)^2 = 35/12, residual 2 * 0.5 * 0.5^2 = 0.25.
         assert r2_with_zero_point(*self.FLAT, [(1.5, 1.0), (0.5, 1.0)], 1.0) == pytest.approx(1 - 0.25 / (35 / 12))
-
-
-class TestBrightAtZero:
-    """The variant's own 0 M signal against the plateau floor, here 1.3 of 1.95 decades."""
-
-    def test_a_zero_point_at_the_plateau_floor_is_bright(self):
-        assert bright_at_zero([(1.3, 100.0)], SCALE, FLOOR)
-
-    def test_a_zero_point_under_the_plateau_floor_is_not(self):
-        assert not bright_at_zero([(1.2, 100.0)], SCALE, FLOOR)
-
-    def test_several_zero_points_count_at_their_read_weights(self):
-        # 1.9 at weight 100 and 0.1 at weight 300 average 0.55; at equal weights, 1.0. Both dim.
-        assert not bright_at_zero([(1.9, 100.0), (0.1, 300.0)], SCALE, FLOOR)
-        assert bright_at_zero([(1.9, 300.0), (0.1, 100.0)], SCALE, FLOOR)
-
-    def test_a_variant_without_a_zero_point_is_not_bright(self):
-        assert not bright_at_zero([], SCALE, FLOOR)

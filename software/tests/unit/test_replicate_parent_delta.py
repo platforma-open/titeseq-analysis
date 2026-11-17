@@ -148,7 +148,15 @@ def test_with_no_shared_measured_replicate_the_combined_values_give_a_delta_with
     _, (delta, se), counts = deltas(parent, variant)
     assert delta == pytest.approx((-6.5 + -7.4) / 2 - -8.0)
     assert se is None
-    assert counts["combinedValueDeltas"] == 1
+    # Both combined values are measured, so this delta would carry an SE: it counts as in range.
+    assert (counts["combinedValueDeltas"], counts["combinedValueDeltasInRange"]) == (1, 1)
+
+
+def test_a_delta_that_is_a_bound_is_not_counted_as_in_range():
+    # The variant sits at the range limit in every replicate: its delta has no SE under either rule.
+    _, (delta, se), counts = deltas(PARENT, [above(r) for r in REPLICATES])
+    assert delta is not None and se is None
+    assert (counts["combinedValueDeltas"], counts["combinedValueDeltasInRange"]) == (1, 0)
 
 
 def test_the_parent_itself_is_zero():

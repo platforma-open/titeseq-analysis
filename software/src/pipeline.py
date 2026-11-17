@@ -85,7 +85,6 @@ from io_layer import (
 from log import log
 from log_fluorescence import (
     GateScale,
-    bright_at_zero,
     build_gate_scale,
     build_measured_gate_scale,
     classify_curve,
@@ -498,8 +497,9 @@ def _fit_all_log_fluorescence(
         )
         rise, plateau_height = stats_map[clonotype]
         curve_class = classify_curve(rise_decades=rise, plateau_height=plateau_height, plateau_floor=plateau_floor)
-        # Flat and bright with antigen, and already bright without it: the signal is not antigen binding.
-        if curve_class == "Censored High" and bright_at_zero(zero_points.get(clonotype, []), scale, plateau_floor):
+        # The rise counts the clonotype's own 0 M points. Flat and bright with one of them, its signal
+        # is already there without antigen: not antigen binding. A saturated binder rises from its 0 M point.
+        if curve_class == "Censored High" and zero_points.get(clonotype):
             batch.fail(i, "bright_without_antigen")
             continue
         log10_kd, censor = pin_kd(fit.log10_kd, curve_class=curve_class, lo=log10_conc_lo, hi=log10_conc_hi)
@@ -1210,7 +1210,8 @@ def _combine_replicate_synonymous(
     if "replicateDeltas" in summary:
         log(
             f"Parent delta: {summary['replicateDeltas']} taken inside the replicates, "
-            f"{summary['combinedValueDeltas']} from the combined values"
+            f"{summary['combinedValueDeltas']} from the combined values "
+            f"({summary['combinedValueDeltasInRange']} of them between two values inside the range)"
         )
 
     aa_reads: dict[tuple[str, str], int] = {}

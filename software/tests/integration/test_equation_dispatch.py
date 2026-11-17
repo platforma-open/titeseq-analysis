@@ -157,6 +157,13 @@ class TestBounds:
         assert (row["affinityClass"], row["fitFailureReason"]) == ("Failed", "bright_without_antigen")
         assert row["kd"] is None and row["kdRangeSide"] is None
 
+    def test_a_flat_bright_curve_fails_with_a_zero_molar_signal_under_the_plateau_floor(self):
+        # 0 M signal at gate 2.75 of 4, under the plateau floor, and within 0.70 decades of the top.
+        zero = TestSharedBaseline._zero_molar
+        reads = _frame(_lf_reads("RAISED", 1e-14), zero("RAISED", gate=2, reads=100), zero("RAISED", gate=3, reads=300))
+        row = _row(run(reads, params=LF), "RAISED")
+        assert (row["affinityClass"], row["fitFailureReason"]) == ("Failed", "bright_without_antigen")
+
     def test_a_saturated_curve_that_is_dim_without_antigen_stays_below_range(self):
         zero = TestSharedBaseline._zero_molar
         row = _row(run(_frame(_lf_reads("SAT", 1e-14), zero("SAT", gate=1, reads=300)), params=LF), "SAT")

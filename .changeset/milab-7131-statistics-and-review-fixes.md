@@ -19,7 +19,8 @@ Statistics and review fixes:
   both, the delta compares the combined values and has no SE.
 - New columns `pl7.app/vdj/kdParent` and `pl7.app/vdj/kdLog10ParentSe` hold the parent's own Kd,app
   and SE. They are optional table columns, and both grains export them.
-- A run with sample replicates warns how many parent deltas compare the combined values.
+- A run with sample replicates warns how many parent deltas between two values inside the range
+  compare the combined values. A delta at an edge of the range is a bound and is not counted.
 - Log fluorescence fit: R² counts the variant's own 0 M points, from every 0 M sample. Each point
   counts at its read weight. Together they weigh at most the variant's heaviest fit point. A tight
   binder near its plateau passes the R² gate. A deeper 0 M sample, or one more 0 M sample, does not
@@ -27,10 +28,10 @@ Statistics and review fixes:
   baseline as its 0 M point, at the weight of its heaviest fit point. The R² gate removes a curve
   that does not rise from the baseline; the SE of log10 Kd,app rates how well a strong binder is
   fitted.
-- Log fluorescence fit: a variant that is flat and bright at every concentration, and whose own
-  0 M signal is at or above the plateau floor, is rated Failed with the reason
-  `bright_without_antigen`. It was rated Below range, as a saturated tight binder is. A variant
-  with no 0 M point of its own past the read floor is rated as before.
+- Log fluorescence fit: a variant that is flat and bright at every point, its own 0 M point
+  included, is rated Failed with the reason `bright_without_antigen`. It was rated Below range, as
+  a saturated tight binder is. A saturated binder with a 0 M point rises from it and is fitted. A
+  variant with no 0 M point of its own past the read floor is rated as before.
 - Mean bin fit with a sort fraction: Starr 2022's split rule. A concentration has no mean bin and
   leaves the fit when two gates at least two apart each hold more than 40% of the variant's cells.
   Without a sort fraction the rule is off, because shares of reads over gate depth split a single

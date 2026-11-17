@@ -183,14 +183,18 @@ describe("synonymousMessages", () => {
     expect(synonymousMessages(undefined, { ...summary, stopAaVariants: 0 })).toEqual([]);
   });
 
-  it("counts the parent deltas that compare the combined values", () => {
-    const withReplicates = { ...summary, replicateDeltas: 313, combinedValueDeltas: 2264 };
-    expect(synonymousMessages(undefined, withReplicates)).toEqual([
-      "2264 of 2577 parent deltas compare the combined values and have no SE: a replicate holds " +
-        "the variant or its parent at an edge of the titrated range, or no replicate measured both.",
-    ]);
+  it("counts the in-range parent deltas that compare the combined values", () => {
+    const counts = { replicateDeltas: 313, combinedValueDeltas: 2264 };
     expect(
-      synonymousMessages(undefined, { ...summary, replicateDeltas: 5, combinedValueDeltas: 0 }),
+      synonymousMessages(undefined, { ...summary, ...counts, combinedValueDeltasInRange: 93 }),
+    ).toEqual([
+      "93 parent deltas between two values inside the titrated range compare the combined values " +
+        "and have no SE: a replicate holds the variant or its parent at an edge of the range, or " +
+        "no replicate measured both.",
+    ]);
+    // Deltas at an edge of the range are bounds: no SE to lose, no warning.
+    expect(
+      synonymousMessages(undefined, { ...summary, ...counts, combinedValueDeltasInRange: 0 }),
     ).toEqual([]);
   });
 

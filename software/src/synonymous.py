@@ -339,7 +339,7 @@ def parent_deltas(
     ses: list[float | None] = []
     parent_kds: list[float | None] = []
     parent_ses: list[float | None] = []
-    from_replicates = from_combined = 0
+    from_replicates = from_combined = lost_se = 0
     for variant, value in values.items():
         parent_id = assignment.get(variant)
         parent_key = own.get(parent_id) if parent_id is not None else None
@@ -348,6 +348,8 @@ def parent_deltas(
         if replicates is not None and delta is not None and variant != parent_key:
             inside = replicate_parent_delta(replicates.get(variant, ()), replicates.get(parent_key, ()))
             if inside is None:
+                # A bound has no error under either rule; only a delta between two measured values loses one.
+                lost_se += se is not None
                 se = None
                 from_combined += 1
             else:
@@ -369,6 +371,7 @@ def parent_deltas(
     if replicates is not None:
         counts["replicateDeltas"] = from_replicates
         counts["combinedValueDeltas"] = from_combined
+        counts["combinedValueDeltasInRange"] = lost_se
     columns = {
         "kdLog10ParentDelta": deltas,
         "kdLog10ParentDeltaSe": ses,

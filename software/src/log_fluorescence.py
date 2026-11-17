@@ -341,22 +341,6 @@ def level_test(plateau_height: float | None, plateau_floor: float) -> bool:
     return plateau_height >= plateau_floor
 
 
-def bright_at_zero(zero_points: Sequence[tuple[float, float]], scale: GateScale, plateau_floor: float) -> bool:
-    """Is the variant's own 0 M signal, the read-weighted mean of its 0 M points, at or above the
-    plateau floor? Without a 0 M point of its own, no.
-
-    A flat and bright curve reads as a saturated tight binder only while the variant is dim without
-    antigen. One that is already bright at 0 M binds the detection reagent or fluoresces by itself.
-    """
-    if not zero_points:
-        return False
-    signal, weight = np.array(zero_points, dtype=float).T
-    if not weight.sum() > 0:
-        return False
-    own = float(np.average(signal, weights=weight))
-    return level_test((own - scale.floor) / scale.range_decades, plateau_floor)
-
-
 def classify_curve(
     *,
     rise_decades: float | None,
