@@ -162,6 +162,14 @@ export type BlockData = FitInputs &
     replicateDrilldownKey?: PTableKey;
     /** Grid state of the drill-down table. UI-only. Optional so no migration is needed. */
     replicateDrilldownTableState?: PlDataTableStateV2;
+    /**
+     * Keys (`drilldownColumnKey`) of the drill-down columns with no value for the open variant,
+     * read by the UI from the table: the model cannot read the values. Undefined until read.
+     * UI-only, optional.
+     */
+    replicateDrilldownEmptyColumns?: string[];
+    /** The user's own choice per drill-down column key: true shows it, false hides it. UI-only, optional. */
+    replicateDrilldownColumnChoice?: Record<string, boolean>;
     /** Subset column picked with the abundance in PlDatasetSelector (e.g. a Repertoire Labeling label). */
     filterRef?: PlRef;
     /**
@@ -523,6 +531,30 @@ export function replicateDrilldownFilter(
     ],
   };
 }
+
+/** A drill-down column's key: its name and domain, since two count columns share one name. */
+export function drilldownColumnKey(spec: Pick<PColumnSpec, "name" | "domain">): string {
+  const domain = Object.entries(spec.domain ?? {}).sort(([a], [b]) => a.localeCompare(b));
+  return JSON.stringify([spec.name, domain]);
+}
+
+/**
+ * The drill-down columns shown by default, by key: every column, less those with no value for the
+ * open variant. The user's choice for a column overrides both.
+ */
+export function drilldownShownColumns(
+  keys: string[],
+  empty: string[] | undefined,
+  choice: Record<string, boolean> | undefined,
+): string[] {
+  return keys.filter((key) => choice?.[key] ?? !(empty ?? []).includes(key));
+}
+
+/** The selector that matches exactly one drill-down column: its name and its whole domain. */
+const drilldownColumnMatch = (spec: PColumnSpec) => ({
+  name: [exactly(spec.name)],
+  domain: Object.fromEntries(Object.entries(spec.domain ?? {}).map(([k, v]) => [k, [exactly(v)]])),
+});
 
 function isIntegerValueType(vt: string | undefined): boolean {
   return vt === "Int" || vt === "Long";
@@ -1350,8 +1382,16 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
       ctx.data.replicateDrilldownKey,
     );
     if (filters === undefined) return undefined;
-    // Every per-replicate column is shown. The variant's label column is hidden: the panel title
-    // names the variant, and the table holds one variant only.
+    // The per-replicate columns are shown, less the ones not shown for this variant, which stay
+    // in the table for the panel's column list. The variant's label column is hidden: the panel
+    // title names the variant, and the table holds one variant only.
+    const shown = new Set(
+      drilldownShownColumns(
+        cols.map((c) => drilldownColumnKey(c.spec)),
+        ctx.data.replicateDrilldownEmptyColumns,
+        ctx.data.replicateDrilldownColumnChoice,
+      ),
+    );
     return createPlDataTableV3(ctx, {
       primaryColumns: cols.map((c) => DataColumn.fromColumn(c)),
       columns: undefined,
@@ -1359,12 +1399,26 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
       displayOptions: {
         visibility: [
           { match: { name: [exactly("pl7.app/label")] }, visibility: "hidden" },
-          { match: { name: cols.map((c) => exactly(c.spec.name)) }, visibility: "default" },
+          ...cols.map((c) => ({
+            match: drilldownColumnMatch(c.spec),
+            visibility: shown.has(drilldownColumnKey(c.spec))
+              ? ("default" as const)
+              : ("optional" as const),
+          })),
         ],
       },
       filters,
     });
   })
+
+  // The drill-down's columns, for the panel's column list: the table's own column button sits in
+  // the page title, behind the panel.
+  .output("replicateDrilldownColumns", (ctx) =>
+    replicateCols(ctx)?.map((c) => ({
+      key: drilldownColumnKey(c.spec),
+      label: c.spec.annotations?.["pl7.app/label"] ?? c.spec.name,
+    })),
+  )
 
   .title(() => "Tite-Seq Analysis")
 

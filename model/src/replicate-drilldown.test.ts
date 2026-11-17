@@ -1,7 +1,14 @@
 import type { PColumnSpec, PlRef } from "@platforma-sdk/model";
 import { describe, expect, it } from "vitest";
 import type { BlockData } from "./index";
-import { dataModel, deriveArgs, initBlockData, replicateDrilldownFilter } from "./index";
+import {
+  dataModel,
+  deriveArgs,
+  drilldownColumnKey,
+  drilldownShownColumns,
+  initBlockData,
+  replicateDrilldownFilter,
+} from "./index";
 
 const ref = (name: string): PlRef => ({ __isRef: true, blockId: "b1", name });
 
@@ -96,5 +103,42 @@ describe("opening the drill-down never stales the block", () => {
     const migrated = dataModel.migrate({ version: "v4", data: configured });
     expect(migrated.version).toBe("v8");
     expect(migrated.data.replicateDrilldownKey).toBeUndefined();
+  });
+});
+
+describe("the drill-down columns shown by default", () => {
+  const names = ["kd", "r2", "fitFailureReason"];
+
+  it("are every column until the empty ones are known", () => {
+    expect(drilldownShownColumns(names, undefined, undefined)).toEqual(names);
+  });
+
+  it("leave out a column with no value for the variant", () => {
+    expect(drilldownShownColumns(names, ["fitFailureReason"], undefined)).toEqual(["kd", "r2"]);
+  });
+
+  it("follow the user's choice over both", () => {
+    const choice = { fitFailureReason: true, r2: false };
+    expect(drilldownShownColumns(names, ["fitFailureReason"], choice)).toEqual([
+      "kd",
+      "fitFailureReason",
+    ]);
+  });
+});
+
+describe("a drill-down column's key", () => {
+  it("tells two columns of one name apart by their domain", () => {
+    const count = (state: string) => ({
+      name: "pl7.app/vdj/kdNtVariants",
+      domain: { "pl7.app/vdj/kdNtVariantState": state, "pl7.app/block": "blk" },
+    });
+    expect(drilldownColumnKey(count("measured"))).not.toEqual(drilldownColumnKey(count("all")));
+  });
+
+  it("does not depend on the order of the domain's keys", () => {
+    const name = "pl7.app/vdj/kd";
+    expect(drilldownColumnKey({ name, domain: { a: "1", b: "2" } })).toEqual(
+      drilldownColumnKey({ name, domain: { b: "2", a: "1" } }),
+    );
   });
 });
