@@ -28,6 +28,9 @@ export type SynonymousSummary = {
   parents?: number;
   unidentifiableParents?: UnidentifiableParent[];
   multiParentVariants?: number;
+  /** Present with sample replicates: parent deltas taken inside the replicates, and from the combined values. */
+  replicateDeltas?: number;
+  combinedValueDeltas?: number;
   /** Present when the nucleotide mutation count resolved. */
   ntParentMode?: boolean;
   ntParents?: number;
@@ -203,6 +206,13 @@ export function synonymousMessages(
   if ((summary.multiParentVariants ?? 0) > 0)
     messages.push(
       `${summary.multiParentVariants} amino-acid variants link to several parents and have no parent delta.`,
+    );
+  const combined = summary.combinedValueDeltas ?? 0;
+  if (combined > 0)
+    messages.push(
+      `${combined} of ${combined + (summary.replicateDeltas ?? 0)} parent deltas compare the combined ` +
+        "values and have no SE: a replicate holds the variant or its parent at an edge of the " +
+        "titrated range, or no replicate measured both.",
     );
   messages.push(
     ...unidentifiableMessages(

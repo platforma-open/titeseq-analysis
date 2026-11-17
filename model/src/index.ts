@@ -633,6 +633,13 @@ export const defaultBinOrder = (values: string[]): string[] => {
     : unique.sort((a, b) => a.localeCompare(b));
 };
 
+/** No field of the settings drawer shows this state, so the drawer shows the message itself. */
+export const SORT_FRACTION_NEEDS_BIN =
+  "FACS sort fraction requires a FACS bin column — the correction only applies in bin mode";
+
+const sortFractionWithoutBin = (data: BlockData): boolean =>
+  data.sortFractionColumnRef !== undefined && data.binColumnRef === undefined;
+
 /**
  * Why the block may not run, read from `data` alone: every entry is an error and disables Run.
  * Empty means the args may run. Named so a test can assert which state blocks a run.
@@ -648,10 +655,7 @@ export const deriveArgsIssues = (data: BlockData): ArgsIssue[] => {
     data.antigenColumnRef !== undefined && !data.targetAntigen,
     "Target antigen is required when an antigen column is selected",
   );
-  refuse(
-    data.sortFractionColumnRef !== undefined && data.binColumnRef === undefined,
-    "FACS sort fraction requires a FACS bin column — the correction only applies in bin mode",
-  );
+  refuse(sortFractionWithoutBin(data), SORT_FRACTION_NEEDS_BIN);
   refuse(
     data.binColumnRef !== undefined && data.binOrder !== undefined && data.binOrder.length === 0,
     "Keep at least one FACS bin in the bin order",
@@ -910,8 +914,8 @@ function halfMatchedParent(ctx: Ctx) {
  */
 export const GATE_FLUORESCENCE_MISSING =
   "Gate fluorescence is not set. The fit assumes that the gates are 0.65 decades apart. " +
-  "If they are not, Kd,app can be offset. To use the measured gate positions, select a " +
-  "Gate fluorescence column in the settings.";
+  "If they are not, Kd,app shifts, by an amount that differs between variants. Measured gate " +
+  "positions remove the shift: select a Gate fluorescence column in the settings.";
 
 /** Advice that the settings alone cause, before any run. The settings drawer shows it. */
 export const settingsWarnings = (data: BlockData): string[] =>
@@ -1089,8 +1093,6 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     ),
   )
 
-  .output("binOptions", (ctx) => filterPopulatedOptions(ctx, isBinColumn))
-
   // Disambiguate from concentration by data, not column name: cross-exclude
   // the picked concentration column, then require every value in [0, 1].
   // Molar concentrations (all < 1) still need the cross-exclude to clear.
@@ -1154,20 +1156,19 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     ).filter((opt) => !picked.some((ref) => plRefsEqual(opt.ref, ref)));
   })
 
-  // Each bin option's type and distinct values, keyed by the option's ref, so a pick can snapshot
-  // them in the same gesture: an output on the picked column alone would arrive a round trip late.
-  // An option whose values are not readable yet still reports its type.
-  .output("binFactsByRef", (ctx): Record<string, BinColumnFacts> => {
-    const out: Record<string, BinColumnFacts> = {};
-    for (const { option, values } of populatedOptions(ctx, isBinColumn)) {
-      const isText = ctx.resultPool.getPColumnSpecByRef(option.ref)?.valueType === "String";
-      out[refKey(option.ref)] = {
-        isText,
+  // The bin options, each with its type and distinct values, so a pick can snapshot them in the
+  // same gesture: an output on the picked column alone would arrive a round trip late. One output
+  // serves the dropdown and the snapshot, so each bin column's data is read once. An option whose
+  // values are not readable yet still reports its type.
+  .output("binColumns", (ctx) =>
+    populatedOptions(ctx, isBinColumn).map(({ option, values }) => ({
+      option,
+      facts: {
+        isText: ctx.resultPool.getPColumnSpecByRef(option.ref)?.valueType === "String",
         ...(values !== undefined && { values: binValuesFrom(values) }),
-      };
-    }
-    return out;
-  })
+      } satisfies BinColumnFacts,
+    })),
+  )
 
   // The order is a snapshot of the pick, so a value the column gained since is missing from it.
   .output("unrankedBins", (ctx): string[] => unrankedBinsOf(ctx))
@@ -1221,6 +1222,10 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
           "the value is ignored. Select an antigen column or clear the targetAntigen field.",
       });
     }
+
+    // The desktop names no reason beside a disabled Run, and no field shows this one.
+    if (sortFractionWithoutBin(data))
+      issues.push({ severity: "error", message: SORT_FRACTION_NEEDS_BIN });
 
     // Empty targetAntigen surfaces inline: the dropdown's `:error-status` prop
     // shows a red border and `required` shows the asterisk. `deriveArgsIssues`

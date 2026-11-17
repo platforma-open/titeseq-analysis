@@ -13,7 +13,7 @@ With the log fluorescence fit, the block gives each variant one affinity class:
 - **Partial:** Kd,app is inside the titrated range. Its standard error (log10) is more than 0.5.
 - **Below range:** Kd,app is at or below the lowest concentration. The variant binds more tightly than the titration can measure.
 - **Above range:** Kd,app is at or above the highest concentration.
-- **Failed:** the block cannot fit the variant. The fit failure reason gives the cause.
+- **Failed:** the block cannot fit the variant, or a fit inside the titrated range does not pass a quality gate. By default the gates are R² of at least 0.8 (reason low_r2) and a standard error (log10) of at most 1 (reason high_kd_se). You can change both in the settings. A variant that is flat and bright at every concentration, and already bright in its own 0 M sample, also fails (reason bright_without_antigen): its signal does not come from the antigen. The fit failure reason gives the cause.
 
 The mean bin fit uses only Good, Partial and Failed. It rates a single fit by R². With a FACS sort fraction column, the mean bin fit leaves out a concentration where two gates at least two apart each hold more than 40% of the variant's cells (Starr et al. 2022). A variant with no concentration left fails with the reason insufficient_points.
 
@@ -27,7 +27,7 @@ With sample replicates, the difference from the parent (Kd,app vs Parent) is tak
 
 The FACS bin column can hold numbers or labels. With labels, set the bin order in the settings, from the lowest fluorescence to the highest.
 
-The table shows Kd,app in molar units and as -log10 Kd,app. A larger -log10 Kd,app means tighter binding.
+The table shows Kd,app in the unit of the concentration column, and as -log10 Kd,app of that number. A larger -log10 Kd,app means tighter binding. Give the concentrations in molar units to read -log10 Kd,app on the scale that the literature uses.
 
 The block reads variant abundance from a clonotyping block, for example MiXCR Clonotyping or Amplicon Profiling. Antibody/TCR Lead Selection can use Kd,app and the affinity class as In Vitro preset inputs. You can add a 0 M sample with no antigen. The block uses it to set the Hill baseline, which makes fits of weak binders more reliable.
 

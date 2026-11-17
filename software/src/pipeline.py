@@ -85,6 +85,7 @@ from io_layer import (
 from log import log
 from log_fluorescence import (
     GateScale,
+    bright_at_zero,
     build_gate_scale,
     build_measured_gate_scale,
     classify_curve,
@@ -497,6 +498,10 @@ def _fit_all_log_fluorescence(
         )
         rise, plateau_height = stats_map[clonotype]
         curve_class = classify_curve(rise_decades=rise, plateau_height=plateau_height, plateau_floor=plateau_floor)
+        # Flat and bright with antigen, and already bright without it: the signal is not antigen binding.
+        if curve_class == "Censored High" and bright_at_zero(zero_points.get(clonotype, []), scale, plateau_floor):
+            batch.fail(i, "bright_without_antigen")
+            continue
         log10_kd, censor = pin_kd(fit.log10_kd, curve_class=curve_class, lo=log10_conc_lo, hi=log10_conc_hi)
 
         columns["kd"][i] = 10.0**log10_kd

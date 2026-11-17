@@ -328,7 +328,7 @@ variantColumns := func(blockId, kdAnnotations, opts) {
 	}
 	if opts.parentMode {
 		cols = cols + deltaColumns(blockId, "aa_",
-			"log10 Kd,app of this amino-acid variant minus that of its parent. A variant censored at the edge of the titration reads from that edge, so its delta is a bound and its error is empty. Negative binds tighter than the parent, the opposite sign to a delta of log10 K_A. The parent's own row is 0.")
+			"log10 Kd,app of this amino-acid variant minus that of its parent. A variant censored at the edge of the titration reads from that edge, so its delta is a bound and its error is empty. With sample replicates the error is also empty where the delta compares the combined values: a replicate holds the variant or the parent at an edge of the range, or no replicate measured both. Negative binds tighter than the parent, the opposite sign to a delta of log10 K_A. The parent's own row is 0.")
 	}
 	return cols
 }
@@ -349,7 +349,7 @@ ntVariantColumns := func(blockId, opts) {
 	}
 	if opts.parentMode {
 		cols = cols + deltaColumns(blockId, "nt_",
-			"log10 Kd,app of this nucleotide variant minus that of its parent's unmutated nucleotide variant. A variant censored at the edge of the titration reads from that edge. Negative binds tighter than the parent, the opposite sign to a delta of log10 K_A. The parent's own row is 0.")
+			"log10 Kd,app of this nucleotide variant minus that of its parent's unmutated nucleotide variant. A variant censored at the edge of the titration reads from that edge, so its delta is a bound and its error is empty. With sample replicates the error is also empty where the delta compares the combined values. Negative binds tighter than the parent, the opposite sign to a delta of log10 K_A. The parent's own row is 0.")
 	}
 	return cols
 }

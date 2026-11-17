@@ -18,7 +18,8 @@ Statistics and review fixes:
   that has both holds the variant or the parent at an edge of the range, or no replicate measured
   both, the delta compares the combined values and has no SE.
 - New columns `pl7.app/vdj/kdParent` and `pl7.app/vdj/kdLog10ParentSe` hold the parent's own Kd,app
-  and SE. They are optional table columns.
+  and SE. They are optional table columns, and both grains export them.
+- A run with sample replicates warns how many parent deltas compare the combined values.
 - Log fluorescence fit: R² counts the variant's own 0 M points, from every 0 M sample. Each point
   counts at its read weight. Together they weigh at most the variant's heaviest fit point. A tight
   binder near its plateau passes the R² gate. A deeper 0 M sample, or one more 0 M sample, does not
@@ -26,6 +27,10 @@ Statistics and review fixes:
   baseline as its 0 M point, at the weight of its heaviest fit point. The R² gate removes a curve
   that does not rise from the baseline; the SE of log10 Kd,app rates how well a strong binder is
   fitted.
+- Log fluorescence fit: a variant that is flat and bright at every concentration, and whose own
+  0 M signal is at or above the plateau floor, is rated Failed with the reason
+  `bright_without_antigen`. It was rated Below range, as a saturated tight binder is. A variant
+  with no 0 M point of its own past the read floor is rated as before.
 - Mean bin fit with a sort fraction: Starr 2022's split rule. A concentration has no mean bin and
   leaves the fit when two gates at least two apart each hold more than 40% of the variant's cells.
   Without a sort fraction the rule is off, because shares of reads over gate depth split a single
@@ -35,7 +40,10 @@ Statistics and review fixes:
   split rule, or when no gate that holds its reads carries weight.
 - `argsIssues` disables Run and names every problem at once. The args no longer throw. Valid
   settings send the same args as before.
-- Model outputs read each bin column once. They skip the result pool scan for a dataset whose
+- The settings drawer shows the message for a sort fraction without a bin column. The desktop
+  names no reason beside a disabled Run.
+- Model outputs read each bin column once: the output `binColumns` replaces `binOptions` and
+  `binFactsByRef`. They skip the result pool scan for a dataset whose
   variant axis is not nucleotide.
 - A project keeps its results until it is run again with changed settings. The new rules apply
   from that run.

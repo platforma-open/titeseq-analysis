@@ -70,7 +70,11 @@ export const HILL_GATE_INDEX_DEFAULTS = {
 
 export const DEFAULT_EQUATION: Equation = "log_fluorescence";
 
-/** Adams 2016's floor, two thirds of the gate range, to three decimals. */
+/**
+ * Two thirds of the gate range, to three decimals. Derived, not published: Adams 2016 set a floor
+ * by hand for each replicate, at 1.90 to 2.08 gate widths of a range of 3, and two thirds
+ * reproduces their results on all three.
+ */
 export const DEFAULT_PLATEAU_FLOOR = 0.667;
 
 /** A new block's Minimum R². */

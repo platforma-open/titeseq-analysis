@@ -7,6 +7,10 @@ synonymous mode, in two cases:
   defaults  the settings a new block ships with (R² >= 0.8 and SE <= 1 gates on, plateau floor 0.667),
             what a user gets without changing a setting
 
+A third run, `adams2016-parent-delta`, is the defaults with every amino-acid variant linked to the
+wild type. It pins the parent delta of each variant and how many deltas were taken inside the
+replicates.
+
 Each case pins three things in pins/<case>.json:
   - the whole output, as a digest; a move fails with a diff of what changed
   - agreement with the authors' values (their per-replicate fits, clipped and averaged as their code does)
@@ -149,3 +153,52 @@ def test_the_wild_type_lands_near_the_paper(case):
     wt = current["clones"]["pJK36"]
     assert wt["log10Kd"] is not None, f"{name}: the wild type has no Kd,app"
     assert abs(wt["log10Kd"] - wt["paperTiteSeq"]) < 0.5
+
+
+# ---- The parent delta, against the wild type.
+
+PARENT_CASE = "adams2016-parent-delta"
+
+
+@pytest.fixture(scope="module")
+def parent_delta():
+    out = study.run_block(study.PARAMS, parent=True)
+    # The snapshot's columns hold the delta and its SE, so a move is reported as the other pins are.
+    snap = (
+        out["per_variant"]
+        .select(
+            pl.col("aaKey").cast(pl.Utf8).alias("key"),
+            pl.col("kdLog10ParentDelta").round(6).alias("log10Kd"),
+            pl.col("kdLog10ParentDeltaSe").round(6).alias("log10KdSe"),
+            pl.col("affinityClass"),
+        )
+        .sort("key")
+    )
+    summary = out["synonymous_summary"]
+    current = {
+        "digest": digest(snap),
+        "replicateDeltas": summary["replicateDeltas"],
+        "combinedValueDeltas": summary["combinedValueDeltas"],
+        "deltas": snap["log10Kd"].count(),
+        "deltasWithSe": snap["log10KdSe"].count(),
+    }
+    return current, snap, update_or_load(PARENT_CASE, current, snap)
+
+
+def test_every_parent_delta_matches_its_pin(parent_delta):
+    _, snap, pins = parent_delta
+    check_digest(PARENT_CASE, snap, pins)
+
+
+def test_the_count_of_deltas_taken_inside_the_replicates_matches_its_pin(parent_delta):
+    current, _, pins = parent_delta
+    counted = {k: v for k, v in current.items() if k != "digest"}
+    assert counted == {k: v for k, v in pins.items() if k != "digest"}
+
+
+def test_the_parent_links_leave_every_kd_as_it_was(parent_delta):
+    # The parent delta is read off the fits. It changes none of them.
+    _, snap, _ = parent_delta
+    linked = study.run_block(study.PARAMS, parent=True)["per_variant"]
+    plain = study.run_block(study.PARAMS)["per_variant"]
+    assert snapshot(linked, "aaKey").equals(snapshot(plain, "aaKey"))

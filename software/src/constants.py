@@ -19,6 +19,7 @@ FailureReason = Literal[
     "convergence_failure",
     "low_r2",
     "high_kd_se",
+    "bright_without_antigen",
     "incomplete_titration",
     "n_out_of_range",
     "all_replicates_failed",

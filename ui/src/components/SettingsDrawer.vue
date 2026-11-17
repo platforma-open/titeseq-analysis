@@ -137,8 +137,12 @@ function setAntigenColumn(ref: PlRef | undefined): void {
   if (!unchanged) app.model.data.targetAntigen = undefined;
 }
 
+const binColumns = computed(() => app.model.outputs.binColumns ?? []);
+const binOptions = computed(() => binColumns.value.map((c) => c.option));
 const binFacts = (ref: PlRef | undefined) =>
-  ref === undefined ? undefined : app.model.outputs.binFactsByRef?.[refKey(ref)];
+  ref === undefined
+    ? undefined
+    : binColumns.value.find((c) => refKey(c.option.ref) === refKey(ref))?.facts;
 
 /** The picked bin column's values in their default order: numeric, else alphabetical. */
 const binValues = (ref: PlRef | undefined): string[] | undefined => binFacts(ref)?.values;
@@ -238,7 +242,7 @@ function resetBinOrder(): void {
     </PlDropdown>
     <PlDropdownRef
       :model-value="app.model.data.binColumnRef"
-      :options="app.model.outputs.binOptions"
+      :options="binOptions"
       @update:model-value="setBinColumn"
       :label="isLogFluorescence ? 'FACS bin' : 'FACS bin (optional)'"
       :required="isLogFluorescence"

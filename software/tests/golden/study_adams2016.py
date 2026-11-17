@@ -159,22 +159,48 @@ def nt_to_aa() -> pl.DataFrame:
     return pl.concat([t.select("ntKey", "aaKey") for t in _tables().values()]).unique()
 
 
-def run_block(params: FitParams = PARAMS) -> dict[str, pl.DataFrame]:
+WILD_TYPE = "pJK36"
+PARENT_ID = "wt"
+
+
+def wild_type_links() -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Every amino-acid variant linked to the wild type, and its amino-acid distance from it.
+
+    The study has one parent, so the link table is one parent id for every variant. The mutation
+    count is the number of CDR1H and CDR3H positions that differ from the wild type's.
+    """
+    pairs = nt_to_aa()
+    wild_type = pairs.filter(pl.col("ntKey") == clone_keys()[WILD_TYPE])["aaKey"].item()
+    keys = sorted(pairs["aaKey"].unique().to_list())
+    assert all(len(k) == len(wild_type) for k in keys)
+    distance = [sum(a != b for a, b in zip(k, wild_type)) for k in keys]
+    links = pl.DataFrame({"aaKey": keys, "parentId": [PARENT_ID] * len(keys)})
+    mutations = pl.DataFrame({"aaKey": keys, "mutationCount": distance}, schema_overrides={"mutationCount": pl.Int64})
+    return links, mutations
+
+
+def run_block(params: FitParams = PARAMS, *, parent: bool = False) -> dict[str, pl.DataFrame]:
+    """`parent` links every amino-acid variant to the wild type, so the run reports parent deltas."""
     from pipeline import run
 
     def go() -> dict:
+        synonymous = SynonymousInputs(nt_to_aa=nt_to_aa())
+        if parent:
+            links, mutations = wild_type_links()
+            synonymous = SynonymousInputs(nt_to_aa=nt_to_aa(), aa_parent_links=links, aa_mutations=mutations)
         return run(
             reads(),
             params=params,
             sort_fraction_col="sort_fraction",
             replicates=REPLICATES,
-            synonymous=SynonymousInputs(nt_to_aa=nt_to_aa()),
+            synonymous=synonymous,
         )
 
     inputs = [_file(f"replicate_{r}.csv", "answer-key") for r in (1, 2, 3)]
     inputs += [_file(name, "extra") for name in SORT_COUNT_FILES.values()]
     inputs += [_fcs_file(r, ci) for r in (1, 2, 3) for ci in range(len(CONCENTRATION_LABELS))]
-    return cached_run("adams2016", go, params, REPLICATES, inputs=inputs)
+    inputs += [_file("titration_curves.csv", "extra")] if parent else []
+    return cached_run("adams2016-parent" if parent else "adams2016", go, params, REPLICATES, inputs=inputs)
 
 
 def _clip(x: float) -> float:

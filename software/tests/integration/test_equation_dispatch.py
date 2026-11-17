@@ -149,6 +149,19 @@ class TestBounds:
         assert row["kdRangeSide"] == "Below range"
         assert math.log10(row["kd"]) == pytest.approx(LOG_LO, abs=1e-9)
 
+    def test_a_flat_bright_curve_that_is_bright_without_antigen_fails(self):
+        # Bright at every concentration and at 0 M: the signal does not come from the antigen.
+        zero = TestSharedBaseline._zero_molar
+        reads = _frame(_lf_reads("STICKY", 1e-14), zero("STICKY", gate=4, reads=300), zero("DIM", gate=1, reads=900))
+        row = _row(run(reads, params=LF), "STICKY")
+        assert (row["affinityClass"], row["fitFailureReason"]) == ("Failed", "bright_without_antigen")
+        assert row["kd"] is None and row["kdRangeSide"] is None
+
+    def test_a_saturated_curve_that_is_dim_without_antigen_stays_below_range(self):
+        zero = TestSharedBaseline._zero_molar
+        row = _row(run(_frame(_lf_reads("SAT", 1e-14), zero("SAT", gate=1, reads=300)), params=LF), "SAT")
+        assert (row["affinityClass"], row["fitFailureReason"]) == ("Below range", None)
+
     def test_a_pinned_kd_reports_no_standard_error(self):
         # The SE belongs to the unpinned estimate; the reported K_D is a bound.
         row = _row(run(_frame(_lf_reads("SAT", 1e-14)), params=LF), "SAT")

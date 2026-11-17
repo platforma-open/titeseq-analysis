@@ -46,7 +46,10 @@ is no `nonproductive` class. A stop amino-acid variant has no K_D, SE or parent 
 nucleotide variants keep their own fits.
 
 The parent delta is log10 K_D of the variant minus that of its parent, both at amino-acid grain, with
-error sqrt(se_v^2 + se_p^2). A parent's own row is 0 with error 0. A parent is the one amino-acid variant
+error sqrt(se_v^2 + se_p^2). With sample replicates the delta is taken inside each replicate that
+measured both inside the range, and the deltas are combined as replicate values are
+(`replicate_parent_delta`); where that gives none, the delta compares the combined values and has no
+error. A parent's own row is 0 with error 0. A parent is the one amino-acid variant
 with zero mutations linked to it; a parent with none or several cannot be identified. The nucleotide grain
 has its own parent delta, by the same rule on the nucleotide parent link and mutation count: each fitted
 nt variant's own log10 K_D, as it enters the mean, minus that of the one unmutated nt variant of its parent.

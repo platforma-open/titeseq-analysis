@@ -149,8 +149,7 @@ def r2_with_zero_point(
     with no 0 M point of its own past the read floor takes `shared_baseline`, the run's 0 M signal,
     as its 0 M point at the weight of its heaviest fit point: the form of its R² does not depend on
     its reads at 0 M. That point sits on the curve, which starts at the same baseline, so it adds
-    explained variance and no residual: such a variant's R² is at least that of a variant whose
-    own 0 M point lies off the baseline. With neither, the R² of the fit points alone.
+    no residual. With neither, the R² of the fit points alone.
 
     The R² screens out a curve that does not rise from the baseline. It says little about how the
     curve follows the titrated points of a variant far above the baseline; the SE of log10 K_D
@@ -340,6 +339,22 @@ def level_test(plateau_height: float | None, plateau_floor: float) -> bool:
     if plateau_height is None or not math.isfinite(plateau_height):
         return False
     return plateau_height >= plateau_floor
+
+
+def bright_at_zero(zero_points: Sequence[tuple[float, float]], scale: GateScale, plateau_floor: float) -> bool:
+    """Is the variant's own 0 M signal, the read-weighted mean of its 0 M points, at or above the
+    plateau floor? Without a 0 M point of its own, no.
+
+    A flat and bright curve reads as a saturated tight binder only while the variant is dim without
+    antigen. One that is already bright at 0 M binds the detection reagent or fluoresces by itself.
+    """
+    if not zero_points:
+        return False
+    signal, weight = np.array(zero_points, dtype=float).T
+    if not weight.sum() > 0:
+        return False
+    own = float(np.average(signal, weights=weight))
+    return level_test((own - scale.floor) / scale.range_decades, plateau_floor)
 
 
 def classify_curve(

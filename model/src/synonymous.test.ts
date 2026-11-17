@@ -183,6 +183,17 @@ describe("synonymousMessages", () => {
     expect(synonymousMessages(undefined, { ...summary, stopAaVariants: 0 })).toEqual([]);
   });
 
+  it("counts the parent deltas that compare the combined values", () => {
+    const withReplicates = { ...summary, replicateDeltas: 313, combinedValueDeltas: 2264 };
+    expect(synonymousMessages(undefined, withReplicates)).toEqual([
+      "2264 of 2577 parent deltas compare the combined values and have no SE: a replicate holds " +
+        "the variant or its parent at an edge of the titrated range, or no replicate measured both.",
+    ]);
+    expect(
+      synonymousMessages(undefined, { ...summary, replicateDeltas: 5, combinedValueDeltas: 0 }),
+    ).toEqual([]);
+  });
+
   it("names a parent that cannot be identified", () => {
     const messages = synonymousMessages(undefined, {
       ...summary,
