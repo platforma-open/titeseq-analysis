@@ -348,8 +348,8 @@ def parent_deltas(
         if replicates is not None and delta is not None and variant != parent_key:
             inside = replicate_parent_delta(replicates.get(variant, ()), replicates.get(parent_key, ()))
             if inside is None:
-                # A bound has no error under either rule; only a delta between two measured values loses one.
-                lost_se += se is not None
+                # Counted by the values, not the SE: an equation with no fit SE gives a single replicate none.
+                lost_se += not (_is_bound(value) or _is_bound(parent))
                 se = None
                 from_combined += 1
             else:

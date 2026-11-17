@@ -152,6 +152,15 @@ def test_with_no_shared_measured_replicate_the_combined_values_give_a_delta_with
     assert (counts["combinedValueDeltas"], counts["combinedValueDeltasInRange"]) == (1, 1)
 
 
+def test_an_in_range_delta_is_counted_where_the_equation_reports_no_fit_se():
+    # One measured replicate each, not shared, and no fit SE: neither combined value carries an SE.
+    parent = [measured("r1", -8.0, None), failed("r2"), failed("r3")]
+    variant = [failed("r1"), measured("r2", -7.0, None), failed("r3")]
+    _, (delta, se), counts = deltas(parent, variant)
+    assert delta == pytest.approx(1.0) and se is None
+    assert (counts["combinedValueDeltas"], counts["combinedValueDeltasInRange"]) == (1, 1)
+
+
 def test_a_delta_that_is_a_bound_is_not_counted_as_in_range():
     # The variant sits at the range limit in every replicate: its delta has no SE under either rule.
     _, (delta, se), counts = deltas(PARENT, [above(r) for r in REPLICATES])
