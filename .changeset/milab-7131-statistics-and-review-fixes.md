@@ -19,8 +19,9 @@ Statistics and review fixes:
   both, the delta compares the combined values and has no SE.
 - New columns `pl7.app/vdj/kdParent` and `pl7.app/vdj/kdLog10ParentSe` hold the parent's own Kd,app
   and SE. They are optional table columns, and both grains export them.
-- A run with sample replicates warns how many parent deltas between two values inside the range
-  compare the combined values. A delta at an edge of the range is a bound and is not counted.
+- A run with sample replicates logs how many parent deltas compare the combined values, and how
+  many of those lie between two values inside the range. The description of the delta's SE column
+  says when it is empty.
 - Log fluorescence fit: R² counts the variant's own 0 M points, from every 0 M sample. Each point
   counts at its read weight. Together they weigh at most the variant's heaviest fit point. A tight
   binder near its plateau passes the R² gate. A deeper 0 M sample, or one more 0 M sample, does not

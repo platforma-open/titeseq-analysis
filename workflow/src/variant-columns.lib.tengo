@@ -159,7 +159,7 @@ deltaColumns := func(blockId, idPrefix, description) {
 			domain: domain,
 			annotations: {
 				"pl7.app/label": "Kd,app vs Parent SE (log10)",
-				"pl7.app/description": "Without sample replicates: the variant's and the parent's SE added in quadrature, empty where either has none. With sample replicates: the delta is taken inside each replicate that measured both inside the range, and the deltas are combined as replicate values are. A replicate that measured only one of them is left out, so the delta can differ from the difference of the two Kd,app values by a shift between replicates. Where a replicate that has both holds the variant or the parent at an edge of the range, or no replicate measured both, the delta compares the combined values and this error is empty. The parent's own row is 0.",
+				"pl7.app/description": "Without sample replicates: the variant's and the parent's SE added in quadrature, empty where either has none. With sample replicates: the delta is taken inside each replicate that measured both inside the range, and the deltas are combined as replicate values are. A replicate that measured only one of them is left out, so the delta can differ from the difference of the two Kd,app values by a shift between replicates. Where a replicate that has both holds the variant or the parent at an edge of the range, or no replicate measured both, the delta compares the combined values and this error is empty. It is also empty where the variant or the parent sits at an edge of the titrated range: the delta is then a bound. The parent's own row is 0.",
 				"pl7.app/isScore": "false",
 				"pl7.app/format": ".2f",
 				"pl7.app/table/visibility": "default",
