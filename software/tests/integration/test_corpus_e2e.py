@@ -151,19 +151,16 @@ def test_kd_out_of_range_flag(outputs_by_section, section, key, entry):
     assert row["kdOutOfRange"] == entry["kd_out_of_range"]
 
 
-# R17: null kd → kdPlotPosition = max_conc * 10; null n → hillPlotPosition = -1.0.
+# A fit that found no curve reports neither Kd nor Hill coefficient.
 @pytest.mark.parametrize(
     "section,key,entry",
-    [(s, k, e) for s, k, e in ALL_ENTRIES if e.get("hill_plot_position_is_sentinel")],
-    ids=[f"{s}-{k}" for s, k, e in ALL_ENTRIES if e.get("hill_plot_position_is_sentinel")],
+    [(s, k, e) for s, k, e in ALL_ENTRIES if e.get("kd_and_hill_null")],
+    ids=[f"{s}-{k}" for s, k, e in ALL_ENTRIES if e.get("kd_and_hill_null")],
 )
-def test_r17_sentinel_values(outputs_by_section, section, key, entry):
+def test_null_kd_and_hill(outputs_by_section, section, key, entry):
     row = _row_for(outputs_by_section[section]["per_clonotype"], key)
-    max_conc = MANIFEST["max_non_zero_concentration"]
     assert row["hillCoefficient"] is None
     assert row["kd"] is None
-    assert row["hillPlotPosition"] == pytest.approx(-1.0)
-    assert row["kdPlotPosition"] == pytest.approx(max_conc * 10.0)
 
 
 # ---------------------------------------------------------------------------
@@ -256,14 +253,11 @@ class TestDeterminism:
         b = run(reads)["per_clonotype"].sort("clonotypeKey")
         keys = a["clonotypeKey"].to_list()
 
-        # (column, rel, abs) — plot-position columns track their source values
-        # when finite and exact sentinels when null, so the same bands apply.
+        # (column, rel, abs)
         checks = [
             ("kd", 0.02, 1e-9),
             ("hillCoefficient", 0.05, 1e-9),
             ("r2", 0.0, 0.01),
-            ("kdPlotPosition", 0.02, 1e-9),
-            ("hillPlotPosition", 0.05, 1e-9),
         ]
         for col, rel, abs_tol in checks:
             for k, av, bv in zip(keys, a[col].to_list(), b[col].to_list()):

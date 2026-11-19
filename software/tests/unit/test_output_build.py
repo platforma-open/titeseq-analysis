@@ -9,7 +9,6 @@ import pytest
 
 from output_build import (
     PER_CLONOTYPE_SCHEMA,
-    add_diagnostic_plot_columns,
     add_neg_log10_kd,
     build_concentration_value_frame,
     build_mean_bin_frame,
@@ -57,52 +56,6 @@ class TestFlagKdOutOfRange:
     def test_failed_fit_kd_null_stays_null(self):
         out = flag_kd_out_of_range(_per_clonotype(None), min_concentration=0.1, max_concentration=100.0)
         assert out["kdOutOfRange"][0] is None
-
-
-class TestAddDiagnosticPlotColumns:
-    # R17: Failed clonotypes with null Kd must appear at a sentinel x right of the fitted range
-    # so the Affinity-vs-Fit scatter doesn't silently drop them on a log axis.
-
-    def test_null_kd_maps_to_decade_right_of_max(self):
-        frame = add_diagnostic_plot_columns(_per_clonotype(None), max_concentration=100.0)
-        assert frame["kdPlotPosition"][0] == 1000.0
-
-    def test_finite_kd_passes_through_unchanged(self):
-        frame = add_diagnostic_plot_columns(_per_clonotype(5.0), max_concentration=100.0)
-        assert frame["kdPlotPosition"][0] == 5.0
-
-    def test_null_hill_maps_to_minus_one(self):
-        # Sentinel is -1.0: non-physical (Hill is strictly positive), so Failed rows
-        # pool visibly below the n>0 cluster instead of mixing with well-fitted n≈1.
-        frame = pl.DataFrame(
-            [
-                {
-                    "clonotypeKey": "A",
-                    "kd": None,
-                    "hillCoefficient": None,
-                    "r2": None,
-                    "affinityClass": "Failed",
-                    "fitFailureReason": "convergence_failure",
-                    "kdOutOfRange": None,
-                }
-            ],
-            schema=PER_CLONOTYPE_SCHEMA,
-        )
-        out = add_diagnostic_plot_columns(frame, max_concentration=100.0)
-        assert out["hillPlotPosition"][0] == -1.0
-
-    def test_finite_hill_passes_through_unchanged(self):
-        out = add_diagnostic_plot_columns(_per_clonotype(5.0), max_concentration=100.0)
-        # _per_clonotype sets hillCoefficient = 1.0 for non-null kd rows
-        assert out["hillPlotPosition"][0] == 1.0
-
-    def test_output_columns_are_float64_and_never_null(self):
-        frame = pl.concat([_per_clonotype(None), _per_clonotype(5.0)])
-        out = add_diagnostic_plot_columns(frame, max_concentration=100.0)
-        assert out.schema["kdPlotPosition"] == pl.Float64
-        assert out.schema["hillPlotPosition"] == pl.Float64
-        assert out["kdPlotPosition"].null_count() == 0
-        assert out["hillPlotPosition"].null_count() == 0
 
 
 class TestMeanBinFrame:

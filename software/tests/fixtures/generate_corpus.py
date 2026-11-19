@@ -132,7 +132,7 @@ def _build_bin_mode_table() -> tuple[pl.DataFrame, dict]:
             "kd_range": [kd / 3.0, kd * 3.0],
             "hill_range": [0.5, 2.0],
             "kd_out_of_range": False,
-            "hill_plot_position_is_sentinel": False,
+            "kd_and_hill_null": False,
             "notes": f"Clean sigmoid, kd ≈ {kd} — baseline Good across decades",
         }
 
@@ -148,7 +148,7 @@ def _build_bin_mode_table() -> tuple[pl.DataFrame, dict]:
         "kd_range": [1e-9, 1e-7],
         "hill_range": [0.3, 10.0],
         "kd_out_of_range": False,
-        "hill_plot_position_is_sentinel": False,
+        "kd_and_hill_null": False,
         "notes": "Wider σ bin assignment → weighted R² between r2_failed (0.5) and r2_good (0.8)",
     }
 
@@ -166,7 +166,7 @@ def _build_bin_mode_table() -> tuple[pl.DataFrame, dict]:
         "kd_range": None,
         "hill_range": None,
         "kd_out_of_range": None,
-        "hill_plot_position_is_sentinel": False,
+        "kd_and_hill_null": False,
         "notes": (
             "Sigmoid signal with noisy bin assignment → fit lands in Failed territory."
             " Accept either low_r2 or convergence_failure; both are valid expressions of"
@@ -185,7 +185,7 @@ def _build_bin_mode_table() -> tuple[pl.DataFrame, dict]:
         "kd_range": [3e-9, 3e-8],
         "hill_range": [2.0, 10.0],
         "kd_out_of_range": False,
-        "hill_plot_position_is_sentinel": False,
+        "kd_and_hill_null": False,
         "notes": "Steep Hill (true n=4) + good data → high R², fit n > n_max=2 → Partial",
     }
 
@@ -212,7 +212,7 @@ def _build_bin_mode_table() -> tuple[pl.DataFrame, dict]:
         "kd_range": None,
         "hill_range": None,
         "kd_out_of_range": None,
-        "hill_plot_position_is_sentinel": True,
+        "kd_and_hill_null": True,
         "notes": "R9b: top-2 & top-3 elevated, top-1 drop > θ; every top-3 conc has reads ≥ hook_effect_min_reads",
     }
 
@@ -238,7 +238,7 @@ def _build_bin_mode_table() -> tuple[pl.DataFrame, dict]:
         "kd_range": None,
         "hill_range": None,
         "kd_out_of_range": None,
-        "hill_plot_position_is_sentinel": True,
+        "kd_and_hill_null": True,
         "notes": "All non-zero concs have clonotype_reads_at_conc < min_reads_per_concentration=3",
     }
 
@@ -255,7 +255,7 @@ def _build_bin_mode_table() -> tuple[pl.DataFrame, dict]:
         "kd_range": None,
         "hill_range": None,
         "kd_out_of_range": None,
-        "hill_plot_position_is_sentinel": True,
+        "kd_and_hill_null": True,
         "notes": "Only 3 non-zero concs pass read floor; below min_concentration_points=5",
     }
 
@@ -274,7 +274,7 @@ def _build_bin_mode_table() -> tuple[pl.DataFrame, dict]:
         "kd_range": None,
         "hill_range": None,
         "kd_out_of_range": None,
-        "hill_plot_position_is_sentinel": False,
+        "kd_and_hill_null": False,
         "notes": (
             "Razor-flat signal anchored on BASELINE — no dose-response. Fit either"
             " fails to converge (amp_lo bound rejects flat signal) or converges at a"
@@ -295,15 +295,15 @@ def _build_bin_mode_table() -> tuple[pl.DataFrame, dict]:
         "kd_range": [0.0, 1e-10],
         "hill_range": None,
         "kd_out_of_range": True,
-        "hill_plot_position_is_sentinel": False,
+        "kd_and_hill_null": False,
         "notes": (
             "Saturated Hill (true kd=5e-11) below min conc → kdOutOfRange=true; exact class depends on fit stability"
         ),
     }
 
     # K_HIGH (kd above max concentration) is not included in the corpus. The upper half
-    # of R14b is covered by the integration/CLI hook test where null-kd Failed fits
-    # land at the kdPlotPosition sentinel. K_LOW covers the lower bound of R14b here.
+    # of R14b is covered by the integration/CLI hook tests. K_LOW covers the lower bound
+    # of R14b here.
 
     # ---- C0_ONLY — reads only at c=0; no non-zero data points
     # Gaussian-distribute c=0 reads around BASELINE so this clonotype's c=0 signal
@@ -342,7 +342,7 @@ def _build_bin_mode_table() -> tuple[pl.DataFrame, dict]:
         "kd_range": None,
         "hill_range": None,
         "kd_out_of_range": None,
-        "hill_plot_position_is_sentinel": True,
+        "kd_and_hill_null": True,
         "notes": "Only c=0 rows survive floor; zero non-zero points → insufficient_reads",
     }
 
@@ -409,7 +409,7 @@ def _build_no_bin_mode_table() -> tuple[pl.DataFrame, dict]:
         "kd_range": [1e-9, 2e-7],
         "hill_range": [0.3, 2.5],
         "kd_out_of_range": False,
-        "hill_plot_position_is_sentinel": False,
+        "kd_and_hill_null": False,
         "notes": "R7b frequency signal — clean sigmoid rise to ~27% at max conc",
     }
     entries["NB_HOOK"] = {
@@ -418,7 +418,7 @@ def _build_no_bin_mode_table() -> tuple[pl.DataFrame, dict]:
         "kd_range": None,
         "hill_range": None,
         "kd_out_of_range": None,
-        "hill_plot_position_is_sentinel": True,
+        "kd_and_hill_null": True,
         "notes": "R9b no-bin threshold (0.02): top-1 freq < top-2,top-3 → hook flagged",
     }
     entries["NB_LOW_R2"] = {
@@ -427,7 +427,7 @@ def _build_no_bin_mode_table() -> tuple[pl.DataFrame, dict]:
         "kd_range": None,
         "hill_range": None,
         "kd_out_of_range": None,
-        "hill_plot_position_is_sentinel": False,
+        "kd_and_hill_null": False,
         "notes": (
             "Scrambled frequencies → Hill fit either fails to converge or converges to"
             " low R². Either Failed reason is acceptable; the branch under test is"
@@ -465,7 +465,7 @@ def _build_antigen_table() -> tuple[pl.DataFrame, dict]:
         "kd_range": [1.5e-9, 1.5e-8],
         "hill_range": [0.5, 2.0],
         "kd_out_of_range": False,
-        "hill_plot_position_is_sentinel": False,
+        "kd_and_hill_null": False,
         "notes": "antigen=target, kd≈5 nM — survives R4 filter",
     }
     entries["ANT_T2"] = {
@@ -474,7 +474,7 @@ def _build_antigen_table() -> tuple[pl.DataFrame, dict]:
         "kd_range": [1.5e-8, 1.5e-7],
         "hill_range": [0.5, 2.0],
         "kd_out_of_range": False,
-        "hill_plot_position_is_sentinel": False,
+        "kd_and_hill_null": False,
         "notes": "antigen=target, kd≈50 nM — survives R4 filter",
     }
     # Distractors have no manifest entry beyond "must not appear in output".

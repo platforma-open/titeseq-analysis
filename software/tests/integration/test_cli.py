@@ -190,10 +190,7 @@ def test_cli_hook_effect_triggers_failure(tmp_path):
     h1 = pc.filter(pl.col("clonotypeKey") == "H1")
     assert h1["affinityClass"][0] == "Failed"
     assert h1["fitFailureReason"][0] == "non_monotonic_signal"
-    # R17: null-Kd Failed rows must surface at the plot sentinels so the scatter doesn't drop them.
     assert h1["kd"][0] is None
-    assert h1["kdPlotPosition"][0] == max(concs) * 10.0
-    assert h1["hillPlotPosition"][0] == -1.0
 
 
 # The TSV the workflow writes when the abundance has no reads for any sample: the reads column is
@@ -212,3 +209,51 @@ def test_cli_abundance_without_reads_names_the_cause(tmp_path):
         outs += [flag, str(tmp_path / f"{flag[2:]}.tsv")]
     with pytest.raises(InputValidationError, match="no reads for any selected sample"):
         main(["--reads", str(reads_path), *outs])
+
+
+# The download copies name each variant; the tables the workflow imports keep the hash key.
+def test_cli_download_copies_name_the_variants(tmp_path):
+    rows = _hill_reads("h1", 1e-8, [1e-10, 1e-9, 1e-8, 1e-7, 1e-6], [1, 2, 3, 4])
+    rows += _hill_reads("h2", 1e-7, [1e-10, 1e-9, 1e-8, 1e-7, 1e-6], [1, 2, 3, 4])
+    reads_path = tmp_path / "reads.tsv"
+    pl.DataFrame(rows).write_csv(reads_path, separator="\t")
+    names_path = tmp_path / "names.tsv"
+    pl.DataFrame({"key": ["h1", "h2"], "variantId": ["V-AAAAA", "V-BBBBB"], "sequence": ["CARW", "CARY"]}).write_csv(
+        names_path, separator="\t"
+    )
+    headers_path = tmp_path / "headers.json"
+    headers_path.write_text(json.dumps({"pc.tsv": {"variantId": "Variant Id", "sequence": "Sequence", "kd": "Kd,app"}}))
+    out = {name: tmp_path / f"{name}.tsv" for name in ("pc", "mb", "fmb", "cv", "fr")}
+    rc = main(
+        [
+            "--reads",
+            str(reads_path),
+            "--out-per-clonotype",
+            str(out["pc"]),
+            "--out-mean-bin",
+            str(out["mb"]),
+            "--out-fitted-mean-bin",
+            str(out["fmb"]),
+            "--out-concentration-value",
+            str(out["cv"]),
+            "--out-fit-reads",
+            str(out["fr"]),
+            "--variant-names",
+            str(names_path),
+            "--download-prefix",
+            "download_",
+            "--download-headers",
+            str(headers_path),
+        ]
+    )
+    assert rc == 0
+    labelled = pl.read_csv(tmp_path / "download_pc.tsv", separator="\t")
+    assert labelled.columns[:3] == ["Variant Id", "Sequence", "Kd,app"]
+    imported = pl.read_csv(out["pc"], separator="\t")
+    assert imported.columns[0] == "clonotypeKey"
+    for name in ("mb", "fmb", "fr"):
+        download = pl.read_csv(tmp_path / f"download_{name}.tsv", separator="\t")
+        assert download.columns[:2] == ["variantId", "sequence"], name
+        assert "clonotypeKey" not in download.columns, name
+        assert set(download["variantId"]) == {"V-AAAAA", "V-BBBBB"}, name
+    assert not (tmp_path / "download_cv.tsv").exists()

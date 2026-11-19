@@ -18,6 +18,7 @@ replicateColumnsLib := import(":replicate-columns")
 
 synonymousInputs := import(":synonymous-inputs")
 variantColumnsLib := import(":variant-columns")
+variantNamesLib := import(":variant-names")
 
 fitCurvesSw := assets.importSoftware("@platforma-open/platforma-open.titeseq-analysis.software:fit-curves")
 
@@ -48,6 +49,17 @@ wf.prepare(func(args) {
 		bb.addRef(json.decode(args.inputFilter))
 	}
 
+	// What names each variant in the downloads: its Variant Id (the label column) and its sequence.
+	bb.addMulti({
+		axes: [{ anchor: "abundance", idx: 1 }],
+		name: "pl7.app/label"
+	}, "variantLabels")
+	bb.addMulti({
+		axes: [{ anchor: "abundance", idx: 1 }],
+		name: "pl7.app/sequence",
+		domain: { "pl7.app/feature": "amplicon-sequence" }
+	}, "variantSequences")
+
 	// Synonymous-mode inputs: the nt -> aa linker and the amino-acid parent columns. The aa parent
 	// columns sit on the aa axis, which no anchor reaches: matched by name here, narrowed to the
 	// linker's aa axis in the body. Unanchored, so they await every match in the project: the
@@ -76,6 +88,15 @@ wf.prepare(func(args) {
 		axes: [{ name: "pl7.app/variantKey", type: "String", domain: { "pl7.app/alphabet": "aminoacid" } }],
 		name: "pl7.app/vdj/sequence/productive"
 	}, "aaProductive")
+	bb.addMulti({
+		axes: [{ name: "pl7.app/variantKey", type: "String", domain: { "pl7.app/alphabet": "aminoacid" } }],
+		name: "pl7.app/label"
+	}, "aaVariantLabels")
+	bb.addMulti({
+		axes: [{ name: "pl7.app/variantKey", type: "String", domain: { "pl7.app/alphabet": "aminoacid" } }],
+		name: "pl7.app/sequence",
+		domain: { "pl7.app/feature": "amplicon-sequence" }
+	}, "aaVariantSequences")
 	bb.addMulti({
 		axes: [{ anchor: "abundance", idx: 1 }],
 		name: "pl7.app/repertoire/mutationCount"
@@ -262,6 +283,40 @@ wf.body(func(args) {
 		saveFileContent("run_warnings.json").
 		saveStdoutStream()
 
+	// The downloads: each variant table written again, its hash keys replaced by the variant's
+	// Variant Id and sequence. A variant the names table does not cover keeps its key.
+	DOWNLOAD := "download_"
+	namesTable := func(axis, labels, sequences) {
+		label := variantNamesLib.label(labels, axis)
+		sequence := variantNamesLib.sequence(sequences, axis)
+		if is_undefined(label) && is_undefined(sequence) {
+			return undefined
+		}
+		b := pframes.tsvFileBuilder()
+		if !is_undefined(label) {
+			b.add(label, { header: "variantId" })
+		}
+		if !is_undefined(sequence) {
+			b.add(sequence, { header: "sequence" })
+		}
+		b.setAxisHeader(axis, "key")
+		b.mem("4GiB")
+		b.cpu(1)
+		return { file: b.build(), label: label, sequence: sequence }
+	}
+	variantNames := namesTable(abundanceSpec.axesSpec[1], columns.getColumns("variantLabels"),
+		columns.getColumns("variantSequences"))
+	if !is_undefined(variantNames) {
+		execBuilder.addFile("variant_names.tsv", variantNames.file).arg("--variant-names").arg("variant_names.tsv")
+	}
+	aaNames := undefined
+	execBuilder.
+		arg("--download-prefix").arg(DOWNLOAD).
+		saveFile(DOWNLOAD + "per_clonotype.tsv").
+		saveFile(DOWNLOAD + "fit_reads.tsv").
+		saveFile(DOWNLOAD + "mean_bin.tsv").
+		saveFile(DOWNLOAD + "fitted_mean_bin.tsv")
+
 	// The user's bin order: each kept bin value's rank. Absent, the column's own integers are the
 	// gates, so a block that never set an order runs the command it always ran.
 	if hasBin && !is_undefined(args.binRanks) {
@@ -286,7 +341,8 @@ wf.body(func(args) {
 		execBuilder.
 			arg("--replicate-column").arg("replicate").
 			arg("--out-per-replicate").arg("per_replicate.tsv").
-			saveFile("per_replicate.tsv")
+			saveFile("per_replicate.tsv").
+			saveFile(DOWNLOAD + "per_replicate.tsv")
 	}
 
 	if syn.synonymous {
@@ -308,15 +364,24 @@ wf.body(func(args) {
 			arg("--out-per-variant").arg("per_variant.tsv").
 			arg("--out-synonymous-summary").arg("synonymous_summary.json").
 			saveFile("per_variant.tsv").
+			saveFile(DOWNLOAD + "per_variant.tsv").
 			saveFileContent("synonymous_summary.json")
+		aaNames = namesTable(syn.aaAxis, columns.getColumns("aaVariantLabels"),
+			columns.getColumns("aaVariantSequences"))
+		if !is_undefined(aaNames) {
+			execBuilder.addFile("aa_variant_names.tsv", aaNames.file).
+				arg("--aa-variant-names").arg("aa_variant_names.tsv")
+		}
 		if hasReplicate {
 			execBuilder.
 				arg("--out-per-replicate-nt").arg("per_replicate_nt.tsv").
-				saveFile("per_replicate_nt.tsv")
+				saveFile("per_replicate_nt.tsv").
+				saveFile(DOWNLOAD + "per_replicate_nt.tsv")
 		}
 		execBuilder.
 			arg("--out-nt-aa-variant").arg("nt_aa_variant.tsv").
-			saveFile("nt_aa_variant.tsv")
+			saveFile("nt_aa_variant.tsv").
+			saveFile(DOWNLOAD + "nt_aa_variant.tsv")
 		if syn.aaClass {
 			execBuilder.
 				addFile("aa_mutations.tsv", keyTable(func(b) {
@@ -341,7 +406,8 @@ wf.body(func(args) {
 				})).
 				arg("--nt-mutations").arg("nt_mutations.tsv").
 				arg("--out-per-nt-variant").arg("per_nt_variant.tsv").
-				saveFile("per_nt_variant.tsv")
+				saveFile("per_nt_variant.tsv").
+				saveFile(DOWNLOAD + "per_nt_variant.tsv")
 		}
 		if syn.ntParentMode {
 			execBuilder.
@@ -362,8 +428,6 @@ wf.body(func(args) {
 				arg("--aa-parent-links").arg("aa_parent_links.tsv")
 		}
 	}
-
-	fit := execBuilder.run()
 
 	// Shared axis specs for the output PColumns.
 	clonotypeAxisSpec := abundanceSpec.axesSpec[1]
@@ -546,36 +610,6 @@ wf.body(func(args) {
 					"pl7.app/table/orderPriority": "194"
 				}
 			}
-		},
-		{
-			column: "kdPlotPosition",
-			spec: {
-				name: "pl7.app/vdj/kdPlotPosition",
-				valueType: "Double",
-				domain: { "pl7.app/block": blockId },
-				annotations: {
-					// Distinct label from "Kd,app" so downstream pickers show this plot-
-					// rendering sibling (nulls parked at max_conc*10) separately from the real Kd.
-					"pl7.app/label": "Kd,app (plot position)",
-					"pl7.app/isScore": "false",
-					"pl7.app/table/visibility": "hidden"
-				}
-			}
-		},
-		{
-			column: "hillPlotPosition",
-			spec: {
-				name: "pl7.app/vdj/hillPlotPosition",
-				valueType: "Double",
-				domain: { "pl7.app/block": blockId },
-				annotations: {
-					// Distinct label from "Hill coefficient" so pickers show this plot-
-					// rendering sibling (nulls parked at -1.0) separately from the real coefficient.
-					"pl7.app/label": "Hill coefficient (plot position)",
-					"pl7.app/isScore": "false",
-					"pl7.app/table/visibility": "hidden"
-				}
-			}
 		}
 	]
 	// -log10 Kd,app for every equation. Only "log_fluorescence" writes the SE of log10 K_D from a
@@ -637,57 +671,40 @@ wf.body(func(args) {
 			}
 		})
 	}
-	summaryImported := xsv.importFile(fit.getFile("per_clonotype.tsv"), "tsv", {
-		axes: [{
-			column: "clonotypeKey",
-			spec: clonotypeAxisSpec
-		}],
-		columns: summaryColumns,
-		storageFormat: "Parquet",
-		partitionKeyLength: 0
-	}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
-
-	fitReadsImported := xsv.importFile(fit.getFile("fit_reads.tsv"), "tsv", {
-		axes: [{ column: "clonotypeKey", spec: clonotypeAxisSpec }],
-		columns: [variantColumnsLib.fitReadsColumn(blockId, "",
-			"The reads this variant's fit used, every replicate included: sorted samples only, at the non-zero concentrations that pass the read floor. 0 for a variant that was not fitted.")],
-		storageFormat: "Parquet",
-		partitionKeyLength: 0
-	}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
-
-	// Synonymous mode: one row per amino-acid variant, on the linker's aa axis taken verbatim, so the
-	// columns join the profiler's aa columns. Names are the nt grain's; the axis alphabet tells the
-	// grains apart. Ids carry an "aa" prefix to stay apart from the nt columns in one frame.
-	variantImported := undefined
+	// The column lists of every import, built before the fit runs: their labels head the downloads.
+	fitReadsColumns := [variantColumnsLib.fitReadsColumn(blockId, "",
+		"The reads this variant's fit used, every replicate included: sorted samples only, at the non-zero concentrations that pass the read floor. 0 for a variant that was not fitted.")]
+	variantCols := undefined
 	if syn.synonymous {
-		variantImported = xsv.importFile(fit.getFile("per_variant.tsv"), "tsv", {
-			axes: [{ column: "aaKey", spec: syn.aaAxis }],
-			columns: variantColumnsLib.variantColumns(blockId, kdAnnotations, {
-				parentMode: syn.parentMode,
-				variantClass: syn.aaClass,
-				kdNegLog10Spec: kdNegLog10Spec,
-				affinityClassValues: affinityClassValues,
-				affinityClassCutoff: affinityClassCutoff,
-				boundRule: boundRule,
-				replicateColumns: hasReplicate ? [
-					replicateColumnsLib.seColumn(blockId, "aa_"),
-					replicateColumnsLib.sdColumn(blockId, "aa_")
-				] + replicateColumnsLib.countColumns(blockId, "aa_") : undefined
-			}),
-			storageFormat: "Parquet",
-			partitionKeyLength: 0
-		}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
+		variantCols = variantColumnsLib.variantColumns(blockId, kdAnnotations, {
+			parentMode: syn.parentMode,
+			variantClass: syn.aaClass,
+			kdNegLog10Spec: kdNegLog10Spec,
+			affinityClassValues: affinityClassValues,
+			affinityClassCutoff: affinityClassCutoff,
+			boundRule: boundRule,
+			replicateColumns: hasReplicate ? [
+				replicateColumnsLib.seColumn(blockId, "aa_"),
+				replicateColumnsLib.sdColumn(blockId, "aa_")
+			] + replicateColumnsLib.countColumns(blockId, "aa_") : undefined
+		})
 	}
-
-	// Synonymous mode: the nt grain's class and parent delta, on the abundance's variant axis.
-	ntVariantImported := undefined
+	ntVariantCols := undefined
 	if hasNtVariantColumns {
-		ntVariantImported = xsv.importFile(fit.getFile("per_nt_variant.tsv"), "tsv", {
-			axes: [{ column: "ntKey", spec: clonotypeAxisSpec }],
-			columns: variantColumnsLib.ntVariantColumns(blockId, ntVariantOpts),
-			storageFormat: "Parquet",
-			partitionKeyLength: 0
-		}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
+		ntVariantCols = variantColumnsLib.ntVariantColumns(blockId, ntVariantOpts)
+	}
+	replicateVariantAxis := { column: "clonotypeKey", spec: clonotypeAxisSpec }
+	replicateColumns := replicateColumnsLib.perReplicateColumns(blockId, "rep_", kdAnnotations, affinityClassValues, syn.synonymous)
+	if syn.synonymous {
+		replicateVariantAxis = { column: "aaKey", spec: syn.aaAxis }
+		// An amino-acid row is a combination, not one fit: it has no R².
+		combined := []
+		for c in replicateColumns {
+			if c.column != "r2" {
+				combined = append(combined, c)
+			}
+		}
+		replicateColumns = append(combined, replicateColumnsLib.perReplicateSynonymousColumns(blockId, "rep_")...)
 	}
 
 	// One import per TSV. Each pcolumn resource is reused in both signalPf and
@@ -744,6 +761,119 @@ wf.body(func(args) {
 		annotations: concValueAnnotations
 	}
 
+	// The downloads' headers: each column's label, as the results table shows it. Each variant is
+	// headed by the labels of its upstream Variant Id and sequence columns.
+	labelOf := func(spec, fallback) {
+		if is_undefined(spec) || is_undefined(spec.annotations) || is_undefined(spec.annotations["pl7.app/label"]) {
+			return fallback
+		}
+		return spec.annotations["pl7.app/label"]
+	}
+	// Written by the software but not shown in the table under this name.
+	unshown := { r2: "Curve fit R²", kdRangeSide: "Kd,app range side" }
+	headersOf := func(cols, ...more) {
+		res := {}
+		for k, v in unshown {
+			res[k] = v
+		}
+		for c in cols {
+			res[c.column] = labelOf(c.spec, c.column)
+		}
+		for m in more {
+			for k, v in m {
+				res[k] = v
+			}
+		}
+		return res
+	}
+	nameHeaders := func(picks, prefix) {
+		specOf := func(col) {
+			return is_undefined(col) ? undefined : col.spec
+		}
+		idLabel := labelOf(is_undefined(picks) ? undefined : specOf(picks.label), "Variant Id")
+		seqLabel := labelOf(is_undefined(picks) ? undefined : specOf(picks.sequence), "Sequence")
+		if prefix == "" {
+			return { variantId: idLabel, sequence: seqLabel }
+		}
+		res := {}
+		res[prefix + "VariantId"] = text.to_upper(prefix) + " " + idLabel
+		res[prefix + "Sequence"] = seqLabel
+		return res
+	}
+	variantHeaders := nameHeaders(variantNames, "")
+	aaHeaders := nameHeaders(aaNames, "")
+	signalHeaders := { replicate: labelOf(replicateAxisSpec, "replicate"), concentrationStr: labelOf(concAxisSpec, "concentrationStr") }
+	signalHeaders["meanBin"] = labelOf(meanBinColSpec, "meanBin")
+	signalHeaders["fittedMeanBin"] = labelOf(fittedMeanBinColSpec, "fittedMeanBin")
+	downloadHeaders := {
+		"per_clonotype.tsv": headersOf(summaryColumns, variantHeaders),
+		"fit_reads.tsv": headersOf(fitReadsColumns, variantHeaders),
+		"mean_bin.tsv": headersOf([], signalHeaders, variantHeaders),
+		"fitted_mean_bin.tsv": headersOf([], signalHeaders, variantHeaders)
+	}
+	if hasReplicate {
+		downloadHeaders["per_replicate.tsv"] = headersOf(replicateColumns, signalHeaders,
+			syn.synonymous ? aaHeaders : variantHeaders, { r2: "Curve fit R² (per replicate)" })
+	}
+	if hasReplicate && syn.synonymous {
+		downloadHeaders["per_replicate_nt.tsv"] = headersOf(
+			replicateColumnsLib.perReplicateColumns(blockId, "rep_", kdAnnotations, affinityClassValues),
+			signalHeaders, variantHeaders)
+	}
+	if syn.synonymous {
+		downloadHeaders["per_variant.tsv"] = headersOf(variantCols, aaHeaders)
+		downloadHeaders["nt_aa_variant.tsv"] = headersOf([], nameHeaders(variantNames, "nt"), nameHeaders(aaNames, "aa"))
+	}
+	if hasNtVariantColumns {
+		downloadHeaders["per_nt_variant.tsv"] = headersOf(ntVariantCols, variantHeaders)
+	}
+	execBuilder.
+		writeFile("download_headers.json", canonical.encode(downloadHeaders)).
+		arg("--download-headers").arg("download_headers.json")
+
+	fit := execBuilder.run()
+
+	summaryImported := xsv.importFile(fit.getFile("per_clonotype.tsv"), "tsv", {
+		axes: [{
+			column: "clonotypeKey",
+			spec: clonotypeAxisSpec
+		}],
+		columns: summaryColumns,
+		storageFormat: "Parquet",
+		partitionKeyLength: 0
+	}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
+
+	fitReadsImported := xsv.importFile(fit.getFile("fit_reads.tsv"), "tsv", {
+		axes: [{ column: "clonotypeKey", spec: clonotypeAxisSpec }],
+		columns: fitReadsColumns,
+		storageFormat: "Parquet",
+		partitionKeyLength: 0
+	}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
+
+	// Synonymous mode: one row per amino-acid variant, on the linker's aa axis taken verbatim, so the
+	// columns join the profiler's aa columns. Names are the nt grain's; the axis alphabet tells the
+	// grains apart. Ids carry an "aa" prefix to stay apart from the nt columns in one frame.
+	variantImported := undefined
+	if syn.synonymous {
+		variantImported = xsv.importFile(fit.getFile("per_variant.tsv"), "tsv", {
+			axes: [{ column: "aaKey", spec: syn.aaAxis }],
+			columns: variantCols,
+			storageFormat: "Parquet",
+			partitionKeyLength: 0
+		}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
+	}
+
+	// Synonymous mode: the nt grain's class and parent delta, on the abundance's variant axis.
+	ntVariantImported := undefined
+	if hasNtVariantColumns {
+		ntVariantImported = xsv.importFile(fit.getFile("per_nt_variant.tsv"), "tsv", {
+			axes: [{ column: "ntKey", spec: clonotypeAxisSpec }],
+			columns: ntVariantCols,
+			storageFormat: "Parquet",
+			partitionKeyLength: 0
+		}, { splitDataAndSpec: true, cpu: 1, mem: "8GiB" })
+	}
+
 	importSignal := func(file, valueColumn, valueSpec, axes) {
 		return xsv.importFile(file, "tsv", {
 			axes: axes,
@@ -795,19 +925,6 @@ wf.body(func(args) {
 	// amino-acid one, as are the main table's rows: the synonymous variants combine inside each replicate first.
 	replicateImported := undefined
 	if hasReplicate {
-		replicateVariantAxis := { column: "clonotypeKey", spec: clonotypeAxisSpec }
-		replicateColumns := replicateColumnsLib.perReplicateColumns(blockId, "rep_", kdAnnotations, affinityClassValues, syn.synonymous)
-		if syn.synonymous {
-			replicateVariantAxis = { column: "aaKey", spec: syn.aaAxis }
-			// An amino-acid row is a combination, not one fit: it has no R².
-			combined := []
-			for c in replicateColumns {
-				if c.column != "r2" {
-					combined = append(combined, c)
-				}
-			}
-			replicateColumns = append(combined, replicateColumnsLib.perReplicateSynonymousColumns(blockId, "rep_")...)
-		}
 		replicateImported = importSplit(fit.getFile("per_replicate.tsv"), [
 			replicateVariantAxis,
 			{ column: "replicate", spec: replicateAxisSpec }
@@ -879,8 +996,7 @@ wf.body(func(args) {
 	// An allowlist: the affinity answer, its error and spread, the fit quality behind it, the support
 	// behind it (the reads its fits used, and the counts of replicates and of synonymous variants),
 	// and in synonymous mode each variant's class and its change against its parent. The
-	// per-concentration signal, the per-replicate values and the plot positions stay in this block's
-	// own table and graphs. A column an equation or a run does not write is simply absent. The
+	// per-concentration signal and the per-replicate values stay in this block's own table and graphs. A column an equation or a run does not write is simply absent. The
 	// kdLog10Sd header is the replicates' spread with replicates, on every grain; without them it exists on the amino-acid grain only,
 	// as the synonymous variants' spread under a name of its own. kdLog10SynonymSd is on the
 	// amino-acid grain only.
@@ -935,32 +1051,32 @@ wf.body(func(args) {
 		logHandle: fit.getStdoutStream(),
 		// What the run must tell the user, as a JSON list of sentences; [] when nothing.
 		runWarnings: fit.getFileContent("run_warnings.json"),
-		// The software's own tables, for download as they were written.
-		rawVariantFits: fileLib.exportFile(fit.getFile("per_clonotype.tsv")),
-		rawFitReads: fileLib.exportFile(fit.getFile("fit_reads.tsv")),
-		rawSignal: fileLib.exportFile(fit.getFile("mean_bin.tsv")),
-		rawFittedCurves: fileLib.exportFile(fit.getFile("fitted_mean_bin.tsv"))
+		// The software's own tables for download, each variant named by its Variant Id and sequence.
+		rawVariantFits: fileLib.exportFile(fit.getFile(DOWNLOAD + "per_clonotype.tsv")),
+		rawFitReads: fileLib.exportFile(fit.getFile(DOWNLOAD + "fit_reads.tsv")),
+		rawSignal: fileLib.exportFile(fit.getFile(DOWNLOAD + "mean_bin.tsv")),
+		rawFittedCurves: fileLib.exportFile(fit.getFile(DOWNLOAD + "fitted_mean_bin.tsv"))
 	}
 	// The per-replicate values stay out of exportPf and out of the main table: their extra axis
 	// would fan every row out by the replicate count.
 	if hasReplicate {
 		outputs.replicatePf = pframes.exportFrame(buildTracedPf([replicateImported], []))
-		outputs.rawReplicateFits = fileLib.exportFile(fit.getFile("per_replicate.tsv"))
+		outputs.rawReplicateFits = fileLib.exportFile(fit.getFile(DOWNLOAD + "per_replicate.tsv"))
 	}
 	// Synonymous mode with replicates: every synonymous variant's own fit in every replicate, the
 	// values the amino-acid per-replicate rows combine. A download only.
 	if hasReplicate && syn.synonymous {
-		outputs.rawNtReplicateFits = fileLib.exportFile(fit.getFile("per_replicate_nt.tsv"))
+		outputs.rawNtReplicateFits = fileLib.exportFile(fit.getFile(DOWNLOAD + "per_replicate_nt.tsv"))
 	}
 	if syn.synonymous {
 		outputs.variantSummaryPf = pframes.exportFrame(buildTracedPf(variantSources, []))
 		outputs.synonymousSummary = fit.getFileContent("synonymous_summary.json")
-		outputs.rawAaVariantFits = fileLib.exportFile(fit.getFile("per_variant.tsv"))
-		outputs.rawNtToAaVariant = fileLib.exportFile(fit.getFile("nt_aa_variant.tsv"))
+		outputs.rawAaVariantFits = fileLib.exportFile(fit.getFile(DOWNLOAD + "per_variant.tsv"))
+		outputs.rawNtToAaVariant = fileLib.exportFile(fit.getFile(DOWNLOAD + "nt_aa_variant.tsv"))
 	}
 	// The nt grain's class and parent delta. A download only.
 	if hasNtVariantColumns {
-		outputs.rawNtVariantAnnotations = fileLib.exportFile(fit.getFile("per_nt_variant.tsv"))
+		outputs.rawNtVariantAnnotations = fileLib.exportFile(fit.getFile(DOWNLOAD + "per_nt_variant.tsv"))
 	}
 
 	return {

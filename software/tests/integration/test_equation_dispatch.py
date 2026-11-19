@@ -86,7 +86,6 @@ class TestLogFluorescenceFit:
     def test_the_hill_coefficient_is_the_fixed_exponent(self):
         row = _row(run(_frame(_lf_reads("G1", 1e-8)), params=LF), "G1")
         assert row["hillCoefficient"] == 1.0
-        assert row["hillPlotPosition"] == 1.0
 
     def test_r2_is_still_reported(self):
         row = _row(run(_frame(_lf_reads("G1", 1e-8)), params=LF), "G1")

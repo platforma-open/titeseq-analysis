@@ -7,7 +7,7 @@ export function useFitSettings() {
 
   /**
    * Writes the equation and the Affinity vs Fit Quality y-axis scale. The y column is the SE under
-   * log_fluorescence (log scale) and hillPlotPosition under hill_gate_index (linear: it holds -1).
+   * log_fluorescence (log scale) and the Hill coefficient under hill_gate_index (linear).
    */
   function setEquation(equation: Equation): void {
     app.model.data.equation = equation;

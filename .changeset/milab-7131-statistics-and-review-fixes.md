@@ -59,8 +59,25 @@ Pages removed:
 - Every nucleotide variant's and replicate's values stay in the raw data download. The nucleotide
   grain's class and parent delta join it as `nt_variant_annotations.tsv`.
 - The table states of the removed pages stay in the block data, unread. No migration is needed.
-- `nt_to_aa_variant.tsv` in the raw data download holds each nucleotide variant's amino-acid
-  variant key only. Its `aaVariant` label column fed the NT Variants page alone and is removed,
-  so the block no longer reads the amino-acid label column.
+- `nt_to_aa_variant.tsv` in the raw data download pairs each nucleotide variant with its
+  amino-acid variant. Its `aaVariant` label column fed the NT Variants page alone and is removed;
+  both variants are now named as in every raw data file (below).
 - With sample replicates, the synonymous combination inside each replicate no longer runs the
   class and parent delta annotation. The combined values decide both. Results are unchanged.
+
+Affinity vs Fit Quality and downloads:
+
+- The `Kd,app (plot position)` and `Hill coefficient (plot position)` columns are removed. They
+  parked a missing Kd,app or Hill coefficient at a fixed value. Affinity vs Fit Quality plots
+  Kd,app against the SE of log10 Kd,app (log fluorescence fit) or the Hill coefficient (mean bin
+  fit), grouped by affinity class. Under the mean bin fit it shows every class, not only Failed.
+  A fit with no Kd,app is not drawn; the table lists it with its failure reason.
+- A saved Affinity vs Fit Quality chart that drew a plot position starts over from the default.
+- The tables lose their Export button. The raw data download is the one export.
+- Every file in the raw data download names each variant by its Variant Id and sequence, in place
+  of its hash key. `nt_to_aa_variant.tsv` names both grains, each prefixed NT or AA. The sequence
+  is the upstream amplicon sequence column in the variant's own alphabet; it is empty when the
+  upstream has none. A variant with no label column keeps its key as its Variant Id.
+- Every column in the raw data download is headed by the label the results table shows for it
+  (`Kd,app`, `Affinity class`, ...), and the variant columns by the upstream columns' labels. A
+  column the block does not import keeps its own name.

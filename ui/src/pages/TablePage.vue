@@ -122,7 +122,6 @@ const cellRendererSelector = computed(() => {
     <PlAgDataTableV2
       v-model="app.model.data.tableState"
       :settings="tableSettings"
-      show-export-button
       :cell-renderer-selector="cellRendererSelector"
       not-ready-text="Open Settings (top right) to configure the block and run it."
       :no-rows-text="noRowsText"
@@ -134,7 +133,6 @@ const cellRendererSelector = computed(() => {
         v-if="drilldownReady"
         v-model="drilldownTableState"
         :settings="drilldownSettings"
-        show-export-button
         no-rows-text="No per-replicate values for this variant."
       />
       <PlPlaceholder

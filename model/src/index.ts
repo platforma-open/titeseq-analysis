@@ -238,22 +238,18 @@ const REPLICATES_DEFAULT_STATE: GraphMakerState = {
 const summaryCol = (name: string, type: "Double" | "String") =>
   `{"kind":"column","name":"{\\"name\\":\\"${name}\\",\\"resolvePath\\":[\\"main\\",\\"summaryPf\\"]}","type":"${type}"}`;
 
-const KD_PLOT_COL = summaryCol("kdPlotPosition", "Double");
-const HILL_PLOT_COL = summaryCol("hillPlotPosition", "Double");
+const KD_COL = summaryCol("kd", "Double");
 const HILL_COEF_COL = summaryCol("hillCoefficient", "Double");
 const AFFINITY_CLASS_COL = summaryCol("affinityClass", "String");
-const FIT_FAILURE_REASON_COL = summaryCol("fitFailureReason", "String");
 
-// Pin colours by colorIdx so low_r2 stays green and n_out_of_range stays
-// purple across datasets. The "light" palette would otherwise assign by
-// category-encounter order, which flips when a dataset has only one reason.
+/** Every affinity class. The page's default options set y and the filter for the equation that ran. */
 const AFFINITY_VS_FIT_DEFAULT_STATE: GraphMakerState = {
   title: "",
   template: "dots",
   currentTab: null,
   layersSettings: {
     dots: {
-      dotFill: { type: "grouping", value: FIT_FAILURE_REASON_COL },
+      dotFill: { type: "grouping", value: AFFINITY_CLASS_COL },
     },
   },
   axesSettings: {
@@ -264,42 +260,17 @@ const AFFINITY_VS_FIT_DEFAULT_STATE: GraphMakerState = {
   optionsState: {
     type: "scatterplot",
     components: {
-      x: { type: "simple", selectorStates: [{ selectedSource: KD_PLOT_COL }] },
-      y: { type: "simple", selectorStates: [{ selectedSource: HILL_PLOT_COL }] },
-      filters: {
-        type: "filter",
-        selectorStates: [
-          { selectedSource: HILL_COEF_COL, type: "range", selectedFilterRange: { min: 0 } },
-          {
-            selectedSource: AFFINITY_CLASS_COL,
-            type: "equals",
-            selectedFilterValues: ["Failed"],
-          },
-        ],
-      },
+      x: { type: "simple", selectorStates: [{ selectedSource: KD_COL }] },
+      y: { type: "simple", selectorStates: [{ selectedSource: HILL_COEF_COL }] },
+      filters: { type: "filter", selectorStates: [] },
       grouping: {
         type: "simple",
-        selectorStates: [{ selectedSource: FIT_FAILURE_REASON_COL }],
+        selectorStates: [{ selectedSource: AFFINITY_CLASS_COL }],
       },
     },
     dividedAxes: {},
   },
-  dataBindAes: {
-    [FIT_FAILURE_REASON_COL]: {
-      type: "categorical",
-      palette: "light",
-      naAes: { color: "#ccc", lineShape: "solid", dotShape: "21" },
-      order: ["low_r2", "n_out_of_range"],
-      hidden: {},
-      mapping: {
-        low_r2: { colorIdx: 0, aes: { color: "#99E099", lineShape: "solid", dotShape: "21" } },
-        n_out_of_range: {
-          colorIdx: 1,
-          aes: { color: "#C1ADFF", lineShape: "solid", dotShape: "21" },
-        },
-      },
-    },
-  },
+  dataBindAes: {},
 } as GraphMakerState;
 
 /**
@@ -467,6 +438,24 @@ export const migrateV7ToV8 = ({
   ntTableState: createPlDataTableStateV2(),
 });
 
+/**
+ * v8 -> v9. The plot-position columns are gone: a chart that draws one starts over from the
+ * default, on the y scale of the equation it ran. Any other chart is kept.
+ */
+export const migrateV8ToV9 = (v8: BlockData): BlockData => {
+  if (!JSON.stringify(v8.graphStateAffinityVsFit).includes("PlotPosition")) return v8;
+  return {
+    ...v8,
+    graphStateAffinityVsFit: {
+      ...AFFINITY_VS_FIT_DEFAULT_STATE,
+      axesSettings: {
+        ...AFFINITY_VS_FIT_DEFAULT_STATE.axesSettings,
+        axisY: { scale: v8.equation === "log_fluorescence" ? "log" : "linear" },
+      },
+    },
+  };
+};
+
 /** Settings part of the block label, shared by the trace label and the subtitle. */
 export function labelFromParams(data: BlockData): string {
   return data.targetAntigen ?? "";
@@ -486,6 +475,7 @@ export const dataModel = new DataModelBuilder({ kind })
   .migrate<BlockDataV6>("v6", migrateV5ToV6)
   .migrate<BlockDataV7>("v7", migrateV6ToV7)
   .migrate<BlockData>("v8", migrateV7ToV8)
+  .migrate<BlockData>("v9", migrateV8ToV9)
   .init(({ params }) => initBlockData(params));
 
 type Ctx = RenderCtx<BlockArgs, BlockData>;

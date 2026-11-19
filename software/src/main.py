@@ -14,6 +14,7 @@ from constants import (
     DEFAULT_PARAMS,
     FitParams,
 )
+from download import labelled, name_variants, read_names
 from io_layer import apply_bin_ranks, read_reads_table
 from log import log
 from pipeline import run
@@ -140,6 +141,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--nt-mutations", default=None, help="TSV [ntKey, mutationCount]")
     parser.add_argument("--nt-parent-links", default=None, help="TSV [ntKey, parentId]: the nt parent linker")
     parser.add_argument("--out-per-nt-variant", default=None, help="the nt-grain synonymous columns")
+    parser.add_argument(
+        "--variant-names", default=None, help="TSV [key, variantId, sequence]: the abundance's variants, named"
+    )
+    parser.add_argument("--aa-variant-names", default=None, help="TSV [key, variantId, sequence]: the aa variants")
+    parser.add_argument(
+        "--download-prefix",
+        default=None,
+        help="also write each variant table as <prefix><file name>, its keys replaced by Variant Id and sequence",
+    )
+    parser.add_argument(
+        "--download-headers",
+        default=None,
+        help="JSON {file name: {column: header}}: the headers of the download copies",
+    )
     args = parser.parse_args(argv)
     replicates = _replicate_inputs(args, parser)
     synonymous = _synonymous_inputs(args, parser)
@@ -173,27 +188,41 @@ def main(argv: list[str] | None = None) -> int:
         read_depth=args.out_fit_reads is not None,
     )
     log("Writing output frames")
-    _write_frame(outputs["per_clonotype"], args.out_per_clonotype)
-    _write_frame(outputs["mean_bin"], args.out_mean_bin)
-    _write_frame(outputs["fitted_mean_bin"], args.out_fitted_mean_bin)
-    _write_frame(outputs["concentration_value"], args.out_concentration_value)
+    variant_names = read_names(args.variant_names)
+    aa_names = read_names(args.aa_variant_names)
+    headers: dict[str, dict[str, str]] = {}
+    if args.download_headers is not None:
+        with open(args.download_headers) as f:
+            headers = json.load(f)
+
+    def write(frame: pl.DataFrame, path: str, *, download: bool = True) -> None:
+        _write_frame(frame, path)
+        if download and args.download_prefix is not None:
+            p = Path(path)
+            named = labelled(name_variants(frame, variant_names, aa_names), headers.get(p.name))
+            _write_frame(named, str(p.with_name(args.download_prefix + p.name)))
+
+    write(outputs["per_clonotype"], args.out_per_clonotype)
+    write(outputs["mean_bin"], args.out_mean_bin)
+    write(outputs["fitted_mean_bin"], args.out_fitted_mean_bin)
+    write(outputs["concentration_value"], args.out_concentration_value, download=False)
     if synonymous is not None and args.out_nt_aa_variant is not None:
-        _write_frame(nt_aa_variants(synonymous.nt_to_aa), args.out_nt_aa_variant)
+        write(nt_aa_variants(synonymous.nt_to_aa), args.out_nt_aa_variant)
     if args.out_per_replicate is not None:
-        _write_frame(outputs["per_replicate"], args.out_per_replicate)
+        write(outputs["per_replicate"], args.out_per_replicate)
     if args.out_per_replicate_nt is not None:
-        _write_frame(outputs["per_replicate_nt"], args.out_per_replicate_nt)
+        write(outputs["per_replicate_nt"], args.out_per_replicate_nt)
     if synonymous is not None:
-        _write_frame(outputs["per_variant"], args.out_per_variant)
+        write(outputs["per_variant"], args.out_per_variant)
         if args.out_per_nt_variant is not None:
-            _write_frame(outputs["per_nt_variant"], args.out_per_nt_variant)
+            write(outputs["per_nt_variant"], args.out_per_nt_variant)
         with open(args.out_synonymous_summary, "w") as f:
             json.dump(outputs["synonymous_summary"], f, sort_keys=True)
     if args.out_run_warnings is not None:
         with open(args.out_run_warnings, "w") as f:
             json.dump(outputs.get("run_warnings", []), f)
     if args.out_fit_reads is not None:
-        _write_frame(outputs["fit_reads"], args.out_fit_reads)
+        write(outputs["fit_reads"], args.out_fit_reads)
     log("CLI done")
     return 0
 
