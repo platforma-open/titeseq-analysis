@@ -23,7 +23,7 @@ import math
 import statistics
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, Protocol
 
 from constants import KD_SD_GOOD, AffinityClass, FailureReason, FitParams, KdRangeSide
 
@@ -140,13 +140,14 @@ def classify_log_fluorescence(
     return Classification("Good", None)
 
 
-def bound_class(side: Side, own_classes: list[str], *, wall_classes: bool) -> str:
+def bound_class(side: Side, own_classes: list[str], *, fits_report_se: bool) -> str:
     """The class of a value censored at `side`, combined from fits whose own classes are `own_classes`.
 
-    Under "log_fluorescence" a bound is rated by its wall, as a single fit is. "hill_gate_index"
-    declares no wall class: a bound keeps the class its fits share, or is Partial when they differ.
+    Under "log_fluorescence" (`fits_report_se`) a bound is rated by its wall, as a single fit is.
+    "hill_gate_index" declares no wall class: a bound keeps the class its fits share, or is Partial
+    when they differ.
     """
-    if wall_classes:
+    if fits_report_se:
         return RANGE_SIDE[side]
     return own_classes[0] if len(set(own_classes)) == 1 else "Partial"
 
@@ -188,7 +189,18 @@ def member_from_fit(row: dict, log10_lo: float | None, log10_hi: float | None) -
     return Member("measured", value, se if se is not None and math.isfinite(se) else None, cls)
 
 
-def fit_error_term(entered: Sequence[Member]) -> float | None:
+class HasKd(Protocol):
+    """A log10 K_D and its SE: one nt variant's fit, a synonymous combination, a replicate mean, or
+    a delta between two of them."""
+
+    @property
+    def log10_kd(self) -> float | None: ...
+
+    @property
+    def log10_kd_se(self) -> float | None: ...
+
+
+def fit_error_term(entered: Sequence[HasKd]) -> float | None:
     """RMS of the fit SEs the members report, over sqrt(n); n counts every member in the mean.
 
     A member with no fit SE, a bound included, counts at the typical error of the others. None when
@@ -198,6 +210,14 @@ def fit_error_term(entered: Sequence[Member]) -> float | None:
     if not ses:
         return None
     return math.sqrt(math.fsum(se * se for se in ses) / len(ses)) / math.sqrt(len(entered))
+
+
+def mean_se(entered: Sequence[HasKd]) -> float:
+    """The SE of the mean over n >= 2 members: the larger of sample SD / sqrt(n) and the fit-error
+    term, the spread alone when no member carries an SE."""
+    spread = statistics.stdev([m.log10_kd for m in entered]) / math.sqrt(len(entered))
+    fit_term = fit_error_term(entered)
+    return spread if fit_term is None else max(spread, fit_term)
 
 
 def _majority(flags: list[bool]) -> bool:
@@ -231,9 +251,7 @@ def rate_mean(
         if se is None:
             return mean, None, None, Classification(entered[0].affinity_class, None)
     else:
-        spread = statistics.stdev(values) / math.sqrt(n)
-        fit_term = fit_error_term(entered)
-        se = spread if fit_term is None else max(spread, fit_term)
+        se = mean_se(entered)
         sd = statistics.stdev(values)
     good = math.isfinite(se) and se <= KD_SD_GOOD and _majority([m.state == "measured" for m in entered])
     # Reached at n = 1 only with an SE: under "hill_gate_index" a spread, so the member's own class rules.
@@ -269,7 +287,6 @@ def combine_members(
     members: Sequence[Member],
     *,
     all_failed_reason: FailureReason,
-    wall_classes: bool = True,
     fits_report_se: bool = True,
 ) -> Combined:
     """One value over `members`, and its class.
@@ -277,8 +294,8 @@ def combine_members(
     Failed members are left out and counted. With no member left the value fails for
     `all_failed_reason`. With none of them measured the value is the wall they sit at
     (`censored_side`), or fails where they conflict. Otherwise it is their mean (`rate_mean`).
-    `wall_classes` is True under the equation that rates a bound by its wall ("log_fluorescence");
-    `fits_report_se` under the equation whose fits report an SE.
+    `fits_report_se` is True under "log_fluorescence": its fits report an SE, and it rates a bound by
+    its wall.
     """
     counts: dict[MemberState, int] = dict.fromkeys(STATES, 0)
     for m in members:
@@ -292,7 +309,7 @@ def combine_members(
         if side is None:
             return failed(REASON_CONFLICTING, counts)
         on_side = [m for m in entered if m.state == side]
-        cls = bound_class(side, [m.affinity_class for m in on_side], wall_classes=wall_classes)
+        cls = bound_class(side, [m.affinity_class for m in on_side], fits_report_se=fits_report_se)
         return Combined(on_side[0].log10_kd, None, None, Classification(cls, None), True, counts, side)
 
     mean, se, sd, classification = rate_mean(entered, fits_report_se=fits_report_se)

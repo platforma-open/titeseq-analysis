@@ -1,0 +1,42 @@
+test := import("@platforma-sdk/workflow-tengo:test")
+variantNames := import(":variant-names")
+
+axisOf := func(alphabet) {
+	return {
+		name: "pl7.app/variantKey",
+		type: "String",
+		domain: {"pl7.app/alphabet": alphabet, "pl7.app/repertoire/extractionRunId": "run1"}
+	}
+}
+
+nt := axisOf("nucleotide")
+aa := axisOf("aminoacid")
+
+col := func(id, alphabet, ...axes) {
+	return {id: id, spec: {axesSpec: axes, domain: {"pl7.app/alphabet": alphabet}}}
+}
+
+Test_the_one_label_on_the_axis_is_the_variant_id := func() {
+	test.isEqual("l-nt", variantNames.label([col("l-nt", "", nt), col("l-aa", "", aa)], nt).id)
+}
+
+Test_no_label_or_several_labels_give_none := func() {
+	test.isTrue(is_undefined(variantNames.label([], nt)), "none")
+	test.isTrue(is_undefined(variantNames.label(undefined, nt)), "no candidates")
+	test.isTrue(is_undefined(variantNames.label([col("a", "", nt), col("b", "", nt)], nt)), "two")
+}
+
+Test_a_column_on_two_axes_is_not_a_name := func() {
+	test.isTrue(is_undefined(variantNames.label([col("l", "", nt, aa)], nt)), "two axes")
+}
+
+Test_of_several_sequences_the_axis_alphabet_wins := func() {
+	cols := [col("s-nt", "nucleotide", nt), col("s-aa", "aminoacid", nt)]
+	test.isEqual("s-nt", variantNames.sequence(cols, nt).id)
+	test.isEqual("s-aa", variantNames.sequence([col("s-aa", "aminoacid", aa)], aa).id)
+}
+
+Test_no_sequence_in_the_axis_alphabet_gives_none := func() {
+	cols := [col("x", "aminoacid", nt), col("y", "aminoacid", nt)]
+	test.isTrue(is_undefined(variantNames.sequence(cols, nt)), "two foreign")
+}

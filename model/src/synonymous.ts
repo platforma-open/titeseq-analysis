@@ -96,12 +96,16 @@ const isParentLinkOn = (spec: PColumnSpec, axis: AxisSpec) =>
   spec.axesSpec.some((a) => sameAxis(a, axis)) &&
   spec.axesSpec.some((a) => a.name === PARENT_ID_AXIS);
 
+/** Whether the axis keys nucleotide variants: only such a dataset can have synonymous variants. */
+export const isNucleotideAxis = (axis: AxisSpec): boolean =>
+  axis.domain?.[ALPHABET] === "nucleotide";
+
 /**
  * Mirrors the workflow's discovery: synonymous mode needs a nucleotide axis and exactly one linker;
  * several matches count as none. Returns the linker's amino-acid axis, or undefined when the mode is off.
  */
 export function synonymousAaAxis(specs: PObjectSpec[], ntAxis: AxisSpec): AxisSpec | undefined {
-  if (ntAxis.domain?.[ALPHABET] !== "nucleotide") return undefined;
+  if (!isNucleotideAxis(ntAxis)) return undefined;
   const found = specs
     .filter(isPColumnSpec)
     .map((s) => aaAxisOfLinker(s, ntAxis))

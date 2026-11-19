@@ -1,10 +1,15 @@
 """Adams 2016 through the block, against the paper, pinned.
 
-The authors' read counts, 3 replicates, sort fractions, synonymous mode, in two cases:
+The authors' read counts, 3 replicates, sort fractions, each replicate's measured gate fluorescence,
+synonymous mode, in two cases:
   paper     the settings closest to the paper: the block's defaults with both fit-quality gates off,
             as the authors filter no fit
   defaults  the settings a new block ships with (R² >= 0.8 and SE <= 1 gates on, plateau floor 0.667),
             what a user gets without changing a setting
+
+A third run, `adams2016-parent-delta`, is the defaults with every amino-acid variant linked to the
+wild type. It pins the parent delta of each variant and how many deltas were taken inside the
+replicates.
 
 Each case pins three things in pins/<case>.json:
   - the whole output, as a digest; a move fails with a diff of what changed
@@ -46,6 +51,18 @@ def _clip(x: float) -> float:
     return min(max(x, LOG10_KD_LOWER), LOG10_KD_UPPER)
 
 
+def _snapshot(out: dict) -> pl.DataFrame:
+    """Both grains' values and the per-nucleotide-variant table."""
+    per_nt = out["per_nt_variant"].with_columns(pl.col("ntKey").cast(pl.Utf8).alias("key")).drop("ntKey")
+    per_nt = per_nt.with_columns(pl.col(c).round(6) for c, t in per_nt.schema.items() if t == pl.Float64)
+    nt = snapshot(out["per_clonotype"], "clonotypeKey").join(per_nt, on="key", how="left")
+    aa = snapshot(out["per_variant"], "aaKey")
+    return pl.concat(
+        [nt.with_columns(("nt:" + pl.col("key")).alias("key")), aa.with_columns(("aa:" + pl.col("key")).alias("key"))],
+        how="diagonal",
+    ).sort("key")
+
+
 def _current(case: str) -> tuple[dict, pl.DataFrame]:
     out = study.run_block(CASES[case])
     nt = _log10(out["per_clonotype"], "clonotypeKey")
@@ -72,12 +89,7 @@ def _current(case: str) -> tuple[dict, pl.DataFrame]:
             "paperTiteSeq": c.tite_seq_log10_kd,
             "paperFlow": c.flow_log10_kd,
         }
-    snap = pl.concat(
-        [
-            snapshot(out["per_clonotype"], "clonotypeKey").with_columns(("nt:" + pl.col("key")).alias("key")),
-            snapshot(out["per_variant"], "aaKey").with_columns(("aa:" + pl.col("key")).alias("key")),
-        ]
-    ).sort("key")
+    snap = _snapshot(out)
     current = {
         "digest": digest(snap),
         "classes": {
@@ -134,13 +146,60 @@ def test_table_i_clones_match_their_pin(case):
 
 
 @pytest.mark.skipif(UPDATE, reason="pins are being rewritten")
-def test_the_wild_type_lands_near_the_paper(case, request):
-    # pJK36 is the wild type: Adams reports -8.92 by Tite-Seq, -8.61 by flow cytometry.
+def test_the_wild_type_lands_near_the_paper(case):
+    # pJK36 is the wild type: Adams reports -8.92 by Tite-Seq, -8.61 by flow cytometry. Under the shipped
+    # R² gate it passes because R² counts its 0 M point (`log_fluorescence.r2_with_zero_point`).
     name, current, _, _ = case
-    if name == "adams2016-defaults":
-        request.applymarker(
-            pytest.mark.xfail(strict=True, reason="the shipped R² >= 0.8 gate fails the wild type on Adams' counts")
-        )
     wt = current["clones"]["pJK36"]
     assert wt["log10Kd"] is not None, f"{name}: the wild type has no Kd,app"
     assert abs(wt["log10Kd"] - wt["paperTiteSeq"]) < 0.5
+
+
+# ---- The parent delta, against the wild type.
+
+PARENT_CASE = "adams2016-parent-delta"
+
+
+@pytest.fixture(scope="module")
+def parent_delta():
+    out = study.run_block(study.PARAMS, parent=True)
+    # The snapshot's columns hold the delta and its SE, so a move is reported as the other pins are.
+    snap = (
+        out["per_variant"]
+        .select(
+            pl.col("aaKey").cast(pl.Utf8).alias("key"),
+            pl.col("kdLog10ParentDelta").round(6).alias("log10Kd"),
+            pl.col("kdLog10ParentDeltaSe").round(6).alias("log10KdSe"),
+            pl.col("affinityClass"),
+        )
+        .sort("key")
+    )
+    summary = out["synonymous_summary"]
+    current = {
+        "digest": digest(snap),
+        "replicateDeltas": summary["replicateDeltas"],
+        "combinedValueDeltas": summary["combinedValueDeltas"],
+        "combinedValueDeltasInRange": summary["combinedValueDeltasInRange"],
+        "deltas": snap["log10Kd"].count(),
+        "deltasWithSe": snap["log10KdSe"].count(),
+    }
+    return current, snap, update_or_load(PARENT_CASE, current, snap)
+
+
+def test_every_parent_delta_matches_its_pin(parent_delta):
+    _, snap, pins = parent_delta
+    check_digest(PARENT_CASE, snap, pins)
+
+
+def test_the_count_of_deltas_taken_inside_the_replicates_matches_its_pin(parent_delta):
+    current, _, pins = parent_delta
+    counted = {k: v for k, v in current.items() if k != "digest"}
+    assert counted == {k: v for k, v in pins.items() if k != "digest"}
+
+
+def test_the_parent_links_leave_every_kd_as_it_was(parent_delta):
+    # The parent delta is read off the fits. It changes none of them.
+    _, snap, _ = parent_delta
+    linked = study.run_block(study.PARAMS, parent=True)["per_variant"]
+    plain = study.run_block(study.PARAMS)["per_variant"]
+    assert snapshot(linked, "aaKey").equals(snapshot(plain, "aaKey"))

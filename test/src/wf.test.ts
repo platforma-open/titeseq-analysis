@@ -28,7 +28,7 @@ blockTest("empty inputs", { timeout: 20000 }, async ({ rawPrj: project, expect }
   expect(stableState.outputs).toMatchObject({
     abundanceOptions: { ok: true, value: [] },
     concentrationOptions: { ok: true, value: [] },
-    binOptions: { ok: true, value: [] },
+    binColumns: { ok: true, value: [] },
     antigenOptions: { ok: true, value: [] },
     validationWarnings: { ok: true, value: [] },
     binMode: { ok: true, value: false },
@@ -37,7 +37,7 @@ blockTest("empty inputs", { timeout: 20000 }, async ({ rawPrj: project, expect }
   const outputs = wrapOutputs<BlockOutputs>(stableState.outputs);
   expect(outputs.abundanceOptions).toEqual([]);
   expect(outputs.concentrationOptions).toEqual([]);
-  expect(outputs.binOptions).toEqual([]);
+  expect(outputs.binColumns).toEqual([]);
   expect(outputs.antigenOptions).toEqual([]);
   expect(outputs.validationWarnings).toEqual([]);
   expect(outputs.binMode).toEqual(false);
@@ -107,7 +107,7 @@ blockTest(
     // by import-vdj-data (clones count, total reads, etc.) — assert the
     // S&D-sourced metadata column is present rather than pinning the count.
     const concLabels = idleOutputs.concentrationOptions.map((o) => o.label);
-    const binLabels = idleOutputs.binOptions.map((o) => o.label);
+    const binLabels = idleOutputs.binColumns.map(({ option: o }) => o.label);
     expect(concLabels).toEqual(expect.arrayContaining(["antigen_conc_M"]));
     expect(binLabels).toEqual(expect.arrayContaining(["bin_number"]));
     // No antigen metadata in the bin_mode fixture — the fixture's antigen
@@ -118,7 +118,7 @@ blockTest(
 
     // Filter discrimination: the integer bin column must not leak into the
     // concentration (Float/Double) dropdown, and vice versa.
-    const binRefs = new Set(idleOutputs.binOptions.map((o) => JSON.stringify(o.ref)));
+    const binRefs = new Set(idleOutputs.binColumns.map(({ option: o }) => JSON.stringify(o.ref)));
     for (const concOption of idleOutputs.concentrationOptions) {
       expect(binRefs.has(JSON.stringify(concOption.ref))).toBe(false);
     }
@@ -138,7 +138,7 @@ blockTest(
     const concentrationRef = idleOutputs.concentrationOptions.find(
       (o) => o.label === "antigen_conc_M",
     )!.ref;
-    const binRef = idleOutputs.binOptions.find((o) => o.label === "bin_number")!.ref;
+    const binRef = idleOutputs.binColumns.find((c) => c.option.label === "bin_number")!.option.ref;
 
     // Configure the titeseq block with bin-mode args. DataModelBuilder merges
     // args + UI state into a single BlockData record (see model/src/index.ts);
@@ -451,7 +451,7 @@ blockTest(
     const concentrationRef = idleOutputs.concentrationOptions.find(
       (o) => o.label === "antigen_conc_M",
     )!.ref;
-    const binRef = idleOutputs.binOptions.find((o) => o.label === "bin_number")!.ref;
+    const binRef = idleOutputs.binColumns.find((c) => c.option.label === "bin_number")!.option.ref;
     const sortFractionRef = idleOutputs.sortFractionOptions!.find(
       (o) => o.label === "sort_fraction",
     )!.ref;

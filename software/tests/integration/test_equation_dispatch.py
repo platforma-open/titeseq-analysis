@@ -86,7 +86,6 @@ class TestLogFluorescenceFit:
     def test_the_hill_coefficient_is_the_fixed_exponent(self):
         row = _row(run(_frame(_lf_reads("G1", 1e-8)), params=LF), "G1")
         assert row["hillCoefficient"] == 1.0
-        assert row["hillPlotPosition"] == 1.0
 
     def test_r2_is_still_reported(self):
         row = _row(run(_frame(_lf_reads("G1", 1e-8)), params=LF), "G1")
@@ -148,6 +147,26 @@ class TestBounds:
         assert row["kdOutOfRange"] is True
         assert row["kdRangeSide"] == "Below range"
         assert math.log10(row["kd"]) == pytest.approx(LOG_LO, abs=1e-9)
+
+    def test_a_flat_bright_curve_that_is_bright_without_antigen_fails(self):
+        # Bright at every concentration and at 0 M: the signal does not come from the antigen.
+        zero = TestSharedBaseline._zero_molar
+        reads = _frame(_lf_reads("STICKY", 1e-14), zero("STICKY", gate=4, reads=300), zero("DIM", gate=1, reads=900))
+        row = _row(run(reads, params=LF), "STICKY")
+        assert (row["affinityClass"], row["fitFailureReason"]) == ("Failed", "bright_without_antigen")
+        assert row["kd"] is None and row["kdRangeSide"] is None
+
+    def test_a_flat_bright_curve_fails_with_a_zero_molar_signal_under_the_plateau_floor(self):
+        # 0 M signal at gate 2.75 of 4, under the plateau floor, and within 0.70 decades of the top.
+        zero = TestSharedBaseline._zero_molar
+        reads = _frame(_lf_reads("RAISED", 1e-14), zero("RAISED", gate=2, reads=100), zero("RAISED", gate=3, reads=300))
+        row = _row(run(reads, params=LF), "RAISED")
+        assert (row["affinityClass"], row["fitFailureReason"]) == ("Failed", "bright_without_antigen")
+
+    def test_a_saturated_curve_that_is_dim_without_antigen_stays_below_range(self):
+        zero = TestSharedBaseline._zero_molar
+        row = _row(run(_frame(_lf_reads("SAT", 1e-14), zero("SAT", gate=1, reads=300)), params=LF), "SAT")
+        assert (row["affinityClass"], row["fitFailureReason"]) == ("Below range", None)
 
     def test_a_pinned_kd_reports_no_standard_error(self):
         # The SE belongs to the unpinned estimate; the reported K_D is a bound.

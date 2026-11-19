@@ -13,19 +13,21 @@ With the log fluorescence fit, the block gives each variant one affinity class:
 - **Partial:** Kd,app is inside the titrated range. Its standard error (log10) is more than 0.5.
 - **Below range:** Kd,app is at or below the lowest concentration. The variant binds more tightly than the titration can measure.
 - **Above range:** Kd,app is at or above the highest concentration.
-- **Failed:** the block cannot fit the variant. The fit failure reason gives the cause.
+- **Failed:** the block cannot fit the variant, or a fit inside the titrated range does not pass a quality gate. By default the gates are R² of at least 0.8 (reason low_r2) and a standard error (log10) of at most 1 (reason high_kd_se). You can change both in the settings. A variant that is flat and bright at every concentration, its own 0 M sample included, also fails (reason bright_without_antigen): its signal does not come from the antigen. The fit failure reason gives the cause.
 
-The mean bin fit uses only Good, Partial and Failed. It rates a single fit by R².
+The mean bin fit uses only Good, Partial and Failed. It rates a single fit by R². With a FACS sort fraction column, the mean bin fit leaves out a concentration where two gates at least two apart each hold more than 40% of the variant's cells (Starr et al. 2022). A variant with no concentration left fails with the reason insufficient_points.
 
 If you select a sample replicate column, the block fits each replicate separately. It then reports the mean of log10 Kd,app across the replicates and the standard error of that mean.
 
-On a nucleotide variant dataset that has a nucleotide to amino-acid linker, for example from Amplicon Profiling, the block fits each nucleotide variant separately. It then reports one Kd,app for each amino-acid variant: the mean of log10 Kd,app across its synonymous nucleotide variants, with the standard error of that mean. The NT Variants page shows the fit of each nucleotide variant.
+On a nucleotide variant dataset that has a nucleotide to amino-acid linker, for example from Amplicon Profiling, the block fits each nucleotide variant separately. It then reports one Kd,app for each amino-acid variant: the mean of log10 Kd,app across its synonymous nucleotide variants, with the standard error of that mean. Each nucleotide variant's own fit is in the raw data download.
 
 A mean across replicates or synonymous variants gets its class from the mean, with both fits. It is Good only if its standard error (log10) is 0.5 or less and more than half of the values in the mean were measured inside the titrated range. A value at an edge of the range enters the mean at that edge.
 
+With sample replicates, the difference from the parent (Kd,app vs Parent) is taken inside each replicate that measured both the variant and its parent inside the titrated range. The block then combines these differences as it combines replicate values.
+
 The FACS bin column can hold numbers or labels. With labels, set the bin order in the settings, from the lowest fluorescence to the highest.
 
-The table shows Kd,app in molar units and as -log10 Kd,app. A larger -log10 Kd,app means tighter binding.
+The table shows Kd,app in the unit of the concentration column, and as -log10 Kd,app of that number. A larger -log10 Kd,app means tighter binding. Give the concentrations in molar units to read -log10 Kd,app on the scale that the literature uses.
 
 The block reads variant abundance from a clonotyping block, for example MiXCR Clonotyping or Amplicon Profiling. Antibody/TCR Lead Selection can use Kd,app and the affinity class as In Vitro preset inputs. You can add a 0 M sample with no antigen. The block uses it to set the Hill baseline, which makes fits of weak binders more reliable.
 

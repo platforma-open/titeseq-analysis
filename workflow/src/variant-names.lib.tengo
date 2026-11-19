@@ -1,0 +1,54 @@
+// Picks the columns that name a variant in the downloads: its Variant Id and its sequence.
+
+ll := import("@platforma-sdk/workflow-tengo:ll")
+synonymousInputs := import(":synonymous-inputs")
+
+ALPHABET := "pl7.app/alphabet"
+
+onlyOn := func(cols, axis) {
+	found := []
+	if is_undefined(cols) {
+		return found
+	}
+	for col in cols {
+		axes := col.spec.axesSpec
+		if len(axes) == 1 && synonymousInputs.sameAxis(axes[0], axis) {
+			found = append(found, col)
+		}
+	}
+	return found
+}
+
+/**
+ * The Variant Id column on `axis`: the one label column there. Undefined when there is none or
+ * several.
+ */
+label := func(cols, axis) {
+	found := onlyOn(cols, axis)
+	return len(found) == 1 ? found[0] : undefined
+}
+
+/**
+ * The sequence column on `axis`. Of several, the one in the axis's own alphabet. Undefined when
+ * that still leaves none or several.
+ */
+sequence := func(cols, axis) {
+	found := onlyOn(cols, axis)
+	if len(found) == 1 {
+		return found[0]
+	}
+	axisAlphabet := is_undefined(axis.domain) ? undefined : axis.domain[ALPHABET]
+	same := []
+	for col in found {
+		domain := col.spec.domain
+		if !is_undefined(domain) && !is_undefined(axisAlphabet) && domain[ALPHABET] == axisAlphabet {
+			same = append(same, col)
+		}
+	}
+	return len(same) == 1 ? same[0] : undefined
+}
+
+export ll.toStrict({
+	label: label,
+	sequence: sequence
+})

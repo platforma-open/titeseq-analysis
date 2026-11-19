@@ -1,5 +1,6 @@
 import type { GraphMakerState } from "@milaboratories/graph-maker";
 import type {
+  ArgsIssue,
   DatasetOption,
   InferOutputsType,
   PColumnIdAndSpec,
@@ -28,6 +29,7 @@ import type { InputKind, SynonymousSummary } from "./synonymous";
 import {
   halfMatchedParentInput,
   inputKindOf,
+  isNucleotideAxis,
   synonymousAaAxis,
   synonymousMessages,
 } from "./synonymous";
@@ -53,11 +55,6 @@ import {
   isPColumnSpec,
   plRefsEqual,
 } from "@platforma-sdk/model";
-
-export type ValidationIssue = {
-  severity: "warning" | "error";
-  message: string;
-};
 
 /** The columns a titration is read from, and the antigen it is read for. */
 type FitInputs = {
@@ -134,14 +131,18 @@ type CommonArgs = ArgsInputs & ArgsLabels;
  * `hill_gate_index` omits `equation`. The workflow and the Python `FitParams` read an absent
  * `equation` as `hill_gate_index`, so a project created on v2.4.0 or earlier projects the args it
  * always projected, and the upgrade does not stale it.
+ *
+ * A setting `deriveArgsIssues` requires is optional here: the args exist while the block cannot
+ * run, and the workflow gets only args that passed.
  */
 export type BlockArgs =
-  | (CommonArgs & Omit<FitSettings, "equation" | LogFluorescenceSetting> & { equation?: undefined })
+  | (CommonArgs &
+      Partial<Omit<FitSettings, "equation" | LogFluorescenceSetting>> & { equation?: undefined })
   | (CommonArgs & {
       equation: "log_fluorescence";
-      plateauFloor: number;
-      minReadsPerConcentration: number;
-      minConcentrationPoints: number;
+      plateauFloor?: number;
+      minReadsPerConcentration?: number;
+      minConcentrationPoints?: number;
       /** Present only when set, so a block with no R² limit names none. */
       r2GateMin?: number;
       /** Present only when set. */
@@ -152,7 +153,7 @@ export type BlockArgs =
 export type BlockData = FitInputs &
   BlockLabels &
   FitSettingsDraft & {
-    /** The per-replicate table, shown only when a run combined replicates. */
+    /** Released projects store it; no page reads it. */
     replicateTableState: PlDataTableStateV2;
     /**
      * The variant whose replicates the drill-down shows: the main grid's row key. UI-only, never
@@ -175,17 +176,14 @@ export type BlockData = FitInputs &
      */
     variantAxisIsNucleotide?: boolean;
     tableState: PlDataTableStateV2;
-    /** The nucleotide variant table, shown in synonymous mode only. */
+    /** Released projects store it; no page reads it. */
     ntTableState: PlDataTableStateV2;
-    /**
-     * NT Variants page: list only the synonymous variants of amino-acid variants with two or more.
-     * UI-only, optional.
-     */
+    /** Released projects store it; no page reads it. */
     ntSynonymousOnly?: boolean;
     graphStateTitrationCurves: GraphMakerState;
     graphStateKDHistogram: GraphMakerState;
     graphStateAffinityVsFit: GraphMakerState;
-    /** The Replicates page's NT by Replicate table. Optional so no migration is needed. */
+    /** Released projects store it; no page reads it. */
     replicateNtTableState?: PlDataTableStateV2;
     settingsOpen: boolean;
   };
@@ -240,22 +238,18 @@ const REPLICATES_DEFAULT_STATE: GraphMakerState = {
 const summaryCol = (name: string, type: "Double" | "String") =>
   `{"kind":"column","name":"{\\"name\\":\\"${name}\\",\\"resolvePath\\":[\\"main\\",\\"summaryPf\\"]}","type":"${type}"}`;
 
-const KD_PLOT_COL = summaryCol("kdPlotPosition", "Double");
-const HILL_PLOT_COL = summaryCol("hillPlotPosition", "Double");
+const KD_COL = summaryCol("kd", "Double");
 const HILL_COEF_COL = summaryCol("hillCoefficient", "Double");
 const AFFINITY_CLASS_COL = summaryCol("affinityClass", "String");
-const FIT_FAILURE_REASON_COL = summaryCol("fitFailureReason", "String");
 
-// Pin colours by colorIdx so low_r2 stays green and n_out_of_range stays
-// purple across datasets. The "light" palette would otherwise assign by
-// category-encounter order, which flips when a dataset has only one reason.
+/** Every affinity class. The page's default options set y and the filter for the equation that ran. */
 const AFFINITY_VS_FIT_DEFAULT_STATE: GraphMakerState = {
   title: "",
   template: "dots",
   currentTab: null,
   layersSettings: {
     dots: {
-      dotFill: { type: "grouping", value: FIT_FAILURE_REASON_COL },
+      dotFill: { type: "grouping", value: AFFINITY_CLASS_COL },
     },
   },
   axesSettings: {
@@ -266,42 +260,17 @@ const AFFINITY_VS_FIT_DEFAULT_STATE: GraphMakerState = {
   optionsState: {
     type: "scatterplot",
     components: {
-      x: { type: "simple", selectorStates: [{ selectedSource: KD_PLOT_COL }] },
-      y: { type: "simple", selectorStates: [{ selectedSource: HILL_PLOT_COL }] },
-      filters: {
-        type: "filter",
-        selectorStates: [
-          { selectedSource: HILL_COEF_COL, type: "range", selectedFilterRange: { min: 0 } },
-          {
-            selectedSource: AFFINITY_CLASS_COL,
-            type: "equals",
-            selectedFilterValues: ["Failed"],
-          },
-        ],
-      },
+      x: { type: "simple", selectorStates: [{ selectedSource: KD_COL }] },
+      y: { type: "simple", selectorStates: [{ selectedSource: HILL_COEF_COL }] },
+      filters: { type: "filter", selectorStates: [] },
       grouping: {
         type: "simple",
-        selectorStates: [{ selectedSource: FIT_FAILURE_REASON_COL }],
+        selectorStates: [{ selectedSource: AFFINITY_CLASS_COL }],
       },
     },
     dividedAxes: {},
   },
-  dataBindAes: {
-    [FIT_FAILURE_REASON_COL]: {
-      type: "categorical",
-      palette: "light",
-      naAes: { color: "#ccc", lineShape: "solid", dotShape: "21" },
-      order: ["low_r2", "n_out_of_range"],
-      hidden: {},
-      mapping: {
-        low_r2: { colorIdx: 0, aes: { color: "#99E099", lineShape: "solid", dotShape: "21" } },
-        n_out_of_range: {
-          colorIdx: 1,
-          aes: { color: "#C1ADFF", lineShape: "solid", dotShape: "21" },
-        },
-      },
-    },
-  },
+  dataBindAes: {},
 } as GraphMakerState;
 
 /**
@@ -469,6 +438,24 @@ export const migrateV7ToV8 = ({
   ntTableState: createPlDataTableStateV2(),
 });
 
+/**
+ * v8 -> v9. The plot-position columns are gone: a chart that draws one starts over from the
+ * default, on the y scale of the equation it ran. Any other chart is kept.
+ */
+export const migrateV8ToV9 = (v8: BlockData): BlockData => {
+  if (!JSON.stringify(v8.graphStateAffinityVsFit).includes("PlotPosition")) return v8;
+  return {
+    ...v8,
+    graphStateAffinityVsFit: {
+      ...AFFINITY_VS_FIT_DEFAULT_STATE,
+      axesSettings: {
+        ...AFFINITY_VS_FIT_DEFAULT_STATE.axesSettings,
+        axisY: { scale: v8.equation === "log_fluorescence" ? "log" : "linear" },
+      },
+    },
+  };
+};
+
 /** Settings part of the block label, shared by the trace label and the subtitle. */
 export function labelFromParams(data: BlockData): string {
   return data.targetAntigen ?? "";
@@ -488,6 +475,7 @@ export const dataModel = new DataModelBuilder({ kind })
   .migrate<BlockDataV6>("v6", migrateV5ToV6)
   .migrate<BlockDataV7>("v7", migrateV6ToV7)
   .migrate<BlockData>("v8", migrateV7ToV8)
+  .migrate<BlockData>("v9", migrateV8ToV9)
   .init(({ params }) => initBlockData(params));
 
 type Ctx = RenderCtx<BlockArgs, BlockData>;
@@ -498,11 +486,6 @@ function replicateCols(ctx: Ctx) {
 }
 
 const REPLICATE_AXIS = "pl7.app/vdj/replicate";
-/**
- * Each nucleotide variant's amino-acid variant, on the nt axis, set only where two or more
- * synonymous variants share it: the NT Variants page filters by it.
- */
-const AA_VARIANT_ID = "pl7.app/vdj/aaVariantId";
 
 /**
  * The filter that narrows the per-replicate frame to one variant. The variant axis is whichever
@@ -545,35 +528,48 @@ function exactly(value: string) {
   return { type: "exact" as const, value };
 }
 
+/** A column with no value at all is no option: its upstream produced nothing to pick. */
+const hasNoValue = (values: Record<string, unknown>): boolean =>
+  Object.values(values).every((v) => v === null || v === undefined);
+
 // Filter per-sample numeric option lists:
 //   - drop candidates matching `excludeRef` (cross-exclusion between pickers);
 //   - drop all-null columns (they arrive in Python as empty-String and fail validation);
 //   - optionally apply `valuePredicate` to the finite values (e.g. [0, 1] range).
 // Generic S/O so TS infers the spec type from `ctx.resultPool.getOptions` (normally
 // PObjectSpec) without this helper taking a hard dependency on SDK internals.
-function filterPopulatedOptions<O extends { ref: PlRef }, S>(
-  ctx: {
-    resultPool: {
-      getOptions: (pred: (spec: S) => boolean) => O[];
-      getDataByRef: (
-        ref: PlRef,
-      ) => { data?: { getDataAsJson: <T>() => T | undefined } } | undefined;
-    };
-  },
+type PopulatedOptionsCtx<O, S> = {
+  resultPool: {
+    getOptions: (pred: (spec: S) => boolean) => O[];
+    getDataByRef: (ref: PlRef) => { data?: { getDataAsJson: <T>() => T | undefined } } | undefined;
+  };
+};
+type PopulatedOptionsOpts = { excludeRef?: PlRef; valuePredicate?: (finite: number[]) => boolean };
+
+/** The options that pass, each with its per-sample values; undefined while they are not readable. */
+function populatedOptions<O extends { ref: PlRef }, S>(
+  ctx: PopulatedOptionsCtx<O, S>,
   specPred: (spec: S) => boolean,
-  opts: { excludeRef?: PlRef; valuePredicate?: (finite: number[]) => boolean } = {},
-): O[] {
-  return ctx.resultPool.getOptions(specPred).filter((opt) => {
-    if (opts.excludeRef && plRefsEqual(opt.ref, opts.excludeRef)) return false;
-    const data = ctx.resultPool.getDataByRef(opt.ref)?.data;
-    if (!data) return true;
-    const values = data.getDataAsJson<Record<string, number | null>>()?.["data"];
-    if (!values) return true;
-    const finite = Object.values(values).filter((v): v is number => v !== null && v !== undefined);
-    if (finite.length === 0) return false;
-    return opts.valuePredicate ? opts.valuePredicate(finite) : true;
+  opts: PopulatedOptionsOpts = {},
+): { option: O; values: SampleValues | undefined }[] {
+  type Populated = { option: O; values: SampleValues | undefined };
+  return ctx.resultPool.getOptions(specPred).flatMap((option): Populated[] => {
+    if (opts.excludeRef && plRefsEqual(option.ref, opts.excludeRef)) return [];
+    const values = ctx.resultPool
+      .getDataByRef(option.ref)
+      ?.data?.getDataAsJson<Record<string, SampleValues>>()?.["data"];
+    if (values === undefined) return [{ option, values }];
+    if (hasNoValue(values)) return [];
+    const finite = Object.values(values).filter((v): v is number => typeof v === "number");
+    return !opts.valuePredicate || opts.valuePredicate(finite) ? [{ option, values }] : [];
   });
 }
+
+const filterPopulatedOptions = <O extends { ref: PlRef }, S>(
+  ctx: PopulatedOptionsCtx<O, S>,
+  specPred: (spec: S) => boolean,
+  opts: PopulatedOptionsOpts = {},
+): O[] => populatedOptions(ctx, specPred, opts).map(({ option }) => option);
 
 /** A per-sample column that can name the FACS bin: whole numbers or labels. */
 const isBinColumn = (spec: PObjectSpec): boolean =>
@@ -627,30 +623,125 @@ export const defaultBinOrder = (values: string[]): string[] => {
     : unique.sort((a, b) => a.localeCompare(b));
 };
 
+/** No field of the settings drawer shows this state, so the drawer shows the message itself. */
+export const SORT_FRACTION_NEEDS_BIN =
+  "FACS sort fraction requires a FACS bin column — the correction only applies in bin mode";
+
+const sortFractionWithoutBin = (data: BlockData): boolean =>
+  data.sortFractionColumnRef !== undefined && data.binColumnRef === undefined;
+
 /**
- * The block's workflow input, and the gate on whether it may run at all: a throw here marks the
- * args invalid and disables Run. Named rather than written inline so the staleness contract —
- * which bytes a given state projects — can be asserted in a test.
+ * Why the block may not run, read from `data` alone: every entry is an error and disables Run.
+ * Empty means the args may run. Named so a test can assert which state blocks a run.
+ */
+export const deriveArgsIssues = (data: BlockData): ArgsIssue[] => {
+  const messages: string[] = [];
+  const refuse = (failed: boolean, message: string) => {
+    if (failed) messages.push(message);
+  };
+  refuse(data.abundanceRef === undefined, "Abundance column is required");
+  refuse(data.concentrationColumnRef === undefined, "Concentration column is required");
+  refuse(
+    data.antigenColumnRef !== undefined && !data.targetAntigen,
+    "Target antigen is required when an antigen column is selected",
+  );
+  refuse(sortFractionWithoutBin(data), SORT_FRACTION_NEEDS_BIN);
+  refuse(
+    data.binColumnRef !== undefined && data.binOrder !== undefined && data.binOrder.length === 0,
+    "Keep at least one FACS bin in the bin order",
+  );
+  refuse(
+    data.binColumnRef !== undefined && data.binColumnIsText === true && data.binOrder === undefined,
+    "Set the FACS bin order: the bin column holds labels, not numbers",
+  );
+  switch (data.equation) {
+    case "log_fluorescence":
+      logFluorescenceIssues(data, refuse);
+      break;
+    case "hill_gate_index":
+      hillGateIndexIssues(data, refuse);
+      break;
+    default:
+      throw new Error(`Unknown equation: ${data.equation satisfies never}`);
+  }
+  return messages.map((message) => ({ severity: "error", message }));
+};
+
+type Refuse = (failed: boolean, message: string) => void;
+
+/** Read coverage, which both equations read. A range is checked only on a value that is set:
+ *  `undefined < 1` is false, so a cleared field would pass it. */
+function readCoverageIssues(data: BlockData, refuse: Refuse): void {
+  const { minReadsPerConcentration: reads, minConcentrationPoints: points } = data;
+  refuse(reads === undefined, "Min reads per concentration is required");
+  refuse(points === undefined, "Min concentration points is required");
+  refuse(reads !== undefined && reads < 1, "Min reads per concentration must be ≥ 1");
+  refuse(
+    points !== undefined && points < MIN_CONCENTRATION_POINTS,
+    `Min concentration points must be ≥ ${MIN_CONCENTRATION_POINTS}`,
+  );
+}
+
+function logFluorescenceIssues(data: BlockData, refuse: Refuse): void {
+  const { plateauFloor, r2GateMin, kdSeGateMax } = data;
+  refuse(plateauFloor === undefined, "Plateau floor is required");
+  refuse(
+    plateauFloor !== undefined && (plateauFloor <= 0 || plateauFloor > 1),
+    "Plateau floor must be above 0 and at most 1",
+  );
+  // The fit's signal is gate fluorescence, so frequency-only data cannot feed it. The Python
+  // raises on this; refusing here names the reason before a job is submitted.
+  refuse(
+    data.binColumnRef === undefined,
+    "The log fluorescence fit requires a FACS bin column. For frequency-only data, choose the Mean bin fit in Fit method equation.",
+  );
+  refuse(
+    r2GateMin !== undefined && !(r2GateMin >= 0 && r2GateMin <= 1),
+    "Minimum R² must be between 0 and 1, or empty for no limit",
+  );
+  refuse(
+    kdSeGateMax !== undefined && !(kdSeGateMax > 0),
+    "Maximum Kd,app SE must be above 0, or empty for no limit",
+  );
+  readCoverageIssues(data, refuse);
+}
+
+function hillGateIndexIssues(data: BlockData, refuse: Refuse): void {
+  const { r2ThresholdGood: good, r2ThresholdFailed: failed, nMin, nMax } = data;
+  refuse(good === undefined, "R² threshold (Good) is required");
+  refuse(failed === undefined, "R² threshold (Failed) is required");
+  refuse(nMin === undefined, "Hill coefficient nMin is required");
+  refuse(nMax === undefined, "Hill coefficient nMax is required");
+  // Only the active mode's hook threshold is required: the drawer hides the other one.
+  const isBinMode = data.binColumnRef !== undefined;
+  refuse(
+    isBinMode && data.hookEffectThresholdBin === undefined,
+    "Hook effect signal-drop threshold (bin mode) is required",
+  );
+  refuse(
+    !isBinMode && data.hookEffectThresholdNoBin === undefined,
+    "Hook effect signal-drop threshold (frequency mode) is required",
+  );
+  refuse(data.hookEffectMinReads === undefined, "Min reads for hook check is required");
+  refuse(
+    good !== undefined && failed !== undefined && failed > good,
+    "Failed R² threshold must be ≤ Good R² threshold",
+  );
+  refuse(
+    nMin !== undefined && nMax !== undefined && nMin >= nMax,
+    "Hill coefficient nMin must be < nMax",
+  );
+  refuse(good !== undefined && (good < 0 || good > 1), "R² threshold (Good) out of range");
+  refuse(failed !== undefined && (failed < 0 || failed > 1), "R² threshold (Failed) out of range");
+  readCoverageIssues(data, refuse);
+}
+
+/**
+ * The block's workflow input, built from whatever `data` holds: a setting that is not set is
+ * absent. `deriveArgsIssues` decides whether these args may run. Named rather than written inline
+ * so the staleness contract — which bytes a given state projects — can be asserted in a test.
  */
 export const deriveArgs = (data: BlockData): BlockArgs => {
-  if (data.abundanceRef === undefined) throw new Error("Abundance column is required");
-  if (data.concentrationColumnRef === undefined)
-    throw new Error("Concentration column is required");
-  if (data.antigenColumnRef !== undefined && !data.targetAntigen)
-    throw new Error("Target antigen is required when an antigen column is selected");
-  if (data.sortFractionColumnRef !== undefined && data.binColumnRef === undefined)
-    throw new Error(
-      "FACS sort fraction requires a FACS bin column — the correction only applies in bin mode",
-    );
-  if (data.binColumnRef !== undefined && data.binOrder !== undefined && data.binOrder.length === 0)
-    throw new Error("Keep at least one FACS bin in the bin order");
-  if (
-    data.binColumnRef !== undefined &&
-    data.binColumnIsText === true &&
-    data.binOrder === undefined
-  )
-    throw new Error("Set the FACS bin order: the bin column holds labels, not numbers");
-
   // Two halves, so `hill_gate_index` can place its settings between them: its args keep
   // v2.4.0's key order as well as its keys.
   const inputs = {
@@ -694,99 +785,45 @@ export const deriveArgs = (data: BlockData): BlockArgs => {
 
 /**
  * Read coverage, which both equations read: a point below the read floor is dropped, and a
- * clonotype left with fewer than the point count is refused before any fit. Narrowed here because
- * a check in the caller does not narrow `data` inside each equation's builder.
+ * clonotype left with fewer than the point count is refused before any fit.
  */
-function readCoverage(data: BlockData): {
-  minReadsPerConcentration: number;
-  minConcentrationPoints: number;
-} {
-  if (data.minReadsPerConcentration === undefined)
-    throw new Error("Min reads per concentration is required");
-  if (data.minConcentrationPoints === undefined)
-    throw new Error("Min concentration points is required");
-  if (data.minReadsPerConcentration < 1) throw new Error("Min reads per concentration must be ≥ 1");
-  if (data.minConcentrationPoints < MIN_CONCENTRATION_POINTS)
-    throw new Error(`Min concentration points must be ≥ ${MIN_CONCENTRATION_POINTS}`);
-  return {
-    minReadsPerConcentration: data.minReadsPerConcentration,
-    minConcentrationPoints: data.minConcentrationPoints,
-    // `requireAllConcentrations` is withheld: absent fits a titration with a gap.
-  };
-}
+const readCoverage = (data: BlockData) => ({
+  minReadsPerConcentration: data.minReadsPerConcentration,
+  minConcentrationPoints: data.minConcentrationPoints,
+  // `requireAllConcentrations` is withheld: absent fits a titration with a gap.
+});
 
-function logFluorescenceArgs(data: BlockData, inputs: ArgsInputs, labels: ArgsLabels): BlockArgs {
-  // Reject undefined before the range comparison. `undefined <= 0` and `undefined > 1` are both
-  // false, so a cleared floor would pass the range check and reach the Python fit.
-  if (data.plateauFloor === undefined) throw new Error("Plateau floor is required");
-  if (data.plateauFloor <= 0 || data.plateauFloor > 1)
-    throw new Error("Plateau floor must be above 0 and at most 1");
-  // The log-fluorescence fit's signal is gate fluorescence, so frequency-only data cannot
-  // feed it. The Python raises on this; refusing here disables Run and names the reason
-  // instead of failing the job after it has been submitted.
-  if (data.binColumnRef === undefined)
-    throw new Error(
-      "The log fluorescence fit requires a FACS bin column. For frequency-only data, choose the Mean bin fit in Fit method equation.",
-    );
-  if (data.r2GateMin !== undefined && !(data.r2GateMin >= 0 && data.r2GateMin <= 1))
-    throw new Error("Minimum R² must be between 0 and 1, or empty for no limit");
-  if (data.kdSeGateMax !== undefined && !(data.kdSeGateMax > 0))
-    throw new Error("Maximum Kd,app SE must be above 0, or empty for no limit");
-  return {
-    ...inputs,
-    binFluorescenceColumnRef: data.binFluorescenceColumnRef,
-    equation: "log_fluorescence",
-    plateauFloor: data.plateauFloor,
-    ...readCoverage(data),
-    ...(data.r2GateMin !== undefined && { r2GateMin: data.r2GateMin }),
-    ...(data.kdSeGateMax !== undefined && { kdSeGateMax: data.kdSeGateMax }),
-    ...labels,
-  };
-}
+const logFluorescenceArgs = (
+  data: BlockData,
+  inputs: ArgsInputs,
+  labels: ArgsLabels,
+): BlockArgs => ({
+  ...inputs,
+  binFluorescenceColumnRef: data.binFluorescenceColumnRef,
+  equation: "log_fluorescence",
+  plateauFloor: data.plateauFloor,
+  ...readCoverage(data),
+  ...(data.r2GateMin !== undefined && { r2GateMin: data.r2GateMin }),
+  ...(data.kdSeGateMax !== undefined && { kdSeGateMax: data.kdSeGateMax }),
+  ...labels,
+});
 
-function hillGateIndexArgs(data: BlockData, inputs: ArgsInputs, labels: ArgsLabels): BlockArgs {
-  // Reject undefined before any range comparison runs. `undefined < 1` returns false, so a
-  // stored block that lacks one of these fields would pass validation and send undefined to
-  // the Python fit. Read coverage is checked once, before the equation is chosen.
-  if (data.r2ThresholdGood === undefined) throw new Error("R² threshold (Good) is required");
-  if (data.r2ThresholdFailed === undefined) throw new Error("R² threshold (Failed) is required");
-  if (data.nMin === undefined) throw new Error("Hill coefficient nMin is required");
-  if (data.nMax === undefined) throw new Error("Hill coefficient nMax is required");
-  // Only require the active mode's hook threshold — the other field is hidden
-  // in the UI (v-if on binMode), so requiring both would block users from
-  // opening Inputs to fix it.
-  const isBinMode = data.binColumnRef !== undefined;
-  if (isBinMode && data.hookEffectThresholdBin === undefined)
-    throw new Error("Hook effect signal-drop threshold (bin mode) is required");
-  if (!isBinMode && data.hookEffectThresholdNoBin === undefined)
-    throw new Error("Hook effect signal-drop threshold (frequency mode) is required");
-  if (data.hookEffectMinReads === undefined)
-    throw new Error("Min reads for hook check is required");
-
-  if (data.r2ThresholdFailed > data.r2ThresholdGood)
-    throw new Error("Failed R² threshold must be ≤ Good R² threshold");
-  if (data.nMin >= data.nMax) throw new Error("Hill coefficient nMin must be < nMax");
-  if (data.r2ThresholdGood < 0 || data.r2ThresholdGood > 1)
-    throw new Error("R² threshold (Good) out of range");
-  if (data.r2ThresholdFailed < 0 || data.r2ThresholdFailed > 1)
-    throw new Error("R² threshold (Failed) out of range");
-  return {
-    ...inputs,
-    ...readCoverage(data),
-    r2ThresholdGood: data.r2ThresholdGood,
-    r2ThresholdFailed: data.r2ThresholdFailed,
-    nMin: data.nMin,
-    nMax: data.nMax,
-    // Default the inactive mode's threshold so the args type is satisfied
-    // — the workflow only reads the field for the active mode.
-    hookEffectThresholdBin:
-      data.hookEffectThresholdBin ?? HILL_GATE_INDEX_DEFAULTS.hookEffectThresholdBin,
-    hookEffectThresholdNoBin:
-      data.hookEffectThresholdNoBin ?? HILL_GATE_INDEX_DEFAULTS.hookEffectThresholdNoBin,
-    hookEffectMinReads: data.hookEffectMinReads,
-    ...labels,
-  };
-}
+const hillGateIndexArgs = (data: BlockData, inputs: ArgsInputs, labels: ArgsLabels): BlockArgs => ({
+  ...inputs,
+  ...readCoverage(data),
+  r2ThresholdGood: data.r2ThresholdGood,
+  r2ThresholdFailed: data.r2ThresholdFailed,
+  nMin: data.nMin,
+  nMax: data.nMax,
+  // The inactive mode's threshold takes its default: the workflow's schema has the field, and
+  // reads it for the active mode only.
+  hookEffectThresholdBin:
+    data.hookEffectThresholdBin ?? HILL_GATE_INDEX_DEFAULTS.hookEffectThresholdBin,
+  hookEffectThresholdNoBin:
+    data.hookEffectThresholdNoBin ?? HILL_GATE_INDEX_DEFAULTS.hookEffectThresholdNoBin,
+  hookEffectMinReads: data.hookEffectMinReads,
+  ...labels,
+});
 
 /** The amino-acid frame of the last run; undefined outside synonymous mode. */
 function variantSummaryCols(ctx: Ctx) {
@@ -823,23 +860,30 @@ function plRefsEqualOrBothAbsent(a: PlRef | undefined, b: PlRef | undefined): bo
 function poolSynonymousAaAxis(ctx: Ctx) {
   if (ctx.data.abundanceRef === undefined) return undefined;
   const ntAxis = ctx.resultPool.getPColumnSpecByRef(ctx.data.abundanceRef)?.axesSpec[1];
-  if (ntAxis === undefined) return undefined;
+  // Checked before the pool scan: no other dataset pays for it.
+  if (ntAxis === undefined || !isNucleotideAxis(ntAxis)) return undefined;
   const specs = ctx.resultPool.getSpecs().entries.map((e) => e.obj);
   const aaAxis = synonymousAaAxis(specs, ntAxis);
   return aaAxis === undefined ? undefined : { specs, aaAxis };
 }
 
-/** A sample metadata column's distinct non-empty values as text, in the default bin order. */
-function binValuesOf(ctx: Ctx, ref: PlRef): string[] | undefined {
-  const values = ctx.resultPool
-    .getDataByRef(ref)
-    ?.data?.getDataAsJson<Record<string, Record<string, string | number | null>>>()?.["data"];
-  if (values === undefined) return undefined;
-  return defaultBinOrder(
+type SampleValues = Record<string, string | number | null>;
+
+/** A sample metadata column's value per sample; undefined while its data is not readable. */
+const sampleValuesOf = (ctx: Ctx, ref: PlRef): SampleValues | undefined =>
+  ctx.resultPool.getDataByRef(ref)?.data?.getDataAsJson<Record<string, SampleValues>>()?.["data"];
+
+/** The distinct non-empty values as text, in the default bin order. */
+const binValuesFrom = (values: SampleValues): string[] =>
+  defaultBinOrder(
     Object.values(values)
       .filter((v): v is string | number => v !== null && v !== "")
       .map(String),
   );
+
+function binValuesOf(ctx: Ctx, ref: PlRef): string[] | undefined {
+  const values = sampleValuesOf(ctx, ref);
+  return values === undefined ? undefined : binValuesFrom(values);
 }
 
 /** The picked bin column's values that the stored order does not rank. */
@@ -860,8 +904,8 @@ function halfMatchedParent(ctx: Ctx) {
  */
 export const GATE_FLUORESCENCE_MISSING =
   "Gate fluorescence is not set. The fit assumes that the gates are 0.65 decades apart. " +
-  "If they are not, Kd,app can be offset. To use the measured gate positions, select a " +
-  "Gate fluorescence column in the settings.";
+  "If they are not, Kd,app shifts, by an amount that differs between variants. Measured gate " +
+  "positions remove the shift: select a Gate fluorescence column in the settings.";
 
 /** Advice that the settings alone cause, before any run. The settings drawer shows it. */
 export const settingsWarnings = (data: BlockData): string[] =>
@@ -878,27 +922,9 @@ export type RunShape = {
 };
 
 /**
- * The Replicates page's tables, one tab each: every variant's value in every replicate, then in
- * synonymous mode each nucleotide variant's.
- */
-export const replicateViewsFor = (run: RunShape) => {
-  const { synonymous } = run;
-  return [
-    {
-      value: "variant-replicates" as const,
-      label: synonymous ? "AA by Replicate" : "By Replicate",
-    },
-    ...(synonymous ? [{ value: "nt-replicates" as const, label: "NT by Replicate" }] : []),
-  ];
-};
-
-export type ReplicateView = ReturnType<typeof replicateViewsFor>[number]["value"];
-
-/**
- * The block's pages: the main table, then the three graph pages. The nucleotide variant table and
- * the Replicates page keep their routes but are not listed; their values leave the block through
- * the raw data download. Each entry stays an `as const` literal: the routes are typed from the
- * hrefs.
+ * The block's pages: the main table, then the three graph pages. The nucleotide variants' and the
+ * replicates' own values leave the block through the raw data download. Each entry stays an
+ * `as const` literal: the routes are typed from the hrefs.
  */
 export const SECTIONS = [
   { type: "link" as const, href: "/" as const, label: "Main" },
@@ -912,6 +938,7 @@ const RAW_FILES = [
   { field: "rawVariantFits", fileName: "variant_fits.tsv" },
   { field: "rawAaVariantFits", fileName: "aa_variant_fits.tsv" },
   { field: "rawNtToAaVariant", fileName: "nt_to_aa_variant.tsv" },
+  { field: "rawNtVariantAnnotations", fileName: "nt_variant_annotations.tsv" },
   { field: "rawReplicateFits", fileName: "replicate_fits.tsv" },
   { field: "rawNtReplicateFits", fileName: "nt_replicate_fits.tsv" },
   { field: "rawFitReads", fileName: "fit_reads.tsv" },
@@ -945,53 +972,10 @@ function runShape(ctx: Ctx): RunShape {
 type FitColumns = NonNullable<ReturnType<typeof variantSummaryCols>>;
 
 /**
- * The amino-acid variant's ID beside each nucleotide variant: the amino-acid axis label, reached
- * through the nt -> aa linker. Shown second, after the nucleotide variant's own ID. Several label
- * columns count as none, as in the workflow.
- */
-function aaVariantIdColumns(ctx: Ctx, kdSpec: PColumnSpec) {
-  const labels = ColumnsCollection(["result_pool"], { ctx: ctx.ctx })
-    .discover({
-      anchors: { main: kdSpec },
-      mode: "enrichment",
-      maxHops: 1,
-      include: {
-        name: [exactly("pl7.app/label")],
-        axes: [
-          {
-            name: [exactly("pl7.app/variantKey")],
-            domain: { "pl7.app/alphabet": [exactly("aminoacid")] },
-          },
-        ],
-      },
-    })
-    .getColumns();
-  if (labels.length !== 1) return [];
-  return labels.map((c) =>
-    c.withSpecs({
-      annotations: {
-        "pl7.app/label": "AA Variant Id",
-        "pl7.app/table/visibility": "default",
-        "pl7.app/table/orderPriority": "99000",
-      },
-    }),
-  );
-}
-
-/**
  * A fit results table: `summaryCols` as primary columns, joined with the result pool's columns on
  * the Kd,app column's axis.
  */
-
-function fitTable(
-  ctx: Ctx,
-  summaryCols: FitColumns,
-  tableState: PlDataTableStateV2 | undefined,
-  {
-    linkAaVariant = false,
-    filters,
-  }: { linkAaVariant?: boolean; filters?: PlDataTableFilters } = {},
-) {
+function fitTable(ctx: Ctx, summaryCols: FitColumns, tableState: PlDataTableStateV2 | undefined) {
   const kdCol = summaryCols.find((c) => c.spec.name === "pl7.app/vdj/kd");
   if (!kdCol) return undefined;
 
@@ -1042,11 +1026,8 @@ function fitTable(
 
   return createPlDataTableV3(ctx, {
     primaryColumns: summaryCols.map((c) => DataColumn.fromColumn(c)),
-    columns: linkAaVariant
-      ? [...aaVariantIdColumns(ctx, kdCol.spec), ...resultPoolCols]
-      : resultPoolCols,
+    columns: resultPoolCols,
     tableState,
-    filters,
   });
 }
 
@@ -1055,6 +1036,7 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
   .templateParams(deriveTemplateParams)
 
   .args<BlockArgs>(deriveArgs)
+  .argsIssues(({ data }) => deriveArgsIssues(data))
 
   // Datasets, each with its subset columns (e.g. Repertoire Labeling labels) as filters.
   .output(
@@ -1100,8 +1082,6 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
       { excludeRef: ctx.data.sortFractionColumnRef },
     ),
   )
-
-  .output("binOptions", (ctx) => filterPopulatedOptions(ctx, isBinColumn))
 
   // Disambiguate from concentration by data, not column name: cross-exclude
   // the picked concentration column, then require every value in [0, 1].
@@ -1166,18 +1146,19 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     ).filter((opt) => !picked.some((ref) => plRefsEqual(opt.ref, ref)));
   })
 
-  // Each bin option's type and distinct values, keyed by the option's ref, so a pick can snapshot
-  // them in the same gesture: an output on the picked column alone would arrive a round trip late.
-  // An option whose values are not readable yet still reports its type.
-  .output("binFactsByRef", (ctx): Record<string, BinColumnFacts> => {
-    const out: Record<string, BinColumnFacts> = {};
-    for (const option of filterPopulatedOptions(ctx, isBinColumn)) {
-      const isText = ctx.resultPool.getPColumnSpecByRef(option.ref)?.valueType === "String";
-      const values = binValuesOf(ctx, option.ref);
-      out[refKey(option.ref)] = { isText, ...(values !== undefined && { values }) };
-    }
-    return out;
-  })
+  // The bin options, each with its type and distinct values, so a pick can snapshot them in the
+  // same gesture: an output on the picked column alone would arrive a round trip late. One output
+  // serves the dropdown and the snapshot, so each bin column's data is read once. An option whose
+  // values are not readable yet still reports its type.
+  .output("binColumns", (ctx) =>
+    populatedOptions(ctx, isBinColumn).map(({ option, values }) => ({
+      option,
+      facts: {
+        isText: ctx.resultPool.getPColumnSpecByRef(option.ref)?.valueType === "String",
+        ...(values !== undefined && { values: binValuesFrom(values) }),
+      } satisfies BinColumnFacts,
+    })),
+  )
 
   // The order is a snapshot of the pick, so a value the column gained since is missing from it.
   .output("unrankedBins", (ctx): string[] => unrankedBinsOf(ctx))
@@ -1190,27 +1171,19 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     return [...new Set(Object.values(values))].sort();
   })
 
-  .output("validationWarnings", (ctx): ValidationIssue[] => {
-    const issues: ValidationIssue[] = [];
+  .output("validationWarnings", (ctx): ArgsIssue[] => {
+    const issues: ArgsIssue[] = [];
     const data = ctx.data;
 
     // Surface backend field-level errors (CID conflicts, exec failures, spec
-    // validation failures) as severity:"error" ValidationIssues so the user
+    // validation failures) as severity:"error" issues so the user
     // sees them alongside the UI state. Without this, a CID conflict only
     // appears in server logs while the block silently shows empty panels.
     // CIDConflictError is typically transient — the platform's "zebra"
     // self-recovery retries the write — so we label it as such.
-    // replicatePf exists only on a run that combined replicates, the next three in synonymous mode
-    // only, replicateNtPf only in both, and runWarnings not on a run made before it existed, so
-    // their absence is no error.
-    const optionalKeys = [
-      "replicatePf",
-      "variantSummaryPf",
-      "synonymousSummary",
-      "ntVariantPf",
-      "replicateNtPf",
-      "runWarnings",
-    ];
+    // replicatePf exists only on a run that combined replicates, the next two in synonymous mode
+    // only, and runWarnings not on a run made before it existed, so their absence is no error.
+    const optionalKeys = ["replicatePf", "variantSummaryPf", "synonymousSummary", "runWarnings"];
     for (const key of ["summaryPf", "signalPf", "logHandle", ...optionalKeys]) {
       const errorAcc = (
         optionalKeys.includes(key)
@@ -1240,18 +1213,13 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
       });
     }
 
-    // Empty targetAntigen surfaces inline: the dropdown's `:error-status` prop
-    // shows a red border and `required` shows the asterisk. The args() throw
-    // above keeps Run disabled until it's set.
+    // The desktop names no reason beside a disabled Run, and no field shows this one.
+    if (sortFractionWithoutBin(data))
+      issues.push({ severity: "error", message: SORT_FRACTION_NEEDS_BIN });
 
-    if (data.sortFractionColumnRef !== undefined && data.binColumnRef === undefined) {
-      issues.push({
-        severity: "error",
-        message:
-          "FACS sort fraction requires a FACS bin column — " +
-          "the correction only applies in bin mode. Select a FACS bin or clear the sort fraction.",
-      });
-    }
+    // Empty targetAntigen surfaces inline: the dropdown's `:error-status` prop
+    // shows a red border and `required` shows the asterisk. `deriveArgsIssues`
+    // keeps Run disabled until it's set.
 
     const unranked = unrankedBinsOf(ctx);
     if (unranked.length > 0) {
@@ -1264,7 +1232,7 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     }
 
     // Numeric-field errors surface on each PlNumberField, from its own `required`,
-    // `min-value`, `max-value` and `validate` props. The args() throw above gates Run.
+    // `min-value`, `max-value` and `validate` props. `deriveArgsIssues` gates Run.
 
     for (const message of synonymousMessages(halfMatchedParent(ctx), synonymousSummary(ctx)))
       issues.push({ severity: "warning", message });
@@ -1308,29 +1276,6 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     return fitTable(ctx, summaryCols, ctx.data.tableState);
   })
 
-  // Synonymous mode only: one row per nucleotide variant, its own fit and its nt-grain columns.
-  .outputWithStatus("ntVariantTable", (ctx) => {
-    if (variantSummaryCols(ctx) === undefined) return undefined;
-    const summaryCols = ctx.outputs?.resolve("summaryPf")?.getPColumns();
-    if (summaryCols === undefined) return undefined;
-    // A synonymous run always writes this frame, with the column the filter reads. Without
-    // either there is no table: an unfiltered one would sit under the "synonymous only" tab.
-    const ntCols = ctx.outputs
-      ?.resolve({ field: "ntVariantPf", allowPermanentAbsence: true })
-      ?.getPColumns();
-    const shown = ntCols?.find((c) => c.spec.name === AA_VARIANT_ID);
-    if (ntCols === undefined || shown === undefined) return undefined;
-    return fitTable(ctx, [...summaryCols, ...ntCols], ctx.data.ntTableState, {
-      linkAaVariant: true,
-      filters: ctx.data.ntSynonymousOnly
-        ? {
-            type: "and",
-            filters: [{ type: "isNotNA", column: { type: "column", id: shown.id } }],
-          }
-        : undefined,
-    });
-  })
-
   .outputWithStatus("titrationCurvesPf", (ctx): PFrameHandle | undefined => {
     const signalCols = ctx.outputs?.resolve("signalPf")?.getPColumns();
     if (signalCols === undefined) return undefined;
@@ -1369,27 +1314,8 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
 
   // Whether the run is in synonymous mode and whether it combines sample replicates. In synonymous
   // mode the main table shows one row per amino-acid variant; each nucleotide variant's own fit
-  // stays in summaryPf, which the graphs read. Decides the pages and the Replicates page's tabs.
+  // stays in summaryPf, which the graphs read. The main table reads the shape.
   .output("runShape", (ctx) => runShape(ctx))
-
-  // One row per (clonotype, replicate). Its own page: the extra axis would fan out every row of
-  // the main table.
-  .outputWithStatus("replicateTable", (ctx) => {
-    const cols = replicateCols(ctx);
-    if (cols === undefined) return undefined;
-    return createPlDataTableV3(ctx, {
-      primaryColumns: cols.map((c) => DataColumn.fromColumn(c)),
-      columns: undefined,
-      tableState: ctx.data.replicateTableState,
-      // The per-replicate columns are hidden so downstream pickers offer the combined answer
-      // first. This is the page that exists to show them.
-      displayOptions: {
-        visibility: [
-          { match: { name: cols.map((c) => exactly(c.spec.name)) }, visibility: "default" },
-        ],
-      },
-    });
-  })
 
   // The main grid's key axis. Feeds `showCellButtonForAxisId`, which renders the button on every
   // displayed column that sits on this axis alone. Both columns carry the same axis, so the id is
@@ -1432,30 +1358,6 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
         ],
       },
       filters,
-    });
-  })
-
-  // Synonymous mode with replicates: one row per (nt variant, replicate), its own fit, beside the
-  // amino-acid variant it belongs to.
-  .outputWithStatus("replicateNtTable", (ctx) => {
-    const cols = ctx.outputs
-      ?.resolve({ field: "replicateNtPf", allowPermanentAbsence: true })
-      ?.getPColumns();
-    if (cols === undefined) return undefined;
-    const kdCol = cols.find((c) => c.spec.name === "pl7.app/vdj/kd");
-    const ntAxis = kdCol?.spec.axesSpec.find((a) => a.name !== REPLICATE_AXIS);
-    if (kdCol === undefined || ntAxis === undefined) return undefined;
-    return createPlDataTableV3(ctx, {
-      primaryColumns: cols.map((c) => DataColumn.fromColumn(c)),
-      // The linker reaches the amino-acid label from the nt axis alone: an anchor that also
-      // carries the replicate axis finds nothing.
-      columns: aaVariantIdColumns(ctx, { ...kdCol.spec, axesSpec: [ntAxis] }),
-      tableState: ctx.data.replicateNtTableState,
-      displayOptions: {
-        visibility: [
-          { match: { name: cols.map((c) => exactly(c.spec.name)) }, visibility: "default" },
-        ],
-      },
     });
   })
 

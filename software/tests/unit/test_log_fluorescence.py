@@ -9,8 +9,10 @@ import polars as pl
 import pytest
 
 from constants import GATE_RANGE_DECADES, GATE_WIDTH_DECADES, LF_RISE_THRESHOLD_DECADES, FitParams
+from hill_fit import weighted_r2
 from log_fluorescence import (
     GateScale,
+    _model,
     build_gate_scale,
     classify_curve,
     decades_to_gate_index,
@@ -19,6 +21,7 @@ from log_fluorescence import (
     pin_kd,
     plateau_floor_decades,
     predict,
+    r2_with_zero_point,
 )
 
 CONCS = np.array([1e-10, 3e-10, 1e-9, 3e-9, 1e-8, 3e-8, 1e-7, 3e-7, 1e-6])
@@ -99,7 +102,7 @@ class TestFit:
         y = np.log10(8.0 * CONCS**2 / (CONCS**2 + (1e-8) ** 2) + 2.0)
         fit = _fit(y)
         assert fit.converged
-        assert fit.r2 is not None and fit.r2 < 1.0
+        assert fit.y_hat is not None and weighted_r2(y, fit.y_hat, np.ones_like(y)) < 1.0
 
     def test_the_fitted_curve_reproduces_the_points(self):
         y = _curve(1e-8)
@@ -108,7 +111,6 @@ class TestFit:
         assert fit.log10_kd is not None and fit.log10_top is not None and fit.log10_baseline is not None
         assert np.allclose(fit.y_hat, y, atol=0.02)
         assert np.allclose(predict(CONCS, fit.log10_kd, fit.log10_top, fit.log10_baseline), fit.y_hat)
-        assert fit.r2 == pytest.approx(1.0, abs=1e-3)
 
     def test_a_saturated_curve_is_reported_below_the_titration_not_as_a_failure(self):
         # Saturated everywhere: K_D is below the titration. The fit still converges — the bound is
@@ -155,7 +157,7 @@ class TestFit:
         fit = fit_one(np.zeros(4), np.zeros(4), np.ones(4), scale=SCALE, plateau_floor=FLOOR)
         assert not fit.converged
         assert fit.reason == "convergence_failure"
-        assert fit.log10_kd is None and fit.r2 is None
+        assert fit.log10_kd is None
 
     def test_a_non_finite_signal_is_a_failure_not_a_crash(self):
         y = _curve(1e-8)
@@ -315,3 +317,76 @@ class TestMeasuredGatePositions:
         b = pipeline.run(without, params=params)["per_clonotype"]
         assert a["kd"].to_list() == b["kd"].to_list()
         assert a["affinityClass"].to_list() == b["affinityClass"].to_list()
+
+
+class TestR2WithTheZeroPoint:
+    """R² over the fit points and the variant's own 0 M points, read-weighted up to the heaviest fit point."""
+
+    C = np.array([1e-10, 1e-9, 1e-8, 1e-7, 1e-6])
+    KD, TOP, BASE = -11.0, 3.0, 1.0
+
+    def _curve(self):
+        y_hat = _model(self.C, self.KD, self.TOP, self.BASE)
+        # A tight binder: every non-zero point already sits near its plateau.
+        y = y_hat + np.array([0.04, -0.05, 0.03, -0.04, 0.05])
+        w = np.full(len(y), 100.0)
+        return y, y_hat, w
+
+    def test_without_a_zero_point_it_is_the_r2_of_the_fit_points(self):
+        y, y_hat, w = self._curve()
+        assert r2_with_zero_point(y, y_hat, w, [], self.BASE) == pytest.approx(weighted_r2(y, y_hat, w))
+
+    def test_without_its_own_zero_point_it_reads_the_shared_baseline_at_the_cap(self):
+        y, y_hat, w = self._curve()
+        shared = r2_with_zero_point(y, y_hat, w, [], self.BASE, shared_baseline=self.BASE)
+        assert shared == pytest.approx(r2_with_zero_point(y, y_hat, w, [(self.BASE, 100.0)], self.BASE))
+        assert weighted_r2(y, y_hat, w) < 0.8 < shared
+
+    def test_its_own_zero_point_stands_before_the_shared_baseline(self):
+        y, y_hat, w = self._curve()
+        own = [(self.BASE + 0.02, 100.0)]
+        assert r2_with_zero_point(y, y_hat, w, own, self.BASE, shared_baseline=self.BASE) == pytest.approx(
+            r2_with_zero_point(y, y_hat, w, own, self.BASE)
+        )
+
+    def test_a_tight_binder_at_its_plateau_passes_once_its_zero_point_counts(self):
+        y, y_hat, w = self._curve()
+        assert weighted_r2(y, y_hat, w) < 0.8
+        assert r2_with_zero_point(y, y_hat, w, [(self.BASE + 0.02, 100.0)], self.BASE) > 0.8
+
+    def test_a_zero_point_lighter_than_the_fit_points_counts_at_its_own_read_weight(self):
+        y, y_hat, w = self._curve()
+        light = r2_with_zero_point(y, y_hat, w, [(self.BASE, 1.0)], self.BASE)
+        heavy = r2_with_zero_point(y, y_hat, w, [(self.BASE, 100.0)], self.BASE)
+        assert weighted_r2(y, y_hat, w) < light < heavy
+
+    def test_a_deep_zero_sample_counts_no_more_than_the_heaviest_fit_point(self):
+        y, y_hat, w = self._curve()
+        w = np.array([20.0, 40.0, 100.0, 60.0, 30.0])
+        at_the_cap = r2_with_zero_point(y, y_hat, w, [(self.BASE + 0.02, 100.0)], self.BASE)
+        deep = r2_with_zero_point(y, y_hat, w, [(self.BASE + 0.02, 10_000.0)], self.BASE)
+        assert deep == pytest.approx(at_the_cap)
+
+    def test_more_zero_samples_do_not_raise_it(self):
+        y, y_hat, w = self._curve()
+        one = r2_with_zero_point(y, y_hat, w, [(self.BASE, 100.0)], self.BASE)
+        three = r2_with_zero_point(y, y_hat, w, [(self.BASE, 100.0)] * 3, self.BASE)
+        assert three == pytest.approx(one)
+
+    def test_a_zero_point_off_the_baseline_lowers_it(self):
+        y, y_hat, w = self._curve()
+        on = r2_with_zero_point(y, y_hat, w, [(self.BASE, 100.0)], self.BASE)
+        off = r2_with_zero_point(y, y_hat, w, [(self.TOP, 100.0)], self.BASE)
+        assert off < on
+
+    # Two fit points on the curve at 3, weight 1 each; baseline 1.
+    FLAT = (np.array([3.0, 3.0]), np.array([3.0, 3.0]), np.array([1.0, 1.0]))
+
+    def test_the_value_with_one_zero_point(self):
+        # 0 M point 1.5 at weight 1: mean 2.5, total 0.25 + 0.25 + 1 = 1.5, residual 0.5^2 = 0.25.
+        assert r2_with_zero_point(*self.FLAT, [(1.5, 1.0)], 1.0) == pytest.approx(1 - 0.25 / 1.5)
+
+    def test_every_zero_point_counts_and_they_share_the_cap(self):
+        # 0 M points 1.5 and 0.5 at weight 1 each, 0.5 each under the cap of 1: mean 7/3,
+        # total 2 * (2/3)^2 + 0.5 * (5/6)^2 + 0.5 * (11/6)^2 = 35/12, residual 2 * 0.5 * 0.5^2 = 0.25.
+        assert r2_with_zero_point(*self.FLAT, [(1.5, 1.0), (0.5, 1.0)], 1.0) == pytest.approx(1 - 0.25 / (35 / 12))

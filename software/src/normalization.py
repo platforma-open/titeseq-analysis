@@ -23,6 +23,7 @@ def compute_mean_bin(
     gate_position_col: str | None = None,
     drop_null_positions: bool = False,
     replicate_keys: list[str] | None = None,
+    bimodal_share: float | None = None,
 ) -> pl.DataFrame:
     """R7: mean_bin_c = Σ_b (b · freq_cb) / Σ_b freq_cb, where freq_cb = reads_cb / depth_b.
 
@@ -56,6 +57,11 @@ def compute_mean_bin(
         Kwarg-only by design so a future caller cannot silently disable the
         correction via a positional-argument slip.
 
+    `bimodal_share` applies Starr 2022's split rule (`calc.meanbin`): a variant at a concentration
+    has no mean bin when two gates at least two apart each hold more than this share of its weight,
+    the weight being the one the mean reads. A mean of two separated populations describes neither.
+    Its reads stay reported.
+
     Returns long frame: clonotypeKey, concentrationStr, concentration, mean_bin, clonotype_reads_at_conc,
     signal_reads_at_conc. Where null positions are kept out of the mean, their reads are kept out of
     signal_reads_at_conc too.
@@ -72,18 +78,39 @@ def compute_mean_bin(
         weight = pl.when(position.is_not_null()).then(weight).otherwise(0.0)
         signal_reads = signal_reads.filter(position.is_not_null())
 
-    return (
-        with_freq.with_columns(weight.alias("w"))
-        .group_by([COL_CLONOTYPE, *reps, COL_CONC_STR, COL_CONC_VAL], maintain_order=True)
-        .agg(
-            (position.cast(pl.Float64) * pl.col("w")).sum().alias("num"),
-            pl.col("w").sum().alias("den"),
-            pl.col(COL_READS).sum().alias(CLONOTYPE_READS_AT_CONC),
-            signal_reads.sum().alias(SIGNAL_READS_AT_CONC),
-        )
-        .with_columns(pl.when(pl.col("den") > 0).then(pl.col("num") / pl.col("den")).otherwise(None).alias(MEAN_BIN))
-        .drop(["num", "den"])
+    point = [COL_CLONOTYPE, *reps, COL_CONC_STR, COL_CONC_VAL]
+    weighted = with_freq.with_columns(weight.alias("w"))
+    out = weighted.group_by(point, maintain_order=True).agg(
+        (position.cast(pl.Float64) * pl.col("w")).sum().alias("num"),
+        pl.col("w").sum().alias("den"),
+        pl.col(COL_READS).sum().alias(CLONOTYPE_READS_AT_CONC),
+        signal_reads.sum().alias(SIGNAL_READS_AT_CONC),
     )
+    mean = pl.when(pl.col("den") > 0).then(pl.col("num") / pl.col("den")).otherwise(None)
+    if bimodal_share is not None:
+        out = out.join(
+            _bimodal_points(weighted, point, bimodal_share),
+            on=point,
+            how="left",
+            nulls_equal=True,
+            maintain_order="left",
+        )
+        mean = pl.when(pl.col("bimodal").fill_null(False)).then(None).otherwise(mean)
+    return out.with_columns(mean.alias(MEAN_BIN)).drop([c for c in ("num", "den", "bimodal") if c in out.columns])
+
+
+def _bimodal_points(weighted: pl.DataFrame, point: list[str], share: float) -> pl.DataFrame:
+    """[*point, bimodal]: whether two gates at least two apart each hold more than `share` of the
+    point's weight `w`. Above 0.5 no two gates can, and at most two can for any share of 0.4 or more."""
+    per_gate = (
+        weighted.filter(pl.col(COL_BIN).is_not_null())
+        .group_by([*point, COL_BIN])
+        .agg(pl.col("w").sum())
+        .with_columns((pl.col("w") / pl.col("w").sum().over(point)).alias("share"))
+        .filter(pl.col("share") > share)
+    )
+    gate = pl.col(COL_BIN).cast(pl.Float64)
+    return per_gate.group_by(point).agg(((gate.max() - gate.min()) >= 2).alias("bimodal"))
 
 
 def compute_frequency_signal(reads: pl.DataFrame, replicate_keys: list[str] | None = None) -> pl.DataFrame:
@@ -122,6 +149,7 @@ def normalize(
     gate_position_col: str | None = None,
     drop_null_positions: bool = False,
     replicate_keys: list[str] | None = None,
+    bimodal_share: float | None = None,
 ) -> pl.DataFrame:
     """Unified entry point; always emits column named SIGNAL for downstream modules.
 
@@ -138,6 +166,7 @@ def normalize(
             gate_position_col=gate_position_col,
             drop_null_positions=drop_null_positions,
             replicate_keys=replicate_keys,
+            bimodal_share=bimodal_share,
         ).rename({MEAN_BIN: SIGNAL})
     else:
         sig = compute_frequency_signal(reads, replicate_keys)

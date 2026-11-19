@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import math
 import warnings
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
 
@@ -120,7 +121,6 @@ class FitResult:
     y_hat: np.ndarray | None  # in decades; convert with decades_to_gate_index before output
     converged: bool
     reason: str | None  # "convergence_failure" on failure; None on success
-    r2: float | None = None  # weighted R² on the points the fit saw, in decades
 
 
 def _failure(reason: str = "convergence_failure") -> FitResult:
@@ -132,6 +132,55 @@ def _model(c: np.ndarray, log10_kd: float, log10_top: float, log10_base: float) 
     amplitude = 10.0**log10_top - base
     kd = 10.0**log10_kd
     return np.log10(amplitude * c / (c + kd) + base)
+
+
+def r2_with_zero_point(
+    y: np.ndarray,
+    y_hat: np.ndarray,
+    w: np.ndarray,
+    zero_points: Sequence[tuple[float, float]],
+    log10_base: float,
+    *,
+    shared_baseline: float | None = None,
+) -> float:
+    """Weighted R² over the fit points and the variant's own 0 M points, each (signal, read weight).
+
+    A 0 M point is read against the curve at c = 0, which is its baseline `log10_base`. A variant
+    with no 0 M point of its own past the read floor takes `shared_baseline`, the run's 0 M signal,
+    as its 0 M point at the weight of its heaviest fit point: the form of its R² does not depend on
+    its reads at 0 M. That point sits on the curve, which starts at the same baseline, so it adds
+    no residual. With neither, the R² of the fit points alone.
+
+    The R² screens out a curve that does not rise from the baseline. It says little about how the
+    curve follows the titrated points of a variant far above the baseline; the SE of log10 K_D
+    rates that.
+
+    Why the 0 M point counts: Phillips 2021, whose R² >= 0.8 filter the R² gate follows, counts it.
+    Without it a tight binder has no in-range point below its plateau, so the
+    curve explains little of what variance is left and the gate fails it: Adams 2016's wild type
+    failed this way.
+
+    Why read-weighted, where Phillips' r² is unweighted: the fit weights each point by its reads,
+    and the R² that judges the fit weights them the same, so a low-read point counts as little in
+    both. The golden cases pin what this form rates Good on Adams 2016 and Phillips 2021
+    (`tests/golden/pins`).
+
+    The 0 M points together weigh at most the heaviest fit point; above that they are scaled down
+    in proportion. The baseline is the read-weighted 0 M mean, so a 0 M point sits near the curve
+    and adds variance the curve explains: uncapped, R² rises with the depth and the number of the
+    0 M samples.
+    """
+    if not zero_points:
+        if shared_baseline is None:
+            return weighted_r2(y, y_hat, w)
+        zero_points = [(shared_baseline, float(w.max()))]
+    signals, weights = (np.array(values, dtype=float) for values in zip(*zero_points))
+    total, cap = weights.sum(), w.max()
+    if total > cap:
+        weights = weights * (cap / total)
+    return weighted_r2(
+        np.append(y, signals), np.append(y_hat, np.full(len(signals), log10_base)), np.append(w, weights)
+    )
 
 
 def plateau_floor_decades(scale: GateScale, plateau_floor: float) -> float:
@@ -265,7 +314,6 @@ def fit_one(
         y_hat=y_hat,
         converged=True,
         reason=None,
-        r2=weighted_r2(y, y_hat, w),
     )
 
 

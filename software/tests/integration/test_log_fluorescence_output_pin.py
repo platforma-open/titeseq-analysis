@@ -11,7 +11,8 @@ synonymous variants, so there is no synonymous output to pin.
 
 Values are the block's own output on the committed corpus, recorded when this pin was added, and must
 not be regenerated to make a change pass. Classes and reasons are exact. K_D, its SE and R² carry a
-1e-6 relative tolerance for last-bit platform noise in scipy's optimiser.
+1e-6 relative tolerance for last-bit platform noise in scipy's optimiser. R² counts each clonotype's
+own 0 M point (`log_fluorescence.r2_with_zero_point`); with it P_NOISY passes the default R² gate.
 
 The other three frames (meanBin, fittedMeanBin, concentration value) are pinned whole against
 frames written by the same code, stored in tests/data/log_fluorescence_reference/. Row order is
@@ -41,22 +42,21 @@ PARAMS = {
 DEFAULTS = {
     "C0_ONLY": (None, None, None, "Failed", "insufficient_reads", None),
     "F_FLAT": (1e-06, None, None, "Above range", None, True),
-    "F_HOOK": (1.4216854477623837e-08, 0.6026460191898025, 0.6542655556747916, "Failed", "low_r2", False),
+    "F_HOOK": (1.4216854477623837e-08, 0.6026460191898025, 0.6961507553737638, "Failed", "low_r2", False),
     "F_INSUF_P": (None, None, None, "Failed", "insufficient_points", None),
     "F_INSUF_R": (None, None, None, "Failed", "insufficient_reads", None),
     "F_LOW_R2": (1e-10, None, None, "Below range", None, True),
-    "G_HIGH": (7.217910926273202e-07, 0.5103237629535269, 0.9042278488613067, "Partial", None, False),
-    "G_LOW": (5.798103553042284e-09, 0.08313580129537443, 0.9841121556494522, "Good", None, False),
-    "G_MID": (7.495039599187662e-08, 0.1542689340801187, 0.9750505637670569, "Good", None, False),
+    "G_HIGH": (7.217910926273202e-07, 0.5103237629535269, 0.898614803432452, "Partial", None, False),
+    "G_LOW": (5.798103553042284e-09, 0.08313580129537443, 0.9834739011628792, "Good", None, False),
+    "G_MID": (7.495039599187662e-08, 0.1542689340801187, 0.9739292429493717, "Good", None, False),
     "K_LOW": (1e-10, None, None, "Below range", None, True),
-    "P_NOISY": (1.245993582351643e-08, 0.3408202225376994, 0.7701473890417541, "Failed", "low_r2", False),
-    "P_N_HIGH": (9.870984131013337e-08, 0.46535617831420345, 0.8613249743873173, "Good", None, False),
+    "P_NOISY": (1.245993582351643e-08, 0.3408202225376994, 0.8149397139972028, "Good", None, False),
+    "P_N_HIGH": (9.870984131013337e-08, 0.46535617831420345, 0.8690108027613201, "Good", None, False),
 }
-# The gates only rate a fit; with them off, the two rows they failed keep the fit's own class.
+# The gates only rate a fit; with them off, the row they failed keeps the fit's own class.
 GATES_OFF = {
     **DEFAULTS,
-    "F_HOOK": (1.4216854477623837e-08, 0.6026460191898025, 0.6542655556747916, "Partial", None, False),
-    "P_NOISY": (1.245993582351643e-08, 0.3408202225376994, 0.7701473890417541, "Good", None, False),
+    "F_HOOK": (1.4216854477623837e-08, 0.6026460191898025, 0.6961507553737638, "Partial", None, False),
 }
 EXPECTED = {"defaults": DEFAULTS, "gates_off": GATES_OFF}
 

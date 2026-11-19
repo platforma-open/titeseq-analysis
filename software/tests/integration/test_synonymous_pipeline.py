@@ -116,7 +116,7 @@ class TestEachNtVariantIsFittedOnItsOwn:
         combined = run(reads, params=params, synonymous=SynonymousInputs(_links(), **PARENT_INPUTS))
         for name in ("per_clonotype", "mean_bin", "fitted_mean_bin", "concentration_value"):
             assert_frame_equal(combined[name], plain[name])
-        assert set(combined) - set(plain) == {"per_variant", "synonymous_summary"}
+        assert set(combined) - set(plain) == {"per_variant", "per_nt_variant", "synonymous_summary"}
 
     def test_the_aa_value_is_the_mean_of_its_synonymous_variants_fits_not_a_fit_of_pooled_reads(self, lf):
         per_nt = lf["per_clonotype"].filter(pl.col("clonotypeKey").is_in(["wt_a", "wt_b", "wt_c"]))
@@ -377,7 +377,14 @@ def test_the_cli_writes_the_nucleotide_frame_with_the_nt_mutation_count(tmp_path
     )  # fmt: skip
     assert rc == 0
     per_nt = pl.read_csv(out["pnv"], separator="\t")
-    assert per_nt.columns == ["ntKey", "variantClass", "kdLog10ParentDelta", "kdLog10ParentDeltaSe"]
+    assert per_nt.columns == [
+        "ntKey",
+        "variantClass",
+        "kdLog10ParentDelta",
+        "kdLog10ParentDeltaSe",
+        "kdParent",
+        "kdLog10ParentSe",
+    ]
     assert per_nt.height == 13
     per_variant = pl.read_csv(out["pv"], separator="\t")
     assert "variantClass" in per_variant.columns
@@ -423,20 +430,6 @@ def test_the_cli_refuses_an_nt_mutation_count_without_its_output(tmp_path):
                 "--nt-mutations", "m.tsv",
             ]
         )  # fmt: skip
-
-
-def test_the_cli_refuses_labels_without_the_nt_aa_variant_output(capsys):
-    with pytest.raises(SystemExit):
-        main(
-            [
-                "--reads", "r.parquet",
-                "--out-per-clonotype", "a", "--out-mean-bin", "b",
-                "--out-fitted-mean-bin", "c", "--out-concentration-value", "d",
-                "--nt-to-aa", "links.tsv", "--out-per-variant", "e", "--out-synonymous-summary", "f",
-                "--aa-labels", "labels.tsv",
-            ]
-        )  # fmt: skip
-    assert "--aa-labels needs --out-nt-aa-variant" in capsys.readouterr().err
 
 
 def test_the_cli_refuses_a_linker_without_its_outputs(tmp_path):
@@ -552,3 +545,53 @@ class TestReadDepth:
         out = run(reads, params=LF, read_depth=True)
         assert out["fit_reads"].height == reads["clonotypeKey"].n_unique()
         assert "fitReads" not in out["per_clonotype"].columns
+
+
+def test_the_cli_download_copies_name_both_grains(tmp_path, reads):
+    """Every download, synonymous mode with replicates: no hash key left, both grains named."""
+    pl.concat([reads.with_columns(pl.lit(r).alias("replicate")) for r in ("r1", "r2")]).write_parquet(
+        tmp_path / "reads.parquet"
+    )
+    _links().write_csv(tmp_path / "nt_to_aa.tsv", separator="\t")
+    PARENT_INPUTS["aa_mutations"].write_csv(tmp_path / "aa_mutations.tsv", separator="\t")
+    NT_MUTATIONS.write_csv(tmp_path / "nt_mutations.tsv", separator="\t")
+    nts = _links()["ntKey"].unique().to_list() + ["amb", "orphan"]
+    pl.DataFrame({"key": nts, "variantId": [f"V-{k}" for k in nts], "sequence": [f"ACGT{k}" for k in nts]}).unique(
+        "key"
+    ).write_csv(tmp_path / "names.tsv", separator="\t")
+    pl.DataFrame({"key": list(LIBRARY), "variantId": [f"V-{k}" for k in LIBRARY]}).write_csv(
+        tmp_path / "aa_names.tsv", separator="\t"
+    )
+    out = {n: str(tmp_path / f"{n}.tsv") for n in ("pc", "mb", "fmb", "cv", "pv", "pnv", "pr", "prn", "nav", "fr")}
+    rc = main(
+        [
+            "--reads", str(tmp_path / "reads.parquet"),
+            "--out-per-clonotype", out["pc"],
+            "--out-mean-bin", out["mb"],
+            "--out-fitted-mean-bin", out["fmb"],
+            "--out-concentration-value", out["cv"],
+            "--out-fit-reads", out["fr"],
+            "--replicate-column", "replicate",
+            "--out-per-replicate", out["pr"],
+            "--out-per-replicate-nt", out["prn"],
+            "--nt-to-aa", str(tmp_path / "nt_to_aa.tsv"),
+            "--aa-mutations", str(tmp_path / "aa_mutations.tsv"),
+            "--nt-mutations", str(tmp_path / "nt_mutations.tsv"),
+            "--out-per-variant", out["pv"],
+            "--out-per-nt-variant", out["pnv"],
+            "--out-nt-aa-variant", out["nav"],
+            "--out-synonymous-summary", str(tmp_path / "summary.json"),
+            "--variant-names", str(tmp_path / "names.tsv"),
+            "--aa-variant-names", str(tmp_path / "aa_names.tsv"),
+            "--download-prefix", "download_",
+        ]
+    )  # fmt: skip
+    assert rc == 0
+    for name in ("pc", "mb", "fmb", "pv", "pnv", "pr", "prn", "nav", "fr"):
+        download = pl.read_csv(tmp_path / f"download_{name}.tsv", separator="\t")
+        assert not {"clonotypeKey", "ntKey", "aaKey"} & set(download.columns), name
+        ids = [c for c in download.columns if c.endswith("ariantId")]
+        assert ids and all(download[c].str.starts_with("V-").all() for c in ids), name
+    nav = pl.read_csv(tmp_path / "download_nav.tsv", separator="\t")
+    assert nav.columns == ["ntVariantId", "ntSequence", "aaVariantId", "aaSequence"]
+    assert nav["aaSequence"].null_count() == nav.height  # no aa sequence column upstream

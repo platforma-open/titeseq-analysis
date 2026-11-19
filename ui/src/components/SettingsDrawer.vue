@@ -137,8 +137,12 @@ function setAntigenColumn(ref: PlRef | undefined): void {
   if (!unchanged) app.model.data.targetAntigen = undefined;
 }
 
+const binColumns = computed(() => app.model.outputs.binColumns ?? []);
+const binOptions = computed(() => binColumns.value.map((c) => c.option));
 const binFacts = (ref: PlRef | undefined) =>
-  ref === undefined ? undefined : app.model.outputs.binFactsByRef?.[refKey(ref)];
+  ref === undefined
+    ? undefined
+    : binColumns.value.find((c) => refKey(c.option.ref) === refKey(ref))?.facts;
 
 /** The picked bin column's values in their default order: numeric, else alphabetical. */
 const binValues = (ref: PlRef | undefined): string[] | undefined => binFacts(ref)?.values;
@@ -188,6 +192,16 @@ const binOrderModified = computed(() => {
 function resetBinOrder(): void {
   app.model.data.binOrder = binValues(app.model.data.binColumnRef);
 }
+
+// The order the list shows. With none stored (a block from before the order existed, or a pick
+// made before the column's values loaded) it shows the default order and stores nothing: only a
+// drag writes the order, so showing the section never re-runs the block.
+const shownBinOrder = computed({
+  get: () => app.model.data.binOrder ?? binValues(app.model.data.binColumnRef),
+  set: (order: string[] | undefined) => {
+    app.model.data.binOrder = order;
+  },
+});
 </script>
 
 <template>
@@ -238,7 +252,7 @@ function resetBinOrder(): void {
     </PlDropdown>
     <PlDropdownRef
       :model-value="app.model.data.binColumnRef"
-      :options="app.model.outputs.binOptions"
+      :options="binOptions"
       @update:model-value="setBinColumn"
       :label="isLogFluorescence ? 'FACS bin' : 'FACS bin (optional)'"
       :required="isLogFluorescence"
@@ -254,54 +268,49 @@ function resetBinOrder(): void {
     <!-- The gates from low to high fluorescence. Position is the rank, so the values can be any
          labels. No value can be removed: a gate left out would bias every mean bin. A block with
          no stored order reads the column's integers until the user sets one. -->
-    <template v-if="app.model.data.binColumnRef !== undefined">
-      <PlAccordionSection
-        v-if="app.model.data.binOrder !== undefined"
-        v-model="binOrderOpen"
-        label="FACS bin order"
+    <PlAccordionSection
+      v-if="app.model.data.binColumnRef !== undefined"
+      v-model="binOrderOpen"
+      label="FACS bin order"
+    >
+      <div class="titeseq-bin-order-label">
+        Lowest fluorescence at the top
+        <PlTooltip class="info">
+          <template #tooltip>
+            Drag the bins into order: the lowest fluorescence at the top, the highest at the bottom.
+            The position sets each bin's rank, so the bin values do not need to be numbers. Every
+            gate takes part: leaving one out would drop its cells and bias every mean bin. An
+            unsorted sample has an empty bin value.
+          </template>
+        </PlTooltip>
+      </div>
+      <PlElementList
+        v-if="shownBinOrder !== undefined"
+        v-model:items="shownBinOrder"
+        disable-removing
       >
-        <div class="titeseq-bin-order-label">
-          Lowest fluorescence at the top
-          <PlTooltip class="info">
-            <template #tooltip>
-              Drag the bins into order: the lowest fluorescence at the top, the highest at the
-              bottom. The position sets each bin's rank, so the bin values do not need to be
-              numbers. Every gate takes part: leaving one out would drop its cells and bias every
-              mean bin. An unsorted sample has an empty bin value.
-            </template>
-          </PlTooltip>
-        </div>
-        <PlElementList v-model:items="app.model.data.binOrder" disable-removing>
-          <template #item-title="{ item }">{{ item }}</template>
-        </PlElementList>
-        <PlAlert v-if="unrankedBins.length > 0" type="error">
-          The bin column has values that the order does not rank: {{ unrankedBins.join(", ") }}. The
-          run fails until every bin is ranked.
-          <PlBtnGhost @click="addUnrankedBins">Add to the order</PlBtnGhost>
-        </PlAlert>
-        <PlBtnGhost v-if="binOrderModified" @click="resetBinOrder">
-          Reset to default
-          <template #append>
-            <PlMaskIcon24 name="reverse" />
-          </template>
-        </PlBtnGhost>
-      </PlAccordionSection>
-      <template v-else>
-        <PlAlert v-if="app.model.data.binColumnIsText === true" type="error">
-          The bin column holds labels, not numbers, so the block cannot run until the bin order is
-          set.
-          <template v-if="binValues(app.model.data.binColumnRef) === undefined">
-            The column's values are not loaded yet.
-          </template>
-        </PlAlert>
-        <PlBtnGhost
-          v-if="binValues(app.model.data.binColumnRef) !== undefined"
-          @click="resetBinOrder"
-        >
-          Set the bin order
-        </PlBtnGhost>
-      </template>
-    </template>
+        <template #item-title="{ item }">{{ item }}</template>
+      </PlElementList>
+      <div v-else class="titeseq-bin-order-label">The column's values are not loaded yet.</div>
+      <PlAlert
+        v-if="app.model.data.binOrder === undefined && app.model.data.binColumnIsText === true"
+        type="error"
+      >
+        The bin column holds labels, not numbers, so the block cannot run until the bin order is
+        set. Drag the bins into order.
+      </PlAlert>
+      <PlAlert v-if="unrankedBins.length > 0" type="error">
+        The bin column has values that the order does not rank: {{ unrankedBins.join(", ") }}. The
+        run fails until every bin is ranked.
+        <PlBtnGhost @click="addUnrankedBins">Add to the order</PlBtnGhost>
+      </PlAlert>
+      <PlBtnGhost v-if="binOrderModified" @click="resetBinOrder">
+        Reset to default
+        <template #append>
+          <PlMaskIcon24 name="reverse" />
+        </template>
+      </PlBtnGhost>
+    </PlAccordionSection>
     <!-- Shown whenever the fit reads bins, so the fields a required bin brings are visible before
          the bin is picked. -->
     <PlDropdownRef
@@ -334,7 +343,7 @@ function resetBinOrder(): void {
       :model-value="app.model.data.antigenColumnRef"
       :options="app.model.outputs.antigenOptions"
       @update:model-value="setAntigenColumn"
-      label="Antigen label"
+      label="Antigen label (optional)"
       clearable
     >
       <template #tooltip>
@@ -364,8 +373,8 @@ function resetBinOrder(): void {
         Optional. A per-sample column naming the replicate each sample belongs to. Each replicate is
         a titration of its own: it is fitted alone, and the per-{{ noun }} values are then combined.
         The table then shows the combined Kd,app with its standard error and the SD across the
-        replicates, and the Replicates page shows each replicate's own Kd,app. Leave empty to fit
-        one titration.
+        replicates, and a {{ noun }}'s row opens each replicate's own Kd,app. Leave empty to fit one
+        titration.
       </template>
     </PlDropdownRef>
 
@@ -413,8 +422,10 @@ function resetBinOrder(): void {
         <template #tooltip>
           The lowest R² that a fit can have. A fit with a lower R², or with no R², gets the rating
           Failed, with the reason low_r2. The block checks only a fit whose Kd,app is inside the
-          titrated range. With sample replicates, the block checks the fit of each replicate. The
-          default is 0.8. Leave this field empty to set no R² limit.
+          titrated range. With sample replicates, the block checks the fit of each replicate. R²
+          counts the 0 M signal, so it removes a curve that does not rise from the baseline. It does
+          not rate how well the curve follows the points of a strong binder: the standard error of
+          Kd,app does. The default is 0.8. Leave this field empty to set no R² limit.
         </template>
       </PlNumberField>
       <PlNumberField

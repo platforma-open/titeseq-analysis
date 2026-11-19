@@ -26,7 +26,7 @@ Committed reads tables + per-clonotype manifest used by `tests/integration/test_
 | `F_INSUF_P` | Only 3 non-zero concs pass floor → Failed/insufficient_points |
 | `C0_ONLY` | Reads only at c=0 → Failed/insufficient_reads |
 
-`K_HIGH` (upper `kdOutOfRange`) is intentionally omitted from the bin-mode corpus: the integration/CLI hook tests already cover the upper-side path where a null `kd` from a Failed fit lands at the `kdPlotPosition` sentinel (`max_conc * 10`). `K_LOW` covers R14b from the lower bound.
+`K_HIGH` (upper `kdOutOfRange`) is intentionally omitted from the bin-mode corpus: the integration/CLI hook tests already cover the upper-side path. `K_LOW` covers R14b from the lower bound.
 
 ## No-bin-mode clonotypes
 
@@ -63,7 +63,7 @@ Each clonotype entry has:
 - `expected_reason` or `expected_reason_in` — single reason or list (for entries where the pipeline can land in more than one Failed branch without the test losing its intent).
 - `kd_range` / `hill_range` — tolerance bands (not exact values) for Good/Partial fits. `null` for Failed clonotypes.
 - `kd_out_of_range` — expected R14b flag, or `null` when not asserted.
-- `hill_plot_position_is_sentinel` — when `true`, R17 must emit `hillPlotPosition == -1.0` and `kdPlotPosition == max_conc * 10`.
+- `kd_and_hill_null` — when `true`, the fit reports neither `kd` nor `hillCoefficient`.
 - `notes` — human-readable reason this case exists.
 
 Tolerance bands (not exact values) let scipy version drift without breaking the suite.

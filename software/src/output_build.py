@@ -61,23 +61,6 @@ def add_neg_log10_kd(frame: pl.DataFrame) -> pl.DataFrame:
     )
 
 
-def add_diagnostic_plot_columns(frame: pl.DataFrame, max_concentration: float) -> pl.DataFrame:
-    """R17: append plot-only positions so Failed rows with null Kd render on the scatter.
-
-    kdPlotPosition places null Kd at one decade right of the fitted range on a log axis;
-    hillPlotPosition parks null Hill coefficients at -1.0, a non-physical sentinel outside
-    the valid (0, ∞) range, so Failed rows pool visually away from well-fitted n≈1
-    clonotypes. Both columns are diagnostic — not for reporting — and never null.
-    """
-    return frame.with_columns(
-        pl.when(pl.col("kd").is_null()).then(max_concentration * 10.0).otherwise(pl.col("kd")).alias("kdPlotPosition"),
-        pl.when(pl.col("hillCoefficient").is_null())
-        .then(-1.0)
-        .otherwise(pl.col("hillCoefficient"))
-        .alias("hillPlotPosition"),
-    )
-
-
 def build_mean_bin_frame(signal_frame: pl.DataFrame, replicate_keys: list[str] | None = None) -> pl.DataFrame:
     """R14: per-(clonotype, concentration) observed signal (mean_bin or frequency).
 

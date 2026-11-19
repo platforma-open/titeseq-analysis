@@ -1,5 +1,6 @@
 import type { PlRef } from "@platforma-sdk/model";
 import { describe, expect, it } from "vitest";
+import { runErrors } from "./run-errors.testutil";
 import type {
   BlockArgs,
   BlockData,
@@ -7,7 +8,6 @@ import type {
   BlockDataV3,
   BlockDataV5,
   BlockDataV6,
-  RunShape,
 } from "./index";
 import { kind } from "@platforma-open/platforma-open.titeseq-analysis.kind";
 import {
@@ -21,7 +21,7 @@ import {
   migrateV4ToV5,
   migrateV5ToV6,
   migrateV6ToV7,
-  replicateViewsFor,
+  migrateV8ToV9,
   SECTIONS,
 } from "./index";
 
@@ -61,13 +61,12 @@ const v240Project: BlockDataV1 = {
 /** The project as the block will hold it after the upgrade, through the real version chain. */
 const upgraded = (): BlockData => {
   const migrated = dataModel.migrate({ version: "v1", data: v240Project });
-  expect(migrated.version).toBe("v8");
+  expect(migrated.version).toBe("v9");
   return migrated.data;
 };
 
 /** The args the model projects from a given state — what the staleness gate compares. */
 const argsOf = (data: BlockData): BlockArgs => deriveArgs(data);
-
 describe("a project created on v2.4.0 or earlier", () => {
   it("is pinned to the equation it ran, by name", () => {
     const data = upgraded();
@@ -117,7 +116,7 @@ describe("a project created on a v2 development build", () => {
       version: "v2",
       data: { ...v2Project, equation: "log_fluorescence" },
     });
-    expect(migrated.version).toBe("v8");
+    expect(migrated.version).toBe("v9");
     expect(migrated.data.r2GateMin).toBeUndefined();
   });
 
@@ -147,26 +146,26 @@ describe("a block created on the v2 data model", () => {
   it("cannot run the default equation on frequency-only data", () => {
     // No-bin mode survives only on v2.4.0's equation. Run stays disabled with a reason
     // rather than the job failing in Python after submission.
-    expect(() =>
-      argsOf({
+    expect(
+      runErrors({
         ...initBlockData(),
         abundanceRef: ref("abundance"),
         concentrationColumnRef: ref("concentration"),
         binColumnRef: undefined,
       }),
-    ).toThrow("requires a FACS bin column");
+    ).toContain("requires a FACS bin column");
   });
 
   it("runs v2.4.0's equation on frequency-only data, as it always did", () => {
-    expect(() =>
-      argsOf({
+    expect(
+      runErrors({
         ...initBlockData(),
         equation: "hill_gate_index",
         abundanceRef: ref("abundance"),
         concentrationColumnRef: ref("concentration"),
         binColumnRef: undefined,
       }),
-    ).not.toThrow();
+    ).toBe("");
   });
 });
 
@@ -188,7 +187,7 @@ describe("the args carry only the settings the selected equation reads", () => {
   });
 
   it("log fluorescence runs with an invalid hill_gate_index setting the drawer hides", () => {
-    expect(() => argsOf({ ...configured, nMin: 3, nMax: 2 })).not.toThrow();
+    expect(runErrors({ ...configured, nMin: 3, nMax: 2 })).toBe("");
   });
 
   it("a hidden hill_gate_index setting does not change log fluorescence args", () => {
@@ -227,9 +226,9 @@ describe("the R² and SE limits", () => {
   });
 
   it("disable Run on a limit out of range", () => {
-    expect(() => argsOf({ ...configured, r2GateMin: 1.2 })).toThrow("between 0 and 1");
-    expect(() => argsOf({ ...configured, r2GateMin: -0.1 })).toThrow("between 0 and 1");
-    expect(() => argsOf({ ...configured, kdSeGateMax: 0 })).toThrow(
+    expect(runErrors({ ...configured, r2GateMin: 1.2 })).toContain("between 0 and 1");
+    expect(runErrors({ ...configured, r2GateMin: -0.1 })).toContain("between 0 and 1");
+    expect(runErrors({ ...configured, kdSeGateMax: 0 })).toContain(
       "Maximum Kd,app SE must be above 0",
     );
   });
@@ -286,7 +285,7 @@ describe("a project stored on the v7 data model", () => {
   });
 
   it("gains an empty nucleotide variant table state", () => {
-    expect(migrated().version).toBe("v8");
+    expect(migrated().version).toBe("v9");
     expect(migrated().data.ntTableState).toEqual(initBlockData().ntTableState);
   });
 
@@ -308,15 +307,6 @@ describe("the pages", () => {
   it("are the main table, then the three graph pages", () => {
     expect(SECTIONS.map((s) => s.href)).toEqual(["/", ...GRAPHS]);
   });
-
-  it("give the Replicates page the nt table in synonymous mode", () => {
-    const views = (run: RunShape) => replicateViewsFor(run).map((v) => v.value);
-    expect(views({ synonymous: false, replicates: true })).toEqual(["variant-replicates"]);
-    expect(views({ synonymous: true, replicates: true })).toEqual([
-      "variant-replicates",
-      "nt-replicates",
-    ]);
-  });
 });
 
 describe("the migration function on its own", () => {
@@ -335,7 +325,7 @@ describe("a project stored on the v3 data model", () => {
   const migrated = () => dataModel.migrate({ version: "v3", data: stored });
 
   it("gains unset replicates and the per-replicate view state", () => {
-    expect(migrated().version).toBe("v8");
+    expect(migrated().version).toBe("v9");
     expect(migrated().data.replicateColumnRef).toBeUndefined();
     expect(migrated().data.replicateTableState).toEqual(initBlockData().replicateTableState);
   });
@@ -370,7 +360,7 @@ describe("a project stored on the v4 data model", () => {
   const migrated = (n: number | undefined) => dataModel.migrate({ version: "v4", data: stored(n) });
 
   it.each([3, 4])("raises a point count of %i to 5", (n) => {
-    expect(migrated(n).version).toBe("v8");
+    expect(migrated(n).version).toBe("v9");
     expect(migrated(n).data.minConcentrationPoints).toBe(5);
   });
 
@@ -427,7 +417,7 @@ describe("a project stored on the v5 data model", () => {
   const migrated = (r2GateEnabled: boolean) =>
     dataModel.migrate({ version: "v5", data: { ...base(), r2GateEnabled } });
   it("with the checkbox off, clears both limits", () => {
-    expect(migrated(false).version).toBe("v8");
+    expect(migrated(false).version).toBe("v9");
     expect(migrated(false).data.r2GateMin).toBeUndefined();
     expect(migrated(false).data.kdSeGateMax).toBeUndefined();
   });
@@ -469,5 +459,39 @@ describe("a project stored on the v6 data model", () => {
     const { defaultBlockLabel: _, ...rest } = stored();
     const { subtitleLabel: _s, ...data } = migrateV6ToV7(stored());
     expect(data).toEqual(rest);
+  });
+});
+
+describe("a project stored on the v8 data model", () => {
+  const oldSource = (name: string) =>
+    `{"kind":"column","name":"{\\"name\\":\\"${name}\\",\\"resolvePath\\":[\\"main\\",\\"summaryPf\\"]}","type":"Double"}`;
+  const withChart = (equation: BlockData["equation"]): BlockData => {
+    const data = initBlockData();
+    const graph = structuredClone(data.graphStateAffinityVsFit);
+    graph.title = "mine";
+    graph.optionsState!.components.x = {
+      type: "simple",
+      selectorStates: [{ selectedSource: oldSource("kdPlotPosition") }],
+    };
+    return { ...data, equation, graphStateAffinityVsFit: graph };
+  };
+
+  it("starts a chart drawn on a plot position over, on the scale of its equation", () => {
+    const lf = migrateV8ToV9(withChart("log_fluorescence")).graphStateAffinityVsFit;
+    const hill = migrateV8ToV9(withChart("hill_gate_index")).graphStateAffinityVsFit;
+    expect(JSON.stringify(lf)).not.toContain("PlotPosition");
+    expect(lf.title).toBe("");
+    expect(lf.axesSettings?.axisY?.scale).toBe("log");
+    expect(hill.axesSettings?.axisY?.scale).toBe("linear");
+  });
+
+  it("keeps any other chart and moves nothing else", () => {
+    const data = initBlockData();
+    expect(migrateV8ToV9(data)).toEqual(data);
+    const { graphStateAffinityVsFit: _g, ...rest } = withChart("log_fluorescence");
+    const { graphStateAffinityVsFit: _m, ...migrated } = migrateV8ToV9(
+      withChart("log_fluorescence"),
+    );
+    expect(migrated).toEqual(rest);
   });
 });

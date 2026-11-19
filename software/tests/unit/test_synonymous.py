@@ -154,9 +154,9 @@ class TestCombine:
 
     def test_under_the_mean_bin_fit_a_bound_keeps_the_class_its_members_share(self):
         # The mean bin fit declares no wall class; its synonymous variants are rated by R².
-        same = combine([Member("above", HI, None, "Good"), Member("above", HI, None, "Good")], wall_classes=False)
+        same = combine([Member("above", HI, None, "Good"), Member("above", HI, None, "Good")], fits_report_se=False)
         assert same.classification.affinity_class == "Good"
-        mixed = combine([Member("above", HI, None, "Good"), Member("above", HI, None, "Partial")], wall_classes=False)
+        mixed = combine([Member("above", HI, None, "Good"), Member("above", HI, None, "Partial")], fits_report_se=False)
         assert mixed.classification.affinity_class == "Partial"
 
     def test_members_at_opposite_walls_with_no_measured_member_fail(self):
@@ -175,7 +175,7 @@ class TestCombine:
 
     def test_under_the_mean_bin_fit_a_majority_bound_reads_the_class_of_its_own_wall(self):
         members = [Member("above", HI, None, "Good")] * 2 + [Member("below", LO, None, "Partial")]
-        c = combine(members, wall_classes=False)
+        c = combine(members, fits_report_se=False)
         assert (c.log10_kd, c.classification.affinity_class) == (HI, "Good")
 
     def test_a_censored_member_beside_a_measured_one_enters_at_the_wall(self):
@@ -369,6 +369,7 @@ class TestCombineSynonymous:
             "unmappedNtVariants": 1,
             "ambiguousNtVariants": 1,
             "parentMode": False,
+            "ntParentMode": False,
         }
         # WT's two measured synonymous variants agree; M has one measured synonymous variant, so no spread.
         assert frame["kdLog10SynonymSd"].to_list() == [None, 0.0]
@@ -483,7 +484,7 @@ class TestCombineSynonymous:
         frame, per_nt, summary = combine_synonymous(self.PER_CLONOTYPE, inputs, log10_lo=LO, log10_hi=HI)
         assert "variantClass" in frame.columns
         assert "kdLog10ParentDelta" not in frame.columns
-        assert per_nt is None
+        assert per_nt.columns == ["ntKey"]
         assert summary["parentMode"] is False
 
     NT_PARENT_LINKS = pl.DataFrame({"ntKey": ["wt1", "wt2", "m1", "m2"], "parentId": ["P", "P", "P", "P"]})
@@ -598,32 +599,8 @@ class TestNtAaVariants:
         }
     )
 
-    @staticmethod
-    def _variants(frame: pl.DataFrame) -> dict[str, str | None]:
-        return dict(zip(frame["clonotypeKey"], frame["aaVariant"]))
-
-    def test_each_nt_variant_names_its_amino_acid_variant_by_label(self):
-        labels = pl.DataFrame({"aaKey": ["A", "B"], "label": ["V-ALPHA", "V-BETA"]})
-        assert self._variants(nt_aa_variants(self.LINKS, labels)) == {
-            "n1": "V-ALPHA",
-            "n2": "V-ALPHA",
-            "n3": "V-BETA",
-            "n5": "V-BETA",
-            "n6": None,
-        }
-
-    @pytest.mark.parametrize("order", [["V-ZETA", "V-ALPHA"], ["V-ALPHA", "V-ZETA"]])
-    def test_an_amino_acid_variant_with_two_labels_takes_the_smallest(self, order):
-        labels = pl.DataFrame({"aaKey": ["A", "A", "B"], "label": [*order, "V-BETA"]})
-        for _ in range(5):
-            assert self._variants(nt_aa_variants(self.LINKS, labels))["n1"] == "V-ALPHA"
-
-    def test_a_variant_with_no_label_keeps_its_key(self):
-        frame = nt_aa_variants(self.LINKS, pl.DataFrame({"aaKey": ["A"], "label": ["V-ALPHA"]}))
-        assert self._variants(frame)["n3"] == "B"
-
     def test_every_single_mapped_nt_variant_carries_its_amino_acid_key(self):
-        frame = nt_aa_variants(self.LINKS, None)
+        frame = nt_aa_variants(self.LINKS)
         assert dict(zip(frame["clonotypeKey"], frame["aaKey"])) == {
             "n1": "A",
             "n2": "A",
@@ -633,17 +610,4 @@ class TestNtAaVariants:
         }
 
     def test_an_nt_variant_with_several_amino_acid_variants_is_left_out(self):
-        assert "n4" not in nt_aa_variants(self.LINKS, None)["clonotypeKey"].to_list()
-
-    def test_an_amino_acid_variant_with_one_nt_variant_gets_no_label(self):
-        assert self._variants(nt_aa_variants(self.LINKS, None))["n6"] is None
-
-    def test_only_nt_variants_with_a_curve_count_towards_the_two(self):
-        # B keeps one curve, so neither of its nt variants is listed; A keeps both.
-        variants = self._variants(nt_aa_variants(self.LINKS, None, curved=["n1", "n2", "n3"]))
-        assert variants["n1"] == "A" and variants["n2"] == "A"
-        assert variants["n3"] is None and variants["n5"] is None
-
-    def test_an_nt_variant_without_a_curve_gets_no_label(self):
-        variants = self._variants(nt_aa_variants(self.LINKS, None, curved=["n1", "n2", "n3", "n5", "n6"]))
-        assert variants["n6"] is None
+        assert "n4" not in nt_aa_variants(self.LINKS)["clonotypeKey"].to_list()
