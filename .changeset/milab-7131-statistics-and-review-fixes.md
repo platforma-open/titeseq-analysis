@@ -74,6 +74,9 @@ Affinity vs Fit Quality and downloads:
   A fit with no Kd,app is not drawn; the table lists it with its failure reason.
 - A saved Affinity vs Fit Quality chart that drew a plot position starts over from the default.
 - The tables lose their Export button. The raw data download is the one export.
+- The FACS bin order section shows whenever a bin column is picked. A block with no stored
+  order shows the column's default order and stores one when the bins are dragged; there is no
+  "Set the bin order" button.
 - Every file in the raw data download names each variant by its Variant Id and sequence, in place
   of its hash key. `nt_to_aa_variant.tsv` names both grains, each prefixed NT or AA. The sequence
   is the upstream amplicon sequence column in the variant's own alphabet; it is empty when the
