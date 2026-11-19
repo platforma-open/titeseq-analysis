@@ -254,7 +254,7 @@ const shownBinOrder = computed({
       :model-value="app.model.data.binColumnRef"
       :options="binOptions"
       @update:model-value="setBinColumn"
-      :label="isLogFluorescence ? 'FACS bin' : 'FACS bin (optional)'"
+      label="FACS bin"
       :required="isLogFluorescence"
       :error="binMissing ? 'The Log fluorescence fit needs a FACS bin column.' : undefined"
       clearable
@@ -317,7 +317,7 @@ const shownBinOrder = computed({
       v-if="readsBins"
       v-model="app.model.data.sortFractionColumnRef"
       :options="app.model.outputs.sortFractionOptions"
-      label="FACS sort fraction (optional)"
+      label="FACS sort fraction"
       clearable
     >
       <template #tooltip>
@@ -330,7 +330,7 @@ const shownBinOrder = computed({
       v-if="isLogFluorescence"
       v-model="app.model.data.binFluorescenceColumnRef"
       :options="app.model.outputs.binFluorescenceOptions"
-      label="Gate fluorescence (optional)"
+      label="Gate fluorescence"
       clearable
     >
       <template #tooltip>
@@ -366,7 +366,7 @@ const shownBinOrder = computed({
     <PlDropdownRef
       v-model="app.model.data.replicateColumnRef"
       :options="app.model.outputs.replicateOptions"
-      label="Sample replicate (optional)"
+      label="Sample replicate"
       clearable
     >
       <template #tooltip>
@@ -413,7 +413,7 @@ const shownBinOrder = computed({
       <PlNumberField
         v-if="isLogFluorescence"
         v-model="app.model.data.r2GateMin"
-        label="Minimum R² (optional)"
+        label="Minimum R²"
         :min-value="0"
         :max-value="1"
         :step="0.05"
@@ -431,7 +431,7 @@ const shownBinOrder = computed({
       <PlNumberField
         v-if="isLogFluorescence"
         v-model="app.model.data.kdSeGateMax"
-        label="Maximum Kd,app SE (log10, optional)"
+        label="Maximum Kd,app SE (log10)"
         :min-value="0"
         :step="0.1"
         :validate="aboveZero"

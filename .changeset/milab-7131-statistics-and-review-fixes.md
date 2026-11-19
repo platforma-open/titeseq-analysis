@@ -77,6 +77,8 @@ Affinity vs Fit Quality and downloads:
 - The FACS bin order section shows whenever a bin column is picked. A block with no stored
   order shows the column's default order and stores one when the bins are dragged; there is no
   "Set the bin order" button.
+- Settings labels drop "(optional)": a required field carries the red asterisk, so an
+  unmarked one is optional.
 - Every file in the raw data download names each variant by its Variant Id and sequence, in place
   of its hash key. `nt_to_aa_variant.tsv` names both grains, each prefixed NT or AA. The sequence
   is the upstream amplicon sequence column in the variant's own alphabet; it is empty when the
