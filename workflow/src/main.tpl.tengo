@@ -631,6 +631,22 @@ wf.body(func(args) {
 		}
 	}
 	summaryColumns = append(summaryColumns, { column: "kdNegLog10", spec: kdNegLog10Spec })
+	// log10 Kd,app without the sign flip, for consumers that combine it with the log10 error and
+	// delta columns. Not a score: Kd,app and -log10 Kd,app already rank by affinity.
+	kdLog10Spec := {
+		name: "pl7.app/vdj/kdLog10",
+		valueType: "Double",
+		domain: { "pl7.app/block": blockId },
+		annotations: {
+			"pl7.app/label": "log10 Kd,app",
+			"pl7.app/description": "Kd,app as log10, the unit the fit solves in and the unit of the SE, SD and parent delta columns. A smaller number is tighter binding. Empty where there is no Kd,app.",
+			"pl7.app/isScore": "false",
+			"pl7.app/format": ".2f",
+			"pl7.app/table/visibility": "optional",
+			"pl7.app/table/orderPriority": "200.5"
+		}
+	}
+	summaryColumns = append(summaryColumns, { column: "kdLog10", spec: kdLog10Spec })
 	if hasReplicate {
 		summaryColumns = append(summaryColumns, replicateColumnsLib.seColumn(blockId, ""))
 		summaryColumns = append(summaryColumns, replicateColumnsLib.sdColumn(blockId, ""))
@@ -680,6 +696,7 @@ wf.body(func(args) {
 			parentMode: syn.parentMode,
 			variantClass: syn.aaClass,
 			kdNegLog10Spec: kdNegLog10Spec,
+			kdLog10Spec: kdLog10Spec,
 			affinityClassValues: affinityClassValues,
 			affinityClassCutoff: affinityClassCutoff,
 			boundRule: boundRule,
@@ -1004,6 +1021,7 @@ wf.body(func(args) {
 		affinityClass: true,
 		kd: true,
 		kdNegLog10: true,
+		kdLog10: true,
 		kdLog10Se: true,
 		kdLog10Sd: true,
 		kdLog10SynonymSd: true,

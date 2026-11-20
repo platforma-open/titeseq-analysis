@@ -45,20 +45,17 @@ def flag_kd_out_of_range(frame: pl.DataFrame, min_concentration: float, max_conc
     )
 
 
-def add_neg_log10_kd(frame: pl.DataFrame) -> pl.DataFrame:
-    """Append -log10 of K_D, the form every paper on this assay publishes: larger is tighter.
+def add_log10_kd(frame: pl.DataFrame) -> pl.DataFrame:
+    """Append log10 of K_D and -log10 of K_D, the form every paper on this assay publishes: larger
+    is tighter.
 
     The magnitude is the unit the fit solves in and the unit kdLog10Se and kdLog10Sd carry, so the
-    value and its error share a scale. Derived, so it is appended after the frame is built rather
-    than carried in PER_CLONOTYPE_SCHEMA. Null where there is no K_D, and for a pinned K_D it is
+    value and its error share a scale. Derived, so they are appended after the frame is built rather
+    than carried in PER_CLONOTYPE_SCHEMA. Null where there is no K_D, and for a pinned K_D they are
     the pinned value's.
     """
-    return frame.with_columns(
-        pl.when(pl.col("kd").is_null() | (pl.col("kd") <= 0.0))
-        .then(None)
-        .otherwise(-pl.col("kd").log10())
-        .alias("kdNegLog10")
-    )
+    log10_kd = pl.when(pl.col("kd").is_null() | (pl.col("kd") <= 0.0)).then(None).otherwise(pl.col("kd").log10())
+    return frame.with_columns(log10_kd.alias("kdLog10"), (-log10_kd).alias("kdNegLog10"))
 
 
 def build_mean_bin_frame(signal_frame: pl.DataFrame, replicate_keys: list[str] | None = None) -> pl.DataFrame:

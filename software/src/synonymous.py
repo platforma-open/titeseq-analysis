@@ -93,6 +93,7 @@ PER_VARIANT_SCHEMA: dict[str, pl.DataType] = {
     COL_AA: pl.Utf8,
     "kd": pl.Float64,
     "kdNegLog10": pl.Float64,
+    "kdLog10": pl.Float64,
     "kdLog10Se": pl.Float64,
     "kdLog10Sd": pl.Float64,
     "affinityClass": pl.Utf8,
@@ -460,6 +461,7 @@ def combine_amino_acid(
         columns[COL_AA].append(aa)
         columns["kd"].append(None if c.log10_kd is None else 10.0**c.log10_kd)
         columns["kdNegLog10"].append(None if c.log10_kd is None else -c.log10_kd)
+        columns["kdLog10"].append(c.log10_kd)
         columns["kdLog10Se"].append(c.log10_kd_se)
         columns["kdLog10Sd"].append(c.log10_kd_sd)
         columns["affinityClass"].append(c.classification.affinity_class)
