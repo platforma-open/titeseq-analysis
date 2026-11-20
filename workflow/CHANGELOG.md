@@ -1,5 +1,16 @@
 # @platforma-open/platforma-open.titeseq-analysis.workflow
 
+## 3.2.0
+
+### Minor Changes
+
+- 96c7d79: - New "log10 Kd,app" column, exported to downstream blocks
+
+### Patch Changes
+
+- Updated dependencies [96c7d79]
+  - @platforma-open/platforma-open.titeseq-analysis.software@3.2.0
+
 ## 3.1.0
 
 ### Minor Changes

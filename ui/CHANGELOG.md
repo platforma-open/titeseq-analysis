@@ -1,5 +1,11 @@
 # @platforma-open/platforma-open.titeseq-analysis.ui
 
+## 3.2.0
+
+### Patch Changes
+
+- @platforma-open/platforma-open.titeseq-analysis.model@3.2.0
+
 ## 3.1.0
 
 ### Patch Changes
