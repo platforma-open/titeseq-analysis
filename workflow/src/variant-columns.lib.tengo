@@ -173,8 +173,9 @@ deltaColumns := func(blockId, idPrefix, description) {
  * @param blockId: the block id stamped into every domain, as on the nucleotide grain
  * @param kdAnnotations: the nucleotide grain's Kd,app annotations, unit included
  * @param opts: {parentMode, variantClass, affinityClassValues, affinityClassCutoff, boundRule,
- *   kdNegLog10Spec, replicateColumns}; parentMode emits the parent delta and its error,
- *   variantClass emits the class column, kdNegLog10Spec the -log10 column, and replicateColumns
+ *   kdNegLog10Spec, kdLog10Spec, replicateColumns}; parentMode emits the parent delta and its
+ *   error, variantClass emits the class column, kdNegLog10Spec the -log10 column, kdLog10Spec the
+ *   log10 column, and replicateColumns
  *   replaces the synonymous SE and SD with the replicates' error columns
  * @return xsv column descriptors. Table order: the Kd,app columns (orderPriority 189 to 202), then
  *   the DMS columns (169 to 184).
@@ -319,6 +320,9 @@ variantColumns := func(blockId, kdAnnotations, opts) {
 	cols = cols + errorColumns
 	if !is_undefined(opts.kdNegLog10Spec) {
 		cols = append(cols, column("kdNegLog10", opts.kdNegLog10Spec))
+	}
+	if !is_undefined(opts.kdLog10Spec) {
+		cols = append(cols, column("kdLog10", opts.kdLog10Spec))
 	}
 	cols = append(cols, fitReadsColumn(blockId, "aa_",
 		"The reads the fits of this amino-acid variant's synonymous nucleotide variants used, every replicate included: sorted samples only, at the non-zero concentrations that pass the read floor. A nucleotide variant that was not fitted adds none."))

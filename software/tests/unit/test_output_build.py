@@ -9,7 +9,7 @@ import pytest
 
 from output_build import (
     PER_CLONOTYPE_SCHEMA,
-    add_neg_log10_kd,
+    add_log10_kd,
     build_concentration_value_frame,
     build_mean_bin_frame,
     flag_kd_out_of_range,
@@ -146,17 +146,32 @@ class TestConcentrationValueFrame:
 class TestNegLog10Kd:
     def test_it_is_minus_log10_of_the_reported_kd(self):
         frame = pl.DataFrame({"kd": [1e-9, 2.5e-8]})
-        got = add_neg_log10_kd(frame)["kdNegLog10"].to_list()
+        got = add_log10_kd(frame)["kdNegLog10"].to_list()
         assert got == pytest.approx([9.0, -math.log10(2.5e-8)])
 
     def test_a_tighter_binder_reads_larger(self):
-        got = add_neg_log10_kd(pl.DataFrame({"kd": [1e-6, 1e-10]}))["kdNegLog10"].to_list()
+        got = add_log10_kd(pl.DataFrame({"kd": [1e-6, 1e-10]}))["kdNegLog10"].to_list()
         assert got[1] > got[0]
 
     def test_a_clonotype_with_no_kd_has_none(self):
         frame = pl.DataFrame({"kd": [None]}, schema={"kd": pl.Float64})
-        assert add_neg_log10_kd(frame)["kdNegLog10"].to_list() == [None]
+        assert add_log10_kd(frame)["kdNegLog10"].to_list() == [None]
 
     def test_a_non_positive_kd_has_none_rather_than_minus_infinity(self):
         frame = pl.DataFrame({"kd": [0.0]})
-        assert add_neg_log10_kd(frame)["kdNegLog10"].to_list() == [None]
+        assert add_log10_kd(frame)["kdNegLog10"].to_list() == [None]
+
+
+class TestLog10Kd:
+    def test_it_is_log10_of_the_reported_kd(self):
+        frame = pl.DataFrame({"kd": [1e-9, 2.5e-8]})
+        got = add_log10_kd(frame)["kdLog10"].to_list()
+        assert got == pytest.approx([-9.0, math.log10(2.5e-8)])
+
+    def test_it_is_the_negation_of_minus_log10(self):
+        out = add_log10_kd(pl.DataFrame({"kd": [3e-7, 1e-11]}))
+        assert out["kdLog10"].to_list() == pytest.approx([-v for v in out["kdNegLog10"].to_list()])
+
+    def test_no_kd_and_non_positive_kd_have_none(self):
+        frame = pl.DataFrame({"kd": [None, 0.0]}, schema={"kd": pl.Float64})
+        assert add_log10_kd(frame)["kdLog10"].to_list() == [None, None]

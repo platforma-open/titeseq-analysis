@@ -265,6 +265,7 @@ def build_combined_variant_frame(
         cols[COL_AA].append(key)
         cols["kd"].append(None if m.log10_kd is None else 10.0**m.log10_kd)
         cols["kdNegLog10"].append(None if m.log10_kd is None else -m.log10_kd)
+        cols["kdLog10"].append(m.log10_kd)
         cols["kdLog10Se"].append(m.log10_kd_se)
         cols["kdLog10Sd"].append(m.log10_kd_sd)
         cols["affinityClass"].append(m.classification.affinity_class)

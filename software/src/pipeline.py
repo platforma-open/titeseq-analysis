@@ -99,7 +99,7 @@ from normalization import CLONOTYPE_READS_AT_CONC, SIGNAL, SIGNAL_READS_AT_CONC,
 from output_build import (
     FITTED_MEAN_BIN_SCHEMA,
     PER_CLONOTYPE_SCHEMA,
-    add_neg_log10_kd,
+    add_log10_kd,
     build_concentration_value_frame,
     build_mean_bin_frame,
     flag_kd_out_of_range,
@@ -752,7 +752,7 @@ def _build_outputs(
     min_c, max_c = conc_bounds
     if flag_out_of_range and min_c is not None and max_c is not None:
         per_clonotype = flag_kd_out_of_range(per_clonotype, min_c, max_c)
-    per_clonotype = add_neg_log10_kd(per_clonotype)
+    per_clonotype = add_log10_kd(per_clonotype)
 
     # Don't add a .sort() here. _FitBatch builds both frames in deterministic order (sorted
     # clonotypes; fit points in numeric concentration order). Sorting again rewrites the bytes and
