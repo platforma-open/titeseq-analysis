@@ -19,7 +19,16 @@ from io_layer import apply_bin_ranks, read_reads_table
 from log import log
 from pipeline import run
 from replicate_combine import ReplicateInputs
-from run_quality import failure_reason_counts, fit_grain, measured, outcome_counts, raw_counts, read_known, summary
+from run_quality import (
+    combined_label,
+    failure_reason_counts,
+    fit_grain,
+    measured,
+    outcome_counts,
+    raw_counts,
+    read_known,
+    summary,
+)
 from synonymous import (
     COL_AA,
     COL_MUTATIONS,
@@ -238,11 +247,12 @@ def main(argv: list[str] | None = None) -> int:
         grain = fit_grain(outputs)
         known = read_known(args.known_distance)
         counted = measured(grain, known)
-        outcomes, reasons = outcome_counts(counted), failure_reason_counts(counted)
+        combined = combined_label(grain)
+        outcomes, reasons = outcome_counts(counted, combined), failure_reason_counts(counted, combined)
         write(outcomes, args.out_run_quality + "outcomes.tsv", download=False)
         write(reasons, args.out_run_quality + "failure_reasons.tsv", download=False)
         with open(args.out_run_quality + "summary.json", "w") as f:
-            json.dump(summary(outcomes, reasons, raw_counts(grain), known), f)
+            json.dump(summary(outcomes, reasons, raw_counts(grain, combined), known, combined), f)
     log("CLI done")
     return 0
 

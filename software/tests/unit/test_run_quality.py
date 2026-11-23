@@ -1,6 +1,15 @@
 import polars as pl
 
-from run_quality import failure_reason_counts, fit_grain, measured, outcome_counts, raw_counts, read_known, summary
+from run_quality import (
+    combined_label,
+    failure_reason_counts,
+    fit_grain,
+    measured,
+    outcome_counts,
+    raw_counts,
+    read_known,
+    summary,
+)
 
 
 def _frame(with_replicate: bool) -> pl.DataFrame:
@@ -34,6 +43,17 @@ def test_outcomes_per_replicate_follow_the_counts_over_all_replicates():
         ("2", "Good", 1),
         ("2", "Partial", 1),
     ]
+
+
+def test_a_replicate_named_like_the_combined_counts_keeps_its_own_rows():
+    frame = _frame(True).with_columns(pl.col("replicate").replace("1", "All replicates"))
+    combined = combined_label(frame)
+    assert combined == "All replicates (combined)"
+    out = outcome_counts(frame, combined)
+    assert out.filter(pl.col("replicate") == combined)["count"].sum() == 6
+    assert out.filter(pl.col("replicate") == "All replicates")["count"].sum() == 3
+    assert combined_label(_frame(True)) == "All replicates"
+    assert combined_label(_frame(False)) == "All replicates"
 
 
 def test_failure_reasons_are_labelled_and_cover_failed_fits_only():

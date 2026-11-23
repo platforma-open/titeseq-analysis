@@ -19,7 +19,7 @@ COL_REASON = "failureReason"
 COL_COUNT = "count"
 # The failure reasons that mean a fit was never attempted.
 NOT_ATTEMPTED = ("insufficient_reads", "insufficient_points")
-# The replicate value of the counts over all replicates together.
+# The replicate value of the counts over all replicates together, unless a replicate has that name.
 ALL_REPLICATES = "All replicates"
 SCOPE_KNOWN = "known"
 SCOPE_ATTEMPTED = "attempted"
@@ -33,20 +33,31 @@ def fit_grain(outputs: dict) -> pl.DataFrame:
     return outputs["per_clonotype"]
 
 
-def _count_by(frame: pl.DataFrame, columns: list[str]) -> pl.DataFrame:
-    """Rows of `frame` per value of `columns`, per replicate and over all replicates together."""
+def combined_label(frame: pl.DataFrame) -> str:
+    """The replicate value for the counts over all replicates: one no replicate of `frame` has."""
+    label = ALL_REPLICATES
+    if COL_REPLICATE not in frame.columns:
+        return label
+    taken = set(frame[COL_REPLICATE].cast(pl.Utf8).to_list())
+    while label in taken:
+        label += " (combined)"
+    return label
+
+
+def _count_by(frame: pl.DataFrame, columns: list[str], combined: str) -> pl.DataFrame:
+    """Rows of `frame` per value of `columns`, per replicate and under `combined` for all replicates."""
     count = pl.len().cast(pl.Int64).alias(COL_COUNT)
     if COL_REPLICATE not in frame.columns:
         return frame.group_by(columns).agg(count).sort(columns, nulls_last=True)
     keys = [COL_REPLICATE, *columns]
     each = frame.with_columns(pl.col(COL_REPLICATE).cast(pl.Utf8)).group_by(keys).agg(count)
-    together = frame.group_by(columns).agg(count).with_columns(pl.lit(ALL_REPLICATES).alias(COL_REPLICATE))
+    together = frame.group_by(columns).agg(count).with_columns(pl.lit(combined).alias(COL_REPLICATE))
     together = together.sort(columns, nulls_last=True).select([*keys, COL_COUNT])
     return pl.concat([together, each.sort(keys, nulls_last=True)])
 
 
-def _counted(frame: pl.DataFrame, column: str) -> pl.DataFrame:
-    return _count_by(frame, [column])
+def _counted(frame: pl.DataFrame, column: str, combined: str) -> pl.DataFrame:
+    return _count_by(frame, [column], combined)
 
 
 def read_known(path: str | None) -> set[str] | None:
@@ -74,14 +85,14 @@ def _labelled(frame: pl.DataFrame) -> pl.DataFrame:
     )
 
 
-def raw_counts(frame: pl.DataFrame) -> pl.DataFrame:
+def raw_counts(frame: pl.DataFrame, combined: str = ALL_REPLICATES) -> pl.DataFrame:
     """[replicate?, affinityClass, failureReason, count] over every fit; the reason is null unless it failed."""
-    return _count_by(_labelled(frame), ["affinityClass", COL_REASON])
+    return _count_by(_labelled(frame), ["affinityClass", COL_REASON], combined)
 
 
-def outcome_counts(frame: pl.DataFrame) -> pl.DataFrame:
+def outcome_counts(frame: pl.DataFrame, combined: str = ALL_REPLICATES) -> pl.DataFrame:
     """[replicate?, affinityClass, count]."""
-    return _counted(frame, "affinityClass")
+    return _counted(frame, "affinityClass", combined)
 
 
 def reason_label(code: str) -> str:
@@ -89,7 +100,7 @@ def reason_label(code: str) -> str:
     return code.replace("_", " ").capitalize()
 
 
-def failure_reason_counts(frame: pl.DataFrame) -> pl.DataFrame:
+def failure_reason_counts(frame: pl.DataFrame, combined: str = ALL_REPLICATES) -> pl.DataFrame:
     """[replicate?, failureReason, count] over the failed fits."""
     failed = frame.filter(pl.col("affinityClass") == "Failed").with_columns(
         pl.col("fitFailureReason")
@@ -97,14 +108,20 @@ def failure_reason_counts(frame: pl.DataFrame) -> pl.DataFrame:
         .map_elements(reason_label, return_dtype=pl.Utf8)
         .alias(COL_REASON)
     )
-    return _counted(failed, COL_REASON)
+    return _counted(failed, COL_REASON, combined)
 
 
-def summary(outcomes: pl.DataFrame, reasons: pl.DataFrame, raw: pl.DataFrame, known: set[str] | None) -> dict:
+def summary(
+    outcomes: pl.DataFrame,
+    reasons: pl.DataFrame,
+    raw: pl.DataFrame,
+    known: set[str] | None,
+    combined: str = ALL_REPLICATES,
+) -> dict:
     """The tables as JSON-ready rows, and what the graphs count."""
     return {
         "scope": SCOPE_ATTEMPTED if known is None else SCOPE_KNOWN,
-        "allReplicates": ALL_REPLICATES,
+        "allReplicates": combined,
         "leftOutReasons": [reason_label(r) for r in NOT_ATTEMPTED] if known is None else [],
         "outcomes": outcomes.to_dicts(),
         "failureReasons": reasons.to_dicts(),
