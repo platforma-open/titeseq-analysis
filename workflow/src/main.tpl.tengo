@@ -981,7 +981,8 @@ wf.body(func(args) {
 	// The run-quality graphs: how many fits ended in each class, and why the failed ones failed.
 	// Counted per replicate when the run has replicates; without them no column carries the axis.
 	// `colors` maps each category to its index in GraphMaker's "triadic" palette, in display order.
-	// The Run Quality page's own bars use the same colors.
+	// The Run Quality page's own bars use the same colors. The failure reasons are every label a
+	// single fit can report, as the software writes them.
 	importCounts := func(file, axisHeader, axisName, axisLabel, countName, countLabel, colors) {
 		mapping := {}
 		order := []
@@ -1036,7 +1037,11 @@ wf.body(func(args) {
 			{ value: "Insufficient reads", color: 6 },
 			{ value: "Bright without antigen", color: 3 },
 			{ value: "Non monotonic signal", color: 18 },
-			{ value: "Unknown", color: 24 }
+			{ value: "Incomplete titration", color: 9 },
+			{ value: "Convergence failure", color: 12 },
+			{ value: "Low R²", color: 15 },
+			{ value: "High Kd,app SE", color: 21 },
+			{ value: "Hill coefficient out of range", color: 24 }
 		])
 
 	// Trace injection. `makeTrace` bundles the upstream abundance provenance

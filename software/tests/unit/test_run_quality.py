@@ -1,3 +1,5 @@
+import json
+
 import polars as pl
 
 from run_quality import (
@@ -9,6 +11,7 @@ from run_quality import (
     raw_counts,
     read_known,
     summary,
+    write_run_quality,
 )
 
 
@@ -118,3 +121,30 @@ def test_summary_with_a_known_list_leaves_no_reason_out():
     s = summary(outcome_counts(frame), failure_reason_counts(frame), raw_counts(frame), {"a"})
     assert s["scope"] == "known"
     assert s["leftOutReasons"] == []
+
+
+def test_a_reason_whose_label_does_not_follow_from_its_code():
+    frame = pl.DataFrame(
+        {
+            "clonotypeKey": ["a", "b", "c"],
+            "affinityClass": ["Failed", "Failed", "Failed"],
+            "fitFailureReason": ["low_r2", "high_kd_se", "convergence_failure"],
+        }
+    )
+    assert failure_reason_counts(frame).rows() == [
+        ("Convergence failure", 1),
+        ("High Kd,app SE", 1),
+        ("Low R²", 1),
+    ]
+
+
+def test_the_files_of_a_run(tmp_path):
+    known = tmp_path / "known.tsv"
+    known.write_text("key\tdistance\na\t0\nc\t0\n")
+    prefix = str(tmp_path / "run_quality_")
+    write_run_quality({"per_clonotype": _frame(False)}, str(known), prefix)
+    assert pl.read_csv(prefix + "outcomes.tsv", separator="\t").rows() == [("Failed", 1), ("Good", 1)]
+    assert pl.read_csv(prefix + "failure_reasons.tsv", separator="\t").rows() == [("Insufficient points", 1)]
+    s = json.loads((tmp_path / "run_quality_summary.json").read_text())
+    assert s["scope"] == "known"
+    assert sum(r["count"] for r in s["raw"]) == 6

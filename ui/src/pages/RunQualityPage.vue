@@ -26,12 +26,17 @@ const CLASSES = [
   { name: "Below range", color: "#C1ADFF", description: "Tighter than the titration can measure." },
   { name: "Failed", color: "#F05670", description: "No Kd,app." },
 ];
+// Every reason a single fit can report, as the workflow declares them.
 const REASONS = [
   { name: "Insufficient points", color: "#F05670" },
   { name: "Insufficient reads", color: "#FFCB8F" },
   { name: "Bright without antigen", color: "#C1ADFF" },
   { name: "Non monotonic signal", color: "#99CCFF" },
-  { name: "Unknown", color: "#D3D7E0" },
+  { name: "Incomplete titration", color: "#90E0E0" },
+  { name: "Convergence failure", color: "#FAAAFA" },
+  { name: "Low R²", color: "#CBEB67" },
+  { name: "High Kd,app SE", color: "#FFADBA" },
+  { name: "Hill coefficient out of range", color: "#D3D7E0" },
 ];
 const OTHER_REASON_COLOR = "#929BAD";
 
@@ -107,7 +112,28 @@ const reasonCharts = computed(() =>
   ),
 );
 
-const hasFailures = computed(() => (app.model.outputs.runQuality?.failureReasons ?? []).length > 0);
+/**
+ * The two tabs of counts: the bars, then the GraphMaker chart of `column`. `none` is what a chart
+ * with nothing to draw says; `blank` leaves the tab with that sentence alone.
+ */
+const countTabs = computed(() => [
+  {
+    tab: "outcomes" as const,
+    charts: outcomeCharts.value,
+    none: "No fit is counted.",
+    blank: false,
+    state: "graphStateFitOutcomes" as const,
+    column: "pl7.app/vdj/fitOutcomeCount",
+  },
+  {
+    tab: "failed" as const,
+    charts: reasonCharts.value,
+    none: "No fit failed.",
+    blank: (app.model.outputs.runQuality?.failureReasons ?? []).length === 0,
+    state: "graphStateFailureReasons" as const,
+    column: "pl7.app/vdj/fitFailureCount",
+  },
+]);
 
 /** Every fit: a row per class and failure reason, a column per replicate. */
 const rawTable = computed(() => {
@@ -143,40 +169,24 @@ const rawTable = computed(() => {
     <RunQualityGate>
       <div class="run-quality">
         <PlTabs v-model="tab" :options="tabs" />
-        <section v-if="tab === 'outcomes'">
-          <template v-for="c in outcomeCharts" :key="c.key">
-            <div v-if="c.empty" class="run-quality-empty">
-              <div class="run-quality-empty__title">{{ c.settings.title }}</div>
-              <p>The graphs count no fit of this replicate.</p>
-            </div>
-            <PlChartStackedBar v-else :settings="c.settings" />
-          </template>
-          <div class="run-quality-graph">
-            <CountsGraph
-              v-model="app.model.data.graphStateFitOutcomes"
-              column-name="pl7.app/vdj/fitOutcomeCount"
-            />
-          </div>
-        </section>
-        <section v-else-if="tab === 'failed'">
-          <template v-if="hasFailures">
-            <template v-for="c in reasonCharts" :key="c.key">
-              <div v-if="c.empty" class="run-quality-empty">
-                <div class="run-quality-empty__title">{{ c.settings.title }}</div>
-                <p>No fit failed.</p>
+        <template v-for="t in countTabs" :key="t.tab">
+          <section v-if="tab === t.tab">
+            <p v-if="t.blank">{{ t.none }}</p>
+            <template v-else>
+              <template v-for="c in t.charts" :key="c.key">
+                <div v-if="c.empty" class="run-quality-empty">
+                  <div class="run-quality-empty__title">{{ c.settings.title }}</div>
+                  <p>{{ t.none }}</p>
+                </div>
+                <PlChartStackedBar v-else :settings="c.settings" />
+              </template>
+              <div class="run-quality-graph">
+                <CountsGraph v-model="app.model.data[t.state]" :column-name="t.column" />
               </div>
-              <PlChartStackedBar v-else :settings="c.settings" />
             </template>
-            <div class="run-quality-graph">
-              <CountsGraph
-                v-model="app.model.data.graphStateFailureReasons"
-                column-name="pl7.app/vdj/fitFailureCount"
-              />
-            </div>
-          </template>
-          <p v-else>No fit failed.</p>
-        </section>
-        <section v-else>
+          </section>
+        </template>
+        <section v-if="tab === 'raw'">
           <p v-if="rawTable.note">{{ rawTable.note }}</p>
           <table class="raw-counts">
             <thead>

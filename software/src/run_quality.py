@@ -11,14 +11,24 @@ rest are mostly sequencing errors and outnumber every class. The raw counts keep
 
 from __future__ import annotations
 
+import json
+
 import polars as pl
 
 from constants import COL_CLONOTYPE, COL_REPLICATE
 
+COL_CODE = "fitFailureReason"
 COL_REASON = "failureReason"
 COL_COUNT = "count"
-# The failure reasons that mean a fit was never attempted.
+# The failure reasons of a variant without the reads or the concentration points for a fit.
 NOT_ATTEMPTED = ("insufficient_reads", "insufficient_points")
+# The labels that do not follow from the code. The workflow and the Run Quality page list every
+# label a fit can report: keep the three in step.
+REASON_LABELS = {
+    "low_r2": "Low R²",
+    "high_kd_se": "High Kd,app SE",
+    "n_out_of_range": "Hill coefficient out of range",
+}
 # The replicate value of the counts over all replicates together, unless a replicate has that name.
 ALL_REPLICATES = "All replicates"
 SCOPE_KNOWN = "known"
@@ -56,10 +66,6 @@ def _count_by(frame: pl.DataFrame, columns: list[str], combined: str) -> pl.Data
     return pl.concat([together, each.sort(keys, nulls_last=True)])
 
 
-def _counted(frame: pl.DataFrame, column: str, combined: str) -> pl.DataFrame:
-    return _count_by(frame, [column], combined)
-
-
 def read_known(path: str | None) -> set[str] | None:
     """The variants that match a known one exactly, from a workflow-built TSV [key, distance].
 
@@ -76,39 +82,33 @@ def measured(frame: pl.DataFrame, known: set[str] | None) -> pl.DataFrame:
     """The fits the graphs count."""
     if known is not None:
         return frame.filter(pl.col(COL_CLONOTYPE).cast(pl.Utf8).is_in(list(known)))
-    return frame.filter(~pl.col("fitFailureReason").fill_null("").is_in(NOT_ATTEMPTED))
-
-
-def _labelled(frame: pl.DataFrame) -> pl.DataFrame:
-    return frame.with_columns(
-        pl.col("fitFailureReason").map_elements(reason_label, return_dtype=pl.Utf8).alias(COL_REASON)
-    )
-
-
-def raw_counts(frame: pl.DataFrame, combined: str = ALL_REPLICATES) -> pl.DataFrame:
-    """[replicate?, affinityClass, failureReason, count] over every fit; the reason is null unless it failed."""
-    return _count_by(_labelled(frame), ["affinityClass", COL_REASON], combined)
-
-
-def outcome_counts(frame: pl.DataFrame, combined: str = ALL_REPLICATES) -> pl.DataFrame:
-    """[replicate?, affinityClass, count]."""
-    return _counted(frame, "affinityClass", combined)
+    return frame.filter(~pl.col(COL_CODE).fill_null("").is_in(NOT_ATTEMPTED))
 
 
 def reason_label(code: str) -> str:
     """A failure reason as a legend reads it: "insufficient_points" -> "Insufficient points"."""
-    return code.replace("_", " ").capitalize()
+    return REASON_LABELS.get(code) or code.replace("_", " ").capitalize()
+
+
+def _count_by_reason(frame: pl.DataFrame, columns: list[str], combined: str) -> pl.DataFrame:
+    """`_count_by` over `columns` and the failure reason, the counted reasons then labelled."""
+    counts = _count_by(frame, [*columns, COL_CODE], combined).rename({COL_CODE: COL_REASON})
+    return counts.with_columns(pl.col(COL_REASON).cast(pl.Utf8).map_elements(reason_label, return_dtype=pl.Utf8))
+
+
+def raw_counts(frame: pl.DataFrame, combined: str = ALL_REPLICATES) -> pl.DataFrame:
+    """[replicate?, affinityClass, failureReason, count] over every fit; the reason is null unless it failed."""
+    return _count_by_reason(frame, ["affinityClass"], combined)
+
+
+def outcome_counts(frame: pl.DataFrame, combined: str = ALL_REPLICATES) -> pl.DataFrame:
+    """[replicate?, affinityClass, count]."""
+    return _count_by(frame, ["affinityClass"], combined)
 
 
 def failure_reason_counts(frame: pl.DataFrame, combined: str = ALL_REPLICATES) -> pl.DataFrame:
-    """[replicate?, failureReason, count] over the failed fits."""
-    failed = frame.filter(pl.col("affinityClass") == "Failed").with_columns(
-        pl.col("fitFailureReason")
-        .fill_null("unknown")
-        .map_elements(reason_label, return_dtype=pl.Utf8)
-        .alias(COL_REASON)
-    )
-    return _counted(failed, COL_REASON, combined)
+    """[replicate?, failureReason, count] over the failed fits. Every failed fit carries a reason."""
+    return _count_by_reason(frame.filter(pl.col("affinityClass") == "Failed"), [], combined)
 
 
 def summary(
@@ -127,3 +127,16 @@ def summary(
         "failureReasons": reasons.to_dicts(),
         "raw": raw.to_dicts(),
     }
+
+
+def write_run_quality(outputs: dict, known_path: str | None, prefix: str) -> None:
+    """Write <prefix>outcomes.tsv, <prefix>failure_reasons.tsv and <prefix>summary.json."""
+    grain = fit_grain(outputs)
+    known = read_known(known_path)
+    counted = measured(grain, known)
+    combined = combined_label(grain)
+    outcomes, reasons = outcome_counts(counted, combined), failure_reason_counts(counted, combined)
+    outcomes.write_csv(prefix + "outcomes.tsv", separator="\t")
+    reasons.write_csv(prefix + "failure_reasons.tsv", separator="\t")
+    with open(prefix + "summary.json", "w") as f:
+        json.dump(summary(outcomes, reasons, raw_counts(grain, combined), known, combined), f)
