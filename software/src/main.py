@@ -19,6 +19,7 @@ from io_layer import apply_bin_ranks, read_reads_table
 from log import log
 from pipeline import run
 from replicate_combine import ReplicateInputs
+from run_quality import failure_reason_counts, fit_grain, measured, outcome_counts, raw_counts, read_known, summary
 from synonymous import (
     COL_AA,
     COL_MUTATIONS,
@@ -129,6 +130,11 @@ def main(argv: list[str] | None = None) -> int:
         "--out-run-warnings", default=None, help="JSON list of what the run must tell the user; [] when nothing"
     )
     parser.add_argument(
+        "--out-run-quality",
+        default=None,
+        help="prefix of the run-quality files: <prefix>outcomes.tsv, <prefix>failure_reasons.tsv, <prefix>summary.json",
+    )
+    parser.add_argument(
         "--bin-ranks", default=None, help="JSON {bin value: rank}: the user's bin order, lowest fluorescence first"
     )
     parser.add_argument("--out-fit-reads", default=None, help="TSV [clonotypeKey, fitReads]: the reads each fit used")
@@ -145,6 +151,11 @@ def main(argv: list[str] | None = None) -> int:
         "--variant-names", default=None, help="TSV [key, variantId, sequence]: the abundance's variants, named"
     )
     parser.add_argument("--aa-variant-names", default=None, help="TSV [key, variantId, sequence]: the aa variants")
+    parser.add_argument(
+        "--known-distance",
+        default=None,
+        help="TSV [key, distance]: each abundance variant's mutations to its nearest known variant",
+    )
     parser.add_argument(
         "--download-prefix",
         default=None,
@@ -223,6 +234,15 @@ def main(argv: list[str] | None = None) -> int:
             json.dump(outputs.get("run_warnings", []), f)
     if args.out_fit_reads is not None:
         write(outputs["fit_reads"], args.out_fit_reads)
+    if args.out_run_quality is not None:
+        grain = fit_grain(outputs)
+        known = read_known(args.known_distance)
+        counted = measured(grain, known)
+        outcomes, reasons = outcome_counts(counted), failure_reason_counts(counted)
+        write(outcomes, args.out_run_quality + "outcomes.tsv", download=False)
+        write(reasons, args.out_run_quality + "failure_reasons.tsv", download=False)
+        with open(args.out_run_quality + "summary.json", "w") as f:
+            json.dump(summary(outcomes, reasons, raw_counts(grain), known), f)
     log("CLI done")
     return 0
 
