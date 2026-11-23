@@ -36,12 +36,17 @@ const REASONS = [
 const OTHER_REASON_COLOR = "#929BAD";
 
 type Segment = PlChartStackedBarSettings["data"][number];
-type Chart = { key: string; settings: PlChartStackedBarSettings };
+type Chart = { key: string; empty: boolean; settings: PlChartStackedBarSettings };
 
 const replicateName = (replicate: string) =>
   replicate === app.model.outputs.runQuality?.allReplicates ? replicate : `Replicate ${replicate}`;
 
 const total = (segments: Segment[]) => segments.reduce((sum, s) => sum + s.value, 0);
+
+// Every replicate of the run, from the raw counts: a replicate with no counted fit has no other row.
+const replicates = computed(() => [
+  ...new Set((app.model.outputs.runQuality?.raw ?? []).map((r) => r.replicate)),
+]);
 
 /**
  * All replicates together, then one chart per replicate; one chart for a run without replicates.
@@ -52,14 +57,12 @@ function charts<R extends { replicate?: string }>(
   title: (count: number) => string,
   segments: (rows: R[]) => Segment[],
 ): Chart[] {
-  const byReplicate = new Map<string | undefined, R[]>();
-  for (const row of rows)
-    byReplicate.set(row.replicate, [...(byReplicate.get(row.replicate) ?? []), row]);
-  return [...byReplicate.entries()].map(([replicate, group], i) => {
-    const data = segments(group);
+  return replicates.value.map((replicate, i) => {
+    const data = segments(rows.filter((r) => r.replicate === replicate));
     const prefix = replicate === undefined ? "" : `${replicateName(replicate)}: `;
     return {
       key: replicate ?? "",
+      empty: data.length === 0,
       settings: {
         title: prefix + title(total(data)),
         data,
@@ -104,14 +107,13 @@ const reasonCharts = computed(() =>
   ),
 );
 
-const hasFailures = computed(() => reasonCharts.value.length > 0);
+const hasFailures = computed(() => (app.model.outputs.runQuality?.failureReasons ?? []).length > 0);
 
 /** Every fit: a row per class and failure reason, a column per replicate. */
 const rawTable = computed(() => {
   const quality = app.model.outputs.runQuality;
   const raw = quality?.raw ?? [];
   const leftOut = quality?.leftOutReasons ?? [];
-  const replicates = [...new Set(raw.map((r) => r.replicate))];
   const order = (r: { affinityClass: string }) =>
     CLASSES.findIndex((c) => c.name === r.affinityClass);
   const label = (r: { affinityClass: string; failureReason: string | null }) =>
@@ -124,11 +126,11 @@ const rawTable = computed(() => {
   const rows = labels.map((name) => ({
     name,
     excluded: leftOut.some((reason) => name === `Failed: ${reason}`),
-    counts: replicates.map((rep) => count(name, rep)),
+    counts: replicates.value.map((rep) => count(name, rep)),
   }));
-  const totals = replicates.map((_, i) => rows.reduce((sum, row) => sum + row.counts[i], 0));
+  const totals = replicates.value.map((_, i) => rows.reduce((sum, row) => sum + row.counts[i], 0));
   return {
-    headers: replicates.map((rep) => (rep === undefined ? "Fits" : replicateName(rep))),
+    headers: replicates.value.map((rep) => (rep === undefined ? "Fits" : replicateName(rep))),
     note: leftOut.length > 0 ? "The graphs leave out the rows marked *." : undefined,
     rows,
     totals,
@@ -142,7 +144,13 @@ const rawTable = computed(() => {
       <div class="run-quality">
         <PlTabs v-model="tab" :options="tabs" />
         <section v-if="tab === 'outcomes'">
-          <PlChartStackedBar v-for="c in outcomeCharts" :key="c.key" :settings="c.settings" />
+          <template v-for="c in outcomeCharts" :key="c.key">
+            <div v-if="c.empty" class="run-quality-empty">
+              <div class="run-quality-empty__title">{{ c.settings.title }}</div>
+              <p>The graphs count no fit of this replicate.</p>
+            </div>
+            <PlChartStackedBar v-else :settings="c.settings" />
+          </template>
           <div class="run-quality-graph">
             <CountsGraph
               v-model="app.model.data.graphStateFitOutcomes"
@@ -152,7 +160,13 @@ const rawTable = computed(() => {
         </section>
         <section v-else-if="tab === 'failed'">
           <template v-if="hasFailures">
-            <PlChartStackedBar v-for="c in reasonCharts" :key="c.key" :settings="c.settings" />
+            <template v-for="c in reasonCharts" :key="c.key">
+              <div v-if="c.empty" class="run-quality-empty">
+                <div class="run-quality-empty__title">{{ c.settings.title }}</div>
+                <p>No fit failed.</p>
+              </div>
+              <PlChartStackedBar v-else :settings="c.settings" />
+            </template>
             <div class="run-quality-graph">
               <CountsGraph
                 v-model="app.model.data.graphStateFailureReasons"
@@ -204,6 +218,14 @@ const rawTable = computed(() => {
 }
 .run-quality-graph {
   height: 640px;
+}
+/* The title of PlChartStackedBar, for a replicate with nothing to draw. */
+.run-quality-empty__title {
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 24px;
+  letter-spacing: -0.2px;
+  margin-bottom: 8px;
 }
 .run-quality p {
   margin: 0;
