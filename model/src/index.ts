@@ -183,6 +183,9 @@ export type BlockData = FitInputs &
     graphStateTitrationCurves: GraphMakerState;
     graphStateKDHistogram: GraphMakerState;
     graphStateAffinityVsFit: GraphMakerState;
+    /** The run-quality graphs' state. UI-only. Optional so no migration is needed. */
+    graphStateFitOutcomes?: GraphMakerState;
+    graphStateFailureReasons?: GraphMakerState;
     /** Released projects store it; no page reads it. */
     replicateNtTableState?: PlDataTableStateV2;
     settingsOpen: boolean;
@@ -832,6 +835,46 @@ function variantSummaryCols(ctx: Ctx) {
     ?.getPColumns();
 }
 
+/**
+ * One count of the run-quality summary. `replicate` is absent on a run without replicates; with
+ * replicates it is a replicate, or `allReplicates` for the count over all of them.
+ */
+export type RunQualityCount<K extends string> = { replicate?: string; count: number } & Record<
+  K,
+  string
+>;
+
+/** One raw count: a class, and for the failed fits the reason. */
+export type RunQualityRawCount = {
+  replicate?: string;
+  affinityClass: string;
+  failureReason: string | null;
+  count: number;
+};
+
+/**
+ * How many fits ended in each class, and why the failed ones failed. `raw` counts every fit.
+ * `outcomes` and `failureReasons` count what `scope` says:
+ *   known      the variants that match a known variant of the upstream block exactly
+ *   attempted  no known-variant list upstream: the fits with the data to be attempted, which
+ *              leaves out the failed fits whose reason is in `leftOutReasons`
+ */
+export type RunQuality = {
+  scope: "known" | "attempted";
+  /** The `replicate` value of the counts over all replicates together. */
+  allReplicates: string;
+  leftOutReasons: string[];
+  outcomes: RunQualityCount<"affinityClass">[];
+  failureReasons: RunQualityCount<"failureReason">[];
+  raw: RunQualityRawCount[];
+};
+
+function runQualityCols(ctx: Ctx) {
+  return ctx.outputs
+    ?.resolve({ field: "runQualityPf", allowPermanentAbsence: true })
+    ?.getPColumns();
+}
+
 function synonymousSummary(ctx: Ctx): SynonymousSummary | undefined {
   // A summary from a run on another dataset says nothing about this one.
   if (!plRefsEqualOrBothAbsent(ctx.activeArgs?.abundanceRef, ctx.data.abundanceRef))
@@ -922,7 +965,7 @@ export type RunShape = {
 };
 
 /**
- * The block's pages: the main table, then the three graph pages. The nucleotide variants' and the
+ * The block's pages: the main table, the graph pages, then run quality. The nucleotide variants' and the
  * replicates' own values leave the block through the raw data download. Each entry stays an
  * `as const` literal: the routes are typed from the hrefs.
  */
@@ -931,6 +974,7 @@ export const SECTIONS = [
   { type: "link" as const, href: "/titration-curves" as const, label: "Titration Curves" },
   { type: "link" as const, href: "/kd-distribution" as const, label: "Kd Distribution" },
   { type: "link" as const, href: "/affinity-vs-fit" as const, label: "Affinity vs Fit Quality" },
+  { type: "link" as const, href: "/run-quality" as const, label: "Run Quality" },
 ];
 
 /** The software's own tables offered for download, by output field, with their file names. */
@@ -1183,7 +1227,14 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     // self-recovery retries the write — so we label it as such.
     // replicatePf exists only on a run that combined replicates, the next two in synonymous mode
     // only, and runWarnings not on a run made before it existed, so their absence is no error.
-    const optionalKeys = ["replicatePf", "variantSummaryPf", "synonymousSummary", "runWarnings"];
+    const optionalKeys = [
+      "replicatePf",
+      "variantSummaryPf",
+      "synonymousSummary",
+      "runWarnings",
+      "runQualityPf",
+      "runQuality",
+    ];
     for (const key of ["summaryPf", "signalPf", "logHandle", ...optionalKeys]) {
       const errorAcc = (
         optionalKeys.includes(key)
@@ -1303,6 +1354,23 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     if (pCols === undefined) return undefined;
     return pCols.map((c) => ({ columnId: c.id, spec: c.spec }) satisfies PColumnIdAndSpec);
   })
+
+  // The run-quality counts. Absent on a run made before the block wrote them.
+  .outputWithStatus("runQualityPf", (ctx): PFrameHandle | undefined => {
+    const pCols = runQualityCols(ctx);
+    if (pCols === undefined) return undefined;
+    return createPFrameForGraphs(ctx, pCols);
+  })
+
+  .output("runQualityPfCols", (ctx) =>
+    runQualityCols(ctx)?.map((c) => ({ columnId: c.id, spec: c.spec }) satisfies PColumnIdAndSpec),
+  )
+
+  .output("runQuality", (ctx): RunQuality | undefined =>
+    ctx.outputs
+      ?.resolve({ field: "runQuality", allowPermanentAbsence: true })
+      ?.getDataAsJson<RunQuality>(),
+  )
 
   .output("isEmpty", (ctx) => {
     const pCols = ctx.outputs?.resolve("summaryPf")?.getPColumns();

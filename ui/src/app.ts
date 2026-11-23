@@ -4,6 +4,7 @@ import { defineAppV3 } from "@platforma-sdk/ui-vue";
 import { computed, watch } from "vue";
 import AffinityVsFitPage from "./pages/AffinityVsFitPage.vue";
 import KDDistributionPage from "./pages/KDDistributionPage.vue";
+import RunQualityPage from "./pages/RunQualityPage.vue";
 import TablePage from "./pages/TablePage.vue";
 import TitrationCurvesPage from "./pages/TitrationCurvesPage.vue";
 
@@ -19,6 +20,7 @@ export const sdkPlugin = defineAppV3(platforma, (app) => {
       "/titration-curves": () => TitrationCurvesPage,
       "/kd-distribution": () => KDDistributionPage,
       "/affinity-vs-fit": () => AffinityVsFitPage,
+      "/run-quality": () => RunQualityPage,
     },
   };
 });
