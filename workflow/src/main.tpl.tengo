@@ -60,6 +60,17 @@ wf.prepare(func(args) {
 		domain: { "pl7.app/feature": "amplicon-sequence" }
 	}, "variantSequences")
 
+	// Each variant's mutations to its nearest known variant, when the upstream block took a
+	// known-variant list. Nucleotide or amino-acid, whichever alphabet the variant axis is in.
+	bb.addMulti({
+		axes: [{ anchor: "abundance", idx: 1 }],
+		name: "pl7.app/nMutationsToKnown"
+	}, "knownDistanceNt")
+	bb.addMulti({
+		axes: [{ anchor: "abundance", idx: 1 }],
+		name: "pl7.app/aaMutationsToKnown"
+	}, "knownDistanceAa")
+
 	// Synonymous-mode inputs: the nt -> aa linker and the amino-acid parent columns. The aa parent
 	// columns sit on the aa axis, which no anchor reaches: matched by name here, narrowed to the
 	// linker's aa axis in the body. Unanchored, so they await every match in the project: the
@@ -259,6 +270,8 @@ wf.body(func(args) {
 	// carries the audit trail. Keeping that out of paramsPayload avoids adding
 	// a non-tuning field to FitParams.
 
+	RUN_QUALITY := "run_quality_"
+
 	// Exec Python fit-curves.
 	execBuilder := exec.builder().
 		software(fitCurvesSw).
@@ -275,12 +288,16 @@ wf.body(func(args) {
 		arg("--out-concentration-value").arg("concentration_value.tsv").
 		arg("--out-run-warnings").arg("run_warnings.json").
 		arg("--out-fit-reads").arg("fit_reads.tsv").
+		arg("--out-run-quality").arg(RUN_QUALITY).
 		saveFile("per_clonotype.tsv").
 		saveFile("fit_reads.tsv").
 		saveFile("mean_bin.tsv").
 		saveFile("fitted_mean_bin.tsv").
 		saveFile("concentration_value.tsv").
 		saveFileContent("run_warnings.json").
+		saveFile(RUN_QUALITY + "outcomes.tsv").
+		saveFile(RUN_QUALITY + "failure_reasons.tsv").
+		saveFileContent(RUN_QUALITY + "summary.json").
 		saveStdoutStream()
 
 	// The downloads: each variant table written again, its hash keys replaced by the variant's
@@ -308,6 +325,19 @@ wf.body(func(args) {
 		columns.getColumns("variantSequences"))
 	if !is_undefined(variantNames) {
 		execBuilder.addFile("variant_names.tsv", variantNames.file).arg("--variant-names").arg("variant_names.tsv")
+	}
+	// The run-quality counts keep the variants that match a known one exactly.
+	knownDistance := variantNamesLib.only(columns.getColumns("knownDistanceNt"), abundanceSpec.axesSpec[1])
+	if is_undefined(knownDistance) {
+		knownDistance = variantNamesLib.only(columns.getColumns("knownDistanceAa"), abundanceSpec.axesSpec[1])
+	}
+	if !is_undefined(knownDistance) {
+		b := pframes.tsvFileBuilder()
+		b.add(knownDistance, { header: "distance" })
+		b.setAxisHeader(abundanceSpec.axesSpec[1], "key")
+		b.mem("4GiB")
+		b.cpu(1)
+		execBuilder.addFile("known_distance.tsv", b.build()).arg("--known-distance").arg("known_distance.tsv")
 	}
 	aaNames := undefined
 	execBuilder.
@@ -948,6 +978,67 @@ wf.body(func(args) {
 		], replicateColumns)
 	}
 
+	// The run-quality graphs: how many fits ended in each class, and why the failed ones failed.
+	// Counted per replicate when the run has replicates; without them no column carries the axis.
+	// `colors` maps each category to its index in GraphMaker's "triadic" palette, in display order.
+	// The Run Quality page's own bars use the same colors.
+	importCounts := func(file, axisHeader, axisName, axisLabel, countName, countLabel, colors) {
+		mapping := {}
+		order := []
+		for c in colors {
+			mapping[c.value] = c.color
+			order = append(order, c.value)
+		}
+		axes := []
+		if hasReplicate {
+			axes = append(axes, { column: "replicate", spec: replicateAxisSpec })
+		}
+		axes = append(axes, {
+			column: axisHeader,
+			spec: {
+				name: axisName,
+				type: "String",
+				domain: { "pl7.app/block": blockId },
+				annotations: {
+					"pl7.app/label": axisLabel,
+					"pl7.app/discreteValues": string(canonical.encode(order)),
+					"pl7.app/graph/palette": string(canonical.encode({ name: "triadic", mapping: mapping }))
+				}
+			}
+		})
+		return xsv.importFile(file, "tsv", {
+			axes: axes,
+			columns: [{
+				column: "count",
+				id: countName,
+				spec: {
+					name: "pl7.app/vdj/" + countName,
+					valueType: "Int",
+					domain: { "pl7.app/block": blockId },
+					annotations: { "pl7.app/label": countLabel }
+				}
+			}],
+			storageFormat: "Parquet",
+			partitionKeyLength: 0
+		}, { splitDataAndSpec: true, cpu: 1, mem: "4GiB" })
+	}
+	outcomeCountsImported := importCounts(fit.getFile(RUN_QUALITY + "outcomes.tsv"),
+		"affinityClass", "pl7.app/vdj/fitOutcome", "Affinity class", "fitOutcomeCount", "Fits", [
+			{ value: "Good", color: 0 },
+			{ value: "Partial", color: 6 },
+			{ value: "Above range", color: 18 },
+			{ value: "Below range", color: 3 },
+			{ value: "Failed", color: 22 }
+		])
+	failureCountsImported := importCounts(fit.getFile(RUN_QUALITY + "failure_reasons.tsv"),
+		"failureReason", "pl7.app/vdj/fitFailure", "Failure reason", "fitFailureCount", "Failed fits", [
+			{ value: "Insufficient points", color: 22 },
+			{ value: "Insufficient reads", color: 6 },
+			{ value: "Bright without antigen", color: 3 },
+			{ value: "Non monotonic signal", color: 18 },
+			{ value: "Unknown", color: 24 }
+		])
+
 	// Trace injection. `makeTrace` bundles the upstream abundance provenance
 	// with a self-descriptor; `trace.inject` rewrites only the small spec resources
 	// (data resources are untouched thanks to splitDataAndSpec).
@@ -1069,6 +1160,9 @@ wf.body(func(args) {
 		logHandle: fit.getStdoutStream(),
 		// What the run must tell the user, as a JSON list of sentences; [] when nothing.
 		runWarnings: fit.getFileContent("run_warnings.json"),
+		// The same counts twice: a frame for the graphs, JSON rows for the bars.
+		runQualityPf: pframes.exportFrame(buildTracedPf([outcomeCountsImported, failureCountsImported], [])),
+		runQuality: fit.getFileContent(RUN_QUALITY + "summary.json"),
 		// The software's own tables for download, each variant named by its Variant Id and sequence.
 		rawVariantFits: fileLib.exportFile(fit.getFile(DOWNLOAD + "per_clonotype.tsv")),
 		rawFitReads: fileLib.exportFile(fit.getFile(DOWNLOAD + "fit_reads.tsv")),
