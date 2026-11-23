@@ -181,6 +181,7 @@ export type BlockData = FitInputs &
     /** Released projects store it; no page reads it. */
     ntSynonymousOnly?: boolean;
     graphStateTitrationCurves: GraphMakerState;
+    /** Released projects store it; no page reads it. */
     graphStateKDHistogram: GraphMakerState;
     graphStateAffinityVsFit: GraphMakerState;
     /** The run-quality graphs' state. UI-only. Optional so no migration is needed. */
@@ -972,7 +973,6 @@ export type RunShape = {
 export const SECTIONS = [
   { type: "link" as const, href: "/" as const, label: "Main" },
   { type: "link" as const, href: "/titration-curves" as const, label: "Titration Curves" },
-  { type: "link" as const, href: "/kd-distribution" as const, label: "Kd Distribution" },
   { type: "link" as const, href: "/affinity-vs-fit" as const, label: "Affinity vs Fit Quality" },
   { type: "link" as const, href: "/run-quality" as const, label: "Run Quality" },
 ];
