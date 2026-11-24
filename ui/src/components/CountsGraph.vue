@@ -6,7 +6,7 @@ import { computed } from "vue";
 import { useApp } from "../app";
 
 // A bar chart of one run-quality count column: one bar per category, or with replicates one bar
-// per replicate stacked by category.
+// per replicate stacked by category. The column holds no counts over all replicates.
 const props = defineProps<{ columnName: string }>();
 const state = defineModel<GraphMakerState | undefined>({ required: true });
 

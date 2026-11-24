@@ -148,3 +148,15 @@ def test_the_files_of_a_run(tmp_path):
     s = json.loads((tmp_path / "run_quality_summary.json").read_text())
     assert s["scope"] == "known"
     assert sum(r["count"] for r in s["raw"]) == 6
+
+
+def test_the_tables_of_a_run_with_replicates_hold_each_replicate_only(tmp_path):
+    known = tmp_path / "known.tsv"
+    known.write_text("key\tdistance\n" + "".join(f"{k}\t0\n" for k in "abcdef"))
+    prefix = str(tmp_path / "run_quality_")
+    write_run_quality({"per_replicate": _frame(True)}, str(known), prefix)
+    for name in ("outcomes.tsv", "failure_reasons.tsv"):
+        table = pl.read_csv(prefix + name, separator="\t", infer_schema=False)
+        assert set(table["replicate"]) == {"1", "2"}
+    s = json.loads((tmp_path / "run_quality_summary.json").read_text())
+    assert {r["replicate"] for r in s["outcomes"]} == {"All replicates", "1", "2"}

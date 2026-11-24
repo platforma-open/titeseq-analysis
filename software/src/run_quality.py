@@ -129,14 +129,24 @@ def summary(
     }
 
 
+def per_replicate(counts: pl.DataFrame, combined: str) -> pl.DataFrame:
+    """`counts` without the rows over all replicates."""
+    if COL_REPLICATE not in counts.columns:
+        return counts
+    return counts.filter(pl.col(COL_REPLICATE) != combined)
+
+
 def write_run_quality(outputs: dict, known_path: str | None, prefix: str) -> None:
-    """Write <prefix>outcomes.tsv, <prefix>failure_reasons.tsv and <prefix>summary.json."""
+    """Write <prefix>outcomes.tsv, <prefix>failure_reasons.tsv and <prefix>summary.json.
+
+    The tables hold each replicate's counts; the summary also holds the counts over all replicates.
+    """
     grain = fit_grain(outputs)
     known = read_known(known_path)
     counted = measured(grain, known)
     combined = combined_label(grain)
     outcomes, reasons = outcome_counts(counted, combined), failure_reason_counts(counted, combined)
-    outcomes.write_csv(prefix + "outcomes.tsv", separator="\t")
-    reasons.write_csv(prefix + "failure_reasons.tsv", separator="\t")
+    per_replicate(outcomes, combined).write_csv(prefix + "outcomes.tsv", separator="\t")
+    per_replicate(reasons, combined).write_csv(prefix + "failure_reasons.tsv", separator="\t")
     with open(prefix + "summary.json", "w") as f:
         json.dump(summary(outcomes, reasons, raw_counts(grain, combined), known, combined), f)

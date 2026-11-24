@@ -41,7 +41,6 @@ const REASONS = [
 const OTHER_REASON_COLOR = "#929BAD";
 
 type Segment = PlChartStackedBarSettings["data"][number];
-type Chart = { key: string; empty: boolean; settings: PlChartStackedBarSettings };
 
 const replicateName = (replicate: string) =>
   replicate === app.model.outputs.runQuality?.allReplicates ? replicate : `Replicate ${replicate}`;
@@ -54,32 +53,28 @@ const replicates = computed(() => [
 ]);
 
 /**
- * All replicates together, then one chart per replicate; one chart for a run without replicates.
- * Only the first chart carries the legend: it counts every replicate, so it has every segment.
+ * The bar of the whole run: all replicates together, or the one set of counts of a run without
+ * replicates. The GraphMaker chart below it compares the replicates. Undefined with nothing to draw.
  */
-function charts<R extends { replicate?: string }>(
+function chart<R extends { replicate?: string }>(
   rows: R[],
   title: (count: number) => string,
   segments: (rows: R[]) => Segment[],
-): Chart[] {
-  return replicates.value.map((replicate, i) => {
-    const data = segments(rows.filter((r) => r.replicate === replicate));
-    const prefix = replicate === undefined ? "" : `${replicateName(replicate)}: `;
-    return {
-      key: replicate ?? "",
-      empty: data.length === 0,
-      settings: {
-        title: prefix + title(total(data)),
-        data,
-        maxLegendsInColumn: 5,
-        showLegends: i === 0,
-      },
-    };
-  });
+): PlChartStackedBarSettings | undefined {
+  const all = app.model.outputs.runQuality?.allReplicates;
+  const data = segments(rows.filter((r) => r.replicate === undefined || r.replicate === all));
+  if (data.length === 0) return undefined;
+  const replicated = rows.some((r) => r.replicate !== undefined);
+  return {
+    title: (replicated ? `${all}: ` : "") + title(total(data)),
+    data,
+    maxLegendsInColumn: 5,
+    showLegends: true,
+  };
 }
 
-const outcomeCharts = computed(() =>
-  charts(
+const outcomeChart = computed(() =>
+  chart(
     app.model.outputs.runQuality?.outcomes ?? [],
     (n) => `${n.toLocaleString()} fits`,
     (rows) =>
@@ -100,8 +95,8 @@ const reasonColors = computed(() => {
   return colors;
 });
 
-const reasonCharts = computed(() =>
-  charts(
+const reasonChart = computed(() =>
+  chart(
     app.model.outputs.runQuality?.failureReasons ?? [],
     (n) => `${n.toLocaleString()} failed fits`,
     (rows) =>
@@ -113,23 +108,21 @@ const reasonCharts = computed(() =>
 );
 
 /**
- * The two tabs of counts: the bars, then the GraphMaker chart of `column`. `none` is what a chart
- * with nothing to draw says; `blank` leaves the tab with that sentence alone.
+ * The two tabs of counts: the bar, then the GraphMaker chart of `column`. `none` is what a tab
+ * with nothing to draw says.
  */
 const countTabs = computed(() => [
   {
     tab: "outcomes" as const,
-    charts: outcomeCharts.value,
+    chart: outcomeChart.value,
     none: "No fit is counted.",
-    blank: false,
     state: "graphStateFitOutcomes" as const,
     column: "pl7.app/vdj/fitOutcomeCount",
   },
   {
     tab: "failed" as const,
-    charts: reasonCharts.value,
+    chart: reasonChart.value,
     none: "No fit failed.",
-    blank: (app.model.outputs.runQuality?.failureReasons ?? []).length === 0,
     state: "graphStateFailureReasons" as const,
     column: "pl7.app/vdj/fitFailureCount",
   },
@@ -171,15 +164,9 @@ const rawTable = computed(() => {
         <PlTabs v-model="tab" :options="tabs" />
         <template v-for="t in countTabs" :key="t.tab">
           <section v-if="tab === t.tab">
-            <p v-if="t.blank">{{ t.none }}</p>
+            <p v-if="t.chart === undefined">{{ t.none }}</p>
             <template v-else>
-              <template v-for="c in t.charts" :key="c.key">
-                <div v-if="c.empty" class="run-quality-empty">
-                  <div class="run-quality-empty__title">{{ c.settings.title }}</div>
-                  <p>{{ t.none }}</p>
-                </div>
-                <PlChartStackedBar v-else :settings="c.settings" />
-              </template>
+              <PlChartStackedBar :settings="t.chart" />
               <div class="run-quality-graph">
                 <CountsGraph v-model="app.model.data[t.state]" :column-name="t.column" />
               </div>
@@ -228,14 +215,6 @@ const rawTable = computed(() => {
 }
 .run-quality-graph {
   height: 640px;
-}
-/* The title of PlChartStackedBar, for a replicate with nothing to draw. */
-.run-quality-empty__title {
-  font-size: 20px;
-  font-weight: 500;
-  line-height: 24px;
-  letter-spacing: -0.2px;
-  margin-bottom: 8px;
 }
 .run-quality p {
   margin: 0;
