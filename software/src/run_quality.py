@@ -7,6 +7,9 @@ The graphs count the variants the experiment set out to measure. With a known-va
 the upstream block, those are the variants that match a known one exactly. Without one, they are
 the variants with the reads and concentration points for a fit to be attempted: on raw reads the
 rest are mostly sequencing errors and outnumber every class. The raw counts keep every variant.
+
+The two TSV tables hold each replicate's counts. The JSON summary holds those and the counts over
+all replicates together.
 """
 
 from __future__ import annotations

@@ -1165,7 +1165,8 @@ wf.body(func(args) {
 		logHandle: fit.getStdoutStream(),
 		// What the run must tell the user, as a JSON list of sentences; [] when nothing.
 		runWarnings: fit.getFileContent("run_warnings.json"),
-		// The same counts twice: a frame for the graphs, JSON rows for the bars.
+		// The counts twice: a frame of each replicate's for the graphs, and JSON rows for the bars
+		// and the raw table, which also hold the counts over all replicates.
 		runQualityPf: pframes.exportFrame(buildTracedPf([outcomeCountsImported, failureCountsImported], [])),
 		runQuality: fit.getFileContent(RUN_QUALITY + "summary.json"),
 		// The software's own tables for download, each variant named by its Variant Id and sequence.
