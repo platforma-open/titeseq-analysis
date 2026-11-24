@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { PlChartStackedBarSettings } from "@platforma-sdk/ui-vue";
-import { PlChartStackedBar, PlTabs } from "@platforma-sdk/ui-vue";
+import { PlAlert, PlChartStackedBar, PlTabs } from "@platforma-sdk/ui-vue";
 import { computed, ref } from "vue";
 import { useApp } from "../app";
 import CountsGraph from "../components/CountsGraph.vue";
@@ -164,7 +164,7 @@ const rawTable = computed(() => {
         <PlTabs v-model="tab" :options="tabs" />
         <template v-for="t in countTabs" :key="t.tab">
           <section v-if="tab === t.tab">
-            <p v-if="t.chart === undefined">{{ t.none }}</p>
+            <PlAlert v-if="t.chart === undefined" type="info">{{ t.none }}</PlAlert>
             <template v-else>
               <PlChartStackedBar :settings="t.chart" />
               <div class="run-quality-graph">
