@@ -8,8 +8,8 @@ the upstream block, those are the variants that match a known one exactly. Witho
 the variants with the reads and concentration points for a fit to be attempted: on raw reads the
 rest are mostly sequencing errors and outnumber every class. The raw counts keep every variant.
 
-The two TSV tables hold each replicate's counts. The JSON summary holds those and the counts over
-all replicates together.
+The counts are per replicate when the run has replicates. The counts over all replicates are their
+sums, which the reader takes.
 """
 
 from __future__ import annotations
@@ -32,8 +32,6 @@ REASON_LABELS = {
     "high_kd_se": "High Kd,app SE",
     "n_out_of_range": "Hill coefficient out of range",
 }
-# The replicate value of the counts over all replicates together, unless a replicate has that name.
-ALL_REPLICATES = "All replicates"
 SCOPE_KNOWN = "known"
 SCOPE_ATTEMPTED = "attempted"
 
@@ -46,27 +44,14 @@ def fit_grain(outputs: dict) -> pl.DataFrame:
     return outputs["per_clonotype"]
 
 
-def combined_label(frame: pl.DataFrame) -> str:
-    """The replicate value for the counts over all replicates: one no replicate of `frame` has."""
-    label = ALL_REPLICATES
-    if COL_REPLICATE not in frame.columns:
-        return label
-    taken = set(frame[COL_REPLICATE].cast(pl.Utf8).to_list())
-    while label in taken:
-        label += " (combined)"
-    return label
-
-
-def _count_by(frame: pl.DataFrame, columns: list[str], combined: str) -> pl.DataFrame:
-    """Rows of `frame` per value of `columns`, per replicate and under `combined` for all replicates."""
+def _count_by(frame: pl.DataFrame, columns: list[str]) -> pl.DataFrame:
+    """Rows of `frame` per value of `columns`, and per replicate when the run has replicates."""
     count = pl.len().cast(pl.Int64).alias(COL_COUNT)
     if COL_REPLICATE not in frame.columns:
         return frame.group_by(columns).agg(count).sort(columns, nulls_last=True)
     keys = [COL_REPLICATE, *columns]
     each = frame.with_columns(pl.col(COL_REPLICATE).cast(pl.Utf8)).group_by(keys).agg(count)
-    together = frame.group_by(columns).agg(count).with_columns(pl.lit(combined).alias(COL_REPLICATE))
-    together = together.sort(columns, nulls_last=True).select([*keys, COL_COUNT])
-    return pl.concat([together, each.sort(keys, nulls_last=True)])
+    return each.sort(keys, nulls_last=True)
 
 
 def read_known(path: str | None) -> set[str] | None:
@@ -93,38 +78,31 @@ def reason_label(code: str) -> str:
     return REASON_LABELS.get(code) or code.replace("_", " ").capitalize()
 
 
-def _count_by_reason(frame: pl.DataFrame, columns: list[str], combined: str) -> pl.DataFrame:
+def _count_by_reason(frame: pl.DataFrame, columns: list[str]) -> pl.DataFrame:
     """`_count_by` over `columns` and the failure reason, the counted reasons then labelled."""
-    counts = _count_by(frame, [*columns, COL_CODE], combined).rename({COL_CODE: COL_REASON})
+    counts = _count_by(frame, [*columns, COL_CODE]).rename({COL_CODE: COL_REASON})
     return counts.with_columns(pl.col(COL_REASON).cast(pl.Utf8).map_elements(reason_label, return_dtype=pl.Utf8))
 
 
-def raw_counts(frame: pl.DataFrame, combined: str = ALL_REPLICATES) -> pl.DataFrame:
+def raw_counts(frame: pl.DataFrame) -> pl.DataFrame:
     """[replicate?, affinityClass, failureReason, count] over every fit; the reason is null unless it failed."""
-    return _count_by_reason(frame, ["affinityClass"], combined)
+    return _count_by_reason(frame, ["affinityClass"])
 
 
-def outcome_counts(frame: pl.DataFrame, combined: str = ALL_REPLICATES) -> pl.DataFrame:
+def outcome_counts(frame: pl.DataFrame) -> pl.DataFrame:
     """[replicate?, affinityClass, count]."""
-    return _count_by(frame, ["affinityClass"], combined)
+    return _count_by(frame, ["affinityClass"])
 
 
-def failure_reason_counts(frame: pl.DataFrame, combined: str = ALL_REPLICATES) -> pl.DataFrame:
+def failure_reason_counts(frame: pl.DataFrame) -> pl.DataFrame:
     """[replicate?, failureReason, count] over the failed fits. Every failed fit carries a reason."""
-    return _count_by_reason(frame.filter(pl.col("affinityClass") == "Failed"), [], combined)
+    return _count_by_reason(frame.filter(pl.col("affinityClass") == "Failed"), [])
 
 
-def summary(
-    outcomes: pl.DataFrame,
-    reasons: pl.DataFrame,
-    raw: pl.DataFrame,
-    known: set[str] | None,
-    combined: str = ALL_REPLICATES,
-) -> dict:
+def summary(outcomes: pl.DataFrame, reasons: pl.DataFrame, raw: pl.DataFrame, known: set[str] | None) -> dict:
     """The tables as JSON-ready rows, and what the graphs count."""
     return {
         "scope": SCOPE_ATTEMPTED if known is None else SCOPE_KNOWN,
-        "allReplicates": combined,
         "leftOutReasons": [reason_label(r) for r in NOT_ATTEMPTED] if known is None else [],
         "outcomes": outcomes.to_dicts(),
         "failureReasons": reasons.to_dicts(),
@@ -132,24 +110,13 @@ def summary(
     }
 
 
-def per_replicate(counts: pl.DataFrame, combined: str) -> pl.DataFrame:
-    """`counts` without the rows over all replicates."""
-    if COL_REPLICATE not in counts.columns:
-        return counts
-    return counts.filter(pl.col(COL_REPLICATE) != combined)
-
-
 def write_run_quality(outputs: dict, known_path: str | None, prefix: str) -> None:
-    """Write <prefix>outcomes.tsv, <prefix>failure_reasons.tsv and <prefix>summary.json.
-
-    The tables hold each replicate's counts; the summary also holds the counts over all replicates.
-    """
+    """Write <prefix>outcomes.tsv, <prefix>failure_reasons.tsv and <prefix>summary.json."""
     grain = fit_grain(outputs)
     known = read_known(known_path)
     counted = measured(grain, known)
-    combined = combined_label(grain)
-    outcomes, reasons = outcome_counts(counted, combined), failure_reason_counts(counted, combined)
-    per_replicate(outcomes, combined).write_csv(prefix + "outcomes.tsv", separator="\t")
-    per_replicate(reasons, combined).write_csv(prefix + "failure_reasons.tsv", separator="\t")
+    outcomes, reasons = outcome_counts(counted), failure_reason_counts(counted)
+    outcomes.write_csv(prefix + "outcomes.tsv", separator="\t")
+    reasons.write_csv(prefix + "failure_reasons.tsv", separator="\t")
     with open(prefix + "summary.json", "w") as f:
-        json.dump(summary(outcomes, reasons, raw_counts(grain, combined), known, combined), f)
+        json.dump(summary(outcomes, reasons, raw_counts(grain), known), f)

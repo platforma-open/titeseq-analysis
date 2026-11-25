@@ -15,6 +15,7 @@ maps := import("@platforma-sdk/workflow-tengo:maps")
 json := import("json")
 text := import("text")
 replicateColumnsLib := import(":replicate-columns")
+runQualityColumnsLib := import(":run-quality-columns")
 
 synonymousInputs := import(":synonymous-inputs")
 variantColumnsLib := import(":variant-columns")
@@ -980,69 +981,13 @@ wf.body(func(args) {
 
 	// The run-quality graphs: how many fits ended in each class, and why the failed ones failed.
 	// Counted per replicate when the run has replicates; without them no column carries the axis.
-	// `colors` maps each category to its index in GraphMaker's "triadic" palette, in display order.
-	// The Run Quality page's own bars use the same colors. The failure reasons are every label a
-	// single fit can report, as the software writes them.
-	importCounts := func(file, axisHeader, axisName, axisLabel, countName, countLabel, colors) {
-		mapping := {}
-		order := []
-		for c in colors {
-			mapping[c.value] = c.color
-			order = append(order, c.value)
-		}
-		axes := []
-		if hasReplicate {
-			axes = append(axes, { column: "replicate", spec: replicateAxisSpec })
-		}
-		axes = append(axes, {
-			column: axisHeader,
-			spec: {
-				name: axisName,
-				type: "String",
-				domain: { "pl7.app/block": blockId },
-				annotations: {
-					"pl7.app/label": axisLabel,
-					"pl7.app/discreteValues": string(canonical.encode(order)),
-					"pl7.app/graph/palette": string(canonical.encode({ name: "triadic", mapping: mapping }))
-				}
-			}
-		})
-		return xsv.importFile(file, "tsv", {
-			axes: axes,
-			columns: [{
-				column: "count",
-				id: countName,
-				spec: {
-					name: "pl7.app/vdj/" + countName,
-					valueType: "Int",
-					domain: { "pl7.app/block": blockId },
-					annotations: { "pl7.app/label": countLabel }
-				}
-			}],
-			storageFormat: "Parquet",
-			partitionKeyLength: 0
-		}, { splitDataAndSpec: true, cpu: 1, mem: "4GiB" })
+	importCounts := func(name, counts) {
+		return xsv.importFile(fit.getFile(RUN_QUALITY + name), "tsv",
+			runQualityColumnsLib.importSettings(counts, blockId, hasReplicate ? replicateAxisSpec : undefined),
+			{ splitDataAndSpec: true, cpu: 1, mem: "4GiB" })
 	}
-	outcomeCountsImported := importCounts(fit.getFile(RUN_QUALITY + "outcomes.tsv"),
-		"affinityClass", "pl7.app/vdj/fitOutcome", "Affinity class", "fitOutcomeCount", "Fits", [
-			{ value: "Good", color: 0 },
-			{ value: "Partial", color: 6 },
-			{ value: "Above range", color: 18 },
-			{ value: "Below range", color: 3 },
-			{ value: "Failed", color: 22 }
-		])
-	failureCountsImported := importCounts(fit.getFile(RUN_QUALITY + "failure_reasons.tsv"),
-		"failureReason", "pl7.app/vdj/fitFailure", "Failure reason", "fitFailureCount", "Failed fits", [
-			{ value: "Insufficient points", color: 22 },
-			{ value: "Insufficient reads", color: 6 },
-			{ value: "Bright without antigen", color: 3 },
-			{ value: "Non monotonic signal", color: 18 },
-			{ value: "Incomplete titration", color: 9 },
-			{ value: "Convergence failure", color: 12 },
-			{ value: "Low R²", color: 15 },
-			{ value: "High Kd,app SE", color: 21 },
-			{ value: "Hill coefficient out of range", color: 24 }
-		])
+	outcomeCountsImported := importCounts("outcomes.tsv", runQualityColumnsLib.OUTCOMES)
+	failureCountsImported := importCounts("failure_reasons.tsv", runQualityColumnsLib.FAILURE_REASONS)
 
 	// Trace injection. `makeTrace` bundles the upstream abundance provenance
 	// with a self-descriptor; `trace.inject` rewrites only the small spec resources

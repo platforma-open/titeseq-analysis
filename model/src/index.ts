@@ -837,8 +837,8 @@ function variantSummaryCols(ctx: Ctx) {
 }
 
 /**
- * One count of the run-quality summary. `replicate` is absent on a run without replicates; with
- * replicates it is a replicate, or `allReplicates` for the count over all of them.
+ * One count of the run-quality summary. `replicate` is absent on a run without replicates. The
+ * count over all replicates is the sum of theirs.
  */
 export type RunQualityCount<K extends string> = { replicate?: string; count: number } & Record<
   K,
@@ -862,8 +862,6 @@ export type RunQualityRawCount = {
  */
 export type RunQuality = {
   scope: "known" | "attempted";
-  /** The `replicate` value of the counts over all replicates together. */
-  allReplicates: string;
   leftOutReasons: string[];
   outcomes: RunQualityCount<"affinityClass">[];
   failureReasons: RunQualityCount<"failureReason">[];

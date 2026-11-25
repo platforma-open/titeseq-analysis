@@ -1,0 +1,93 @@
+// The Run Quality page's count columns: how many fits ended in each class, and why the failed ones
+// failed. Each list holds every category in display order, with its index in GraphMaker's "triadic"
+// palette. The Run Quality page's own bars use the same order and colors, and the software writes
+// the same labels.
+
+ll := import("@platforma-sdk/workflow-tengo:ll")
+canonical := import("@platforma-sdk/workflow-tengo:canonical")
+
+OUTCOMES := {
+	header: "affinityClass",
+	axisName: "pl7.app/vdj/fitOutcome",
+	axisLabel: "Affinity class",
+	countId: "fitOutcomeCount",
+	countLabel: "Fits",
+	categories: [
+		{ value: "Good", color: 0 },
+		{ value: "Partial", color: 6 },
+		{ value: "Above range", color: 18 },
+		{ value: "Below range", color: 3 },
+		{ value: "Failed", color: 22 }
+	]
+}
+
+// Every reason a single fit can report.
+FAILURE_REASONS := {
+	header: "failureReason",
+	axisName: "pl7.app/vdj/fitFailure",
+	axisLabel: "Failure reason",
+	countId: "fitFailureCount",
+	countLabel: "Failed fits",
+	categories: [
+		{ value: "Insufficient points", color: 22 },
+		{ value: "Insufficient reads", color: 6 },
+		{ value: "Bright without antigen", color: 3 },
+		{ value: "Non monotonic signal", color: 18 },
+		{ value: "Incomplete titration", color: 9 },
+		{ value: "Convergence failure", color: 12 },
+		{ value: "Low R²", color: 15 },
+		{ value: "High Kd,app SE", color: 21 },
+		{ value: "Hill coefficient out of range", color: 24 }
+	]
+}
+
+/**
+ * The xsv import settings of one count table. `replicateAxisSpec` is undefined on a run without
+ * replicates: no column then carries the replicate axis.
+ */
+importSettings := func(counts, blockId, replicateAxisSpec) {
+	mapping := {}
+	order := []
+	for c in counts.categories {
+		mapping[c.value] = c.color
+		order = append(order, c.value)
+	}
+	axes := []
+	if !is_undefined(replicateAxisSpec) {
+		axes = append(axes, { column: "replicate", spec: replicateAxisSpec })
+	}
+	axes = append(axes, {
+		column: counts.header,
+		spec: {
+			name: counts.axisName,
+			type: "String",
+			domain: { "pl7.app/block": blockId },
+			annotations: {
+				"pl7.app/label": counts.axisLabel,
+				"pl7.app/discreteValues": string(canonical.encode(order)),
+				"pl7.app/graph/palette": string(canonical.encode({ name: "triadic", mapping: mapping }))
+			}
+		}
+	})
+	return {
+		axes: axes,
+		columns: [{
+			column: "count",
+			id: counts.countId,
+			spec: {
+				name: "pl7.app/vdj/" + counts.countId,
+				valueType: "Int",
+				domain: { "pl7.app/block": blockId },
+				annotations: { "pl7.app/label": counts.countLabel }
+			}
+		}],
+		storageFormat: "Parquet",
+		partitionKeyLength: 0
+	}
+}
+
+export ll.toStrict({
+	OUTCOMES: OUTCOMES,
+	FAILURE_REASONS: FAILURE_REASONS,
+	importSettings: importSettings
+})

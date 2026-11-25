@@ -3,7 +3,6 @@ import json
 import polars as pl
 
 from run_quality import (
-    combined_label,
     failure_reason_counts,
     fit_grain,
     measured,
@@ -32,31 +31,15 @@ def test_outcomes_without_replicates_carry_no_replicate():
     assert dict(out.iter_rows()) == {"Failed": 3, "Good": 2, "Partial": 1}
 
 
-def test_outcomes_per_replicate_follow_the_counts_over_all_replicates():
+def test_outcomes_are_counted_per_replicate():
     out = outcome_counts(_frame(True))
-    assert out.rows()[:3] == [
-        ("All replicates", "Failed", 3),
-        ("All replicates", "Good", 2),
-        ("All replicates", "Partial", 1),
-    ]
-    assert out.rows()[3:] == [
+    assert out.rows() == [
         ("1", "Failed", 2),
         ("1", "Good", 1),
         ("2", "Failed", 1),
         ("2", "Good", 1),
         ("2", "Partial", 1),
     ]
-
-
-def test_a_replicate_named_like_the_combined_counts_keeps_its_own_rows():
-    frame = _frame(True).with_columns(pl.col("replicate").replace("1", "All replicates"))
-    combined = combined_label(frame)
-    assert combined == "All replicates (combined)"
-    out = outcome_counts(frame, combined)
-    assert out.filter(pl.col("replicate") == combined)["count"].sum() == 6
-    assert out.filter(pl.col("replicate") == "All replicates")["count"].sum() == 3
-    assert combined_label(_frame(True)) == "All replicates"
-    assert combined_label(_frame(False)) == "All replicates"
 
 
 def test_failure_reasons_are_labelled_and_cover_failed_fits_only():
@@ -159,4 +142,5 @@ def test_the_tables_of_a_run_with_replicates_hold_each_replicate_only(tmp_path):
         table = pl.read_csv(prefix + name, separator="\t", infer_schema=False)
         assert set(table["replicate"]) == {"1", "2"}
     s = json.loads((tmp_path / "run_quality_summary.json").read_text())
-    assert {r["replicate"] for r in s["outcomes"]} == {"All replicates", "1", "2"}
+    assert {r["replicate"] for r in s["outcomes"]} == {"1", "2"}
+    assert "allReplicates" not in s

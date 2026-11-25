@@ -20,8 +20,8 @@ const tab = ref<Tab>("outcomes");
 // Best to worst, so every bar reads left to right the same way. The colors are the ones the
 // workflow declares for the GraphMaker charts: its "triadic" palette.
 const CLASSES = [
-  { name: "Good", color: "#99E099", description: "Kd,app measured, with a small error." },
-  { name: "Partial", color: "#FFCB8F", description: "Kd,app measured, with a wide error." },
+  { name: "Good", color: "#99E099", description: "Kd,app measured inside the titrated range." },
+  { name: "Partial", color: "#FFCB8F", description: "Kd,app measured, with less confidence." },
   { name: "Above range", color: "#99CCFF", description: "Weaker than the titration can measure." },
   { name: "Below range", color: "#C1ADFF", description: "Tighter than the titration can measure." },
   { name: "Failed", color: "#F05670", description: "No Kd,app." },
@@ -42,50 +42,59 @@ const OTHER_REASON_COLOR = "#929BAD";
 
 type Segment = PlChartStackedBarSettings["data"][number];
 
-const replicateName = (replicate: string) =>
-  replicate === app.model.outputs.runQuality?.allReplicates ? replicate : `Replicate ${replicate}`;
+const ALL_REPLICATES = "All replicates";
 
 const total = (segments: Segment[]) => segments.reduce((sum, s) => sum + s.value, 0);
 
+/** The counts of `rows` summed over the replicates, by `key`. */
+function sumBy<R extends { count: number }>(
+  rows: R[],
+  key: (row: R) => string,
+): Map<string, number> {
+  const sums = new Map<string, number>();
+  for (const row of rows) sums.set(key(row), (sums.get(key(row)) ?? 0) + row.count);
+  return sums;
+}
+
 // Every replicate of the run, from the raw counts: a replicate with no counted fit has no other row.
+// Empty on a run without replicates.
 const replicates = computed(() => [
-  ...new Set((app.model.outputs.runQuality?.raw ?? []).map((r) => r.replicate)),
+  ...new Set(
+    (app.model.outputs.runQuality?.raw ?? []).flatMap((r) =>
+      r.replicate === undefined ? [] : [r.replicate],
+    ),
+  ),
 ]);
 
 /**
- * The bar of the whole run: all replicates together, or the one set of counts of a run without
- * replicates. The GraphMaker chart below it compares the replicates. Undefined with nothing to draw.
+ * The bar of the whole run: the counts summed over the replicates. The GraphMaker chart below it
+ * compares the replicates. Undefined with nothing to draw.
  */
-function chart<R extends { replicate?: string }>(
-  rows: R[],
+function chart(
   title: (count: number) => string,
-  segments: (rows: R[]) => Segment[],
+  data: Segment[],
 ): PlChartStackedBarSettings | undefined {
-  const all = app.model.outputs.runQuality?.allReplicates;
-  const data = segments(rows.filter((r) => r.replicate === undefined || r.replicate === all));
   if (data.length === 0) return undefined;
-  const replicated = rows.some((r) => r.replicate !== undefined);
   return {
-    title: (replicated ? `${all}: ` : "") + title(total(data)),
+    title: (replicates.value.length > 0 ? `${ALL_REPLICATES}: ` : "") + title(total(data)),
     data,
     maxLegendsInColumn: 5,
     showLegends: true,
   };
 }
 
-const outcomeChart = computed(() =>
-  chart(
-    app.model.outputs.runQuality?.outcomes ?? [],
+const outcomeChart = computed(() => {
+  const counts = sumBy(app.model.outputs.runQuality?.outcomes ?? [], (r) => r.affinityClass);
+  return chart(
     (n) => `${n.toLocaleString()} fits`,
-    (rows) =>
-      CLASSES.flatMap((c) => {
-        const row = rows.find((r) => r.affinityClass === c.name);
-        return row
-          ? [{ label: c.name, value: row.count, color: c.color, description: c.description }]
-          : [];
-      }),
-  ),
-);
+    CLASSES.flatMap((c) => {
+      const value = counts.get(c.name);
+      return value === undefined
+        ? []
+        : [{ label: c.name, value, color: c.color, description: c.description }];
+    }),
+  );
+});
 
 // The declared reasons in their order, then any other the run reports.
 const reasonColors = computed(() => {
@@ -95,17 +104,16 @@ const reasonColors = computed(() => {
   return colors;
 });
 
-const reasonChart = computed(() =>
-  chart(
-    app.model.outputs.runQuality?.failureReasons ?? [],
+const reasonChart = computed(() => {
+  const counts = sumBy(app.model.outputs.runQuality?.failureReasons ?? [], (r) => r.failureReason);
+  return chart(
     (n) => `${n.toLocaleString()} failed fits`,
-    (rows) =>
-      [...reasonColors.value.entries()].flatMap(([reason, color]) => {
-        const row = rows.find((r) => r.failureReason === reason);
-        return row ? [{ label: reason, value: row.count, color }] : [];
-      }),
-  ),
-);
+    [...reasonColors.value.entries()].flatMap(([reason, color]) => {
+      const value = counts.get(reason);
+      return value === undefined ? [] : [{ label: reason, value, color }];
+    }),
+  );
+});
 
 /**
  * The two tabs of counts: the bar, then the GraphMaker chart of `column`. `none` is what a tab
@@ -128,7 +136,10 @@ const countTabs = computed(() => [
   },
 ]);
 
-/** Every fit: a row per class and failure reason, a column per replicate. */
+/**
+ * Every fit: a row per class and failure reason. With replicates, a column for all of them together
+ * and one per replicate; without, one column.
+ */
 const rawTable = computed(() => {
   const quality = app.model.outputs.runQuality;
   const raw = quality?.raw ?? [];
@@ -138,21 +149,27 @@ const rawTable = computed(() => {
   const label = (r: { affinityClass: string; failureReason: string | null }) =>
     r.failureReason === null ? r.affinityClass : `${r.affinityClass}: ${r.failureReason}`;
   const labels = [...new Set([...raw].sort((a, b) => order(a) - order(b)).map(label))];
-  const count = (name: string, replicate: string | undefined) =>
-    raw
-      .filter((r) => label(r) === name && r.replicate === replicate)
-      .reduce((sum, r) => sum + r.count, 0);
+  const all = sumBy(raw, label);
+  const each = replicates.value.map((rep) =>
+    sumBy(
+      raw.filter((r) => r.replicate === rep),
+      label,
+    ),
+  );
   const rows = labels.map((name) => ({
     name,
     excluded: leftOut.some((reason) => name === `Failed: ${reason}`),
-    counts: replicates.value.map((rep) => count(name, rep)),
+    counts: [all, ...each].map((sums) => sums.get(name) ?? 0),
   }));
-  const totals = replicates.value.map((_, i) => rows.reduce((sum, row) => sum + row.counts[i], 0));
+  const headers =
+    replicates.value.length > 0
+      ? [ALL_REPLICATES, ...replicates.value.map((rep) => `Replicate ${rep}`)]
+      : ["Fits"];
   return {
-    headers: replicates.value.map((rep) => (rep === undefined ? "Fits" : replicateName(rep))),
+    headers,
     note: leftOut.length > 0 ? "The graphs leave out the rows marked *." : undefined,
     rows,
-    totals,
+    totals: headers.map((_, i) => rows.reduce((sum, row) => sum + row.counts[i], 0)),
   };
 });
 </script>

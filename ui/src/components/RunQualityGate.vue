@@ -7,9 +7,10 @@ import { useApp } from "../app";
 // results but no counts, and says so.
 const app = useApp();
 
-const state = computed<"ready" | "running" | "noRun" | "oldRun">(() => {
+const state = computed<"ready" | "running" | "failed" | "noRun" | "oldRun">(() => {
   if (app.model.outputs.runQuality !== undefined) return "ready";
   if (app.model.outputs.isRunning) return "running";
+  if (app.model.outputs.summaryTable?.ok === false) return "failed";
   return app.model.outputs.isEmpty === undefined ? "noRun" : "oldRun";
 });
 
@@ -45,6 +46,9 @@ const leftOutShown = ref(true);
     :title="PL_PLACEHOLDER_TEXTS.RUNNING.title"
     :subtitle="PL_PLACEHOLDER_TEXTS.RUNNING.subtitle"
   />
+  <PlAlert v-else-if="state === 'failed'" type="error" class="run-quality-gate">
+    The run failed, so there are no fit outcomes to count. See the error on the Main page.
+  </PlAlert>
   <PlAlert v-else-if="state === 'noRun'" type="info" class="run-quality-gate">
     Configure the block in Settings on the Main page and run it.
   </PlAlert>
