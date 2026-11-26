@@ -215,10 +215,10 @@ const shownBinOrder = computed({
       required
     >
       <template #tooltip>
-        Per-sample, per-{{ noun }} integer read counts. Selecting this column also anchors the block
-        to that upstream dataset. Normalized per-sample inside the block. On a nucleotide variant
-        dataset whose amino-acid linker is present, each nucleotide variant is fitted on its own and
-        the fits are combined per amino-acid variant.
+        Per-sample integer read counts of each {{ noun }}. This column also sets the upstream
+        dataset that the block uses. The block normalizes the counts per sample. On a nucleotide
+        variant dataset with an amino-acid linker, the block fits each nucleotide variant alone,
+        then combines the fits per amino-acid variant.
       </template>
     </PlDatasetSelector>
     <PlDropdownRef
@@ -241,13 +241,12 @@ const shownBinOrder = computed({
       @update:model-value="(eq) => eq && setEquation(eq)"
     >
       <template #tooltip>
-        Log fluorescence fit: fits a Hill curve to the mean log10 fluorescence of each {{ noun }}.
-        The Hill exponent is fixed at 1. New blocks use this fit. <br /><br />
-        Mean bin fit: fits a Hill curve to the read-weighted mean bin of each {{ noun }}. The Hill
-        exponent is free. Blocks created before the equation choice existed keep this fit.
-        <br /><br />
+        Log fluorescence fit: a Hill curve on the mean log10 fluorescence of each {{ noun }}, with
+        the Hill exponent fixed at 1. New blocks use this fit. <br /><br />
+        Mean bin fit: a Hill curve on the read-weighted mean bin of each {{ noun }}, with a free
+        Hill exponent. Blocks made before this choice existed keep this fit. <br /><br />
         Each equation rates fit quality in its own way. "Good" means that the equation found a
-        Kd,app inside the titrated range. It does not give an error bound.
+        Kd,app inside the titrated range. It is not an error bound.
       </template>
     </PlDropdown>
     <PlDropdownRef
@@ -370,11 +369,10 @@ const shownBinOrder = computed({
       clearable
     >
       <template #tooltip>
-        Optional. A per-sample column naming the replicate each sample belongs to. Each replicate is
-        a titration of its own: it is fitted alone, and the per-{{ noun }} values are then combined.
-        The table then shows the combined Kd,app with its standard error and the SD across the
-        replicates, and a {{ noun }}'s row opens each replicate's own Kd,app. Leave empty to fit one
-        titration.
+        Optional. A per-sample column that names the replicate of each sample. The block fits each
+        replicate as a separate titration, then combines the per-{{ noun }} values. The table shows
+        the combined Kd,app, its standard error, and the SD across the replicates. A {{ noun }}'s
+        row opens the Kd,app of each replicate. Leave empty to fit one titration.
       </template>
     </PlDropdownRef>
 
@@ -420,12 +418,11 @@ const shownBinOrder = computed({
         clearable
       >
         <template #tooltip>
-          The lowest R² that a fit can have. A fit with a lower R², or with no R², gets the rating
-          Failed, with the reason low_r2. The block checks only a fit whose Kd,app is inside the
-          titrated range. With sample replicates, the block checks the fit of each replicate. R²
-          counts the 0 M signal, so it removes a curve that does not rise from the baseline. It does
-          not rate how well the curve follows the points of a strong binder: the standard error of
-          Kd,app does. The default is 0.8. Leave this field empty to set no R² limit.
+          The lowest R² that a fit can have. A fit with a lower R², or with no R², is rated Failed
+          (low_r2). The block checks only fits with Kd,app inside the titrated range. With sample
+          replicates, it checks each replicate. R² includes the 0 M signal, so it removes a curve
+          that does not rise from the baseline. The standard error of Kd,app, not R², rates how well
+          a strong binder fits. The default is 0.8. Leave empty for no R² limit.
         </template>
       </PlNumberField>
       <PlNumberField
@@ -439,10 +436,10 @@ const shownBinOrder = computed({
       >
         <template #tooltip>
           The largest standard error of log10 Kd,app that a fit can have. A fit with a larger error,
-          or with no error, gets the rating Failed, with the reason high_kd_se. The block checks
-          only a fit whose Kd,app is inside the titrated range. With sample replicates, the block
-          checks the fit of each replicate. An error above 0.5 always changes the rating from Good
-          to Partial. The default is 1. Leave this field empty to set no Failed limit.
+          or with no error, is rated Failed (high_kd_se). The block checks only fits with Kd,app
+          inside the titrated range. With sample replicates, it checks each replicate. An error
+          above 0.5 always lowers Good to Partial. The default is 1. Leave empty for no Failed
+          limit.
         </template>
       </PlNumberField>
     </PlAccordionSection>
@@ -473,11 +470,10 @@ const shownBinOrder = computed({
         :error-message="emptyError(app.model.data.minConcentrationPoints)"
       >
         <template #tooltip>
-          The minimum number of concentration points that a variant must have for the block to fit
-          it. The block counts only the points that remain after the read floor. It does not count
-          the 0 M point. A variant with fewer points gets the rating Failed, with the reason
-          insufficient_points. The default and the minimum value are both 5. Both equations use this
-          setting.
+          The fewest concentration points that a variant needs for the block to fit it. Only the
+          points above the read floor count, and the 0 M point does not count. A variant with fewer
+          points is rated Failed (insufficient_points). The default and the minimum are both 5. Both
+          equations use this setting.
         </template>
       </PlNumberField>
       <!-- "Require reads at every concentration" is withheld: the run always fits a titration
