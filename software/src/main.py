@@ -69,6 +69,7 @@ _SYNONYMOUS_ONLY = (
     "aa_productive",
     "nt_mutations",
     "nt_parent_links",
+    "known_distance_aa",
 )
 
 
@@ -157,6 +158,11 @@ def main(argv: list[str] | None = None) -> int:
         help="TSV [key, distance]: each abundance variant's mutations to its nearest known variant",
     )
     parser.add_argument(
+        "--known-distance-aa",
+        default=None,
+        help="synonymous mode: TSV [key, distance]: each amino-acid variant's mutations to its nearest known variant",
+    )
+    parser.add_argument(
         "--download-prefix",
         default=None,
         help="also write each variant table as <prefix><file name>, its keys replaced by Variant Id and sequence",
@@ -235,7 +241,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.out_fit_reads is not None:
         write(outputs["fit_reads"], args.out_fit_reads)
     if args.out_run_quality is not None:
-        write_run_quality(outputs, args.known_distance, args.out_run_quality)
+        write_run_quality(
+            outputs,
+            args.known_distance,
+            args.out_run_quality,
+            args.known_distance_aa,
+            None if synonymous is None else synonymous.nt_to_aa,
+        )
     log("CLI done")
     return 0
 

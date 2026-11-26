@@ -80,6 +80,24 @@ def test_known_variants_are_the_exact_matches(tmp_path):
     assert read_known(None) is None
 
 
+def test_an_amino_acid_list_counts_the_variants_that_encode_a_known_one(tmp_path):
+    aa = tmp_path / "known_aa.tsv"
+    aa.write_text("key\tdistance\nA\t0\nB\t1\n")
+    link = pl.DataFrame({"ntKey": ["a", "b", "c", "d", "d"], "aaKey": ["A", "A", "B", "A", "B"]})
+    # d maps to two amino-acid variants, so to none.
+    assert read_known(None, str(aa), link) == {"a", "b"}
+    assert read_known(None, str(aa), None) is None
+
+
+def test_a_list_on_the_fitted_variants_wins_over_an_amino_acid_list(tmp_path):
+    nt = tmp_path / "known.tsv"
+    nt.write_text("key\tdistance\nc\t0\n")
+    aa = tmp_path / "known_aa.tsv"
+    aa.write_text("key\tdistance\nA\t0\n")
+    link = pl.DataFrame({"ntKey": ["a", "c"], "aaKey": ["A", "B"]})
+    assert read_known(str(nt), str(aa), link) == {"c"}
+
+
 def test_raw_counts_keep_every_fit():
     assert raw_counts(_frame(False)).rows() == [
         ("Failed", "Insufficient points", 2),

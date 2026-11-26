@@ -4,7 +4,8 @@ Counted on the lowest grain the run fitted: one row per variant, and per replica
 replicates. A combined value's failure reason only says that its parts failed.
 
 The graphs count the variants the experiment set out to measure. With a known-variant list from
-the upstream block, those are the variants that match a known one exactly. Without one, they are
+the upstream block, those are the variants that match a known one exactly. In synonymous mode a
+list of amino-acid variants counts the nucleotide variants that encode one of them. Without a list, they are
 the variants with the reads and concentration points for a fit to be attempted: on raw reads the
 rest are mostly sequencing errors and outnumber every class. The raw counts keep every variant.
 
@@ -19,6 +20,7 @@ import json
 import polars as pl
 
 from constants import COL_CLONOTYPE, COL_REPLICATE
+from synonymous import COL_AA, nt_aa_variants
 
 COL_CODE = "fitFailureReason"
 COL_REASON = "failureReason"
@@ -54,16 +56,27 @@ def _count_by(frame: pl.DataFrame, columns: list[str]) -> pl.DataFrame:
     return each.sort(keys, nulls_last=True)
 
 
-def read_known(path: str | None) -> set[str] | None:
-    """The variants that match a known one exactly, from a workflow-built TSV [key, distance].
-
-    None when the run sent no table: the upstream block carries no known-variant list.
-    """
-    if path is None:
-        return None
+def _exact(path: str) -> set[str]:
+    """The keys of a workflow-built TSV [key, distance] whose distance is 0."""
     frame = pl.read_csv(path, separator="\t", infer_schema=False)
     exact = frame.filter(pl.col("distance").cast(pl.Int64, strict=False) == 0)
     return set(exact["key"].to_list())
+
+
+def read_known(path: str | None, aa_path: str | None = None, nt_to_aa: pl.DataFrame | None = None) -> set[str] | None:
+    """The variants that match a known one exactly, from workflow-built TSVs [key, distance].
+
+    `path` is keyed by the fitted variants. `aa_path` is keyed by amino-acid variants and read only
+    without `path`: the known variants are then the fitted variants that `nt_to_aa` ([ntKey, aaKey])
+    maps to an exact amino-acid match. None when the run sent neither table: the upstream block
+    carries no known-variant list.
+    """
+    if path is not None:
+        return _exact(path)
+    if aa_path is None or nt_to_aa is None:
+        return None
+    link = nt_aa_variants(nt_to_aa)
+    return set(link.filter(pl.col(COL_AA).is_in(list(_exact(aa_path))))[COL_CLONOTYPE].to_list())
 
 
 def measured(frame: pl.DataFrame, known: set[str] | None) -> pl.DataFrame:
@@ -110,10 +123,16 @@ def summary(outcomes: pl.DataFrame, reasons: pl.DataFrame, raw: pl.DataFrame, kn
     }
 
 
-def write_run_quality(outputs: dict, known_path: str | None, prefix: str) -> None:
+def write_run_quality(
+    outputs: dict,
+    known_path: str | None,
+    prefix: str,
+    aa_known_path: str | None = None,
+    nt_to_aa: pl.DataFrame | None = None,
+) -> None:
     """Write <prefix>outcomes.tsv, <prefix>failure_reasons.tsv and <prefix>summary.json."""
     grain = fit_grain(outputs)
-    known = read_known(known_path)
+    known = read_known(known_path, aa_known_path, nt_to_aa)
     counted = measured(grain, known)
     outcomes, reasons = outcome_counts(counted), failure_reason_counts(counted)
     outcomes.write_csv(prefix + "outcomes.tsv", separator="\t")

@@ -113,6 +113,11 @@ wf.prepare(func(args) {
 		axes: [{ anchor: "abundance", idx: 1 }],
 		name: "pl7.app/repertoire/mutationCount"
 	}, "ntMutationCounts")
+	// A known-variant list of amino-acid variants, on a nucleotide dataset.
+	bb.addMulti({
+		axes: [{ name: "pl7.app/variantKey", type: "String", domain: { "pl7.app/alphabet": "aminoacid" } }],
+		name: "pl7.app/aaMutationsToKnown"
+	}, "aaKnownDistance")
 
 	return { columns: bb.build() }
 })
@@ -339,6 +344,19 @@ wf.body(func(args) {
 		b.mem("4GiB")
 		b.cpu(1)
 		execBuilder.addFile("known_distance.tsv", b.build()).arg("--known-distance").arg("known_distance.tsv")
+	}
+	// Synonymous mode with a list of amino-acid variants only: the software counts the nucleotide
+	// variants that encode a known amino-acid variant.
+	if is_undefined(knownDistance) && syn.synonymous {
+		aaKnownDistance := variantNamesLib.only(columns.getColumns("aaKnownDistance"), syn.aaAxis)
+		if !is_undefined(aaKnownDistance) {
+			b := pframes.tsvFileBuilder()
+			b.add(aaKnownDistance, { header: "distance" })
+			b.setAxisHeader(syn.aaAxis, "key")
+			b.mem("4GiB")
+			b.cpu(1)
+			execBuilder.addFile("known_distance_aa.tsv", b.build()).arg("--known-distance-aa").arg("known_distance_aa.tsv")
+		}
 	}
 	aaNames := undefined
 	execBuilder.
