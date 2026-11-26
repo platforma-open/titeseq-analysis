@@ -1,0 +1,50 @@
+test := import("@platforma-sdk/workflow-tengo:test")
+json := import("json")
+runQuality := import(":run-quality-columns")
+
+replicateAxis := { name: "pl7.app/vdj/replicate", type: "String" }
+
+Test_without_replicates_the_category_is_the_only_axis := func() {
+	s := runQuality.importSettings(runQuality.OUTCOMES, "b1", undefined)
+	test.isEqual(1, len(s.axes))
+	test.isEqual("affinityClass", s.axes[0].column)
+	test.isEqual("pl7.app/vdj/fitOutcome", s.axes[0].spec.name)
+}
+
+Test_with_replicates_the_replicate_axis_comes_first := func() {
+	s := runQuality.importSettings(runQuality.FAILURE_REASONS, "b1", replicateAxis)
+	test.isEqual(2, len(s.axes))
+	test.isEqual("replicate", s.axes[0].column)
+	test.isEqual("failureReason", s.axes[1].column)
+}
+
+Test_the_category_axis_declares_its_order_and_colors := func() {
+	s := runQuality.importSettings(runQuality.OUTCOMES, "b1", undefined)
+	annotations := s.axes[0].spec.annotations
+	test.isEqual(["Good", "Partial", "Above range", "Below range", "Failed"],
+		json.decode(annotations["pl7.app/discreteValues"]))
+	palette := json.decode(annotations["pl7.app/graph/palette"])
+	test.isEqual("triadic", palette.name)
+	test.isEqual(5, len(palette.mapping))
+	test.isEqual(22, int(palette.mapping["Failed"]))
+}
+
+Test_the_count_column_is_an_int_of_this_block := func() {
+	s := runQuality.importSettings(runQuality.FAILURE_REASONS, "b1", undefined)
+	column := s.columns[0]
+	test.isEqual("count", column.column)
+	test.isEqual("fitFailureCount", column.id)
+	test.isEqual("pl7.app/vdj/fitFailureCount", column.spec.name)
+	test.isEqual("Int", column.spec.valueType)
+	test.isEqual("b1", column.spec.domain["pl7.app/block"])
+	test.isEqual("b1", s.axes[0].spec.domain["pl7.app/block"])
+}
+
+Test_every_single_fit_failure_reason_is_declared_once := func() {
+	seen := {}
+	for c in runQuality.FAILURE_REASONS.categories {
+		test.isTrue(is_undefined(seen[c.value]), c.value)
+		seen[c.value] = true
+	}
+	test.isEqual(9, len(seen))
+}

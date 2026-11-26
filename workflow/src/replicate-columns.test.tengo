@@ -54,7 +54,7 @@ Test_the_spread_column_is_shown_and_not_a_score := func() {
 
 Test_the_per_replicate_columns_are_hidden := func() {
 	cols := byHeader(replicateColumns.perReplicateColumns("blk", "rep_", KD, CLASSES))
-	headers := ["kd", "kdNegLog10", "kdLog10Se", "r2", "affinityClass", "fitFailureReason", "replicateReads"]
+	headers := ["kd", "kdNegLog10", "kdLog10", "kdLog10Se", "r2", "affinityClass", "fitFailureReason", "replicateReads"]
 	test.isEqual(len(headers), len(cols), "one column per per_replicate.tsv value header")
 	for h in headers {
 		test.isEqual("rep_" + h, cols[h].id, "id of " + h)
@@ -80,6 +80,14 @@ Test_the_per_replicate_columns_carry_neg_log10 := func() {
 		"-log10 sits directly after the affinity class, as it does in the main table")
 	test.isEqual("202", with.affinityClass.spec.annotations["pl7.app/table/orderPriority"],
 		"the affinity class leads the panel")
+}
+
+Test_the_per_replicate_columns_carry_log10 := func() {
+	with := byHeader(replicateColumns.perReplicateColumns("blk", "rep_", KD, CLASSES))
+	test.isEqual("pl7.app/vdj/kdLog10", with.kdLog10.spec.name, "the main table's log10 name")
+	test.isEqual("^$", with.kdLog10.filterOutRegex, "an empty value is left out, not stored as NA")
+	test.isEqual("200.5", with.kdLog10.spec.annotations["pl7.app/table/orderPriority"],
+		"log10 sits after -log10, as it does in the main table")
 }
 
 Test_the_per_replicate_synonymous_columns_match_the_amino_acid_headers := func() {

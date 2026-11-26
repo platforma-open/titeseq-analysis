@@ -63,15 +63,15 @@ countColumn := func(header, blockId, state, label, description, visibility, prio
 
 KD_DESCRIPTION := "Kd,app of the amino-acid variant: 10 to the mean log10 Kd,app of its synonymous nucleotide variants, each fitted on its own. The mean is unweighted. A variant censored at the edge of the titration enters at that edge."
 
-KD_REPLICATES_DESCRIPTION := "Kd,app of the amino-acid variant: 10 to the mean log10 Kd,app across the replicates. In each replicate the value is the unweighted mean log10 Kd,app of the variant's synonymous nucleotide variants, each fitted on its own. A nucleotide variant or a replicate censored at the edge of the titration enters at that edge. Replicates below range and Replicates above range give the number of such replicates."
+KD_REPLICATES_DESCRIPTION := "Kd,app of the amino-acid variant: 10 to the mean log10 Kd,app across the replicates. In each replicate, the value is the plain mean log10 Kd,app of the variant's synonymous nucleotide variants, each fitted alone. A value at a range edge enters at that edge. Replicates below range and Replicates above range count these replicates."
 
-SE_DESCRIPTION := "Standard error of the mean log10 Kd,app. With two or more synonymous nucleotide variants, the larger of two terms: their spread, the SD over the square root of their number; and their fit error. The fit error is the root mean square of their own fit SEs over the square root of their number, where the equation reports a fit SE; one with no fit SE, such as one at an edge of the range, counts at the typical error of the others. With one variant, its own fit SE where the equation reports one. Empty for a bound and for a failed variant. At or below 0.5, Kd,app is rated Good."
+SE_DESCRIPTION := "Standard error of the mean log10 Kd,app. With two or more synonymous variants, it is the larger of the spread, sample SD / sqrt(n), and the fit error, RMS of the fit SEs / sqrt(n). With one variant, it is that variant's own fit SE, if the equation reports one. Empty for a value at a range edge and for a failed variant. Kd,app is Good at 0.5 or less."
 
 COUNT_SUM_NOTE := "With sample replicates, this is summed over the replicates: a nucleotide variant counts once in each replicate it was fitted in, so the states can add up to more than the NT variants column."
 
-FAILURE_DESCRIPTION := "Why the amino-acid variant gets the rating Failed. all_variants_failed: none of its synonymous nucleotide variants has a Kd,app. conflicting_censoring: they sit at opposite edges of the range with no edge holding most of them. not_productive: the variant has a stop codon or a frame shift. Empty for other ratings."
+FAILURE_DESCRIPTION := "Why the amino-acid variant gets the rating Failed. all_variants_failed: none of its synonymous nucleotide variants has a Kd,app. Where they all failed for one reason, that reason follows: \"all_variants_failed: insufficient_points\". conflicting_censoring: they sit at opposite edges of the range with no edge holding most of them. not_productive: the variant has a stop codon or a frame shift. Empty for other ratings."
 
-FAILURE_REPLICATES_DESCRIPTION := "Why the amino-acid variant gets the rating Failed. all_replicates_failed: no replicate has a Kd,app. conflicting_censoring: the replicates sit at opposite edges of the range with no edge holding most of them. not_productive: the variant has a stop codon or a frame shift. Empty for other ratings."
+FAILURE_REPLICATES_DESCRIPTION := "Why the amino-acid variant gets the rating Failed. all_replicates_failed: no replicate has a Kd,app. Where they all failed for one reason, that reason follows: \"all_replicates_failed: insufficient_points\". conflicting_censoring: the replicates sit at opposite edges of the range with no edge holding most of them. not_productive: the variant has a stop codon or a frame shift. Empty for other ratings."
 
 SD_DESCRIPTION := "SD of log10 Kd,app across the synonymous nucleotide variants in the mean: their spread alone, with no fit error. Empty with fewer than two variants, for a bound and for a failed variant."
 
@@ -159,7 +159,7 @@ deltaColumns := func(blockId, idPrefix, description) {
 			domain: domain,
 			annotations: {
 				"pl7.app/label": "Kd,app vs Parent SE (log10)",
-				"pl7.app/description": "Without sample replicates: the variant's and the parent's SE added in quadrature, empty where either has none. With sample replicates: the delta is taken inside each replicate that measured both inside the range, and the deltas are combined as replicate values are. A replicate that measured only one of them is left out, so the delta can differ from the difference of the two Kd,app values by a shift between replicates. Where a replicate that has both holds the variant or the parent at an edge of the range, or no replicate measured both, the delta compares the combined values and this error is empty. It is also empty where the variant or the parent sits at an edge of the titrated range: the delta is then a bound. The parent's own row is 0.",
+				"pl7.app/description": "Standard error of the parent delta. Without sample replicates, it is the variant's and the parent's SEs added in quadrature, empty if either SE is missing. With sample replicates, the delta is taken inside each replicate that measured both in range, and these deltas are combined as replicate values are: two or more give an SE from their spread, one gives its own. A replicate that measured only one of them is left out. Empty if no replicate measured both. Also empty if the variant or the parent is at a range edge, combined or in a shared replicate. The parent's own row is 0.",
 				"pl7.app/isScore": "false",
 				"pl7.app/format": ".2f",
 				"pl7.app/table/visibility": "default",
@@ -195,9 +195,9 @@ variantColumns := func(blockId, kdAnnotations, opts) {
 	// replicates the members here are the synonymous variants.
 	boundRule := replicates ? opts.boundRule : text.replace(opts.boundRule, "its replicates", "its synonymous variants", -1)
 	classDescription := replicates ?
-		"The class of the value combined over the replicates, after the synonymous nucleotide variants are combined inside each replicate. Good: the standard error across the replicates is 0.5 or less, more than half the replicates were measured inside the range, and in more than half the replicates, more than half the synonymous variants in the mean were measured inside the range. Under the mean bin fit, which reports no fit SE, more than half the replicates must also be rated Good on their own. Partial: the standard error is more than 0.5, or a majority is missing. " +
+		"The class of the value combined over the replicates. In each replicate, the synonymous nucleotide variants are combined first. Good needs three things. The standard error across the replicates is 0.5 or less. More than half the replicates are inside the range. In more than half the replicates, more than half the synonymous variants are inside the range. Under the mean bin fit, more than half the replicates must also be Good. Partial: the standard error is above 0.5, or no majority is inside the range. " +
 			boundRule + " Failed: no replicate has a Kd,app, or the replicates sit at opposite edges with neither edge holding most of them. With one replicate and no standard error, the value keeps that replicate's class." :
-		"The class of the value combined over the synonymous nucleotide variants. Good: the standard error is 0.5 or less, and more than half the variants were measured inside the range. Under the mean bin fit, which reports no fit SE, more than half the variants must also be rated Good on their own. Partial: the standard error is more than 0.5, or a majority is missing. " +
+		"The class of the value combined over the synonymous nucleotide variants. Good: the standard error is 0.5 or less, and more than half the variants are inside the range. Under the mean bin fit, more than half the variants must also be Good. Partial: the standard error is above 0.5, or no majority is inside the range. " +
 			boundRule + " Failed: no nucleotide variant has a Kd,app, or the variants sit at opposite edges with neither edge holding most of them. A single variant with no standard error keeps its own class."
 	outOfRangeDescription := replicates ?
 		"True when no replicate measured Kd,app inside the titrated range and more of them sit at one edge than at the other, so Kd,app is that edge." :
@@ -332,7 +332,7 @@ variantColumns := func(blockId, kdAnnotations, opts) {
 	}
 	if opts.parentMode {
 		cols = cols + deltaColumns(blockId, "aa_",
-			"log10 Kd,app of this amino-acid variant minus that of its parent. A variant censored at the edge of the titration reads from that edge, so its delta is a bound and its error is empty. With sample replicates the error is also empty where the delta compares the combined values: a replicate holds the variant or the parent at an edge of the range, or no replicate measured both. Negative binds tighter than the parent, the opposite sign to a delta of log10 K_A. The parent's own row is 0.")
+			"log10 Kd,app of this amino-acid variant minus that of its parent. Negative binds tighter than the parent (the opposite sign to a log10 K_A delta). A variant at a range edge reads from that edge, so its delta is a bound with no SE. With sample replicates, the SE is also empty if no replicate measured both, or if a shared replicate holds either at an edge. The parent's own row is 0.")
 	}
 	return cols
 }
@@ -353,7 +353,7 @@ ntVariantColumns := func(blockId, opts) {
 	}
 	if opts.parentMode {
 		cols = cols + deltaColumns(blockId, "nt_",
-			"log10 Kd,app of this nucleotide variant minus that of its parent's unmutated nucleotide variant. A variant censored at the edge of the titration reads from that edge, so its delta is a bound and its error is empty. With sample replicates the error is also empty where the delta compares the combined values. Negative binds tighter than the parent, the opposite sign to a delta of log10 K_A. The parent's own row is 0.")
+			"log10 Kd,app of this nucleotide variant minus that of its parent's unmutated nucleotide variant. Negative binds tighter than the parent (the opposite sign to a log10 K_A delta). A variant at a range edge reads from that edge, so its delta is a bound with no SE. With sample replicates, the SE is also empty where the delta compares the combined values. The parent's own row is 0.")
 	}
 	return cols
 }
