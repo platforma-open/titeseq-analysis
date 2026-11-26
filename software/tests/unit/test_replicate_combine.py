@@ -219,8 +219,8 @@ class TestFrames:
     def test_the_per_replicate_frame_holds_one_row_a_replicate(self):
         frame = build_per_replicate_frame(self._collected(), "clonotypeKey")
         assert frame.columns == [
-            "clonotypeKey", "replicate", "replicateReads", "kd", "kdNegLog10", "kdLog10Se", "r2",
-            "affinityClass", "fitFailureReason",
+            "clonotypeKey", "replicate", "replicateReads", "kd", "kdNegLog10", "kdLog10", "kdLog10Se",
+            "r2", "affinityClass", "fitFailureReason",
         ]  # fmt: skip
         assert frame.height == 4
         assert frame.filter(affinityClass="Failed").height == 2
@@ -230,6 +230,7 @@ class TestFrames:
         measured = frame.filter(pl.col("affinityClass") != "Failed").sort("replicate")
         assert measured["kd"].to_list() == pytest.approx([1e-8, 2e-8])
         assert measured["kdNegLog10"].to_list() == pytest.approx([8.0, 7.69897], abs=1e-5)
+        assert measured["kdLog10"].to_list() == pytest.approx([-8.0, -7.69897], abs=1e-5)
 
     def test_the_counts_add_up_to_the_replicates_seen(self):
         merged = merge_all(self._collected())

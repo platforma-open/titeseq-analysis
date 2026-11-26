@@ -426,7 +426,7 @@ class TestReviewClassesAcrossReplicates:
         assert per_replicate["affinityClass"].to_list() == ["Failed", "Failed"]
         assert per_replicate["fitFailureReason"].to_list() == ["low_r2", "low_r2"]
         assert _kd(outputs["per_clonotype"], "v1", "affinityClass") == "Failed"
-        assert _kd(outputs["per_clonotype"], "v1", "fitFailureReason") == "all_replicates_failed"
+        assert _kd(outputs["per_clonotype"], "v1", "fitFailureReason") == "all_replicates_failed: low_r2"
 
 
 # One amino-acid variant with two synonymous variants in replicate A and one in replicate B. The

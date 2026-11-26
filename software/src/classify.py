@@ -65,7 +65,9 @@ def r2_undefined(r2: float | None) -> bool:
 @dataclass
 class Classification:
     affinity_class: AffinityClass
-    failure_reason: FailureReason | None
+    # A `FailureReason`; a combined value that fails because every member failed for one shared
+    # reason appends it: "all_variants_failed: insufficient_points".
+    failure_reason: str | None
 
 
 def classify(
@@ -167,6 +169,8 @@ class Member:
     log10_kd: float | None
     log10_kd_se: float | None
     affinity_class: str
+    # Why a failed member has no K_D; None for a member that has one.
+    failure_reason: str | None = None
 
 
 def member_from_fit(row: dict, log10_lo: float | None, log10_hi: float | None) -> Member:
@@ -179,7 +183,7 @@ def member_from_fit(row: dict, log10_lo: float | None, log10_hi: float | None) -
     kd = row["kd"]
     cls = row["affinityClass"]
     if cls == "Failed" or kd is None or not math.isfinite(kd) or kd <= 0:
-        return Member("failed", None, None, cls)
+        return Member("failed", None, None, cls, row.get("fitFailureReason"))
     value = math.log10(kd)
     if row["kdOutOfRange"] and log10_lo is not None and log10_hi is not None:
         if value <= (log10_lo + log10_hi) / 2:
@@ -278,9 +282,25 @@ class Combined:
         return None if self.log10_kd is None else RANGE_SIDE[self.side]
 
 
-def failed(reason: FailureReason, counts: dict[MemberState, int] | None = None) -> Combined:
+def failed(reason: str, counts: dict[MemberState, int] | None = None) -> Combined:
     """A combined value with no K_D, rated Failed for `reason`."""
     return Combined(None, None, None, Classification("Failed", reason), None, counts or {})
+
+
+def all_failed(reason: str, members: Sequence[Member], *, shared_alone: bool = False) -> str:
+    """`reason`, followed by the one reason every member failed for: "<reason>: <shared reason>".
+
+    A member that is itself a combination names its members' shared reason last, and that is the one
+    compared and reported, so the levels of combination do not stack. With `shared_alone` the shared
+    reason stands by itself, without `reason` before it.
+    """
+    shared = {m.failure_reason.rsplit(": ", 1)[-1] if m.failure_reason else None for m in members}
+    if len(shared) != 1:
+        return reason
+    (only,) = shared
+    if only is None:
+        return reason
+    return only if shared_alone else f"{reason}: {only}"
 
 
 def combine_members(
@@ -288,11 +308,14 @@ def combine_members(
     *,
     all_failed_reason: FailureReason,
     fits_report_se: bool = True,
+    shared_reason_alone: bool = False,
 ) -> Combined:
     """One value over `members`, and its class.
 
     Failed members are left out and counted. With no member left the value fails for
-    `all_failed_reason`. With none of them measured the value is the wall they sit at
+    `all_failed_reason`, followed by the members' own reason where they all share one (`all_failed`);
+    with `shared_reason_alone`, for that shared reason alone.
+    With none of them measured the value is the wall they sit at
     (`censored_side`), or fails where they conflict. Otherwise it is their mean (`rate_mean`).
     `fits_report_se` is True under "log_fluorescence": its fits report an SE, and it rates a bound by
     its wall.
@@ -302,7 +325,7 @@ def combine_members(
         counts[m.state] += 1
     entered = [m for m in members if m.state != "failed"]
     if not entered:
-        return failed(all_failed_reason, counts)
+        return failed(all_failed(all_failed_reason, members, shared_alone=shared_reason_alone), counts)
 
     if not any(m.state == "measured" for m in entered):
         side = censored_side([m.state for m in entered])

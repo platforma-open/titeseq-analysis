@@ -438,8 +438,12 @@ def combine_amino_acid(
     log10_lo: float | None,
     log10_hi: float | None,
     fits_report_se: bool = True,
+    shared_reason_alone: bool = False,
 ) -> AminoAcidValues:
     """The mean over each amino-acid variant's synonymous variants, from the per-nt-variant fits.
+
+    `shared_reason_alone`: a variant whose synonymous variants all failed for one reason fails for
+    that reason, not for "all_variants_failed: <reason>".
 
     `log10_lo` and `log10_hi` are log10 of the lowest and highest non-zero concentrations: the walls
     a censored synonymous variant enters at.
@@ -454,7 +458,10 @@ def combine_amino_acid(
         aa = mapping.get(nt)
         if aa is not None:
             members.setdefault(aa, []).append(member)
-    combined = {aa: combine(members[aa], fits_report_se=fits_report_se) for aa in sorted(members)}
+    combined = {
+        aa: combine(members[aa], fits_report_se=fits_report_se, shared_reason_alone=shared_reason_alone)
+        for aa in sorted(members)
+    }
     combined, stops = fail_stops(combined, inputs)
     columns: dict[str, list] = {name: [] for name in PER_VARIANT_SCHEMA}
     for aa, c in combined.items():

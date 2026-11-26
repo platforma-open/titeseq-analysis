@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from classify import Member, censored_side, classify, rate_mean
+from classify import Member, all_failed, censored_side, classify, combine_members, rate_mean
 from constants import DEFAULT_PARAMS, FitParams
 
 
@@ -131,3 +131,42 @@ class TestRateMean:
 )
 def test_censored_side_needs_half_the_members_and_more_than_the_other_side(sides, expected):
     assert censored_side(sides) == expected
+
+
+def _failed_member(reason: str | None) -> Member:
+    return Member("failed", None, None, "Failed", reason)
+
+
+class TestAllFailedReason:
+    def test_one_shared_reason_is_appended(self):
+        members = [_failed_member("insufficient_points"), _failed_member("insufficient_points")]
+        assert all_failed("all_variants_failed", members) == "all_variants_failed: insufficient_points"
+
+    def test_differing_reasons_are_not_appended(self):
+        members = [_failed_member("insufficient_points"), _failed_member("low_r2")]
+        assert all_failed("all_variants_failed", members) == "all_variants_failed"
+
+    def test_a_member_without_a_reason_blocks_the_append(self):
+        members = [_failed_member("low_r2"), _failed_member(None)]
+        assert all_failed("all_variants_failed", members) == "all_variants_failed"
+
+    def test_no_reason_at_all_is_not_appended(self):
+        assert all_failed("all_replicates_failed", [_failed_member(None)]) == "all_replicates_failed"
+
+    def test_levels_of_combination_do_not_stack(self):
+        members = [_failed_member("all_variants_failed: insufficient_points")] * 3
+        assert all_failed("all_replicates_failed", members) == "all_replicates_failed: insufficient_points"
+
+    def test_a_combination_without_a_shared_reason_is_passed_on_as_itself(self):
+        members = [_failed_member("all_variants_failed")] * 2
+        assert all_failed("all_replicates_failed", members) == "all_replicates_failed: all_variants_failed"
+
+    def test_the_shared_reason_can_stand_alone(self):
+        members = [_failed_member("insufficient_points")] * 2
+        assert all_failed("all_variants_failed", members, shared_alone=True) == "insufficient_points"
+        mixed = [_failed_member("low_r2"), _failed_member("insufficient_points")]
+        assert all_failed("all_variants_failed", mixed, shared_alone=True) == "all_variants_failed"
+
+    def test_combine_members_reports_it(self):
+        combined = combine_members([_failed_member("low_r2")], all_failed_reason="all_variants_failed")
+        assert combined.classification.failure_reason == "all_variants_failed: low_r2"

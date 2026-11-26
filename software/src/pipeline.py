@@ -1179,6 +1179,8 @@ def _combine_replicate_synonymous(
             log10_lo=log10_lo,
             log10_hi=log10_hi,
             fits_report_se=fits_report_se,
+            # A replicate's row names the reason itself; the combined row says all replicates failed.
+            shared_reason_alone=True,
         )
         aa_frames.append((label, aa.with_spread()))
 
