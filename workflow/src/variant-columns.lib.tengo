@@ -270,7 +270,7 @@ variantColumns := func(blockId, kdAnnotations, opts) {
 				"pl7.app/label": "Fit failure reason",
 				"pl7.app/description": replicates ? FAILURE_REPLICATES_DESCRIPTION : FAILURE_DESCRIPTION,
 				"pl7.app/isScore": "false",
-				"pl7.app/table/visibility": "optional",
+				"pl7.app/table/visibility": "default",
 				"pl7.app/table/orderPriority": "197"
 			}
 		}),

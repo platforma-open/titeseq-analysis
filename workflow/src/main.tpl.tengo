@@ -648,7 +648,7 @@ wf.body(func(args) {
 					"pl7.app/label": "Fit failure reason",
 					"pl7.app/description": "Why the variant gets the rating Failed: too few reads or points, missing concentrations, a poor fit, no convergence, a signal that is already bright without antigen (bright_without_antigen), or replicates that failed or disagree. Where every replicate failed for one reason, that reason follows: \"all_replicates_failed: insufficient_points\". Empty for other ratings.",
 					"pl7.app/isScore": "false",
-					"pl7.app/table/visibility": "optional",
+					"pl7.app/table/visibility": "default",
 					"pl7.app/table/orderPriority": "197"
 				}
 			}
