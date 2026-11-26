@@ -570,14 +570,12 @@ wf.body(func(args) {
 	// only. The defaultCutoff keeps "Below range", the library's tightest binders, and drops
 	// "Above range", its weakest.
 	hillVisibility := "default"
-	outOfRangeVisibility := "default"
 	r2Visibility := "default"
 	affinityClassValues := "[\"Good\",\"Partial\",\"Failed\"]"
 	affinityClassCutoff := "[\"Good\",\"Partial\"]"
 	affinityClassDescription := "Good: R² at or above the Good threshold and the Hill coefficient within its limits. Partial: R² between the two thresholds, or a Good R² with the Hill coefficient outside its limits. Failed: no fit, or R² below the Failed threshold; see the fit failure reason."
 	if args.equation == "log_fluorescence" {
 		hillVisibility = "hidden"
-		outOfRangeVisibility = "optional"
 		if is_undefined(args.r2GateMin) {
 			r2Visibility = "hidden"
 		}
@@ -672,7 +670,7 @@ wf.body(func(args) {
 					"pl7.app/isScore": "false",
 					"pl7.app/isDiscreteFilter": "true",
 					"pl7.app/discreteValues": "[\"true\",\"false\"]",
-					"pl7.app/table/visibility": outOfRangeVisibility,
+					"pl7.app/table/visibility": "optional",
 					"pl7.app/table/orderPriority": "194"
 				}
 			}
@@ -692,7 +690,7 @@ wf.body(func(args) {
 			"pl7.app/isScore": "true",
 			"pl7.app/score/rankingOrder": "decreasing",
 			"pl7.app/format": ".2f",
-			"pl7.app/table/visibility": "default",
+			"pl7.app/table/visibility": "optional",
 			"pl7.app/table/orderPriority": "201"
 		}
 	}
@@ -708,7 +706,7 @@ wf.body(func(args) {
 			"pl7.app/description": "Kd,app as log10, the unit the fit solves in and the unit of the SE, SD and parent delta columns. A smaller number is tighter binding. Empty where there is no Kd,app.",
 			"pl7.app/isScore": "false",
 			"pl7.app/format": ".2f",
-			"pl7.app/table/visibility": "optional",
+			"pl7.app/table/visibility": "default",
 			"pl7.app/table/orderPriority": "200.5"
 		}
 	}

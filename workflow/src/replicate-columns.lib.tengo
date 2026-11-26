@@ -215,8 +215,7 @@ perReplicateColumns := func(blockId, idPrefix, kdAnnotations, classValues, ...sy
 			spec: hidden("pl7.app/vdj/replicateReads", "Long", "Reads in this replicate",
 				"All reads of this variant in this replicate, summed over every concentration, 0 M and points under the read floor included. A wide or missing value usually reads back to a low count here.", { "pl7.app/table/orderPriority": "195" })
 		},
-		// The panel reports Kd,app the way the main table does, which carries -log10 under every
-		// equation.
+		// -log10, optional in the panel as in the main table.
 		// An empty value is left out rather than stored as NA: the graphs count NA as 0. The import
 		// takes it on its own, since the filter skips the whole row of its import.
 		{
@@ -227,7 +226,7 @@ perReplicateColumns := func(blockId, idPrefix, kdAnnotations, classValues, ...sy
 				"-log10 of the Kd,app this replicate contributed to the mean. Larger is tighter binding. A replicate at an edge of the titration reports that edge.",
 				{ "pl7.app/format": ".2f", "pl7.app/table/orderPriority": "201" })
 		},
-		// log10 without the sign flip, optional in the panel as in the main table.
+		// log10 without the sign flip, shown in the panel as in the main table.
 		{
 			column: "kdLog10",
 			id: idPrefix + "kdLog10",

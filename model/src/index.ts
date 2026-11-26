@@ -1434,7 +1434,7 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
       ctx.data.replicateDrilldownKey,
     );
     if (filters === undefined) return undefined;
-    // Every per-replicate column is shown but log10 Kd,app, optional as in the main table. The
+    // Every per-replicate column is shown but -log10 Kd,app, optional as in the main table. The
     // variant's label column is hidden: the panel title names the variant, and the table holds one
     // variant only. The first matching rule wins.
     return createPlDataTableV3(ctx, {
@@ -1444,7 +1444,7 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
       displayOptions: {
         visibility: [
           { match: { name: [exactly("pl7.app/label")] }, visibility: "hidden" },
-          { match: { name: [exactly("pl7.app/vdj/kdLog10")] }, visibility: "optional" },
+          { match: { name: [exactly("pl7.app/vdj/kdNegLog10")] }, visibility: "optional" },
           { match: { name: cols.map((c) => exactly(c.spec.name)) }, visibility: "default" },
         ],
       },
