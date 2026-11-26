@@ -82,16 +82,18 @@ describe("the variant curve defaults", () => {
     const x = charted("pl7.app/vdj/signalConcentration");
     const extent = charted("pl7.app/vdj/curveExtent");
     const mean = charted("pl7.app/vdj/curveCombinedFittedMeanBin");
-    const kdLine = charted("pl7.app/vdj/kdLine");
+    const kdPoint = charted("pl7.app/vdj/kdPoint");
+    const kdReplicate = charted("pl7.app/vdj/kdReplicatePoint");
     const kdSe = charted("pl7.app/vdj/kdSeRange");
-    expect(variantCurveDefaults([...specs, kdSe, kdLine, mean, extent, x])).toEqual([
+    expect(variantCurveDefaults([...specs, kdPoint, kdReplicate, kdSe, mean, extent, x])).toEqual([
       { inputName: "x", selectedSource: x },
       { inputName: "y", selectedSource: extent },
       { inputName: "grouping", selectedSource: REPLICATE_AXIS },
+      { inputName: "additionalCurves", selectedSource: kdSe },
       { inputName: "additionalCurves", selectedSource: fitted },
       { inputName: "additionalCurves", selectedSource: mean },
-      { inputName: "additionalCurves", selectedSource: kdLine },
-      { inputName: "additionalCurves", selectedSource: kdSe },
+      { inputName: "additionalCurves", selectedSource: kdReplicate },
+      { inputName: "additionalCurves", selectedSource: kdPoint },
     ]);
   });
 
@@ -134,17 +136,19 @@ describe("the amino-acid curves", () => {
 
   it("plot the replicates by colour in one panel: each replicate's curve, the mean and the Kd,app marks, on the column that spans them", () => {
     const extent = onAa("pl7.app/vdj/aaCurveExtent");
-    const kdLine = onAa("pl7.app/vdj/aaKdLine");
+    const kdPoint = onAa("pl7.app/vdj/aaKdPoint");
+    const kdReplicate = onAa("pl7.app/vdj/aaKdReplicatePoint");
     const kdSe = onAa("pl7.app/vdj/aaKdSeRange");
-    const specs = [fitted, aaFitted, aaMean, aaX, extent, kdSe, kdLine];
+    const specs = [fitted, aaFitted, aaMean, aaX, extent, kdSe, kdPoint, kdReplicate];
     expect(aaCurveDefaults(specs)).toEqual([
       { inputName: "x", selectedSource: aaX },
       { inputName: "y", selectedSource: extent },
       { inputName: "grouping", selectedSource: REPLICATE_AXIS },
+      { inputName: "additionalCurves", selectedSource: kdSe },
       { inputName: "additionalCurves", selectedSource: aaFitted },
       { inputName: "additionalCurves", selectedSource: aaMean },
-      { inputName: "additionalCurves", selectedSource: kdLine },
-      { inputName: "additionalCurves", selectedSource: kdSe },
+      { inputName: "additionalCurves", selectedSource: kdReplicate },
+      { inputName: "additionalCurves", selectedSource: kdPoint },
     ]);
   });
 

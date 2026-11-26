@@ -239,7 +239,10 @@ def main(argv: list[str] | None = None) -> int:
     write(outputs["concentration_value"], args.out_concentration_value, download=False)
     if args.out_variant_curve is not None:
         variant_curve = build_variant_curve_frame(
-            outputs["fitted_mean_bin"], outputs["concentration_value"], outputs["per_clonotype"]
+            outputs["fitted_mean_bin"],
+            outputs["concentration_value"],
+            outputs["per_clonotype"],
+            outputs.get("per_replicate_nt" if synonymous is not None else "per_replicate"),
         )
         _write_frame(variant_curve, args.out_variant_curve)
     if synonymous is not None and args.out_nt_aa_variant is not None:
@@ -253,6 +256,7 @@ def main(argv: list[str] | None = None) -> int:
             nt_aa_variants(synonymous.nt_to_aa),
             outputs["concentration_value"],
             outputs["per_variant"],
+            outputs.get("per_replicate"),
         )
         _write_frame(aa_curve, args.out_aa_curve)
     if args.out_per_replicate is not None:

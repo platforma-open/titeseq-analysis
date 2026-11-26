@@ -1042,15 +1042,17 @@ wf.body(func(args) {
 			"The concentration, on the axes of the variant's chart."),
 		hiddenCurveColumn("curveExtent", "pl7.app/vdj/curveExtent", "Double", meanBinLabel,
 			"The height of each point of the variant's chart: the mean curve, or a Kd,app mark."),
-		sparse(hiddenCurveColumn("kdLine", "pl7.app/vdj/kdLine", "Double", "Kd,app",
-			"A vertical line at the variant's Kd,app.")),
+		sparse(hiddenCurveColumn("kdPoint", "pl7.app/vdj/kdPoint", "Double", "Kd,app",
+			"The variant's Kd,app, as a point on its curve; with replicates, on the mean curve.")),
 		sparse(hiddenCurveColumn("kdSeRange", "pl7.app/vdj/kdSeRange", "Double", "Kd,app ± SE",
-			"A bar from Kd,app / 10^SE to Kd,app × 10^SE, SE being the standard error of log10 Kd,app. Cut at the lowest and highest concentrations."))
+			"The standard error of log10 Kd,app, as a band from Kd,app / 10^SE to Kd,app × 10^SE over the height of the curves. Cut at the lowest and highest concentrations."))
 	]
 	if hasReplicate {
 		variantCurveCols = append(variantCurveCols,
 			sparse(hiddenCurveColumn("curveCombinedFittedMeanBin", "pl7.app/vdj/curveCombinedFittedMeanBin", "Double", "Mean over replicates",
-				"The variant's replicate curves, averaged at each concentration.")))
+				"The variant's replicate curves, averaged at each concentration.")),
+			sparse(hiddenCurveColumn("kdReplicatePoint", "pl7.app/vdj/kdReplicatePoint", "Double", "Kd,app (per replicate)",
+				"Each replicate's own Kd,app, as a point on that replicate's curve.")))
 	}
 	variantCurveImported := undefined
 	if !aaChart {
@@ -1088,10 +1090,12 @@ wf.body(func(args) {
 					"The amino-acid variant's replicate curves, averaged at each concentration.")),
 				hiddenCurveColumn("aaCurveExtent", "pl7.app/vdj/aaCurveExtent", "Double", meanBinLabel,
 					"The height of each point of the amino-acid variant's chart: the mean curve, or a Kd,app mark."),
-				sparse(hiddenCurveColumn("aaKdLine", "pl7.app/vdj/aaKdLine", "Double", "Kd,app",
-					"A vertical line at the amino-acid variant's Kd,app.")),
+				sparse(hiddenCurveColumn("aaKdPoint", "pl7.app/vdj/aaKdPoint", "Double", "Kd,app",
+					"The amino-acid variant's Kd,app, as a point on its mean curve.")),
+				sparse(hiddenCurveColumn("aaKdReplicatePoint", "pl7.app/vdj/aaKdReplicatePoint", "Double", "Kd,app (per replicate)",
+					"Each replicate's own Kd,app of the amino-acid variant, as a point on that replicate's curve.")),
 				sparse(hiddenCurveColumn("aaKdSeRange", "pl7.app/vdj/aaKdSeRange", "Double", "Kd,app ± SE",
-					"A bar from Kd,app / 10^SE to Kd,app × 10^SE, SE being the standard error of log10 Kd,app. Cut at the lowest and highest concentrations."))
+					"The standard error of log10 Kd,app, as a band from Kd,app / 10^SE to Kd,app × 10^SE over the height of the curves. Cut at the lowest and highest concentrations."))
 			])
 		}
 	}
