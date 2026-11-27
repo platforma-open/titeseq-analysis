@@ -255,7 +255,8 @@ const chartKey = computed(
 // points are dots, so their entries are hidden in the drawn legend, found by their labels. They
 // are the last curves, so the entries above them keep their place. The chart redraws its legend,
 // so the entries are hidden again on each change.
-const chartEl = ref<HTMLElement>();
+// Null once the chart is taken out of the page, as while the next row loads.
+const chartEl = ref<HTMLElement | null>(null);
 const pointLabels = computed(
   () =>
     new Set(
@@ -275,7 +276,7 @@ function hidePointEntries() {
 const legendObserver = new MutationObserver(hidePointEntries);
 watch([chartEl, pointLabels], ([el]) => {
   legendObserver.disconnect();
-  if (el === undefined) return;
+  if (el === null) return;
   legendObserver.observe(el, { childList: true, subtree: true });
   hidePointEntries();
 });
