@@ -270,13 +270,19 @@ class TestAaKdMarks:
 
     def test_the_band_runs_one_se_either_side_in_rising_x(self):
         xs = self._range_xs()
-        assert xs == sorted(xs) and len(set(xs)) == 33
+        # 0.4 decades at 64 crossings a decade.
+        assert xs == sorted(xs) and len(set(xs)) == 27
         assert xs[0] == pytest.approx(3e-9 / 10**0.2) and xs[-1] == pytest.approx(3e-9 * 10**0.2)
 
     def test_the_band_stops_at_the_concentrations(self):
         # One SE reaches 3e-10 and 3e-8; the concentrations run from 1e-9 to 1e-8.
         xs = self._range_xs(_aa_per_variant(se=1.0))
         assert xs[0] == pytest.approx(1e-9) and xs[-1] == pytest.approx(1e-8)
+        # A band a decade wide has as many crossings as a decade needs to read as filled.
+        assert len(xs) == 65
+
+    def test_a_narrow_band_keeps_a_least_number_of_crossings(self):
+        assert len(self._range_xs(_aa_per_variant(se=0.01))) == 9
 
     def test_a_kd_outside_the_concentrations_keeps_its_side_of_the_band(self):
         per_variant = _aa_per_variant(se=0.5).with_columns(
@@ -328,7 +334,7 @@ class TestVariantCurveFrame:
         assert n1["signalConcentration"].to_list() == [1e-9, 1e-9]
         marks = out.filter(pl.col(COL_CONC_STR).str.starts_with("kd-"))
         assert marks[COL_CLONOTYPE].unique().to_list() == ["n1"]
-        assert marks.sort(COL_CONC_STR)[COL_CONC_STR].to_list()[:3] == ["kd-point", "kd-se-00", "kd-se-01"]
+        assert marks.sort(COL_CONC_STR)[COL_CONC_STR].to_list()[:3] == ["kd-point", "kd-se-0000", "kd-se-0001"]
 
     def test_a_point_between_two_concentrations_reads_the_curve_on_a_log_x(self):
         # Half a decade up from 1e-9: half way up each curve.
@@ -342,7 +348,7 @@ class TestVariantCurveFrame:
     def test_the_band_runs_between_the_bottom_and_the_top_of_the_replicate_curves(self):
         out = build_variant_curve_frame(*_sloped_inputs(), self._kd())
         band = out.filter(pl.col("kdSeRange").is_not_null()).sort(COL_CONC_STR)
-        assert band["kdSeRange"].to_list() == [1.0, 6.0] * 16 + [1.0]
+        assert band["kdSeRange"].to_list() == [1.0, 6.0] * 13 + [1.0]
 
     def test_a_point_beyond_the_curve_takes_the_height_of_its_nearest_end(self):
         out = build_variant_curve_frame(*_sloped_inputs(), self._kd(1e-6))

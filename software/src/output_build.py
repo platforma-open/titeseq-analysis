@@ -136,8 +136,11 @@ def curve_variants(nt_to_aa: pl.DataFrame, fitted: pl.DataFrame) -> pl.DataFrame
 
 # A standard error of log10 Kd,app above this many decades gets no range: 10^SE is not a number.
 _MARK_SE_MAX = 100.0
-# The Kd,app ± SE band is one line that crosses it this many times, see `_kd_mark_rows`.
-_BAND_STROKES = 32
+# The Kd,app ± SE band is one line that crosses it this many times per decade of x, and never fewer
+# than the second number, see `_kd_mark_rows`. A chart shows a decade about 100 px wide and can be
+# enlarged twofold: the line, 6 px wide, must still cover the gap between two crossings.
+_BAND_STROKES_PER_DECADE = 64
+_BAND_STROKES_MIN = 8
 
 _CURVE_VALUES = [
     "curveFittedMeanBin",
@@ -186,8 +189,8 @@ def _kd_mark_rows(
 
     `kdPoint`: the variant's Kd,app, on its mean curve. `kdSeRange`: a band from Kd,app / 10^SE to
     Kd,app × 10^SE, over the height of the variant's curves. A chart draws lines only, so the band
-    is one line that runs between the bottom and the top `_BAND_STROKES` times, at even steps of
-    log x; drawn wider than a step, it reads as filled. The band stops at the ends of `x_range`,
+    is one line that runs between the bottom and the top `_BAND_STROKES_PER_DECADE` times a decade,
+    at even steps of log x; drawn wider than a step, it reads as filled. The band stops at the ends of `x_range`,
     the lowest and highest non-zero concentrations, or at Kd,app where that lies outside them: it
     never widens the chart. Both sit on the variant's first replicate alone: a chart draws a curve
     once per replicate, and a band drawn several times darkens. `kdReplicatePoint`: each replicate's own
@@ -226,14 +229,23 @@ def _kd_mark_rows(
             (se.is_not_null() & (se > 0) & (se <= _MARK_SE_MAX)).alias("ranged"),
         )
     )
-    stroke = pl.col("stroke")
+    stroke, strokes = pl.col("stroke"), pl.col("strokes")
+    decades = (pl.col("hi") / pl.col("lo")).log10()
     band = (
         combined.filter("ranged")
-        .join(pl.DataFrame({"stroke": range(_BAND_STROKES + 1)}), how="cross")
         .with_columns(
-            (pl.col("lo") * (pl.col("hi") / pl.col("lo")) ** (stroke / _BAND_STROKES)).alias("x"),
+            (decades * _BAND_STROKES_PER_DECADE)
+            .ceil()
+            .clip(lower_bound=_BAND_STROKES_MIN)
+            .cast(pl.Int64)
+            .alias("strokes")
+        )
+        .with_columns(pl.int_ranges(0, strokes + 1).alias("stroke"))
+        .explode("stroke")
+        .with_columns(
+            (pl.col("lo") * (pl.col("hi") / pl.col("lo")) ** (stroke / strokes)).alias("x"),
             pl.when(stroke % 2 == 0).then(pl.col("low")).otherwise(pl.col("high")).alias("height"),
-            pl.format("kd-se-{}", stroke.cast(pl.Utf8).str.zfill(2)).alias("name"),
+            pl.format("kd-se-{}", stroke.cast(pl.Utf8).str.zfill(4)).alias("name"),
         )
     )
     # (column, the rows that have the point, its concentration key, x)
