@@ -59,8 +59,6 @@ class ReplicateValue(Member):
 
     replicate: str
     r2: float | None = None
-    # The replicate's own fit failure reason; None unless its fit rated Failed.
-    failure_reason: str | None = None
 
 
 def replicate_value(replicate: str, row: dict, *, log10_lo: float | None, log10_hi: float | None) -> ReplicateValue:
@@ -93,6 +91,7 @@ PER_REPLICATE_COLUMNS: dict[str, pl.DataType] = {
     "replicateReads": pl.Int64,
     "kd": pl.Float64,
     "kdNegLog10": pl.Float64,
+    "kdLog10": pl.Float64,
     "kdLog10Se": pl.Float64,
     "r2": pl.Float64,
     "affinityClass": pl.Utf8,
@@ -162,6 +161,7 @@ def build_per_replicate_frame(
             cols["kd"].append(None if value.log10_kd is None else 10.0**value.log10_kd)
             # The published form, as the combined value reports it: larger is tighter.
             cols["kdNegLog10"].append(None if value.log10_kd is None else -value.log10_kd)
+            cols["kdLog10"].append(value.log10_kd)
             cols["kdLog10Se"].append(value.log10_kd_se)
             cols["r2"].append(value.r2)
             cols["affinityClass"].append(value.affinity_class)

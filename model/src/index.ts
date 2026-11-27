@@ -41,6 +41,18 @@ export { deriveTemplateParams };
 export type { PTableKey } from "@platforma-sdk/model";
 export type { InputKind, SynonymousSummary } from "./synonymous";
 export { nounOf } from "./synonymous";
+export type { CurveChart } from "./variantPanel";
+import { REPLICATE_AXIS } from "./variantPanel";
+export {
+  AA_CHART,
+  CONCENTRATION_AXIS,
+  REPLICATE_AXIS,
+  VARIANT_CHART,
+  VARIANT_CURVES_DEFAULT_STATE,
+  aaCurveDefaults,
+  pinOnVariantAxis,
+  variantCurveDefaults,
+} from "./variantPanel";
 import {
   BlockModelV3,
   ColumnsCollection,
@@ -180,9 +192,26 @@ export type BlockData = FitInputs &
     ntTableState: PlDataTableStateV2;
     /** Released projects store it; no page reads it. */
     ntSynonymousOnly?: boolean;
+    /** Released projects store it; no page reads it. */
     graphStateTitrationCurves: GraphMakerState;
+    /** Released projects store it; no page reads it. */
     graphStateKDHistogram: GraphMakerState;
     graphStateAffinityVsFit: GraphMakerState;
+    /**
+     * The variant panel's curves of one fitted variant on a run without replicates. The opened
+     * variant is pinned at render time and never saved here. UI-only; optional so no migration is needed.
+     */
+    graphStateVariantCurves?: GraphMakerState;
+    /** The same chart on a run with replicates: its curves are coloured by replicate. */
+    graphStateVariantReplicateCurves?: GraphMakerState;
+    /**
+     * The variant panel's curves in synonymous mode with replicates: the amino-acid variant's
+     * replicate curves and their mean. UI-only; optional so no migration is needed.
+     */
+    graphStateVariantAaCurves?: GraphMakerState;
+    /** The run-quality graphs' state. UI-only. Optional so no migration is needed. */
+    graphStateFitOutcomes?: GraphMakerState;
+    graphStateFailureReasons?: GraphMakerState;
     /** Released projects store it; no page reads it. */
     replicateNtTableState?: PlDataTableStateV2;
     settingsOpen: boolean;
@@ -484,8 +513,6 @@ type Ctx = RenderCtx<BlockArgs, BlockData>;
 function replicateCols(ctx: Ctx) {
   return ctx.outputs?.resolve({ field: "replicatePf", allowPermanentAbsence: true })?.getPColumns();
 }
-
-const REPLICATE_AXIS = "pl7.app/vdj/replicate";
 
 /**
  * The filter that narrows the per-replicate frame to one variant. The variant axis is whichever
@@ -832,6 +859,44 @@ function variantSummaryCols(ctx: Ctx) {
     ?.getPColumns();
 }
 
+/**
+ * One count of the run-quality summary. `replicate` is absent on a run without replicates. The
+ * count over all replicates is the sum of theirs.
+ */
+export type RunQualityCount<K extends string> = { replicate?: string; count: number } & Record<
+  K,
+  string
+>;
+
+/** One raw count: a class, and for the failed fits the reason. */
+export type RunQualityRawCount = {
+  replicate?: string;
+  affinityClass: string;
+  failureReason: string | null;
+  count: number;
+};
+
+/**
+ * How many fits ended in each class, and why the failed ones failed. `raw` counts every fit.
+ * `outcomes` and `failureReasons` count what `scope` says:
+ *   known      the variants that match a known variant of the upstream block exactly
+ *   attempted  no known-variant list upstream: the fits with the data to be attempted, which
+ *              leaves out the failed fits whose reason is in `leftOutReasons`
+ */
+export type RunQuality = {
+  scope: "known" | "attempted";
+  leftOutReasons: string[];
+  outcomes: RunQualityCount<"affinityClass">[];
+  failureReasons: RunQualityCount<"failureReason">[];
+  raw: RunQualityRawCount[];
+};
+
+function runQualityCols(ctx: Ctx) {
+  return ctx.outputs
+    ?.resolve({ field: "runQualityPf", allowPermanentAbsence: true })
+    ?.getPColumns();
+}
+
 function synonymousSummary(ctx: Ctx): SynonymousSummary | undefined {
   // A summary from a run on another dataset says nothing about this one.
   if (!plRefsEqualOrBothAbsent(ctx.activeArgs?.abundanceRef, ctx.data.abundanceRef))
@@ -922,15 +987,15 @@ export type RunShape = {
 };
 
 /**
- * The block's pages: the main table, then the three graph pages. The nucleotide variants' and the
- * replicates' own values leave the block through the raw data download. Each entry stays an
- * `as const` literal: the routes are typed from the hrefs.
+ * The block's pages: the main table, the graph page, then run quality. A variant's titration curves
+ * are in the main table's variant panel. The nucleotide variants' and the replicates' own values
+ * leave the block through the raw data download. Each entry stays an `as const` literal: the routes
+ * are typed from the hrefs.
  */
 export const SECTIONS = [
   { type: "link" as const, href: "/" as const, label: "Main" },
-  { type: "link" as const, href: "/titration-curves" as const, label: "Titration Curves" },
-  { type: "link" as const, href: "/kd-distribution" as const, label: "Kd Distribution" },
   { type: "link" as const, href: "/affinity-vs-fit" as const, label: "Affinity vs Fit Quality" },
+  { type: "link" as const, href: "/run-quality" as const, label: "Run Quality" },
 ];
 
 /** The software's own tables offered for download, by output field, with their file names. */
@@ -1183,7 +1248,14 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     // self-recovery retries the write — so we label it as such.
     // replicatePf exists only on a run that combined replicates, the next two in synonymous mode
     // only, and runWarnings not on a run made before it existed, so their absence is no error.
-    const optionalKeys = ["replicatePf", "variantSummaryPf", "synonymousSummary", "runWarnings"];
+    const optionalKeys = [
+      "replicatePf",
+      "variantSummaryPf",
+      "synonymousSummary",
+      "runWarnings",
+      "runQualityPf",
+      "runQuality",
+    ];
     for (const key of ["summaryPf", "signalPf", "logHandle", ...optionalKeys]) {
       const errorAcc = (
         optionalKeys.includes(key)
@@ -1268,7 +1340,7 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
   .outputWithStatus("summaryTable", (ctx) => {
     // One row per variant: the summary columns only. The per-concentration signal, keyed by
     // concentration and replicate as well, would repeat each variant once per measured point; it
-    // is plotted on the Titration Curves page and exported in `pf`. In synonymous mode the rows are
+    // is plotted in the variant panel and exported in `pf`. In synonymous mode the rows are
     // amino-acid variants.
     const summaryCols = variantSummaryCols(ctx) ?? ctx.outputs?.resolve("summaryPf")?.getPColumns();
     if (summaryCols === undefined) return undefined;
@@ -1303,6 +1375,23 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
     if (pCols === undefined) return undefined;
     return pCols.map((c) => ({ columnId: c.id, spec: c.spec }) satisfies PColumnIdAndSpec);
   })
+
+  // The run-quality counts. Absent on a run made before the block wrote them.
+  .outputWithStatus("runQualityPf", (ctx): PFrameHandle | undefined => {
+    const pCols = runQualityCols(ctx);
+    if (pCols === undefined) return undefined;
+    return createPFrameForGraphs(ctx, pCols);
+  })
+
+  .output("runQualityPfCols", (ctx) =>
+    runQualityCols(ctx)?.map((c) => ({ columnId: c.id, spec: c.spec }) satisfies PColumnIdAndSpec),
+  )
+
+  .output("runQuality", (ctx): RunQuality | undefined =>
+    ctx.outputs
+      ?.resolve({ field: "runQuality", allowPermanentAbsence: true })
+      ?.getDataAsJson<RunQuality>(),
+  )
 
   .output("isEmpty", (ctx) => {
     const pCols = ctx.outputs?.resolve("summaryPf")?.getPColumns();
@@ -1345,8 +1434,9 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
       ctx.data.replicateDrilldownKey,
     );
     if (filters === undefined) return undefined;
-    // Every per-replicate column is shown. The variant's label column is hidden: the panel title
-    // names the variant, and the table holds one variant only.
+    // Every per-replicate column is shown but -log10 Kd,app, optional as in the main table. The
+    // variant's label column is hidden: the panel title names the variant, and the table holds one
+    // variant only. The first matching rule wins.
     return createPlDataTableV3(ctx, {
       primaryColumns: cols.map((c) => DataColumn.fromColumn(c)),
       columns: undefined,
@@ -1354,6 +1444,7 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
       displayOptions: {
         visibility: [
           { match: { name: [exactly("pl7.app/label")] }, visibility: "hidden" },
+          { match: { name: [exactly("pl7.app/vdj/kdNegLog10")] }, visibility: "optional" },
           { match: { name: cols.map((c) => exactly(c.spec.name)) }, visibility: "default" },
         ],
       },

@@ -3,23 +3,27 @@ import { plRefsEqual } from "@platforma-sdk/model";
 import { defineAppV3 } from "@platforma-sdk/ui-vue";
 import { computed, watch } from "vue";
 import AffinityVsFitPage from "./pages/AffinityVsFitPage.vue";
-import KDDistributionPage from "./pages/KDDistributionPage.vue";
+import RunQualityPage from "./pages/RunQualityPage.vue";
 import TablePage from "./pages/TablePage.vue";
-import TitrationCurvesPage from "./pages/TitrationCurvesPage.vue";
 
 export const sdkPlugin = defineAppV3(platforma, (app) => {
   app.model.data.customBlockLabel ??= "";
 
   syncSubtitleLabel(app.model);
 
+  const routes = {
+    "/": () => TablePage,
+    "/affinity-vs-fit": () => AffinityVsFitPage,
+    "/run-quality": () => RunQualityPage,
+  };
+
+  // A project saved on a page the block does not have opens on the main page.
+  const savedPath = new URL(app.snapshot.navigationState.href, "http://dummy").pathname;
+  if (!(savedPath in routes)) void app.navigateTo("/");
+
   return {
     progress: () => app.model.outputs.isRunning,
-    routes: {
-      "/": () => TablePage,
-      "/titration-curves": () => TitrationCurvesPage,
-      "/kd-distribution": () => KDDistributionPage,
-      "/affinity-vs-fit": () => AffinityVsFitPage,
-    },
+    routes,
   };
 });
 

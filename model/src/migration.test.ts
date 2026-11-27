@@ -302,10 +302,10 @@ describe("a project stored on the v7 data model", () => {
 });
 
 describe("the pages", () => {
-  const GRAPHS = ["/titration-curves", "/kd-distribution", "/affinity-vs-fit"];
+  const GRAPHS = ["/affinity-vs-fit"];
 
-  it("are the main table, then the three graph pages", () => {
-    expect(SECTIONS.map((s) => s.href)).toEqual(["/", ...GRAPHS]);
+  it("are the main table, the graph page, then the run-quality page", () => {
+    expect(SECTIONS.map((s) => s.href)).toEqual(["/", ...GRAPHS, "/run-quality"]);
   });
 });
 

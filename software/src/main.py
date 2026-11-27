@@ -17,8 +17,10 @@ from constants import (
 from download import labelled, name_variants, read_names
 from io_layer import apply_bin_ranks, read_reads_table
 from log import log
+from output_build import build_aa_curve_frame, build_variant_curve_frame, curve_variants
 from pipeline import run
 from replicate_combine import ReplicateInputs
+from run_quality import write_run_quality
 from synonymous import (
     COL_AA,
     COL_MUTATIONS,
@@ -63,11 +65,14 @@ _SYNONYMOUS_ONLY = (
     "out_per_nt_variant",
     "out_per_replicate_nt",
     "out_nt_aa_variant",
+    "out_curve_variants",
+    "out_aa_curve",
     "aa_mutations",
     "aa_parent_links",
     "aa_productive",
     "nt_mutations",
     "nt_parent_links",
+    "known_distance_aa",
 )
 
 
@@ -106,6 +111,16 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="synonymous mode: TSV [clonotypeKey, aaKey], each nt variant's amino-acid variant",
     )
+    parser.add_argument(
+        "--out-curve-variants",
+        default=None,
+        help="synonymous mode: TSV [clonotypeKey, aaKey], the nt variants that drew a fitted curve",
+    )
+    parser.add_argument(
+        "--out-aa-curve",
+        default=None,
+        help="synonymous mode with replicates: each amino-acid variant's curves, from its nt variants' fits",
+    )
     parser.add_argument("--params", default=None, help="path to params JSON (optional)")
     parser.add_argument("--target-antigen", default=None)
     parser.add_argument("--antigen-column-ref", default=None)
@@ -129,12 +144,18 @@ def main(argv: list[str] | None = None) -> int:
         "--out-run-warnings", default=None, help="JSON list of what the run must tell the user; [] when nothing"
     )
     parser.add_argument(
+        "--out-run-quality",
+        default=None,
+        help="prefix of the run-quality files: <prefix>outcomes.tsv, <prefix>failure_reasons.tsv, <prefix>summary.json",
+    )
+    parser.add_argument(
         "--bin-ranks", default=None, help="JSON {bin value: rank}: the user's bin order, lowest fluorescence first"
     )
     parser.add_argument("--out-fit-reads", default=None, help="TSV [clonotypeKey, fitReads]: the reads each fit used")
     parser.add_argument("--nt-to-aa", default=None, help="TSV [ntKey, aaKey]: the nt -> aa linker")
     parser.add_argument("--aa-mutations", default=None, help="TSV [aaKey, mutationCount]")
     parser.add_argument("--aa-parent-links", default=None, help="TSV [aaKey, parentId]: the aa parent linker")
+    parser.add_argument("--out-variant-curve", default=None, help="the variant panel's chart of each fit")
     parser.add_argument("--out-per-variant", default=None, help="one row per amino-acid variant")
     parser.add_argument("--out-synonymous-summary", default=None, help="JSON run summary of the combination")
     parser.add_argument("--aa-productive", default=None, help='TSV [aaKey, productive]: "true" / "false"')
@@ -145,6 +166,16 @@ def main(argv: list[str] | None = None) -> int:
         "--variant-names", default=None, help="TSV [key, variantId, sequence]: the abundance's variants, named"
     )
     parser.add_argument("--aa-variant-names", default=None, help="TSV [key, variantId, sequence]: the aa variants")
+    parser.add_argument(
+        "--known-distance",
+        default=None,
+        help="TSV [key, distance]: each abundance variant's mutations to its nearest known variant",
+    )
+    parser.add_argument(
+        "--known-distance-aa",
+        default=None,
+        help="synonymous mode: TSV [key, distance]: each amino-acid variant's mutations to its nearest known variant",
+    )
     parser.add_argument(
         "--download-prefix",
         default=None,
@@ -206,8 +237,28 @@ def main(argv: list[str] | None = None) -> int:
     write(outputs["mean_bin"], args.out_mean_bin)
     write(outputs["fitted_mean_bin"], args.out_fitted_mean_bin)
     write(outputs["concentration_value"], args.out_concentration_value, download=False)
+    if args.out_variant_curve is not None:
+        variant_curve = build_variant_curve_frame(
+            outputs["fitted_mean_bin"],
+            outputs["concentration_value"],
+            outputs["per_clonotype"],
+            outputs.get("per_replicate_nt" if synonymous is not None else "per_replicate"),
+        )
+        _write_frame(variant_curve, args.out_variant_curve)
     if synonymous is not None and args.out_nt_aa_variant is not None:
         write(nt_aa_variants(synonymous.nt_to_aa), args.out_nt_aa_variant)
+    if synonymous is not None and args.out_curve_variants is not None:
+        link = nt_aa_variants(synonymous.nt_to_aa)
+        _write_frame(curve_variants(link, outputs["fitted_mean_bin"]), args.out_curve_variants)
+    if synonymous is not None and args.out_aa_curve is not None:
+        aa_curve = build_aa_curve_frame(
+            outputs["fitted_mean_bin"],
+            nt_aa_variants(synonymous.nt_to_aa),
+            outputs["concentration_value"],
+            outputs["per_variant"],
+            outputs.get("per_replicate"),
+        )
+        _write_frame(aa_curve, args.out_aa_curve)
     if args.out_per_replicate is not None:
         write(outputs["per_replicate"], args.out_per_replicate)
     if args.out_per_replicate_nt is not None:
@@ -223,6 +274,14 @@ def main(argv: list[str] | None = None) -> int:
             json.dump(outputs.get("run_warnings", []), f)
     if args.out_fit_reads is not None:
         write(outputs["fit_reads"], args.out_fit_reads)
+    if args.out_run_quality is not None:
+        write_run_quality(
+            outputs,
+            args.known_distance,
+            args.out_run_quality,
+            args.known_distance_aa,
+            None if synonymous is None else synonymous.nt_to_aa,
+        )
     log("CLI done")
     return 0
 

@@ -46,7 +46,7 @@ countColumn := func(header, blockId, idPrefix, label, description, visibility, p
 
 SD_DESCRIPTION := "The standard deviation of log10 Kd,app across the replicates that the block used. It is empty if the block used one replicate. It is also empty if Kd,app is out of range or the variant failed."
 
-SE_DESCRIPTION := "Standard error of the mean log10 Kd,app across the replicates. With two or more, the larger of two terms: their spread, the sample SD over the square root of their number; and their fit error. The fit error is the root mean square of their own fit SEs over the square root of their number, where the equation reports a fit SE; one with no fit SE, such as one at an edge of the range, counts at the typical error of the others. With one replicate, that fit's own standard error where the equation reports one. Empty for a bound and for a failed variant. At or below 0.5, Kd,app is rated Good."
+SE_DESCRIPTION := "Standard error of the mean log10 Kd,app across the replicates. With two or more replicates, it is the larger of the spread, sample SD / sqrt(n), and the fit error, RMS of the fit SEs / sqrt(n). With one replicate, it is that fit's own SE, if the equation reports one. Empty for a value at a range edge and for a failed variant. Kd,app is Good at 0.5 or less."
 
 /**
  * The replicate count and the four state counts a value combined over replicates carries.
@@ -215,8 +215,7 @@ perReplicateColumns := func(blockId, idPrefix, kdAnnotations, classValues, ...sy
 			spec: hidden("pl7.app/vdj/replicateReads", "Long", "Reads in this replicate",
 				"All reads of this variant in this replicate, summed over every concentration, 0 M and points under the read floor included. A wide or missing value usually reads back to a low count here.", { "pl7.app/table/orderPriority": "195" })
 		},
-		// The panel reports Kd,app the way the main table does, which carries -log10 under every
-		// equation.
+		// -log10, optional in the panel as in the main table.
 		// An empty value is left out rather than stored as NA: the graphs count NA as 0. The import
 		// takes it on its own, since the filter skips the whole row of its import.
 		{
@@ -226,6 +225,15 @@ perReplicateColumns := func(blockId, idPrefix, kdAnnotations, classValues, ...sy
 			spec: hidden("pl7.app/vdj/kdNegLog10", "Double", "-log10 Kd,app (per replicate)",
 				"-log10 of the Kd,app this replicate contributed to the mean. Larger is tighter binding. A replicate at an edge of the titration reports that edge.",
 				{ "pl7.app/format": ".2f", "pl7.app/table/orderPriority": "201" })
+		},
+		// log10 without the sign flip, shown in the panel as in the main table.
+		{
+			column: "kdLog10",
+			id: idPrefix + "kdLog10",
+			filterOutRegex: "^$",
+			spec: hidden("pl7.app/vdj/kdLog10", "Double", "log10 Kd,app (per replicate)",
+				"log10 of the Kd,app this replicate contributed to the mean. Smaller is tighter binding. A replicate at an edge of the titration reports that edge.",
+				{ "pl7.app/format": ".2f", "pl7.app/table/orderPriority": "200.5" })
 		}
 	]
 	return columns

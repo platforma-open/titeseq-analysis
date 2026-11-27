@@ -19,14 +19,14 @@ onlyOn := func(cols, axis) {
 	return found
 }
 
-/**
- * The Variant Id column on `axis`: the one label column there. Undefined when there is none or
- * several.
- */
-label := func(cols, axis) {
+/** The one column of `cols` on `axis` alone. Undefined when there is none or several. */
+only := func(cols, axis) {
 	found := onlyOn(cols, axis)
 	return len(found) == 1 ? found[0] : undefined
 }
+
+/** The Variant Id column on `axis`: the one label column there. */
+label := only
 
 /**
  * The sequence column on `axis`. Of several, the one in the axis's own alphabet. Undefined when
@@ -49,6 +49,7 @@ sequence := func(cols, axis) {
 }
 
 export ll.toStrict({
+	only: only,
 	label: label,
 	sequence: sequence
 })

@@ -15,6 +15,7 @@ maps := import("@platforma-sdk/workflow-tengo:maps")
 json := import("json")
 text := import("text")
 replicateColumnsLib := import(":replicate-columns")
+runQualityColumnsLib := import(":run-quality-columns")
 
 synonymousInputs := import(":synonymous-inputs")
 variantColumnsLib := import(":variant-columns")
@@ -60,6 +61,17 @@ wf.prepare(func(args) {
 		domain: { "pl7.app/feature": "amplicon-sequence" }
 	}, "variantSequences")
 
+	// Each variant's mutations to its nearest known variant, when the upstream block took a
+	// known-variant list. Nucleotide or amino-acid, whichever alphabet the variant axis is in.
+	bb.addMulti({
+		axes: [{ anchor: "abundance", idx: 1 }],
+		name: "pl7.app/nMutationsToKnown"
+	}, "knownDistanceNt")
+	bb.addMulti({
+		axes: [{ anchor: "abundance", idx: 1 }],
+		name: "pl7.app/aaMutationsToKnown"
+	}, "knownDistanceAa")
+
 	// Synonymous-mode inputs: the nt -> aa linker and the amino-acid parent columns. The aa parent
 	// columns sit on the aa axis, which no anchor reaches: matched by name here, narrowed to the
 	// linker's aa axis in the body. Unanchored, so they await every match in the project: the
@@ -101,6 +113,11 @@ wf.prepare(func(args) {
 		axes: [{ anchor: "abundance", idx: 1 }],
 		name: "pl7.app/repertoire/mutationCount"
 	}, "ntMutationCounts")
+	// A known-variant list of amino-acid variants, on a nucleotide dataset.
+	bb.addMulti({
+		axes: [{ name: "pl7.app/variantKey", type: "String", domain: { "pl7.app/alphabet": "aminoacid" } }],
+		name: "pl7.app/aaMutationsToKnown"
+	}, "aaKnownDistance")
 
 	return { columns: bb.build() }
 })
@@ -259,6 +276,8 @@ wf.body(func(args) {
 	// carries the audit trail. Keeping that out of paramsPayload avoids adding
 	// a non-tuning field to FitParams.
 
+	RUN_QUALITY := "run_quality_"
+
 	// Exec Python fit-curves.
 	execBuilder := exec.builder().
 		software(fitCurvesSw).
@@ -275,13 +294,27 @@ wf.body(func(args) {
 		arg("--out-concentration-value").arg("concentration_value.tsv").
 		arg("--out-run-warnings").arg("run_warnings.json").
 		arg("--out-fit-reads").arg("fit_reads.tsv").
+		arg("--out-run-quality").arg(RUN_QUALITY).
 		saveFile("per_clonotype.tsv").
 		saveFile("fit_reads.tsv").
 		saveFile("mean_bin.tsv").
 		saveFile("fitted_mean_bin.tsv").
 		saveFile("concentration_value.tsv").
 		saveFileContent("run_warnings.json").
+		saveFile(RUN_QUALITY + "outcomes.tsv").
+		saveFile(RUN_QUALITY + "failure_reasons.tsv").
+		saveFileContent(RUN_QUALITY + "summary.json").
 		saveStdoutStream()
+
+	// The variant panel charts a fitted variant, except in synonymous mode with replicates: there
+	// it charts the amino-acid variant, and no page reads the nucleotide variants' chart columns
+	// or their link to the amino-acid variant.
+	aaChart := syn.synonymous && hasReplicate
+	if !aaChart {
+		execBuilder.
+			arg("--out-variant-curve").arg("variant_curve.tsv").
+			saveFile("variant_curve.tsv")
+	}
 
 	// The downloads: each variant table written again, its hash keys replaced by the variant's
 	// Variant Id and sequence. A variant the names table does not cover keeps its key.
@@ -308,6 +341,32 @@ wf.body(func(args) {
 		columns.getColumns("variantSequences"))
 	if !is_undefined(variantNames) {
 		execBuilder.addFile("variant_names.tsv", variantNames.file).arg("--variant-names").arg("variant_names.tsv")
+	}
+	// The run-quality counts keep the variants that match a known one exactly.
+	knownDistance := variantNamesLib.only(columns.getColumns("knownDistanceNt"), abundanceSpec.axesSpec[1])
+	if is_undefined(knownDistance) {
+		knownDistance = variantNamesLib.only(columns.getColumns("knownDistanceAa"), abundanceSpec.axesSpec[1])
+	}
+	if !is_undefined(knownDistance) {
+		b := pframes.tsvFileBuilder()
+		b.add(knownDistance, { header: "distance" })
+		b.setAxisHeader(abundanceSpec.axesSpec[1], "key")
+		b.mem("4GiB")
+		b.cpu(1)
+		execBuilder.addFile("known_distance.tsv", b.build()).arg("--known-distance").arg("known_distance.tsv")
+	}
+	// Synonymous mode with a list of amino-acid variants only: the software counts the nucleotide
+	// variants that encode a known amino-acid variant.
+	if is_undefined(knownDistance) && syn.synonymous {
+		aaKnownDistance := variantNamesLib.only(columns.getColumns("aaKnownDistance"), syn.aaAxis)
+		if !is_undefined(aaKnownDistance) {
+			b := pframes.tsvFileBuilder()
+			b.add(aaKnownDistance, { header: "distance" })
+			b.setAxisHeader(syn.aaAxis, "key")
+			b.mem("4GiB")
+			b.cpu(1)
+			execBuilder.addFile("known_distance_aa.tsv", b.build()).arg("--known-distance-aa").arg("known_distance_aa.tsv")
+		}
 	}
 	aaNames := undefined
 	execBuilder.
@@ -375,13 +434,20 @@ wf.body(func(args) {
 		if hasReplicate {
 			execBuilder.
 				arg("--out-per-replicate-nt").arg("per_replicate_nt.tsv").
+				arg("--out-aa-curve").arg("aa_curve.tsv").
 				saveFile("per_replicate_nt.tsv").
-				saveFile(DOWNLOAD + "per_replicate_nt.tsv")
+				saveFile(DOWNLOAD + "per_replicate_nt.tsv").
+				saveFile("aa_curve.tsv")
 		}
 		execBuilder.
 			arg("--out-nt-aa-variant").arg("nt_aa_variant.tsv").
 			saveFile("nt_aa_variant.tsv").
 			saveFile(DOWNLOAD + "nt_aa_variant.tsv")
+		if !aaChart {
+			execBuilder.
+				arg("--out-curve-variants").arg("curve_variants.tsv").
+				saveFile("curve_variants.tsv")
+		}
 		if syn.aaClass {
 			execBuilder.
 				addFile("aa_mutations.tsv", keyTable(func(b) {
@@ -504,19 +570,17 @@ wf.body(func(args) {
 	// only. The defaultCutoff keeps "Below range", the library's tightest binders, and drops
 	// "Above range", its weakest.
 	hillVisibility := "default"
-	outOfRangeVisibility := "default"
 	r2Visibility := "default"
 	affinityClassValues := "[\"Good\",\"Partial\",\"Failed\"]"
 	affinityClassCutoff := "[\"Good\",\"Partial\"]"
 	affinityClassDescription := "Good: R² at or above the Good threshold and the Hill coefficient within its limits. Partial: R² between the two thresholds, or a Good R² with the Hill coefficient outside its limits. Failed: no fit, or R² below the Failed threshold; see the fit failure reason."
 	if args.equation == "log_fluorescence" {
 		hillVisibility = "hidden"
-		outOfRangeVisibility = "optional"
 		if is_undefined(args.r2GateMin) {
 			r2Visibility = "hidden"
 		}
 		affinityClassValues = "[\"Good\",\"Partial\",\"Below range\",\"Above range\",\"Failed\"]"
-		affinityClassDescription = "Good: Kd,app inside the titrated range, with a standard error of log10 Kd,app at or below 0.5. Partial: Kd,app is inside the range and its standard error is larger. Below range: Kd,app is at most the lowest concentration titrated, so the variant binds tighter than this titration resolves. Above range: Kd,app is at least the highest concentration titrated, which covers a signal that stayed flat and dim and one that rose without reaching half-maximum. Failed: no fit, a gap in the titration while complete titrations are required, or the fit-quality gate is on and an in-range fit's R² is below its minimum or its standard error above its maximum; see the fit failure reason."
+		affinityClassDescription = "Good: Kd,app is inside the titrated range, and its log10 standard error is 0.5 or less. Partial: Kd,app is inside the range, and its standard error is larger. Below range: Kd,app is at or below the lowest concentration, so the variant binds tighter than this titration resolves. Above range: Kd,app is at or above the highest concentration. This includes a flat, dim signal and a signal that did not reach half-maximum. Failed: no fit, a gap in a titration that must be complete, or a fit that fails the fit-quality gate. See the fit failure reason."
 		affinityClassCutoff = "[\"Good\",\"Partial\",\"Below range\"]"
 	}
 	// With replicates the class is given to the combined value, so the single-fit rules above do
@@ -525,7 +589,7 @@ wf.body(func(args) {
 		"A value at an edge of the range gets Below range or Above range." :
 		"A value at an edge of the range keeps the class of its replicates if they all have the same class. If they do not, it gets Partial."
 	if hasReplicate {
-		affinityClassDescription = "The class of the combined value. Good: the standard error across the replicates is 0.5 or less, and more than half the replicates were measured inside the range. Under the mean bin fit, which reports no fit SE, more than half the replicates must also be rated Good on their own. Partial: the standard error is more than 0.5, or a majority is missing. " +
+		affinityClassDescription = "The class of the combined value. Good: the standard error across the replicates is 0.5 or less, and more than half the replicates are inside the range. Under the mean bin fit, more than half the replicates must also be Good. Partial: the standard error is above 0.5, or no majority is inside the range. " +
 			boundRule + " Failed: no replicate has a Kd,app, or the replicates are at opposite edges of the range. With one replicate, the value keeps the class of that replicate if it has no standard error."
 	}
 	summaryColumns := [
@@ -547,7 +611,7 @@ wf.body(func(args) {
 				annotations: {
 					"pl7.app/label": "Hill coefficient",
 					"pl7.app/isScore": "false",
-					"pl7.app/description": "Hill coefficient n from the Hill fit. n = 1 is the expected Langmuir isotherm value for simple 1:1 monovalent binding; n in roughly [0.7, 1.3] behaves as expected. n > 2 typically reflects heterogeneous yeast display populations rather than genuine cooperativity. n < 1 often indicates a non-functional display fraction (misfolding, non-binding orientation) diluting the signal. Diagnostic only — not a primary ranking criterion.",
+					"pl7.app/description": "Hill coefficient n of the fit. n = 1 is simple 1:1 binding, and n from about 0.7 to 1.3 is expected. n above 2 usually comes from a mixed yeast display population, not from cooperativity. n below 1 often comes from a displayed fraction that does not bind. Use n as a diagnostic, not to rank variants.",
 					"pl7.app/table/visibility": hillVisibility,
 					"pl7.app/table/orderPriority": "195"
 				}
@@ -580,9 +644,9 @@ wf.body(func(args) {
 				domain: { "pl7.app/block": blockId },
 				annotations: {
 					"pl7.app/label": "Fit failure reason",
-					"pl7.app/description": "Why the variant gets the rating Failed: too few reads or points, missing concentrations, a poor fit, no convergence, a signal that is already bright without antigen (bright_without_antigen), or replicates that failed or disagree. Empty for other ratings.",
+					"pl7.app/description": "Why the variant gets the rating Failed: too few reads or points, missing concentrations, a poor fit, no convergence, a signal that is already bright without antigen (bright_without_antigen), or replicates that failed or disagree. Where every replicate failed for one reason, that reason follows: \"all_replicates_failed: insufficient_points\". Empty for other ratings.",
 					"pl7.app/isScore": "false",
-					"pl7.app/table/visibility": "optional",
+					"pl7.app/table/visibility": "default",
 					"pl7.app/table/orderPriority": "197"
 				}
 			}
@@ -606,7 +670,7 @@ wf.body(func(args) {
 					"pl7.app/isScore": "false",
 					"pl7.app/isDiscreteFilter": "true",
 					"pl7.app/discreteValues": "[\"true\",\"false\"]",
-					"pl7.app/table/visibility": outOfRangeVisibility,
+					"pl7.app/table/visibility": "optional",
 					"pl7.app/table/orderPriority": "194"
 				}
 			}
@@ -626,7 +690,7 @@ wf.body(func(args) {
 			"pl7.app/isScore": "true",
 			"pl7.app/score/rankingOrder": "decreasing",
 			"pl7.app/format": ".2f",
-			"pl7.app/table/visibility": "default",
+			"pl7.app/table/visibility": "optional",
 			"pl7.app/table/orderPriority": "201"
 		}
 	}
@@ -642,7 +706,7 @@ wf.body(func(args) {
 			"pl7.app/description": "Kd,app as log10, the unit the fit solves in and the unit of the SE, SD and parent delta columns. A smaller number is tighter binding. Empty where there is no Kd,app.",
 			"pl7.app/isScore": "false",
 			"pl7.app/format": ".2f",
-			"pl7.app/table/visibility": "optional",
+			"pl7.app/table/visibility": "default",
 			"pl7.app/table/orderPriority": "200.5"
 		}
 	}
@@ -948,6 +1012,103 @@ wf.body(func(args) {
 		], replicateColumns)
 	}
 
+	// Synonymous mode: the variant panel's curve columns. The fits and their curves are per nucleotide
+	// variant, the table's rows are amino-acid variants.
+	hiddenCurveColumn := func(column, name, valueType, label, description) {
+		return {
+			column: column,
+			spec: {
+				name: name,
+				valueType: valueType,
+				domain: { "pl7.app/block": blockId },
+				annotations: {
+					"pl7.app/label": label,
+					"pl7.app/description": description,
+					"pl7.app/isScore": "false",
+					"pl7.app/table/visibility": "hidden"
+				}
+			}
+		}
+	}
+	// A column drawn as a curve is empty on the rows of the other curves.
+	sparse := func(col) {
+		col.filterOutRegex = "^$"
+		return col
+	}
+	// The variant panel's chart of a fitted variant: every column on the fitted curve's axes, so
+	// one scatterplot panel holds every replicate, with the variant's Kd,app marks as curves.
+	variantCurveCols := [
+		hiddenCurveColumn("signalConcentration", "pl7.app/vdj/signalConcentration", "Double", concValueLabel,
+			"The concentration, on the axes of the variant's chart."),
+		hiddenCurveColumn("curveExtent", "pl7.app/vdj/curveExtent", "Double", meanBinLabel,
+			"The height of each point of the variant's chart: the mean curve, or a Kd,app mark."),
+		sparse(hiddenCurveColumn("kdPoint", "pl7.app/vdj/kdPoint", "Double", "Kd,app",
+			"The variant's Kd,app, as a point on its curve; with replicates, on the mean curve.")),
+		sparse(hiddenCurveColumn("kdSeRange", "pl7.app/vdj/kdSeRange", "Double", "Kd,app ± SE (shaded)",
+			"The standard error of log10 Kd,app, as a band from Kd,app / 10^SE to Kd,app × 10^SE over the height of the curves. Cut at the lowest and highest concentrations."))
+	]
+	if hasReplicate {
+		variantCurveCols = append(variantCurveCols,
+			sparse(hiddenCurveColumn("curveCombinedFittedMeanBin", "pl7.app/vdj/curveCombinedFittedMeanBin", "Double", "Mean over replicates",
+				"The variant's replicate curves, averaged at each concentration.")),
+			sparse(hiddenCurveColumn("kdReplicatePoint", "pl7.app/vdj/kdReplicatePoint", "Double", "Kd,app (per replicate)",
+				"Each replicate's own Kd,app, as a point on that replicate's curve.")))
+	}
+	variantCurveImported := undefined
+	if !aaChart {
+		variantCurveImported = importSplit(fit.getFile("variant_curve.tsv"), concAxes, variantCurveCols)
+	}
+	// Each nucleotide variant that drew a curve, with its amino-acid variant's key: the panel finds
+	// an amino-acid row's synonymous variants by it.
+	curveVariantsImported := undefined
+	// With replicates: each amino-acid variant's curves, made from its nucleotide variants' fits
+	// (nothing is fitted at the amino-acid grain). Every column sits on the same (amino-acid variant,
+	// replicate, concentration) axes, so one scatterplot panel holds every replicate; the mean over
+	// replicates repeats on each replicate's row.
+	aaCurveImported := undefined
+	if syn.synonymous {
+		if !aaChart {
+			curveVariantsImported = importSplit(fit.getFile("curve_variants.tsv"), [
+				{ column: "clonotypeKey", spec: clonotypeAxisSpec }
+			], [
+				hiddenCurveColumn("aaKey", "pl7.app/vdj/aaVariantKey", "String", "Amino acid variant key",
+					"The key of the amino-acid variant this nucleotide variant encodes.")
+			])
+		}
+		if hasReplicate {
+			aaConcentration := hiddenCurveColumn("aaSignalConcentration", "pl7.app/vdj/aaSignalConcentration", "Double", concValueLabel,
+				"The concentration, on the axes of the amino-acid curves.")
+			aaCurveImported = importSplit(fit.getFile("aa_curve.tsv"), [
+				{ column: "aaKey", spec: syn.aaAxis },
+				{ column: "replicate", spec: replicateAxisSpec },
+				{ column: "concentrationStr", spec: concAxisSpec }
+			], [
+				sparse(hiddenCurveColumn("aaFittedMeanBin", "pl7.app/vdj/aaFittedMeanBin", "Double", fittedMeanBinLabel + " (amino acid)",
+					"The fitted curves of the amino-acid variant's nucleotide variants in this replicate, averaged at each concentration.")),
+				aaConcentration,
+				sparse(hiddenCurveColumn("aaCombinedFittedMeanBin", "pl7.app/vdj/aaCombinedFittedMeanBin", "Double", "Mean over replicates",
+					"The amino-acid variant's replicate curves, averaged at each concentration.")),
+				hiddenCurveColumn("aaCurveExtent", "pl7.app/vdj/aaCurveExtent", "Double", meanBinLabel,
+					"The height of each point of the amino-acid variant's chart: the mean curve, or a Kd,app mark."),
+				sparse(hiddenCurveColumn("aaKdPoint", "pl7.app/vdj/aaKdPoint", "Double", "Kd,app",
+					"The amino-acid variant's Kd,app, as a point on its mean curve.")),
+				sparse(hiddenCurveColumn("aaKdReplicatePoint", "pl7.app/vdj/aaKdReplicatePoint", "Double", "Kd,app (per replicate)",
+					"Each replicate's own Kd,app of the amino-acid variant, as a point on that replicate's curve.")),
+				sparse(hiddenCurveColumn("aaKdSeRange", "pl7.app/vdj/aaKdSeRange", "Double", "Kd,app ± SE (shaded)",
+					"The standard error of log10 Kd,app, as a band from Kd,app / 10^SE to Kd,app × 10^SE over the height of the curves. Cut at the lowest and highest concentrations."))
+			])
+		}
+	}
+	// The run-quality graphs: how many fits ended in each class, and why the failed ones failed.
+	// Counted per replicate when the run has replicates; without them no column carries the axis.
+	importCounts := func(name, counts) {
+		return xsv.importFile(fit.getFile(RUN_QUALITY + name), "tsv",
+			runQualityColumnsLib.importSettings(counts, blockId, hasReplicate ? replicateAxisSpec : undefined),
+			{ splitDataAndSpec: true, cpu: 1, mem: "4GiB" })
+	}
+	outcomeCountsImported := importCounts("outcomes.tsv", runQualityColumnsLib.OUTCOMES)
+	failureCountsImported := importCounts("failure_reasons.tsv", runQualityColumnsLib.FAILURE_REASONS)
+
 	// Trace injection. `makeTrace` bundles the upstream abundance provenance
 	// with a self-descriptor; `trace.inject` rewrites only the small spec resources
 	// (data resources are untouched thanks to splitDataAndSpec).
@@ -1006,9 +1167,18 @@ wf.body(func(args) {
 	summaryPf := buildTracedPf([summaryImported, fitReadsImported], [])
 	variantSources := is_undefined(variantImported) ? [] : [variantImported]
 	ntVariantSources := is_undefined(ntVariantImported) ? [] : [ntVariantImported]
-	// signalPf feeds this block's Titration Curves graph: meanBin (Y),
-	// fittedMeanBin (curve overlay), concentrationValue (numeric X).
-	signalPf := buildTracedPf([meanBinImported, fittedMeanBinImported, concValueImported], [])
+	// signalPf feeds the variant panel's chart: the signal, the fitted curves and the chart columns.
+	signalSources := [meanBinImported, fittedMeanBinImported, concValueImported]
+	if !is_undefined(variantCurveImported) {
+		signalSources = append(signalSources, variantCurveImported)
+	}
+	if !is_undefined(curveVariantsImported) {
+		signalSources = append(signalSources, curveVariantsImported)
+	}
+	if !is_undefined(aaCurveImported) {
+		signalSources = append(signalSources, aaCurveImported)
+	}
+	signalPf := buildTracedPf(signalSources, [])
 	// exportPf is what downstream blocks see. Reuses the same pcolumn resources — no re-import.
 	// An allowlist: the affinity answer, its error and spread, the fit quality behind it, the support
 	// behind it (the reads its fits used, and the counts of replicates and of synonymous variants),
@@ -1069,6 +1239,10 @@ wf.body(func(args) {
 		logHandle: fit.getStdoutStream(),
 		// What the run must tell the user, as a JSON list of sentences; [] when nothing.
 		runWarnings: fit.getFileContent("run_warnings.json"),
+		// The counts twice: a frame of each replicate's for the graphs, and JSON rows for the bars
+		// and the raw table, which also hold the counts over all replicates.
+		runQualityPf: pframes.exportFrame(buildTracedPf([outcomeCountsImported, failureCountsImported], [])),
+		runQuality: fit.getFileContent(RUN_QUALITY + "summary.json"),
 		// The software's own tables for download, each variant named by its Variant Id and sequence.
 		rawVariantFits: fileLib.exportFile(fit.getFile(DOWNLOAD + "per_clonotype.tsv")),
 		rawFitReads: fileLib.exportFile(fit.getFile(DOWNLOAD + "fit_reads.tsv")),
