@@ -16,9 +16,11 @@ export type CurveChart = {
   x: string;
   /** The height of every point of the chart: the column that spans the curves and the marks. */
   extent: string;
-  /** A vertical line at Kd,app. */
-  kdLine: string;
-  /** A bar one standard error either side of Kd,app. */
+  /** Kd,app, as a point on the mean curve. */
+  kdPoint: string;
+  /** With replicates: each replicate's own Kd,app, as a point on its curve. */
+  kdReplicatePoint: string;
+  /** A range one standard error either side of Kd,app. */
   kdSe: string;
 };
 
@@ -28,7 +30,8 @@ export const VARIANT_CHART: CurveChart = {
   mean: "pl7.app/vdj/curveCombinedFittedMeanBin",
   x: "pl7.app/vdj/signalConcentration",
   extent: "pl7.app/vdj/curveExtent",
-  kdLine: "pl7.app/vdj/kdLine",
+  kdPoint: "pl7.app/vdj/kdPoint",
+  kdReplicatePoint: "pl7.app/vdj/kdReplicatePoint",
   kdSe: "pl7.app/vdj/kdSeRange",
 };
 
@@ -38,7 +41,8 @@ export const AA_CHART: CurveChart = {
   mean: "pl7.app/vdj/aaCombinedFittedMeanBin",
   x: "pl7.app/vdj/aaSignalConcentration",
   extent: "pl7.app/vdj/aaCurveExtent",
-  kdLine: "pl7.app/vdj/aaKdLine",
+  kdPoint: "pl7.app/vdj/aaKdPoint",
+  kdReplicatePoint: "pl7.app/vdj/aaKdReplicatePoint",
   kdSe: "pl7.app/vdj/aaKdSeRange",
 };
 
@@ -83,7 +87,8 @@ export function variantCurveDefaults(specs: PColumnSpec[]): CurveOption[] | unde
 
 /**
  * A chart where the run wrote its columns: every replicate's curve in one panel, coloured by
- * replicate, the mean curve over replicates, and Kd,app with its standard error. Every column
+ * replicate, the mean curve over replicates, Kd,app with its standard error, and each replicate's
+ * own Kd,app. Every column
  * shares one set of axes, so nothing is faceted. A variant without Kd,app has no marks, but the
  * columns are always written. Undefined on a run made before the columns.
  */
@@ -94,7 +99,14 @@ function chartDefaults(specs: PColumnSpec[], chart: CurveChart): CurveOption[] |
   const concentration = named(chart.x);
   if (!fitted || !extent || !concentration) return undefined;
   const replicate = fitted.axesSpec.find((a) => a.name === REPLICATE_AXIS);
-  const curves = [fitted, named(chart.mean), named(chart.kdLine), named(chart.kdSe)];
+  // In drawing order: the range lies under the curves, the points over them.
+  const curves = [
+    named(chart.kdSe),
+    fitted,
+    named(chart.mean),
+    named(chart.kdReplicatePoint),
+    named(chart.kdPoint),
+  ];
   return [
     { inputName: "x", selectedSource: concentration },
     // The points are hidden: y is the column that spans the curves.

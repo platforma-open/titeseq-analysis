@@ -134,36 +134,66 @@ def curve_variants(nt_to_aa: pl.DataFrame, fitted: pl.DataFrame) -> pl.DataFrame
     return link.join(curved, on=COL_CLONOTYPE, how="semi").sort(COL_CLONOTYPE)
 
 
-# Marks drawn as curves: two points closer than this still sort in the order written.
-_MARK_STEP = 1e-9
-# Half the height of the Kd,app ± SE mark's end caps, as a share of the curves' height.
-_MARK_CAP = 0.03
-# A standard error of log10 Kd,app above this many decades gets no bar: 10^SE is not a number.
+# A standard error of log10 Kd,app above this many decades gets no range: 10^SE is not a number.
 _MARK_SE_MAX = 100.0
+# The Kd,app ± SE band is one line that crosses it this many times, see `_kd_mark_rows`.
+_BAND_STROKES = 32
 
 _CURVE_VALUES = [
     "curveFittedMeanBin",
     "signalConcentration",
     "curveCombinedFittedMeanBin",
     "curveExtent",
-    "kdLine",
+    "kdPoint",
+    "kdReplicatePoint",
     "kdSeRange",
 ]
 
 
-def _kd_mark_rows(
-    curves: pl.DataFrame, kd: pl.DataFrame, key: str, x_range: tuple[float, float] | None
-) -> pl.DataFrame:
-    """The Kd,app marks of each variant, as points of two more curves.
+def _height_at(points: pl.DataFrame, at: pl.DataFrame, by: list[str]) -> pl.DataFrame:
+    """`at` ([*by, kd]) with `height`: each curve of `points` ([*by, x, y]) read at its `kd`.
 
-    `kdLine`: a vertical line at Kd,app, the height of the variant's curves. `kdSeRange`: a
-    horizontal bar from Kd,app / 10^SE to Kd,app × 10^SE, at mid height. The bar stops at the ends
-    of `x_range`, the lowest and highest non-zero concentrations, or at Kd,app where that lies
-    outside them: it never widens the chart. An end the bar reaches has a cap, an end cut short has
-    none. A scatterplot joins a curve's points in x order, so each mark is a run of points with
-    rising x. The points sit on every replicate of the variant, under concentration keys of their
-    own. `curveExtent` holds each point's height. A variant without Kd,app has no marks; one without
-    SE, or with one beyond `_MARK_SE_MAX`, no bar.
+    Straight between the two points either side, on a log x. Beyond the curve's ends, the height of
+    the nearest end. A group of `at` without a curve is dropped.
+    """
+    ordered = points.sort([*by, "x"])
+    segments = ordered.with_columns(
+        pl.col("x").shift(-1).over(by).fill_null(pl.col("x")).alias("x1"),
+        pl.col("y").shift(-1).over(by).fill_null(pl.col("y")).alias("y1"),
+        pl.col("x").min().over(by).alias("x_low"),
+        pl.col("x").max().over(by).alias("x_high"),
+    )
+    x, x1, y, y1 = pl.col("x"), pl.col("x1"), pl.col("y"), pl.col("y1")
+    inside = pl.col("kd").clip(pl.col("x_low"), pl.col("x_high"))
+    share = pl.when(x1 > x).then((inside.log10() - x.log10()) / (x1.log10() - x.log10())).otherwise(0.0)
+    return (
+        segments.join(at, on=by, how="inner")
+        .filter((x <= inside) & (inside <= x1))
+        .with_columns((y + (y1 - y) * share).alias("height"))
+        .unique(subset=by, keep="first", maintain_order=True)
+        .select(*by, "kd", "height")
+    )
+
+
+def _kd_mark_rows(
+    frame: pl.DataFrame,
+    kd: pl.DataFrame,
+    replicate_kd: pl.DataFrame | None,
+    key: str,
+    x_range: tuple[float, float] | None,
+) -> pl.DataFrame:
+    """The Kd,app marks of each variant, as points of three more curves.
+
+    `kdPoint`: the variant's Kd,app, on its mean curve. `kdSeRange`: a band from Kd,app / 10^SE to
+    Kd,app × 10^SE, over the height of the variant's curves. A chart draws lines only, so the band
+    is one line that runs between the bottom and the top `_BAND_STROKES` times, at even steps of
+    log x; drawn wider than a step, it reads as filled. The band stops at the ends of `x_range`,
+    the lowest and highest non-zero concentrations, or at Kd,app where that lies outside them: it
+    never widens the chart. Both sit on the variant's first replicate alone: a chart draws a curve
+    once per replicate, and a band drawn several times darkens. `kdReplicatePoint`: each replicate's own
+    Kd,app from `replicate_kd` ([key, replicate, kd]), on that replicate's curve. The points have
+    concentration keys of their own, and `curveExtent` holds each point's height. A variant without
+    Kd,app has no `kdPoint`; one without SE, or with one beyond `_MARK_SE_MAX`, no band.
     """
     schema = {
         key: pl.Utf8,
@@ -171,62 +201,66 @@ def _kd_mark_rows(
         COL_CONC_STR: pl.Utf8,
         "signalConcentration": pl.Float64,
         "curveExtent": pl.Float64,
-        "kdLine": pl.Float64,
+        "kdPoint": pl.Float64,
+        "kdReplicatePoint": pl.Float64,
         "kdSeRange": pl.Float64,
     }
-    spans = curves.group_by(key).agg(
+    positive = pl.col("kd").is_not_null() & (pl.col("kd") > 0)
+    mean_curve = frame.select(
+        key, pl.col("signalConcentration").alias("x"), pl.col("curveCombinedFittedMeanBin").alias("y")
+    ).unique()
+    spans = frame.group_by(key).agg(
+        pl.col(COL_REPLICATE).min(),
         pl.col("curveFittedMeanBin").min().alias("low"),
         pl.col("curveFittedMeanBin").max().alias("high"),
-        pl.col(COL_REPLICATE).unique().alias(COL_REPLICATE),
     )
-    kd_value, se, step = pl.col("kd"), pl.col("kdLog10Se"), _MARK_STEP
+    kd_value, se = pl.col("kd"), pl.col("kdLog10Se")
     x_min, x_max = (kd_value, kd_value) if x_range is None else (pl.lit(x_range[0]), pl.lit(x_range[1]))
-    marked = (
-        spans.join(kd.select(pl.col(key).cast(pl.Utf8), "kd", "kdLog10Se"), on=key, how="inner")
-        .filter(kd_value.is_not_null() & (kd_value > 0))
+    combined = (
+        _height_at(mean_curve, kd.select(pl.col(key).cast(pl.Utf8), "kd").filter(positive), [key])
+        .join(kd.select(pl.col(key).cast(pl.Utf8), "kdLog10Se"), on=key, how="left")
+        .join(spans, on=key, how="left")
         .with_columns(
-            ((pl.col("low") + pl.col("high")) / 2).alias("mid"),
-            ((pl.col("high") - pl.col("low")) * _MARK_CAP).alias("cap"),
-            (kd_value / 10.0**se).alias("lo_end"),
-            (kd_value * 10.0**se).alias("hi_end"),
-            (se.is_not_null() & (se > 0) & (se <= _MARK_SE_MAX)).alias("barred"),
-        )
-        .with_columns(
-            pl.max_horizontal("lo_end", pl.min_horizontal(x_min, kd_value)).alias("lo"),
-            pl.min_horizontal("hi_end", pl.max_horizontal(x_max, kd_value)).alias("hi"),
-        )
-        .with_columns(
-            (pl.col("barred") & (pl.col("lo") == pl.col("lo_end"))).alias("lo_cap"),
-            (pl.col("barred") & (pl.col("hi") == pl.col("hi_end"))).alias("hi_cap"),
+            pl.max_horizontal(kd_value / 10.0**se, pl.min_horizontal(x_min, kd_value)).alias("lo"),
+            pl.min_horizontal(kd_value * 10.0**se, pl.max_horizontal(x_max, kd_value)).alias("hi"),
+            (se.is_not_null() & (se > 0) & (se <= _MARK_SE_MAX)).alias("ranged"),
         )
     )
-    lo, hi, mid, cap = pl.col("lo"), pl.col("hi"), pl.col("mid"), pl.col("cap")
-    # The bar's points are numbered from the low cap where there is one, else from the bar itself.
-    first = pl.when("lo_cap").then(2).otherwise(0)
-    # (column, key prefix, the rows that have the point, its index, x, y)
+    stroke = pl.col("stroke")
+    band = (
+        combined.filter("ranged")
+        .join(pl.DataFrame({"stroke": range(_BAND_STROKES + 1)}), how="cross")
+        .with_columns(
+            (pl.col("lo") * (pl.col("hi") / pl.col("lo")) ** (stroke / _BAND_STROKES)).alias("x"),
+            pl.when(stroke % 2 == 0).then(pl.col("low")).otherwise(pl.col("high")).alias("height"),
+            pl.format("kd-se-{}", stroke.cast(pl.Utf8).str.zfill(2)).alias("name"),
+        )
+    )
+    # (column, the rows that have the point, its concentration key, x)
     points = [
-        ("kdLine", "kd-line", pl.lit(True), pl.lit(0), kd_value, pl.col("low")),
-        ("kdLine", "kd-line", pl.lit(True), pl.lit(1), kd_value * (1 + step), pl.col("high")),
-        ("kdSeRange", "kd-se", pl.col("lo_cap"), pl.lit(0), lo, mid - cap),
-        ("kdSeRange", "kd-se", pl.col("lo_cap"), pl.lit(1), lo * (1 + step), mid + cap),
-        ("kdSeRange", "kd-se", pl.col("barred"), first, lo * (1 + 2 * step), mid),
-        ("kdSeRange", "kd-se", pl.col("barred"), first + 1, hi * (1 - 2 * step), mid),
-        ("kdSeRange", "kd-se", pl.col("hi_cap"), first + 2, hi * (1 - step), mid + cap),
-        ("kdSeRange", "kd-se", pl.col("hi_cap"), first + 3, hi, mid - cap),
+        ("kdPoint", combined, pl.lit("kd-point"), kd_value),
+        ("kdSeRange", band, pl.col("name"), pl.col("x")),
     ]
+    if replicate_kd is not None:
+        by = [key, COL_REPLICATE]
+        replicate_curves = frame.select(
+            *by, pl.col("signalConcentration").alias("x"), pl.col("curveFittedMeanBin").alias("y")
+        )
+        own = replicate_kd.select(pl.col(key).cast(pl.Utf8), pl.col(COL_REPLICATE).cast(pl.Utf8), "kd")
+        heights = _height_at(replicate_curves, own.filter(positive), by)
+        points.append(("kdReplicatePoint", heights, pl.lit("kd-replicate"), kd_value))
     frames = [
-        marked.filter(present).select(
+        rows.select(
             key,
             COL_REPLICATE,
-            pl.format(f"{name}-{{}}", index).alias(COL_CONC_STR),
+            name.alias(COL_CONC_STR),
             x.alias("signalConcentration"),
-            y.alias("curveExtent"),
-            y.alias(column),
+            pl.col("height").alias("curveExtent"),
+            pl.col("height").alias(column),
         )
-        for column, name, present, index, x, y in points
+        for column, rows, name, x in points
     ]
-    empty = pl.DataFrame(schema={**schema, COL_REPLICATE: pl.List(pl.Utf8)})
-    return pl.concat([empty, *frames], how="diagonal").explode(COL_REPLICATE).select(list(schema))
+    return pl.concat([pl.DataFrame(schema=schema), *frames], how="diagonal").select(list(schema))
 
 
 def _curve_frame(
@@ -234,14 +268,15 @@ def _curve_frame(
     concentration_value: pl.DataFrame,
     key: str,
     kd: pl.DataFrame | None,
+    replicate_kd: pl.DataFrame | None,
 ) -> pl.DataFrame:
     """One chart's worth of columns per variant, all on [key, replicate, concentrationStr].
 
     `curves` is [key, replicate, concentrationStr, curveFittedMeanBin]. Adds the mean curve over
     replicates (repeated on every replicate's row), the numeric concentration for a scatterplot's
-    x, and from `kd` ([key, kd, kdLog10Se, ...]) each variant's Kd,app marks, see `_kd_mark_rows`.
-    `curveExtent` is set on every row: the mean curve on a curve's row, the mark's height on a
-    mark's.
+    x, and from `kd` ([key, kd, kdLog10Se, ...]) and `replicate_kd` each variant's Kd,app marks,
+    see `_kd_mark_rows`. `curveExtent` is set on every row: the mean curve on a curve's row, the
+    mark's height on a mark's.
     """
     by = [key, COL_REPLICATE, COL_CONC_STR]
     combined = curves.group_by([key, COL_CONC_STR]).agg(
@@ -259,8 +294,9 @@ def _curve_frame(
         .with_columns(pl.col("curveCombinedFittedMeanBin").alias("curveExtent"))
     )
     marks = _kd_mark_rows(
-        curves,
+        frame.filter(pl.col("signalConcentration") > 0),
         pl.DataFrame(schema={key: pl.Utf8, "kd": pl.Float64, "kdLog10Se": pl.Float64}) if kd is None else kd,
+        replicate_kd,
         key,
         x_range,
     )
@@ -278,12 +314,14 @@ def build_variant_curve_frame(
     fitted: pl.DataFrame,
     concentration_value: pl.DataFrame,
     per_clonotype: pl.DataFrame | None = None,
+    per_replicate: pl.DataFrame | None = None,
 ) -> pl.DataFrame:
     """The variant panel's chart of each fitted variant, beside its fitted curve: see `_curve_frame`.
 
     [clonotypeKey, replicate, concentrationStr] with the mean curve over replicates, the numeric
-    concentration and the Kd,app marks of `per_clonotype`. The fitted curve itself is `fitted`, on
-    the same axes, and is not repeated. A run without replicates has no replicate column.
+    concentration and the Kd,app marks of `per_clonotype` and, with replicates, of `per_replicate`
+    ([clonotypeKey, replicate, kd, ...]). The fitted curve itself is `fitted`, on the same axes, and
+    is not repeated. A run without replicates has no replicate column.
     """
     replicated = COL_REPLICATE in fitted.columns
     curves = _with_replicate(fitted).select(
@@ -292,7 +330,9 @@ def build_variant_curve_frame(
         COL_CONC_STR,
         pl.col("fittedMeanBin").alias("curveFittedMeanBin"),
     )
-    out = _curve_frame(curves, concentration_value, COL_CLONOTYPE, per_clonotype).drop("curveFittedMeanBin")
+    out = _curve_frame(
+        curves, concentration_value, COL_CLONOTYPE, per_clonotype, per_replicate if replicated else None
+    ).drop("curveFittedMeanBin")
     return out if replicated else out.drop(COL_REPLICATE)
 
 
@@ -301,7 +341,8 @@ _AA_CURVE_NAMES = {
     "signalConcentration": "aaSignalConcentration",
     "curveCombinedFittedMeanBin": "aaCombinedFittedMeanBin",
     "curveExtent": "aaCurveExtent",
-    "kdLine": "aaKdLine",
+    "kdPoint": "aaKdPoint",
+    "kdReplicatePoint": "aaKdReplicatePoint",
     "kdSeRange": "aaKdSeRange",
 }
 
@@ -311,13 +352,15 @@ def build_aa_curve_frame(
     nt_to_aa: pl.DataFrame,
     concentration_value: pl.DataFrame,
     per_variant: pl.DataFrame | None = None,
+    per_replicate: pl.DataFrame | None = None,
 ) -> pl.DataFrame:
     """Synonymous mode with replicates: each amino-acid variant's curves, made from its nt variants' fits.
 
     Nothing is fitted at the amino-acid grain. Per (amino-acid variant, replicate, concentration): the
     mean over its nt variants of the fitted curve. `nt_to_aa` is [clonotypeKey, aaKey], one
     amino-acid variant per nt variant. The rest is `_curve_frame`'s, under the amino-acid column
-    names; `per_variant` ([aaKey, kd, kdLog10Se, ...]) gives the Kd,app marks.
+    names; `per_variant` ([aaKey, kd, kdLog10Se, ...]) and `per_replicate` ([aaKey, replicate, kd,
+    ...]) give the Kd,app marks.
     """
     by = [COL_AA_KEY, COL_REPLICATE, COL_CONC_STR]
     # Only a run where nothing was fitted lacks the replicate column.
@@ -325,4 +368,4 @@ def build_aa_curve_frame(
     link = nt_to_aa.select(pl.col(COL_CLONOTYPE).cast(pl.Utf8), pl.col(COL_AA_KEY).cast(pl.Utf8))
     curved = fitted.with_columns(pl.col(COL_CLONOTYPE).cast(pl.Utf8)).join(link, on=COL_CLONOTYPE, how="inner")
     curves = curved.group_by(by).agg(pl.col("fittedMeanBin").mean().alias("curveFittedMeanBin"))
-    return _curve_frame(curves, concentration_value, COL_AA_KEY, per_variant).rename(_AA_CURVE_NAMES)
+    return _curve_frame(curves, concentration_value, COL_AA_KEY, per_variant, per_replicate).rename(_AA_CURVE_NAMES)

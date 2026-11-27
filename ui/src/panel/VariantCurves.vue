@@ -22,7 +22,7 @@ import { GraphMaker } from "@milaboratories/graph-maker";
 import { AxisId, ColumnId } from "@milaboratories/pf-plots";
 import type { PColumnIdAndSpec } from "@platforma-sdk/model";
 import { PlTabs } from "@platforma-sdk/ui-vue";
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useApp } from "../app";
 import type { CurveChart } from "@platforma-open/platforma-open.titeseq-analysis.model";
 import type { PanelVariant } from "./panelVariants";
@@ -119,38 +119,57 @@ const heading = computed(() => {
 const curveKey = (col: PColumnIdAndSpec) =>
   new ColumnId({ name: col.columnId, type: col.spec.valueType }).toCanonicalString();
 
-/** A fitted curve as a solid line in its replicate's colour; without the replicate axis, in ink. */
-function replicateCurveStyle(fitted: PColumnIdAndSpec) {
-  const replicate = fitted.spec.axesSpec.find((a) => a.name === REPLICATE_AXIS);
-  const lineColor = replicate
+const SOLID = { lineShape: "solid" as const, opacity: 1, showDots: false };
+
+/** The colour of the column's replicate; without the replicate axis, ink. */
+function replicateColor(col: PColumnIdAndSpec) {
+  const replicate = col.spec.axesSpec.find((a) => a.name === REPLICATE_AXIS);
+  return replicate
     ? { type: "grouping" as const, value: AxisId.fromAxisSpec(replicate).toCanonicalString() }
     : INK;
-  return { lineShape: "solid" as const, lineWidth: 2, lineColor, opacity: 1, showDots: false };
 }
 
 /**
- * The chart's state as the block styles it: curves carry the information, so each fitted curve is a solid line in
- * its replicate's colour, the points are hidden, and there is no grid. In ink: the mean over
- * replicates as a dotted line, Kd,app as a dashed line and its standard error as a bar.
+ * The chart's state as the block styles it: curves carry the information, so the points are hidden
+ * and there is no grid. With replicates each fitted curve is a dimmed dashed line in its
+ * replicate's colour, under the mean over replicates as a solid line in ink; without them the
+ * fitted curve is that solid line. Kd,app is a dot on the mean curve, each replicate's own Kd,app
+ * a dot on its curve in its colour, and the standard error a faint band: one line the run draws
+ * back and forth across it, wide enough here to close the gaps.
  */
 function styledCurvesState(chart: CurveChart, cols: PColumnIdAndSpec[]): GraphMakerState {
   const named = (name: string) => cols.find((c) => c.spec.name === name);
-  const ink = (lineShape: "dotted" | "dashed" | "solid", lineWidth: number) => ({
-    lineShape,
-    lineWidth,
-    lineColor: INK,
-    opacity: 1,
-    showDots: false,
-  });
   const fitted = named(chart.fitted);
   const mean = named(chart.mean);
-  const kdLine = named(chart.kdLine);
+  const kdPoint = named(chart.kdPoint);
+  const kdReplicatePoint = named(chart.kdReplicatePoint);
   const kdSe = named(chart.kdSe);
+  const replicated = fitted?.spec.axesSpec.some((a) => a.name === REPLICATE_AXIS) === true;
   const perCurve = {
-    ...(fitted && { [curveKey(fitted)]: replicateCurveStyle(fitted) }),
-    ...(mean && { [curveKey(mean)]: ink("dotted", 2.5) }),
-    ...(kdLine && { [curveKey(kdLine)]: ink("dashed", 1.5) }),
-    ...(kdSe && { [curveKey(kdSe)]: ink("solid", 1.5) }),
+    ...(fitted && {
+      [curveKey(fitted)]: replicated
+        ? {
+            ...SOLID,
+            lineShape: "dashed" as const,
+            lineWidth: 1.5,
+            lineColor: replicateColor(fitted),
+            opacity: 0.7,
+          }
+        : { ...SOLID, lineWidth: 2, lineColor: INK },
+    }),
+    ...(mean && { [curveKey(mean)]: { ...SOLID, lineWidth: 2.5, lineColor: INK } }),
+    ...(kdPoint && {
+      [curveKey(kdPoint)]: { ...SOLID, lineWidth: 1, lineColor: INK, showDots: true },
+    }),
+    ...(kdReplicatePoint && {
+      [curveKey(kdReplicatePoint)]: {
+        ...SOLID,
+        lineWidth: 1,
+        lineColor: replicateColor(kdReplicatePoint),
+        showDots: true,
+      },
+    }),
+    ...(kdSe && { [curveKey(kdSe)]: { ...SOLID, lineWidth: 6, lineColor: INK, opacity: 0.15 } }),
   };
   return {
     ...VARIANT_CURVES_DEFAULT_STATE,
@@ -232,6 +251,36 @@ const curvePins = computed(() => {
 const chartKey = computed(
   () => `${stateField.value}-${aaMode.value ? props.rowKey : picked.value}-${styledCount.value}`,
 );
+// The chart's legend lists every curve as a line and has no setting to leave one out. The Kd,app
+// points are dots, so their entries are hidden in the drawn legend, found by their labels. They
+// are the last curves, so the entries above them keep their place. The chart redraws its legend,
+// so the entries are hidden again on each change.
+const chartEl = ref<HTMLElement>();
+const pointLabels = computed(
+  () =>
+    new Set(
+      [chart.value.kdPoint, chart.value.kdReplicatePoint]
+        .map((name) => specs.value.find((s) => s.name === name)?.annotations?.["pl7.app/label"])
+        .filter((label) => label !== undefined),
+    ),
+);
+function hidePointEntries() {
+  const entries = chartEl.value?.querySelectorAll<SVGElement>(
+    '[data-testid="miplots-legend-item"]',
+  );
+  for (const entry of entries ?? []) {
+    entry.style.display = pointLabels.value.has(entry.textContent?.trim() ?? "") ? "none" : "";
+  }
+}
+const legendObserver = new MutationObserver(hidePointEntries);
+watch([chartEl, pointLabels], ([el]) => {
+  legendObserver.disconnect();
+  if (el === undefined) return;
+  legendObserver.observe(el, { childList: true, subtree: true });
+  hidePointEntries();
+});
+onBeforeUnmount(() => legendObserver.disconnect());
+
 // The state must exist in data before the chart binds it, or the chart never settles.
 const ready = computed(
   () =>
@@ -257,7 +306,7 @@ const ready = computed(
     <template v-else>
       <PlTabs v-if="!aaMode && variantTabs.length > 1" v-model="picked" :options="variantTabs" />
       <div class="titeseq-variant-curves-heading">{{ heading }}</div>
-      <div class="titeseq-variant-curves-chart">
+      <div ref="chartEl" class="titeseq-variant-curves-chart">
         <GraphMaker
           :key="chartKey"
           v-model="curvesState"
