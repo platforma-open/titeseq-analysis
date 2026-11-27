@@ -22,7 +22,7 @@ import { GraphMaker } from "@milaboratories/graph-maker";
 import { AxisId, ColumnId } from "@milaboratories/pf-plots";
 import type { PColumnIdAndSpec } from "@platforma-sdk/model";
 import { PlTabs } from "@platforma-sdk/ui-vue";
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useApp } from "../app";
 import type { CurveChart } from "@platforma-open/platforma-open.titeseq-analysis.model";
 import type { PanelVariant } from "./panelVariants";
@@ -251,6 +251,36 @@ const curvePins = computed(() => {
 const chartKey = computed(
   () => `${stateField.value}-${aaMode.value ? props.rowKey : picked.value}-${styledCount.value}`,
 );
+// The chart's legend lists every curve as a line and has no setting to leave one out. The Kd,app
+// points are dots, so their entries are hidden in the drawn legend, found by their labels. They
+// are the last curves, so the entries above them keep their place. The chart redraws its legend,
+// so the entries are hidden again on each change.
+const chartEl = ref<HTMLElement>();
+const pointLabels = computed(
+  () =>
+    new Set(
+      [chart.value.kdPoint, chart.value.kdReplicatePoint]
+        .map((name) => specs.value.find((s) => s.name === name)?.annotations?.["pl7.app/label"])
+        .filter((label) => label !== undefined),
+    ),
+);
+function hidePointEntries() {
+  const entries = chartEl.value?.querySelectorAll<SVGElement>(
+    '[data-testid="miplots-legend-item"]',
+  );
+  for (const entry of entries ?? []) {
+    entry.style.display = pointLabels.value.has(entry.textContent?.trim() ?? "") ? "none" : "";
+  }
+}
+const legendObserver = new MutationObserver(hidePointEntries);
+watch([chartEl, pointLabels], ([el]) => {
+  legendObserver.disconnect();
+  if (el === undefined) return;
+  legendObserver.observe(el, { childList: true, subtree: true });
+  hidePointEntries();
+});
+onBeforeUnmount(() => legendObserver.disconnect());
+
 // The state must exist in data before the chart binds it, or the chart never settles.
 const ready = computed(
   () =>
@@ -276,7 +306,7 @@ const ready = computed(
     <template v-else>
       <PlTabs v-if="!aaMode && variantTabs.length > 1" v-model="picked" :options="variantTabs" />
       <div class="titeseq-variant-curves-heading">{{ heading }}</div>
-      <div class="titeseq-variant-curves-chart">
+      <div ref="chartEl" class="titeseq-variant-curves-chart">
         <GraphMaker
           :key="chartKey"
           v-model="curvesState"

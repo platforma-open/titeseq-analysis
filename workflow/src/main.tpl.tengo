@@ -1044,7 +1044,7 @@ wf.body(func(args) {
 			"The height of each point of the variant's chart: the mean curve, or a Kd,app mark."),
 		sparse(hiddenCurveColumn("kdPoint", "pl7.app/vdj/kdPoint", "Double", "Kd,app",
 			"The variant's Kd,app, as a point on its curve; with replicates, on the mean curve.")),
-		sparse(hiddenCurveColumn("kdSeRange", "pl7.app/vdj/kdSeRange", "Double", "Kd,app ± SE",
+		sparse(hiddenCurveColumn("kdSeRange", "pl7.app/vdj/kdSeRange", "Double", "Kd,app ± SE (shaded)",
 			"The standard error of log10 Kd,app, as a band from Kd,app / 10^SE to Kd,app × 10^SE over the height of the curves. Cut at the lowest and highest concentrations."))
 	]
 	if hasReplicate {
@@ -1094,7 +1094,7 @@ wf.body(func(args) {
 					"The amino-acid variant's Kd,app, as a point on its mean curve.")),
 				sparse(hiddenCurveColumn("aaKdReplicatePoint", "pl7.app/vdj/aaKdReplicatePoint", "Double", "Kd,app (per replicate)",
 					"Each replicate's own Kd,app of the amino-acid variant, as a point on that replicate's curve.")),
-				sparse(hiddenCurveColumn("aaKdSeRange", "pl7.app/vdj/aaKdSeRange", "Double", "Kd,app ± SE",
+				sparse(hiddenCurveColumn("aaKdSeRange", "pl7.app/vdj/aaKdSeRange", "Double", "Kd,app ± SE (shaded)",
 					"The standard error of log10 Kd,app, as a band from Kd,app / 10^SE to Kd,app × 10^SE over the height of the curves. Cut at the lowest and highest concentrations."))
 			])
 		}
